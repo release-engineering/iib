@@ -1,0 +1,18 @@
+FROM centos:8
+LABEL maintainer="Red Hat - EXD"
+
+WORKDIR /src
+RUN dnf -y install \
+    --setopt=deltarpm=0 \
+    --setopt=install_weak_deps=false \
+    --setopt=tsflags=nodocs \
+    httpd \
+    mod_auth_gssapi \
+    mod_ssl \
+    python3-pip \
+    && dnf clean all
+COPY . .
+COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
+RUN pip3 install .
+EXPOSE 8080
+CMD ["/usr/sbin/httpd", "-DFOREGROUND"]

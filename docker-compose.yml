@@ -9,6 +9,26 @@ services:
       # The RabbitMQ management console
       - 8081:15672
 
+  iib-api:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-api
+    command:
+    - /bin/sh
+    - -c
+    - >-
+      pip3 uninstall -y iib &&
+      python3 setup.py develop --no-deps &&
+      flask run --reload --host 0.0.0.0 --port 8080
+    environment:
+      FLASK_ENV: development
+      FLASK_APP: iib/web/wsgi.py
+      IIB_DEV: 'true'
+    volumes:
+      - ./:/src:z
+    ports:
+      - 8080:8080
+
   iib-worker:
     build:
       context: .
