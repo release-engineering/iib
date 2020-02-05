@@ -1,0 +1,29 @@
+version: '3'
+services:
+  rabbitmq:
+    image: rabbitmq:3.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: iib
+      RABBITMQ_DEFAULT_PASS: iib
+    ports:
+      # The RabbitMQ management console
+      - 8081:15672
+
+  iib-worker:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-workers
+    # Override the default command so that Celery auto-reloads on code changes
+    command:
+    - /bin/bash
+    - -c
+    - >-
+      pip3 install watchdog[watchmedo] &&
+      watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
+        -- celery -A iib.workers.tasks worker --loglevel=info
+    environment:
+      IIB_DEV: 'true'
+    volumes:
+      - ./:/src:z
+    depends_on:
+      - rabbitmq
