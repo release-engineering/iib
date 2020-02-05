@@ -4,3 +4,7 @@ fail_under = 90
 exclude_lines =
     pragma: no cover
     if __name__ == .__main__.:
+omit =
+    iib/web/app.py
+    iib/web/wsgi.py
+    iib/web/config.py
