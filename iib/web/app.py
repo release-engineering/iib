@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import logging
 import os
 
 from flask import Flask
+from flask.logging import default_handler
 
 from iib.web.api_v1 import api_v1
 
@@ -40,6 +42,17 @@ def create_app(config_obj=None):
         app.config.from_object(config_obj)
     else:
         load_config(app)
+
+    # Configure logging
+    default_handler.setFormatter(
+        logging.Formatter(fmt=app.config['IIB_LOG_FORMAT'], datefmt='%Y-%m-%d %H:%M:%S')
+    )
+    app.logger.setLevel(app.config['IIB_LOG_LEVEL'])
+    for logger_name in app.config['IIB_ADDITIONAL_LOGGERS']:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(app.config['IIB_LOG_LEVEL'])
+        # Add the Flask handler that streams to WSGI stderr
+        logger.addHandler(default_handler)
 
     app.register_blueprint(api_v1, url_prefix='/api/v1')
 
