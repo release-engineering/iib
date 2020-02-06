@@ -4,8 +4,12 @@ import os
 
 from flask import Flask
 from flask.logging import default_handler
+from flask_migrate import Migrate
 
+from iib.web import db
 from iib.web.api_v1 import api_v1
+# Import the models here so that Alembic will be guaranteed to detect them
+import iib.web.models  # noqa: F401
 
 
 def load_config(app):
@@ -54,6 +58,11 @@ def create_app(config_obj=None):
         # Add the Flask handler that streams to WSGI stderr
         logger.addHandler(default_handler)
 
+    # Initialize the database
+    db.init_app(app)
+    # Initialize the database migrations
+    migrations_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'migrations')
+    Migrate(app, db, directory=migrations_dir)
     app.register_blueprint(api_v1, url_prefix='/api/v1')
 
     return app
