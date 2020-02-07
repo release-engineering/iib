@@ -1,5 +1,13 @@
 version: '3'
 services:
+  db:
+    image: postgres:9.6
+    environment:
+      POSTGRES_USER:  iib
+      POSTGRES_PASSWORD: iib
+      POSTGRES_DB: iib
+      POSTGRES_INITDB_ARGS: "--auth='ident' --auth='trust'"
+
   rabbitmq:
     image: rabbitmq:3.7-management
     environment:
@@ -19,6 +27,8 @@ services:
     - >-
       pip3 uninstall -y iib &&
       python3 setup.py develop --no-deps &&
+      iib wait-for-db &&
+      iib db upgrade &&
       flask run --reload --host 0.0.0.0 --port 8080
     environment:
       FLASK_ENV: development
@@ -28,6 +38,8 @@ services:
       - ./:/src:z
     ports:
       - 8080:8080
+    depends_on:
+      - db
 
   iib-worker:
     build:
