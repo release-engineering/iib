@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from enum import Enum
 
+from flask_login import UserMixin
 import sqlalchemy
 
 from iib.exceptions import ValidationError
@@ -213,7 +214,24 @@ class RequestState(db.Model):
         )
 
 
-class User(db.Model):
+class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String, index=True, unique=True, nullable=False)
     requests = db.relationship('Request', foreign_keys=[Request.user_id], back_populates='user')
+
+    @classmethod
+    def get_or_create(cls, username):
+        """
+        Get the user from the database and create it if it doesn't exist.
+
+        :param str username: the username of the user
+        :return: a User object based on the input username; the User object will be
+            added to the database session, but not committed, if it was created
+        :rtype: User
+        """
+        user = cls.query.filter_by(username=username).first()
+        if not user:
+            user = User(username=username)
+            db.session.add(user)
+
+        return user
