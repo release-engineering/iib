@@ -24,6 +24,7 @@ class DevelopmentConfig(Config):
     """The development IIB Flask configuration."""
     IIB_LOG_LEVEL = 'DEBUG'
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://iib:iib@db:5432/iib'
+    LOGIN_DISABLED = True
 
 
 class TestingConfig(DevelopmentConfig):
@@ -34,3 +35,14 @@ class TestingConfig(DevelopmentConfig):
     # after the migration completes...
     #   https://github.com/miguelgrinberg/Flask-Migrate/issues/153
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{TEST_DB_FILE}'
+    LOGIN_DISABLED = False
+
+
+class TestingConfigNoAuth(TestingConfig):
+    """The testing Cachito Flask configuration without authentication."""
+    # This is needed because Flask seems to read the LOGIN_DISABLED setting
+    # and configure the relevant extensions at app creation time. Changing this
+    # during a test run still leaves login enabled. This behavior also applies
+    # to ENV and DEBUG config values:
+    #   https://flask.palletsprojects.com/en/1.1.x/config/#environment-and-debug-features
+    LOGIN_DISABLED = True
