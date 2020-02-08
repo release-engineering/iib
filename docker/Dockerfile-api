@@ -9,7 +9,6 @@ RUN dnf -y install \
     httpd \
     mod_auth_gssapi \
     mod_ssl \
-    python3-flask-login \
     python3-pip \
     && dnf clean all
 COPY . .

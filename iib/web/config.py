@@ -39,7 +39,7 @@ class TestingConfig(DevelopmentConfig):
 
 
 class TestingConfigNoAuth(TestingConfig):
-    """The testing Cachito Flask configuration without authentication."""
+    """The testing IIB Flask configuration without authentication."""
     # This is needed because Flask seems to read the LOGIN_DISABLED setting
     # and configure the relevant extensions at app creation time. Changing this
     # during a test run still leaves login enabled. This behavior also applies
