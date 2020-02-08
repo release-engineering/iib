@@ -8,6 +8,18 @@ from iib.web.app import create_app, db as _db
 from iib.web.config import TEST_DB_FILE
 
 
+@pytest.fixture()
+def app(request):
+    """Return Flask application."""
+    return _make_app(request, 'iib.web.config.TestingConfig')
+
+
+@pytest.fixture()
+def app_no_auth(request):
+    """Return Flask application without authentication."""
+    return _make_app(request, 'iib.web.config.TestingConfigNoAuth')
+
+
 def _make_app(request, config):
     """Helper method to create an application for the given config name"""
     app = create_app(config)
@@ -23,10 +35,9 @@ def _make_app(request, config):
     return app
 
 
-@pytest.fixture()
-def app(request):
-    """Return Flask application for the pytest session."""
-    return _make_app(request, 'iib.web.config.TestingConfig')
+@pytest.fixture(scope='session')
+def auth_env():
+    return {'REMOTE_USER': 'tbrady@DOMAIN.LOCAL'}
 
 
 @pytest.fixture()

@@ -7,9 +7,11 @@ from flask.logging import default_handler
 from flask_login import LoginManager
 from flask_migrate import Migrate
 
+from iib.exceptions import ValidationError
 from iib.web import db
 from iib.web.api_v1 import api_v1
 from iib.web.auth import user_loader, load_user_from_request
+from iib.web.errors import json_error
 # Import the models here so that Alembic will be guaranteed to detect them
 import iib.web.models  # noqa: F401
 
@@ -72,5 +74,6 @@ def create_app(config_obj=None):
     login_manager.request_loader(load_user_from_request)
 
     app.register_blueprint(api_v1, url_prefix='/api/v1')
+    app.register_error_handler(ValidationError, json_error)
 
     return app

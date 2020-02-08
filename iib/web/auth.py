@@ -13,7 +13,7 @@ def user_loader(username):
 
     :param str username: the username of the user
     :return: the User object associated with the username or None
-    :rtype: cachito.web.models.User
+    :rtype: iib.web.models.User
     """
     return User.query.filter_by(username=username).first()
 
