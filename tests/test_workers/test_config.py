@@ -3,8 +3,10 @@ from unittest.mock import patch
 from io import BytesIO
 
 import celery
+import pytest
 
-from iib.workers.config import configure_celery
+from iib.exceptions import ConfigError
+from iib.workers.config import configure_celery, validate_celery_config
 
 
 @patch('os.path.isfile', return_value=False)
@@ -29,3 +31,17 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     configure_celery(celery_app)
     assert celery_app.conf.task_default_queue == 'not-iib'
     assert celery_app.conf.timezone == 'America/New_York'
+
+
+def test_validate_celery_config():
+    validate_celery_config(
+        {'iib_registry': 'registry', 'iib_registry_credentials': 'username:password'}
+    )
+
+
+@pytest.mark.parametrize('missing_key', ('iib_registry', 'iib_registry_credentials'))
+def test_validate_celery_config_failure(missing_key):
+    conf = {'iib_registry': 'registry', 'iib_registry_credentials': 'username:password'}
+    conf.pop(missing_key)
+    with pytest.raises(ConfigError, match=f'{missing_key} must be set.+'):
+        validate_celery_config(conf)
