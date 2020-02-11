@@ -6,8 +6,13 @@ RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
     --setopt=tsflags=nodocs \
+    podman \
     python3-pip \
     && dnf clean all
+# Set the default container storage so that podman can run in the container
+RUN sed -i 's_overlay_vfs_' /etc/containers/storage.conf
 COPY . .
+ADD https://github.com/operator-framework/operator-registry/releases/download/v1.5.9/linux-amd64-opm /usr/bin/opm
+RUN chmod +x /usr/bin/opm
 RUN pip3 install .
 CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]

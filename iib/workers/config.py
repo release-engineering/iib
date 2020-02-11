@@ -2,14 +2,18 @@
 import os
 import logging
 
+from iib.exceptions import ConfigError
+
 
 class Config(object):
     """The base IIB Celery configuration."""
 
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
+    iib_arch = 'amd64'
+    iib_arch_image_push_template = 'docker://{registry}/operator-registry-index:{request_id}-{arch}'
     iib_log_level = 'INFO'
-    include = ['iib.workers.tasks.placeholder']
+    include = ['iib.workers.tasks.build', 'iib.workers.tasks.placeholder']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
@@ -32,6 +36,8 @@ class DevelopmentConfig(Config):
 
     broker_url = 'amqp://iib:iib@rabbitmq:5672//'
     iib_log_level = 'DEBUG'
+    iib_registry = 'registry:8443'
+    iib_registry_credentials = 'iib:iibpassword'
 
 
 class TestingConfig(DevelopmentConfig):
@@ -74,6 +80,19 @@ def validate_celery_config(conf, **kwargs):
     Perform basic validatation on the Celery configuration when the worker is initialized.
 
     :param celery.app.utils.Settings conf: the Celery application configuration to validate
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
     """
-    # For now, don't perform any validation
-    pass
+    if not conf.get('iib_registry'):
+        raise ConfigError('iib_registry must be set to the destination container registry')
+
+    if not conf.get('iib_registry_credentials'):
+        raise ConfigError(
+            'iib_registry_credentials must be set in the format of "username:password"'
+        )
+
+
+def get_worker_config():
+    # Import this here to avoid a circular import
+    import iib.workers.tasks.celery
+
+    return iib.workers.tasks.celery.app.conf
