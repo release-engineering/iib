@@ -516,7 +516,13 @@ def _run_cmd(cmd, params=None, exc_msg=None):
     response = subprocess.run(cmd, **params)
 
     if response.returncode != 0:
-        log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
+        conf = get_worker_config()
+        _, password = conf['iib_registry_credentials'].split(':', 1)
+        sanitized_cmd = copy.copy(cmd)
+        for i, arg in enumerate(cmd):
+            if arg in (conf['iib_registry_credentials'], password):
+                sanitized_cmd[i] = '********'
+        log.error('The command "%s" failed with: %s', ' '.join(sanitized_cmd), response.stderr)
         raise IIBError(exc_msg or 'An unexpected error occurred')
 
     return response.stdout
