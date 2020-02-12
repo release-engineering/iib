@@ -1,0 +1,2 @@
+recursive-include iib/web/migrations *
+include requirements.txt requirements-dev.txt LICENSE
