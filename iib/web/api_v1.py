@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import flask
-from flask_login import login_required
+from flask_login import current_user, login_required
+from werkzeug.exceptions import Unauthorized
 
 from iib.exceptions import ValidationError
 from iib.web import db
-from iib.web.models import Request, RequestState, RequestStateMapping
+from iib.web.models import Architecture, Image, Request, RequestState, RequestStateMapping
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.placeholder import ping
 
@@ -85,3 +86,87 @@ def add_bundles():
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/<int:request_id>', methods=['PATCH'])
+@login_required
+def patch_request(request_id):
+    """
+    Modify the given request.
+
+    :param int request_id: the request ID from the URL
+    :return: a Flask JSON response
+    :rtype: flask.Response
+    :raise NotFound: if the request is not found
+    :raise ValidationError: if the JSON is invalid
+    """
+    allowed_users = flask.current_app.config['IIB_WORKER_USERNAMES']
+    # current_user.is_authenticated is only ever False when auth is disabled
+    if current_user.is_authenticated and current_user.username not in allowed_users:
+        raise Unauthorized('This API endpoint is restricted to IIB workers')
+
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    if not payload:
+        raise ValidationError('At least one key must be specified to update the request')
+
+    valid_keys = {
+        'arches',
+        'binary_image_resolved',
+        'from_index_resolved',
+        'index_image',
+        'state',
+        'state_reason',
+    }
+    invalid_keys = payload.keys() - valid_keys
+    if invalid_keys:
+        raise ValidationError(
+            'The following keys are not allowed: {}'.format(', '.join(invalid_keys))
+        )
+
+    for key, value in payload.items():
+        if key == 'arches':
+            Architecture.validate_architecture_json(value)
+        elif not value or not isinstance(value, str):
+            raise ValidationError(f'The value for "{key}" must be a non-empty string')
+
+    if 'state' in payload and 'state_reason' not in payload:
+        raise ValidationError('The "state_reason" key is required when "state" is supplied')
+    elif 'state_reason' in payload and 'state' not in payload:
+        raise ValidationError('The "state" key is required when "state_reason" is supplied')
+
+    request = Request.query.get_or_404(request_id)
+    if 'state' in payload and 'state_reason' in payload:
+        RequestStateMapping.validate_state(payload['state'])
+        new_state = payload['state']
+        new_state_reason = payload['state_reason']
+        # This is to protect against a Celery task getting executed twice and setting the
+        # state each time
+        if request.state.state == new_state and request.state.state_reason == new_state_reason:
+            flask.current_app.logger.info('Not adding a new state since it matches the last state')
+        else:
+            request.add_state(new_state, new_state_reason)
+
+    for key in ('binary_image_resolved', 'from_index_resolved', 'index_image'):
+        if key not in payload:
+            continue
+        key_value = payload.get(key, None)
+        key_object = Image.get_or_create(key_value)
+        # SQLAlchemy will not add the object to the database if it's already present
+        setattr(request, key, key_object)
+
+    for arch in payload.get('arches', []):
+        request.add_architecture(arch)
+
+    db.session.commit()
+
+    if current_user.is_authenticated:
+        flask.current_app.logger.info(
+            'The user %s patched request %d', current_user.username, request.id
+        )
+    else:
+        flask.current_app.logger.info('An anonymous user patched request %d', request.id)
+
+    return flask.jsonify(request.to_json()), 200
