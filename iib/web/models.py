@@ -4,6 +4,7 @@ from enum import Enum
 
 from flask_login import UserMixin, current_user
 import sqlalchemy
+from sqlalchemy.orm import joinedload
 
 from iib.exceptions import ValidationError
 from iib.web import db
@@ -29,6 +30,21 @@ class RequestStateMapping(BaseEnum):
     in_progress = 1
     complete = 2
     failed = 3
+
+    @classmethod
+    def validate_state(cls, state):
+        """
+        Verify that the input state is valid.
+
+        :param str state: the state to validate
+        :raises iib.exceptions.ValidationError: if the state is invalid
+        """
+        state_names = cls.get_names()
+        if state not in state_names:
+            states = ', '.join(state_names)
+            raise ValidationError(
+                f'{state} is not a valid build request state. Valid states are: {states}'
+            )
 
 
 class RequestTypeMapping(BaseEnum):
@@ -83,7 +99,11 @@ class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     pull_specification = db.Column(db.String, nullable=False, unique=True)
 
-    architectures = db.relationship('Architecture', secondary=ImageArchitecture.__table__)
+    architectures = db.relationship(
+        'Architecture',
+        order_by='Architecture.name',
+        secondary=ImageArchitecture.__table__,
+    )
 
     def __repr__(self):
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
@@ -214,6 +234,36 @@ class Request(db.Model):
         db.session.add(request_state)
         db.session.flush()
         self.request_state_id = request_state.id
+
+    @staticmethod
+    def get_query_options(verbose=False):
+        """
+        Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
+
+        This will add the joins ahead of time on relationships that are accessed in the ``to_json``
+        method to avoid individual select statements when the relationships are accessed.
+
+        :param bool verbose: if the request relationships should be loaded for verbose JSON output
+        :return: a list of SQLAlchemy query options
+        :rtype: list
+        """
+        # Tell SQLAlchemy to join on the relationships that are part of the JSON to avoid
+        # additional SQL queries
+        query_options = [
+            joinedload(Request.binary_image),
+            joinedload(Request.binary_image_resolved),
+            joinedload(Request.bundles),
+            joinedload(Request.from_index),
+            joinedload(Request.from_index_resolved),
+            joinedload(Request.index_image),
+            joinedload(Request.user),
+        ]
+        if verbose:
+            query_options.append(joinedload(Request.states))
+        else:
+            query_options.append(joinedload(Request.state))
+
+        return query_options
 
     def to_json(self, verbose=True):
         def _state_to_json(state):
