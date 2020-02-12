@@ -12,6 +12,7 @@ class Config(object):
     IIB_LOG_FORMAT = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
     IIB_LOG_LEVEL = 'INFO'
+    IIB_MAX_PER_PAGE = 20
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
