@@ -310,7 +310,7 @@ class Request(db.Model):
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
 
-        request_kwargs['type'] = 'add'
+        request_kwargs['type'] = RequestTypeMapping.__members__['add'].value
 
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
