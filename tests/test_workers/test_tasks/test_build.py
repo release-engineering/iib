@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import logging
 import os
 import re
 import textwrap
@@ -328,7 +329,7 @@ def test_opm_index_add_already_failed(mock_bi, mock_srs, mock_gr):
 
 
 @mock.patch('iib.workers.tasks.build.subprocess.run')
-def test_mock_run_cmd(mock_sub_run):
+def test_run_cmd(mock_sub_run):
     mock_rv = mock.Mock()
     mock_rv.returncode = 0
     mock_sub_run.return_value = mock_rv
@@ -340,7 +341,12 @@ def test_mock_run_cmd(mock_sub_run):
 
 @pytest.mark.parametrize('exc_msg', (None, 'Houston, we have a problem!'))
 @mock.patch('iib.workers.tasks.build.subprocess.run')
-def test_mock_run_cmd_failed(mock_sub_run, exc_msg):
+def test_run_cmd_failed(mock_sub_run, caplog, exc_msg):
+    # When running tests that involve Flask before this test, the iib.workers loggers
+    # are disabled. This is an ugly workaround.
+    for logger in ('iib.workers', 'iib.workers.tasks', 'iib.workers.tasks.build'):
+        logging.getLogger(logger).disabled = False
+
     mock_rv = mock.Mock()
     mock_rv.returncode = 1
     mock_rv.stderr = 'some failure'
@@ -348,6 +354,9 @@ def test_mock_run_cmd_failed(mock_sub_run, exc_msg):
 
     expected_exc = exc_msg or 'An unexpected error occurred'
     with pytest.raises(IIBError, match=expected_exc):
-        build._run_cmd(['echo', 'hello world'], exc_msg=exc_msg)
+        build._run_cmd(['echo', 'iib:iibpassword'], exc_msg=exc_msg)
 
     mock_sub_run.assert_called_once()
+    # Verify that the password is not logged
+    assert '********' in caplog.text
+    assert 'iib:iibpassword' not in caplog.text
