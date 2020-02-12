@@ -5,20 +5,22 @@ from iib.exceptions import ValidationError
 from iib.web import models
 
 
-def test_image_add_architecture(db):
-    image = models.Image(pull_specification='quay.io/image:latest')
-    db.session.add(image)
-    image.add_architecture('amd64')
-    image.add_architecture('s390x')
+def test_request_add_architecture(db):
+    binary_image = models.Image(pull_specification='quay.io/image:latest')
+    db.session.add(binary_image)
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    db.session.add(request)
+    request.add_architecture('amd64')
+    request.add_architecture('s390x')
     db.session.commit()
-    assert len(image.architectures) == 2
-    assert image.architectures[0].name == 'amd64'
-    assert image.architectures[1].name == 's390x'
+    assert len(request.architectures) == 2
+    assert request.architectures[0].name == 'amd64'
+    assert request.architectures[1].name == 's390x'
 
     # Verify that the method is idempotent
-    image.add_architecture('amd64')
+    request.add_architecture('amd64')
     db.session.commit()
-    assert len(image.architectures) == 2
+    assert len(request.architectures) == 2
 
 
 def test_request_add_state(db):

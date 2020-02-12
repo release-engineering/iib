@@ -65,18 +65,29 @@ class Architecture(db.Model):
     def __repr__(self):
         return '<Architecture name={0!r}>'.format(self.name)
 
+    @staticmethod
+    def validate_architecture_json(arches):
+        """
+        Validate the JSON representation of architectures.
 
-class ImageArchitecture(db.Model):
-    """
-    An association table between images and the architectures they were built for.
+        :param list arches: the JSON representation of architectures for a build request
+        :raise ValidationError: if the JSON does not match the required schema
+        """
+        if not isinstance(arches, list) or any(
+            not arch or not isinstance(arch, str) for arch in arches
+        ):
+            raise ValidationError(
+                'Architectures should be specified as a non-empty array of strings'
+            )
 
-    This will only be used for images built by IIB.
-    """
+
+class RequestArchitecture(db.Model):
+    """An association table between requests and the architectures they were built for."""
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    image_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    request_id = db.Column(
+        db.Integer, db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
     )
     architecture_id = db.Column(
         db.Integer,
@@ -86,7 +97,7 @@ class ImageArchitecture(db.Model):
         primary_key=True,
     )
 
-    __table_args__ = (db.UniqueConstraint('image_id', 'architecture_id'),)
+    __table_args__ = (db.UniqueConstraint('request_id', 'architecture_id'),)
 
 
 class Image(db.Model):
@@ -99,28 +110,8 @@ class Image(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     pull_specification = db.Column(db.String, nullable=False, unique=True)
 
-    architectures = db.relationship(
-        'Architecture', order_by='Architecture.name', secondary=ImageArchitecture.__table__
-    )
-
     def __repr__(self):
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
-
-    def add_architecture(self, arch_name):
-        """
-        Add an architecture associated with this image.
-
-        :param str arch_name: the architecture to add
-        :raises ValidationError: if the architecture is invalid
-        """
-        arch = db.session.query(Architecture).filter_by(name=arch_name).first()
-        if not arch:
-            arch = Architecture(name=arch_name)
-            db.session.add(arch)
-            db.session.flush()
-
-        if arch not in self.architectures:
-            self.architectures.append(arch)
 
     @classmethod
     def get_or_create(cls, pull_specification):
@@ -165,6 +156,9 @@ class Request(db.Model):
     """An index image build request."""
 
     id = db.Column(db.Integer, primary_key=True)
+    architectures = db.relationship(
+        'Architecture', order_by='Architecture.name', secondary=RequestArchitecture.__table__
+    )
     # The image that opm binary comes from
     binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
     binary_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
@@ -263,6 +257,22 @@ class Request(db.Model):
 
         return query_options
 
+    def add_architecture(self, arch_name):
+        """
+        Add an architecture associated with this image.
+
+        :param str arch_name: the architecture to add
+        :raises ValidationError: if the architecture is invalid
+        """
+        arch = db.session.query(Architecture).filter_by(name=arch_name).first()
+        if not arch:
+            arch = Architecture(name=arch_name)
+            db.session.add(arch)
+            db.session.flush()
+
+        if arch not in self.architectures:
+            self.architectures.append(arch)
+
     def to_json(self, verbose=True):
         def _state_to_json(state):
             return {
@@ -273,7 +283,7 @@ class Request(db.Model):
 
         rv = {
             'id': self.id,
-            'arches': [arch.name for arch in getattr(self.index_image, 'architectures', [])],
+            'arches': [arch.name for arch in self.architectures],
             'binary_image': self.binary_image.pull_specification,
             'binary_image_resolved': getattr(
                 self.binary_image_resolved, 'pull_specification', None
@@ -322,10 +332,7 @@ class Request(db.Model):
 
         # Validate add_arches are correctly provided
         add_arches = request_kwargs.pop('add_arches', [])
-        if not isinstance(add_arches, list) or any(
-            not arch or not isinstance(arch, str) for arch in add_arches
-        ):
-            raise ValidationError('"add_arches" should be an array of strings')
+        Architecture.validate_architecture_json(add_arches)
 
         # Validate bundles are correctly provided
         bundles = request_kwargs.pop('bundles')

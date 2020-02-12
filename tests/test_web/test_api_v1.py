@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import datetime
 from unittest import mock
 
 import pytest
 
+from iib.web import models
 from iib.web.models import Image, Request
 
 
@@ -31,8 +31,8 @@ def test_get_build(app, auth_env, client, db):
             'quay.io/namespace/from_index@sha256:defghi'
         )
         request.index_image = Image.get_or_create('quay.io/namespace/index@sha256:fghijk')
-        request.index_image.add_architecture('amd64')
-        request.index_image.add_architecture('s390x')
+        request.add_architecture('amd64')
+        request.add_architecture('s390x')
         request.add_state('complete', 'Completed successfully')
         db.session.add(request)
         db.session.commit()
@@ -139,7 +139,7 @@ def test_get_builds_invalid_state(app, client, db):
             'pull_spec',
             'binary_image',
             [1, 2, 3],
-            '"add_arches" should be an array of strings',
+            'Architectures should be specified as a non-empty array of strings',
         ),
     ),
 )
@@ -207,14 +207,112 @@ def test_add_bundle_success(db, auth_env, client):
             {
                 'state': 'in_progress',
                 'state_reason': 'The request was initiated',
-                'updated': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'updated': '2020-02-12T17:03:00Z',
             }
         ],
         'state_reason': 'The request was initiated',
-        'updated': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'updated': '2020-02-12T17:03:00Z',
         'user': 'tbrady@DOMAIN.LOCAL',
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv.status_code == 201
-    assert response_json == rv.json
+    assert response_json == rv_json
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {
+                'arches': [''],
+                'binary_image_resolved': 'resolved:binary',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'Architectures should be specified as a non-empty array of strings',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'binary_image_resolved': '',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'The value for "binary_image_resolved" must be a non-empty string',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'binary_image_resolved': 'resolved:binary',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state_reason': 'state_reason',
+            },
+            'The "state" key is required when "state_reason" is supplied',
+        ),
+    ),
+)
+def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_env, client):
+    binary_image = models.Image(pull_specification='quay.io/image:latest')
+    db.session.add(binary_image)
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    db.session.add(request)
+
+    rv = client.patch('/api/v1/builds/1', json=data, environ_base=worker_auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+def test_patch_request_success(db, worker_auth_env, client):
+    data = {
+        'arches': ['arches'],
+        'state': 'complete',
+        'state_reason': 'All done!',
+        'index_image': 'index:image',
+    }
+
+    response_json = {
+        'arches': ['arches'],
+        'binary_image': 'quay.io/image:latest',
+        'binary_image_resolved': None,
+        'bundles': [],
+        'from_index': None,
+        'from_index_resolved': None,
+        'id': 1,
+        'index_image': 'index:image',
+        'state': 'complete',
+        'state_history': [
+            {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
+            {
+                'state': 'in_progress',
+                'state_reason': 'Starting things up',
+                'updated': '2020-02-12T17:03:00Z',
+            },
+        ],
+        'state_reason': 'All done!',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': None,
+    }
+
+    binary_image = models.Image(pull_specification='quay.io/image:latest')
+    db.session.add(binary_image)
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    db.session.add(request)
+    request.add_state('in_progress', 'Starting things up')
+    db.session.commit()
+
+    rv = client.patch('/api/v1/builds/1', json=data, environ_base=worker_auth_env)
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
+    assert rv.status_code == 200
+    assert rv_json == response_json

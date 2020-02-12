@@ -59,3 +59,8 @@ def db(app, tmpdir):
 def client(app):
     """Return Flask application client for the pytest session."""
     return app.test_client()
+
+
+@pytest.fixture(scope='session')
+def worker_auth_env():
+    return {'REMOTE_USER': 'worker@DOMAIN.LOCAL'}

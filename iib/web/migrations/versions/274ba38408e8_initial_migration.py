@@ -31,22 +31,25 @@ def upgrade():
         sa.UniqueConstraint('pull_specification'),
     )
     op.create_table(
-        'image_architecture',
-        sa.Column('image_id', sa.Integer(), autoincrement=False, nullable=False),
+        'request_architecture',
+        sa.Column('request_id', sa.Integer(), autoincrement=False, nullable=False),
         sa.Column('architecture_id', sa.Integer(), autoincrement=False, nullable=False),
         sa.ForeignKeyConstraint(['architecture_id'], ['architecture.id']),
-        sa.ForeignKeyConstraint(['image_id'], ['image.id']),
-        sa.PrimaryKeyConstraint('image_id', 'architecture_id'),
-        sa.UniqueConstraint('image_id', 'architecture_id'),
+        sa.ForeignKeyConstraint(['request_id'], ['request.id']),
+        sa.PrimaryKeyConstraint('request_id', 'architecture_id'),
+        sa.UniqueConstraint('request_id', 'architecture_id'),
     )
     op.create_index(
-        op.f('ix_image_architecture_architecture_id'),
-        'image_architecture',
+        op.f('ix_request_architecture_architecture_id'),
+        'request_architecture',
         ['architecture_id'],
         unique=False,
     )
     op.create_index(
-        op.f('ix_image_architecture_image_id'), 'image_architecture', ['image_id'], unique=False
+        op.f('ix_request_architecture_request_id'),
+        'request_architecture',
+        ['request_id'],
+        unique=False,
     )
     op.create_table(
         'user',
@@ -122,8 +125,10 @@ def downgrade():
     op.drop_table('request_bundle')
     op.drop_index(op.f('ix_request_request_state_id'), table_name='request')
     op.drop_table('request')
-    op.drop_index(op.f('ix_image_architecture_image_id'), table_name='image_architecture')
-    op.drop_index(op.f('ix_image_architecture_architecture_id'), table_name='image_architecture')
-    op.drop_table('image_architecture')
+    op.drop_index(op.f('ix_request_architecture_request_id'), table_name='request_architecture')
+    op.drop_index(
+        op.f('ix_request_architecture_architecture_id'), table_name='request_architecture'
+    )
+    op.drop_table('request_architecture')
     op.drop_table('image')
     op.drop_table('architecture')

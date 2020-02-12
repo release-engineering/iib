@@ -14,6 +14,7 @@ class Config(object):
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
     IIB_LOG_LEVEL = 'INFO'
     IIB_MAX_PER_PAGE = 20
+    IIB_WORKER_USERNAMES = []
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
@@ -35,6 +36,7 @@ class TestingConfig(DevelopmentConfig):
     """The testing IIB Flask configuration."""
 
     DEBUG = True
+    IIB_WORKER_USERNAMES = ['worker@DOMAIN.LOCAL']
     # IMPORTANT: don't use in-memory sqlite. Alembic migrations will create a new
     # connection producing a new instance of the database which is deleted immediately
     # after the migration completes...
