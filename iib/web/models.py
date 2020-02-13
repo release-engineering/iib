@@ -100,9 +100,7 @@ class Image(db.Model):
     pull_specification = db.Column(db.String, nullable=False, unique=True)
 
     architectures = db.relationship(
-        'Architecture',
-        order_by='Architecture.name',
-        secondary=ImageArchitecture.__table__,
+        'Architecture', order_by='Architecture.name', secondary=ImageArchitecture.__table__
     )
 
     def __repr__(self):
@@ -278,7 +276,8 @@ class Request(db.Model):
             'arches': [arch.name for arch in getattr(self.index_image, 'architectures', [])],
             'binary_image': self.binary_image.pull_specification,
             'binary_image_resolved': getattr(
-                self.binary_image_resolved, 'pull_specification', None),
+                self.binary_image_resolved, 'pull_specification', None
+            ),
             'bundles': [bundle.pull_specification for bundle in self.bundles],
             'from_index': getattr(self.from_index, 'pull_specification', None),
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
@@ -323,18 +322,17 @@ class Request(db.Model):
 
         # Validate add_arches are correctly provided
         add_arches = request_kwargs.pop('add_arches', [])
-        if (
-            not isinstance(add_arches, list) or
-            any(not arch or not isinstance(arch, str) for arch in add_arches)
+        if not isinstance(add_arches, list) or any(
+            not arch or not isinstance(arch, str) for arch in add_arches
         ):
             raise ValidationError('"add_arches" should be an array of strings')
 
         # Validate bundles are correctly provided
         bundles = request_kwargs.pop('bundles')
         if (
-            not isinstance(bundles, list) or
-            len(bundles) == 0 or
-            any(not bundle or not isinstance(bundle, str) for bundle in bundles)
+            not isinstance(bundles, list)
+            or len(bundles) == 0
+            or any(not bundle or not isinstance(bundle, str) for bundle in bundles)
         ):
             raise ValidationError('"bundles" should be a non-empty array of strings')
 
