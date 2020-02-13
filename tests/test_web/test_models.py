@@ -24,10 +24,7 @@ def test_image_add_architecture(db):
 def test_request_add_state(db):
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(
-        binary_image=binary_image,
-        type=models.RequestTypeMapping.add.value,
-    )
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value)
     db.session.add(request)
     request.add_state('in_progress', 'Starting things up')
     request.add_state('complete', 'All done!')
@@ -44,10 +41,7 @@ def test_request_add_state(db):
 def test_request_add_state_invalid_state(db):
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(
-        binary_image=binary_image,
-        type=models.RequestTypeMapping.add.value,
-    )
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value)
     db.session.add(request)
     with pytest.raises(ValidationError, match='The state "invalid" is invalid'):
         request.add_state('invalid', 'Starting things up')
@@ -57,10 +51,7 @@ def test_request_add_state_invalid_state(db):
 def test_request_add_state_already_done(state, db):
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(
-        binary_image=binary_image,
-        type=models.RequestTypeMapping.add.value,
-    )
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value)
     db.session.add(request)
     with pytest.raises(ValidationError, match=f'A {state} request cannot change states'):
         request.add_state(state, 'Done')

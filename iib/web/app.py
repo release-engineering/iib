@@ -12,6 +12,7 @@ from iib.web import db
 from iib.web.api_v1 import api_v1
 from iib.web.auth import user_loader, load_user_from_request
 from iib.web.errors import json_error
+
 # Import the models here so that Alembic will be guaranteed to detect them
 import iib.web.models  # noqa: F401
 

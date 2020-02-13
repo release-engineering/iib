@@ -30,9 +30,7 @@ def test_get_build(app, auth_env, client, db):
         request.from_index_resolved = Image.get_or_create(
             'quay.io/namespace/from_index@sha256:defghi'
         )
-        request.index_image = Image.get_or_create(
-            'quay.io/namespace/index@sha256:fghijk'
-        )
+        request.index_image = Image.get_or_create('quay.io/namespace/index@sha256:fghijk')
         request.index_image.add_architecture('amd64')
         request.index_image.add_architecture('s390x')
         request.add_state('complete', 'Completed successfully')
@@ -124,18 +122,27 @@ def test_get_builds_invalid_state(app, client, db):
     }
 
 
-@pytest.mark.parametrize('bundles, from_index, binary_image, add_arches, error_msg', (
-    (['some:thing'], 'pull:spec', '', ['s390x'], '"binary_image" should be a non-empty string'),
-    ([], 'pull_spec', 'binary:img', ['s390x'], '"bundles" should be a non-empty array of strings'),
-    (['some:thing'], 32, 'binary:image', ['s390x'], '"from_index" must be a string'),
+@pytest.mark.parametrize(
+    'bundles, from_index, binary_image, add_arches, error_msg',
     (
-        ['something'],
-        'pull_spec',
-        'binary_image',
-        [1, 2, 3],
-        '"add_arches" should be an array of strings'
+        (['some:thing'], 'pull:spec', '', ['s390x'], '"binary_image" should be a non-empty string'),
+        (
+            [],
+            'pull_spec',
+            'binary:img',
+            ['s390x'],
+            '"bundles" should be a non-empty array of strings',
+        ),
+        (['some:thing'], 32, 'binary:image', ['s390x'], '"from_index" must be a string'),
+        (
+            ['something'],
+            'pull_spec',
+            'binary_image',
+            [1, 2, 3],
+            '"add_arches" should be an array of strings',
+        ),
     ),
-))
+)
 def test_add_bundle_invalid_params_format(
     bundles, from_index, binary_image, add_arches, error_msg, db, auth_env, client
 ):
@@ -143,7 +150,7 @@ def test_add_bundle_invalid_params_format(
         'bundles': bundles,
         'from_index': from_index,
         'binary_image': binary_image,
-        'add_arches': add_arches
+        'add_arches': add_arches,
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
@@ -155,7 +162,7 @@ def test_add_bundle_missing_required_param(db, auth_env, client):
     data = {
         'from_index': 'from_index',
         'binary_image': 'binary:image',
-        'add_arches': ['add_arches']
+        'add_arches': ['add_arches'],
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
@@ -167,7 +174,7 @@ def test_add_bundle_invalid_param(db, auth_env, client):
     data = {
         'best_batsman': 'Virat Kohli',
         'binary_image': 'binary:image',
-        'bundles': ['some:thing']
+        'bundles': ['some:thing'],
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
@@ -176,10 +183,7 @@ def test_add_bundle_invalid_param(db, auth_env, client):
 
 
 def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
-    data = {
-        'bundles': ['some:thing'],
-        'binary_image': 'binary:image'
-    }
+    data = {'bundles': ['some:thing'], 'binary_image': 'binary:image'}
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
@@ -187,11 +191,7 @@ def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
 
 
 def test_add_bundle_success(db, auth_env, client):
-    data = {
-        'bundles': ['some:thing'],
-        'binary_image': 'binary:image',
-        'add_arches': ['s390x']
-    }
+    data = {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'add_arches': ['s390x']}
 
     response_json = {
         'arches': [],
@@ -203,14 +203,16 @@ def test_add_bundle_success(db, auth_env, client):
         'id': 1,
         'index_image': None,
         'state': 'in_progress',
-        'state_history': [{
-            'state': 'in_progress',
-            'state_reason': 'The request was initiated',
-            'updated': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-        }],
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+            }
+        ],
         'state_reason': 'The request was initiated',
         'updated': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'user': 'tbrady@DOMAIN.LOCAL'
+        'user': 'tbrady@DOMAIN.LOCAL',
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
