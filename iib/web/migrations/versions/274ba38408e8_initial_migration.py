@@ -31,27 +31,6 @@ def upgrade():
         sa.UniqueConstraint('pull_specification'),
     )
     op.create_table(
-        'request_architecture',
-        sa.Column('request_id', sa.Integer(), autoincrement=False, nullable=False),
-        sa.Column('architecture_id', sa.Integer(), autoincrement=False, nullable=False),
-        sa.ForeignKeyConstraint(['architecture_id'], ['architecture.id']),
-        sa.ForeignKeyConstraint(['request_id'], ['request.id']),
-        sa.PrimaryKeyConstraint('request_id', 'architecture_id'),
-        sa.UniqueConstraint('request_id', 'architecture_id'),
-    )
-    op.create_index(
-        op.f('ix_request_architecture_architecture_id'),
-        'request_architecture',
-        ['architecture_id'],
-        unique=False,
-    )
-    op.create_index(
-        op.f('ix_request_architecture_request_id'),
-        'request_architecture',
-        ['request_id'],
-        unique=False,
-    )
-    op.create_table(
         'user',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('username', sa.String(), nullable=False),
@@ -74,6 +53,27 @@ def upgrade():
         sa.ForeignKeyConstraint(['index_image_id'], ['image.id']),
         sa.ForeignKeyConstraint(['user_id'], ['user.id']),
         sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_table(
+        'request_architecture',
+        sa.Column('request_id', sa.Integer(), autoincrement=False, nullable=False),
+        sa.Column('architecture_id', sa.Integer(), autoincrement=False, nullable=False),
+        sa.ForeignKeyConstraint(['architecture_id'], ['architecture.id']),
+        sa.ForeignKeyConstraint(['request_id'], ['request.id']),
+        sa.PrimaryKeyConstraint('request_id', 'architecture_id'),
+        sa.UniqueConstraint('request_id', 'architecture_id'),
+    )
+    op.create_index(
+        op.f('ix_request_architecture_architecture_id'),
+        'request_architecture',
+        ['architecture_id'],
+        unique=False,
+    )
+    op.create_index(
+        op.f('ix_request_architecture_request_id'),
+        'request_architecture',
+        ['request_id'],
+        unique=False,
     )
     op.create_table(
         'request_bundle',
@@ -124,11 +124,11 @@ def downgrade():
     op.drop_index(op.f('ix_request_bundle_image_id'), table_name='request_bundle')
     op.drop_table('request_bundle')
     op.drop_index(op.f('ix_request_request_state_id'), table_name='request')
-    op.drop_table('request')
-    op.drop_index(op.f('ix_request_architecture_request_id'), table_name='request_architecture')
     op.drop_index(
         op.f('ix_request_architecture_architecture_id'), table_name='request_architecture'
     )
     op.drop_table('request_architecture')
+    op.drop_table('request')
+    op.drop_index(op.f('ix_request_architecture_request_id'), table_name='request_architecture')
     op.drop_table('image')
     op.drop_table('architecture')
