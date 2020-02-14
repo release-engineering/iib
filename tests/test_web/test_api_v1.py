@@ -23,7 +23,7 @@ def test_get_build(app, auth_env, client, db):
             'bundles': [f'quay.io/namespace/bundle:1.0-3'],
             'from_index': f'quay.io/namespace/repo:latest',
         }
-        request = Request.from_json(data)
+        request = Request.from_add_json(data)
         request.binary_image_resolved = Image.get_or_create(
             'quay.io/namespace/binary_image@sha256:abcdef'
         )
@@ -82,7 +82,7 @@ def test_get_builds(app, auth_env, client, db):
                 'bundles': [f'quay.io/namespace/bundle:{i}'],
                 'from_index': f'quay.io/namespace/repo:{i}',
             }
-            request = Request.from_json(data)
+            request = Request.from_add_json(data)
             if i % 5 == 0:
                 request.add_state('failed', 'Failed due to an unknown error')
             db.session.add(request)
@@ -154,36 +154,70 @@ def test_get_builds_invalid_state(app, client, db):
         ),
         (
             {
-                'bundles': ['something'],
-                'from_index': 'pull_spec',
-                'binary_image': 'binary_image',
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
                 'add_arches': [1, 2, 3],
             },
             'Architectures should be specified as a non-empty array of strings',
         ),
     ),
 )
-def test_add_bundle_invalid_params_format(data, error_msg, db, auth_env, client):
-    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+def test_add_bundles_invalid_params_format(data, error_msg, db, auth_env, client):
+    rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+
+
+def test_rm_operators_invalid_params_format(db, auth_env, client):
+    data = {
+        'from_index': 'pull:spec',
+        'binary_image': 'binary:image',
+        'add_arches': ['s390x'],
+    }
+    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert '"operators" should be a non-empty array of strings' == rv.json['error']
 
 
 @pytest.mark.parametrize(
     'data, error_msg',
     (
         (
-            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x1']},
-            'Missing required parameter(s): bundles',
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x']},
+            '"bundles" should be a non-empty array of strings',
         ),
         (
-            {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x1']},
+            {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
             'Missing required parameter(s): binary_image',
         ),
     ),
 )
 def test_add_bundle_missing_required_param(data, error_msg, db, auth_env, client):
-    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert rv.json['error'] == error_msg
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {'operators': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
+            'Missing required parameter(s): binary_image',
+        ),
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x']},
+            '"operators" should be a non-empty array of strings',
+        ),
+        (
+            {'operators': ['some:thing'], 'binary_image': 'pull:spec', 'add_arches': ['s390x']},
+            'Missing required parameter(s): from_index',
+        ),
+    ),
+)
+def test_rm_operator_missing_required_param(data, error_msg, db, auth_env, client):
+    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
 
@@ -336,3 +370,40 @@ def test_patch_request_success(db, worker_auth_env, client):
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv.status_code == 200
     assert rv_json == response_json
+
+
+def test_remove_operator_success(db, auth_env, client):
+    data = {
+        'operators': ['some:thing'],
+        'binary_image': 'binary:image',
+        'from_index': 'index:image',
+    }
+
+    response_json = {
+        'arches': [],
+        'binary_image': 'binary:image',
+        'binary_image_resolved': None,
+        'operators': ['some:thing'],
+        'from_index': 'index:image',
+        'from_index_resolved': None,
+        'id': 1,
+        'index_image': None,
+        'state': 'in_progress',
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': '2020-02-12T17:03:00Z',
+            },
+        ],
+        'state_reason': 'The request was initiated',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': 'tbrady@DOMAIN.LOCAL',
+    }
+
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
+    assert rv.status_code == 201
+    assert response_json == rv_json

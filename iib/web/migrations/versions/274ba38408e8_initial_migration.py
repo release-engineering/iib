@@ -31,6 +31,13 @@ def upgrade():
         sa.UniqueConstraint('pull_specification'),
     )
     op.create_table(
+        'operator',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('name', sa.String(), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('name'),
+    )
+    op.create_table(
         'user',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('username', sa.String(), nullable=False),
@@ -84,6 +91,21 @@ def upgrade():
         sa.PrimaryKeyConstraint('request_id', 'image_id'),
         sa.UniqueConstraint('request_id', 'image_id'),
     )
+    op.create_table(
+        'request_operator',
+        sa.Column('request_id', sa.Integer(), autoincrement=False, nullable=False),
+        sa.Column('operator_id', sa.Integer(), autoincrement=False, nullable=False),
+        sa.ForeignKeyConstraint(['operator_id'], ['operator.id']),
+        sa.ForeignKeyConstraint(['request_id'], ['request.id']),
+        sa.PrimaryKeyConstraint('request_id', 'operator_id'),
+        sa.UniqueConstraint('request_id', 'operator_id'),
+    )
+    op.create_index(
+        op.f('ix_request_operator_operator_id'), 'request_operator', ['operator_id'], unique=False
+    )
+    op.create_index(
+        op.f('ix_request_operator_request_id'), 'request_operator', ['request_id'], unique=False
+    )
     op.create_index(
         op.f('ix_request_bundle_image_id'), 'request_bundle', ['image_id'], unique=False
     )
@@ -104,6 +126,7 @@ def upgrade():
         op.f('ix_request_state_request_id'), 'request_state', ['request_id'], unique=False
     )
     op.create_index(op.f('ix_user_username'), 'user', ['username'], unique=True)
+    op.create_index(op.f('ix_operator_name'), 'operator', ['name'], unique=True)
     op.create_index(
         op.f('ix_image_pull_specification'), 'image', ['pull_specification'], unique=True
     )
@@ -121,12 +144,16 @@ def upgrade():
 def downgrade():
     op.drop_index(op.f('ix_user_username'), table_name='user')
     op.drop_index(op.f('ix_image_pull_specification'), table_name='image')
+    op.drop_index(op.f('ix_operator_name'), table_name='operator')
     op.drop_table('user')
     op.drop_index(op.f('ix_request_state_request_id'), table_name='request_state')
     op.drop_table('request_state')
     op.drop_index(op.f('ix_request_bundle_request_id'), table_name='request_bundle')
     op.drop_index(op.f('ix_request_bundle_image_id'), table_name='request_bundle')
     op.drop_table('request_bundle')
+    op.drop_index(op.f('ix_request_operator_operator_id'), table_name='request_operator')
+    op.drop_index(op.f('ix_request_operator_request_id'), table_name='request_operator')
+    op.drop_table('request_operator')
     op.drop_index(op.f('ix_request_request_state_id'), table_name='request')
     op.drop_index(
         op.f('ix_request_architecture_architecture_id'), table_name='request_architecture'
@@ -136,3 +163,4 @@ def downgrade():
     op.drop_index(op.f('ix_request_architecture_request_id'), table_name='request_architecture')
     op.drop_table('image')
     op.drop_table('architecture')
+    op.drop_table('operator')
