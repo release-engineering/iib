@@ -123,51 +123,69 @@ def test_get_builds_invalid_state(app, client, db):
 
 
 @pytest.mark.parametrize(
-    'bundles, from_index, binary_image, add_arches, error_msg',
+    'data, error_msg',
     (
-        (['some:thing'], 'pull:spec', '', ['s390x'], '"binary_image" should be a non-empty string'),
         (
-            [],
-            'pull_spec',
-            'binary:img',
-            ['s390x'],
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': '',
+                'add_arches': ['s390x'],
+            },
+            '"binary_image" should be a non-empty string',
+        ),
+        (
+            {
+                'bundles': [],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:img',
+                'add_arches': ['s390x'],
+            },
             '"bundles" should be a non-empty array of strings',
         ),
-        (['some:thing'], 32, 'binary:image', ['s390x'], '"from_index" must be a string'),
         (
-            ['something'],
-            'pull_spec',
-            'binary_image',
-            [1, 2, 3],
+            {
+                'bundles': ['some:thing'],
+                'from_index': 32,
+                'binary_image': 'binary:image',
+                'add_arches': ['s390x'],
+            },
+            '"from_index" must be a string',
+        ),
+        (
+            {
+                'bundles': ['something'],
+                'from_index': 'pull_spec',
+                'binary_image': 'binary_image',
+                'add_arches': [1, 2, 3],
+            },
             'Architectures should be specified as a non-empty array of strings',
         ),
     ),
 )
-def test_add_bundle_invalid_params_format(
-    bundles, from_index, binary_image, add_arches, error_msg, db, auth_env, client
-):
-    data = {
-        'bundles': bundles,
-        'from_index': from_index,
-        'binary_image': binary_image,
-        'add_arches': add_arches,
-    }
-
+def test_add_bundle_invalid_params_format(data, error_msg, db, auth_env, client):
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
 
 
-def test_add_bundle_missing_required_param(db, auth_env, client):
-    data = {
-        'from_index': 'from_index',
-        'binary_image': 'binary:image',
-        'add_arches': ['add_arches'],
-    }
-
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x1']},
+            'Missing required parameter(s): bundles',
+        ),
+        (
+            {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x1']},
+            'Missing required parameter(s): binary_image',
+        ),
+    ),
+)
+def test_add_bundle_missing_required_param(data, error_msg, db, auth_env, client):
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
-    assert rv.json['error'] == 'Missing required parameter(s): bundles'
+    assert rv.json['error'] == error_msg
 
 
 def test_add_bundle_invalid_param(db, auth_env, client):
