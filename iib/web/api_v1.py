@@ -80,7 +80,7 @@ def add_bundles():
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
-    request = Request.from_json(payload)
+    request = Request.from_add_json(payload)
     db.session.add(request)
     db.session.commit()
 
@@ -182,3 +182,26 @@ def patch_request(request_id):
         flask.current_app.logger.info('An anonymous user patched request %d', request.id)
 
     return flask.jsonify(request.to_json()), 200
+
+
+@api_v1.route('/builds/rm', methods=['POST'])
+@login_required
+def rm_operators():
+    """
+    Submit a request to remove operators from an index image.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = Request.from_remove_json(payload)
+    db.session.add(request)
+    db.session.commit()
+
+    # TODO: call the celery task to remove the operator from the index image
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201

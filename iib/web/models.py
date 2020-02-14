@@ -137,6 +137,50 @@ class Image(db.Model):
         return image
 
 
+class Operator(db.Model):
+    """
+    An operator that has been handled by IIB.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String, nullable=False, index=True, unique=True)
+
+    def __repr__(self):
+        return '<Operator name={0!r}>'.format(self.name)
+
+    @classmethod
+    def get_or_create(cls, name):
+        """
+        Get the operator from the database and create it if it doesn't exist.
+
+        :param str name: the name of the operator
+        :return: an Operator object based on the input name; the Operator object will be
+            added to the database session, but not committed, if it was created
+        :rtype: Operator
+        """
+        operator = cls.query.filter_by(name=name).first()
+        if not operator:
+            operator = Operator(name=name)
+            db.session.add(operator)
+
+        return operator
+
+
+class RequestOperator(db.Model):
+    """An association table between requests and the bundles they contain."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_id = db.Column(
+        db.Integer, db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
+    )
+    operator_id = db.Column(
+        db.Integer, db.ForeignKey('operator.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (db.UniqueConstraint('request_id', 'operator_id'),)
+
+
 class RequestBundle(db.Model):
     """An association table between requests and the bundles they contain."""
 
@@ -184,6 +228,7 @@ class Request(db.Model):
         'Image', foreign_keys=[from_index_resolved_id], uselist=False
     )
     index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
+    operators = db.relationship('Operator', secondary=RequestOperator.__table__)
     state = db.relationship('RequestState', foreign_keys=[request_state_id])
     states = db.relationship(
         'RequestState',
@@ -248,6 +293,7 @@ class Request(db.Model):
             joinedload(Request.from_index),
             joinedload(Request.from_index_resolved),
             joinedload(Request.index_image),
+            joinedload(Request.operators),
             joinedload(Request.user),
         ]
         if verbose:
@@ -288,12 +334,16 @@ class Request(db.Model):
             'binary_image_resolved': getattr(
                 self.binary_image_resolved, 'pull_specification', None
             ),
-            'bundles': [bundle.pull_specification for bundle in self.bundles],
             'from_index': getattr(self.from_index, 'pull_specification', None),
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
             'index_image': getattr(self.index_image, 'pull_specification', None),
             'user': getattr(self.user, 'username', None),
         }
+
+        if self.type == RequestTypeMapping.__members__['add'].value:
+            rv['bundles'] = [bundle.pull_specification for bundle in self.bundles]
+        else:
+            rv['operators'] = [operator.name for operator in self.operators]
 
         latest_state = None
         if verbose:
@@ -306,51 +356,48 @@ class Request(db.Model):
 
         return rv
 
-    @classmethod
-    def from_json(cls, kwargs):
+    @staticmethod
+    def _from_json(
+        request_kwargs, additional_required_params=None, additional_optional_params=None
+    ):
+        """
+        Validate and process request agnostic parameters
+
+        As part of the processing, the input ``request_kwargs`` parameter
+        is updated to reference database objects where appropriate.
+
+        :param dict request_kwargs: copy of args provided in API request
+        """
         # Validate all required parameters are present
-        required_params = {'bundles', 'binary_image'}
-        optional_params = {'from_index', 'add_arches', 'cnr_token'}
-        missing_params = required_params - kwargs.keys() - optional_params
+        required_params = {'binary_image'} | set(additional_required_params or [])
+        optional_params = {'add_arches', 'cnr_token'} | set(additional_optional_params or [])
+
+        missing_params = required_params - request_kwargs.keys()
         if missing_params:
             raise ValidationError(
                 'Missing required parameter(s): {}'.format(', '.join(missing_params))
             )
 
         # Don't allow the user to set arbitrary columns or relationships
-        invalid_params = kwargs.keys() - required_params - optional_params
+        invalid_params = request_kwargs.keys() - required_params - optional_params
         if invalid_params:
             raise ValidationError(
                 'The following parameters are invalid: {}'.format(', '.join(invalid_params))
             )
 
         # Check if both `from_index` and `add_arches` are not specified
-        if not kwargs.get('from_index') and not kwargs.get('add_arches'):
+        if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
             raise ValidationError('One of "from_index" or "add_arches" must be specified')
-
-        request_kwargs = deepcopy(kwargs)
 
         # Validate add_arches are correctly provided
         add_arches = request_kwargs.pop('add_arches', [])
         Architecture.validate_architecture_json(add_arches)
-
-        # Validate bundles are correctly provided
-        bundles = request_kwargs.pop('bundles')
-        if (
-            not isinstance(bundles, list)
-            or len(bundles) == 0
-            or any(not bundle or not isinstance(bundle, str) for bundle in bundles)
-        ):
-            raise ValidationError('"bundles" should be a non-empty array of strings')
 
         # Validate binary_image is correctly provided
         binary_image = request_kwargs.pop('binary_image')
         if not isinstance(binary_image, str) or not binary_image:
             raise ValidationError('"binary_image" should be a non-empty string')
 
-        request_kwargs['bundles'] = [
-            Image.get_or_create(pull_specification=bundle) for bundle in bundles
-        ]
         request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
         # Validate from_index and cnr_token if specified
@@ -365,8 +412,52 @@ class Request(db.Model):
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
 
-        request_kwargs['type'] = RequestTypeMapping.__members__['add'].value
+    @classmethod
+    def from_add_json(cls, kwargs):
+        """ Handles JSON requests for Add API endpoint """
+        request_kwargs = deepcopy(kwargs)
 
+        bundles = request_kwargs.get('bundles', [])
+        if (
+            not isinstance(bundles, list)
+            or len(bundles) == 0
+            or any(not item or not isinstance(item, str) for item in bundles)
+        ):
+            raise ValidationError(f'"bundles" should be a non-empty array of strings')
+
+        cls._from_json(
+            request_kwargs,
+            additional_required_params=['bundles'],
+            additional_optional_params=['from_index'],
+        )
+
+        request_kwargs['bundles'] = [
+            Image.get_or_create(pull_specification=item) for item in bundles
+        ]
+
+        request_kwargs['type'] = RequestTypeMapping.__members__['add'].value
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    @classmethod
+    def from_remove_json(cls, kwargs):
+        """ Handles JSON requests for Remove API endpoint """
+        request_kwargs = deepcopy(kwargs)
+
+        operators = request_kwargs.get('operators', [])
+        if (
+            not isinstance(operators, list)
+            or len(operators) == 0
+            or any(not item or not isinstance(item, str) for item in operators)
+        ):
+            raise ValidationError(f'"operators" should be a non-empty array of strings')
+
+        cls._from_json(request_kwargs, additional_required_params=['operators', 'from_index'])
+
+        request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
+
+        request_kwargs['type'] = RequestTypeMapping.__members__['rm'].value
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
         return request
