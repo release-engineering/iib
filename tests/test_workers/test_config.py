@@ -35,13 +35,21 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
 
 def test_validate_celery_config():
     validate_celery_config(
-        {'iib_registry': 'registry', 'iib_registry_credentials': 'username:password'}
+        {
+            'iib_api_url': 'http://localhost:8080/api/v1/',
+            'iib_registry': 'registry',
+            'iib_registry_credentials': 'username:password',
+        }
     )
 
 
-@pytest.mark.parametrize('missing_key', ('iib_registry', 'iib_registry_credentials'))
+@pytest.mark.parametrize('missing_key', ('iib_api_url', 'iib_registry', 'iib_registry_credentials'))
 def test_validate_celery_config_failure(missing_key):
-    conf = {'iib_registry': 'registry', 'iib_registry_credentials': 'username:password'}
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_registry_credentials': 'username:password',
+    }
     conf.pop(missing_key)
-    with pytest.raises(ConfigError, match=f'{missing_key} must be set.+'):
+    with pytest.raises(ConfigError, match=f'{missing_key} must be set'):
         validate_celery_config(conf)

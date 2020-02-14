@@ -2,17 +2,27 @@ FROM centos:8
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
+# Install podman 1.7.0 from Fedora 30 as a workaround for
+# https://bugzilla.redhat.com/show_bug.cgi?id=1801874
 RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
     --setopt=tsflags=nodocs \
-    podman \
+    buildah \
+    gcc \
+    krb5-devel \
+    https://kojipkgs.fedoraproject.org/packages/podman/1.7.0/3.fc30/x86_64/podman-1.7.0-3.fc30.x86_64.rpm \
+    https://kojipkgs.fedoraproject.org/packages/runc/1.0.0/93.dev.gitb9b6cc6.fc30/x86_64/runc-1.0.0-93.dev.gitb9b6cc6.fc30.x86_64.rpm \
+    python3-devel \
     python3-pip \
+    skopeo \
     && dnf clean all
 # Set the default container storage so that podman can run in the container
 RUN sed -i 's_overlay_vfs_' /etc/containers/storage.conf
 COPY . .
 ADD https://github.com/operator-framework/operator-registry/releases/download/v1.5.9/linux-amd64-opm /usr/bin/opm
 RUN chmod +x /usr/bin/opm
+ADD https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 /usr/bin/manifest-tool
+RUN chmod +x /usr/bin/manifest-tool
 RUN pip3 install .
 CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]

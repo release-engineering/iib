@@ -6,9 +6,12 @@ RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
     --setopt=tsflags=nodocs \
+    gcc \
     httpd \
+    krb5-devel \
     mod_auth_gssapi \
     mod_ssl \
+    python3-devel \
     python3-pip \
     && dnf clean all
 COPY . .
