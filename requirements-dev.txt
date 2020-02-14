@@ -1,5 +1,2 @@
 -rrequirements.txt
-coverage
-flake8
-pytest
-pytest-cov
+-rrequirements-test.txt
