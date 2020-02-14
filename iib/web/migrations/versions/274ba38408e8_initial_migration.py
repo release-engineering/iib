@@ -104,6 +104,9 @@ def upgrade():
         op.f('ix_request_state_request_id'), 'request_state', ['request_id'], unique=False
     )
     op.create_index(op.f('ix_user_username'), 'user', ['username'], unique=True)
+    op.create_index(
+        op.f('ix_image_pull_specification'), 'image', ['pull_specification'], unique=True
+    )
     # This must be performed after the request and request_state tables are created
     with op.batch_alter_table('request', schema=None) as batch_op:
         batch_op.add_column(sa.Column('request_state_id', sa.Integer(), nullable=True))
@@ -117,6 +120,7 @@ def upgrade():
 
 def downgrade():
     op.drop_index(op.f('ix_user_username'), table_name='user')
+    op.drop_index(op.f('ix_image_pull_specification'), table_name='image')
     op.drop_table('user')
     op.drop_index(op.f('ix_request_state_request_id'), table_name='request_state')
     op.drop_table('request_state')
