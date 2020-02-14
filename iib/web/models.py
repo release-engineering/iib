@@ -108,7 +108,7 @@ class Image(db.Model):
     """
 
     id = db.Column(db.Integer, primary_key=True)
-    pull_specification = db.Column(db.String, nullable=False, unique=True)
+    pull_specification = db.Column(db.String, nullable=False, index=True, unique=True)
 
     def __repr__(self):
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
