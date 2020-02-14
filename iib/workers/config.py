@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
 import logging
+import types
+
+from kombu import Queue
 
 from iib.exceptions import ConfigError
 
@@ -10,9 +13,13 @@ class Config(object):
 
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
+    iib_api_timeout = 30
     iib_arch = 'amd64'
-    iib_arch_image_push_template = 'docker://{registry}/operator-registry-index:{request_id}-{arch}'
+    iib_arch_image_push_template = '{registry}/operator-registry-index:{request_id}-{arch}'
+    iib_arches = {'amd64'}
+    iib_image_push_template = '{registry}/operator-registry-index:{request_id}'
     iib_log_level = 'INFO'
+    iib_poll_api_frequency = 15
     include = ['iib.workers.tasks.build', 'iib.workers.tasks.placeholder']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
@@ -20,6 +27,7 @@ class Config(object):
     # Don't use the default 'celery' queue and routing key
     task_default_queue = 'iib'
     task_default_routing_key = 'iib'
+    task_queues = (Queue('iib', routing_key='iib'), Queue('iib_amd64', routing_key='iib_amd64'))
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency = 1
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
@@ -35,6 +43,7 @@ class DevelopmentConfig(Config):
     """The development IIB Celery configuration."""
 
     broker_url = 'amqp://iib:iib@rabbitmq:5672//'
+    iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
     iib_registry = 'registry:8443'
     iib_registry_credentials = 'iib:iibpassword'
@@ -42,6 +51,8 @@ class DevelopmentConfig(Config):
 
 class TestingConfig(DevelopmentConfig):
     """The testing IIB Celery configuration."""
+
+    iib_arches = {'amd64', 's390x'}
 
 
 def configure_celery(celery_app):
@@ -67,10 +78,14 @@ def configure_celery(celery_app):
         # the configuration in prod_config_file_path to override the defaults in ProductionConfig
         config = ProductionConfig()
         for key, value in _user_config.items():
-            # The _user_config dictionary will contain the __builtins__ key, which we need to skip
-            if not key.startswith('__'):
+            # The _user_config dictionary will contain the __builtins__ key, which we need to skip.
+            # Additionally, if any modules were imported to define Celery queues, they will
+            # be ignored.
+            if not key.startswith('__') and not isinstance(value, types.ModuleType):
                 setattr(config, key, value)
 
+    # Force the iib_arches to be a set
+    config.iib_arches = set(config.iib_arches)
     celery_app.config_from_object(config, force=True)
     logging.getLogger('iib.workers').setLevel(celery_app.conf.iib_log_level)
 
@@ -89,6 +104,9 @@ def validate_celery_config(conf, **kwargs):
         raise ConfigError(
             'iib_registry_credentials must be set in the format of "username:password"'
         )
+
+    if not conf.get('iib_api_url'):
+        raise ConfigError('iib_api_url must be set')
 
 
 def get_worker_config():

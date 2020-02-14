@@ -57,7 +57,7 @@ services:
     depends_on:
       - db
 
-  iib-worker:
+  iib-worker-general:
     build:
       context: .
       dockerfile: ./docker/Dockerfile-workers
@@ -71,7 +71,32 @@ services:
       cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
       pip3 install watchdog[watchmedo] &&
       watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
-        -- celery -A iib.workers.tasks worker --loglevel=info
+        -- celery -A iib.workers.tasks worker -Q iib --loglevel=info
+    environment:
+      IIB_DEV: 'true'
+    # Make this privileged to be able to build container images
+    privileged: true
+    volumes:
+      - ./:/src:z
+      - ./docker/registry/certs:/certs:z
+    depends_on:
+      - rabbitmq
+
+  iib-worker-amd64:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-workers
+    # Override the default command so that Celery auto-reloads on code changes.
+    # This also adds the self-signed CA that was used to sign the Docker registry's certificate
+    # to the trusted CA bundle. This will make podman trust the local Docker registry's certificate.
+    command:
+    - /bin/bash
+    - -c
+    - >-
+      cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+      pip3 install watchdog[watchmedo] &&
+      watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
+        -- celery -A iib.workers.tasks worker -Q iib_amd64 --loglevel=info
     environment:
       IIB_DEV: 'true'
     # Make this privileged to be able to build container images

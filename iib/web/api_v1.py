@@ -7,6 +7,8 @@ from iib.exceptions import ValidationError
 from iib.web import db
 from iib.web.models import Architecture, Image, Request, RequestState, RequestStateMapping
 from iib.web.utils import pagination_metadata, str_to_bool
+from iib.workers.tasks.build import handle_add_request
+from iib.workers.tasks.general import failed_request_callback
 from iib.workers.tasks.placeholder import ping
 
 api_v1 = flask.Blueprint('api_v1', __name__)
@@ -82,7 +84,17 @@ def add_bundles():
     db.session.add(request)
     db.session.commit()
 
-    # TODO: call the celery task to add the operator bundle to the index image
+    error_callback = failed_request_callback.s(request.id)
+    handle_add_request.apply_async(
+        args=[
+            payload['bundles'],
+            payload['binary_image'],
+            request.id,
+            payload.get('from_index'),
+            payload.get('add_arches'),
+        ],
+        link_error=error_callback,
+    )
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201

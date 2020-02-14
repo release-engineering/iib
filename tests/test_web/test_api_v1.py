@@ -190,7 +190,8 @@ def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
     assert rv.json['error'] == 'One of "from_index" or "add_arches" must be specified'
 
 
-def test_add_bundle_success(db, auth_env, client):
+@mock.patch('iib.web.api_v1.handle_add_request')
+def test_add_bundle_success(mock_har, db, auth_env, client):
     data = {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'add_arches': ['s390x']}
 
     response_json = {
@@ -221,6 +222,7 @@ def test_add_bundle_success(db, auth_env, client):
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv.status_code == 201
     assert response_json == rv_json
+    mock_har.apply_async.assert_called_once()
 
 
 @pytest.mark.parametrize(
