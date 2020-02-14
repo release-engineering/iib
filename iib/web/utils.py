@@ -21,7 +21,7 @@ def pagination_metadata(pagination_query, **kwargs):
             page=pagination_query.pages,
             per_page=pagination_query.per_page,
             _external=True,
-            **kwargs
+            **kwargs,
         ),
         'next': None,
         'page': pagination_query.page,
@@ -37,7 +37,7 @@ def pagination_metadata(pagination_query, **kwargs):
             page=pagination_query.prev_num,
             per_page=pagination_query.per_page,
             _external=True,
-            **kwargs
+            **kwargs,
         )
     if pagination_query.has_next:
         pagination_data['next'] = url_for(
@@ -45,7 +45,7 @@ def pagination_metadata(pagination_query, **kwargs):
             page=pagination_query.next_num,
             per_page=pagination_query.per_page,
             _external=True,
-            **kwargs
+            **kwargs,
         )
 
     return pagination_data
