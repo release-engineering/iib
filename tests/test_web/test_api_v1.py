@@ -372,7 +372,8 @@ def test_patch_request_success(db, worker_auth_env, client):
     assert rv_json == response_json
 
 
-def test_remove_operator_success(db, auth_env, client):
+@mock.patch('iib.web.api_v1.handle_rm_request')
+def test_remove_operator_success(mock_rm, db, auth_env, client):
     data = {
         'operators': ['some:thing'],
         'binary_image': 'binary:image',
@@ -405,5 +406,6 @@ def test_remove_operator_success(db, auth_env, client):
     rv_json = rv.json
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    mock_rm.apply_async.assert_called_once()
     assert rv.status_code == 201
     assert response_json == rv_json
