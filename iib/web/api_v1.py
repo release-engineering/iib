@@ -7,7 +7,7 @@ from iib.exceptions import ValidationError
 from iib.web import db
 from iib.web.models import Architecture, Image, Request, RequestState, RequestStateMapping
 from iib.web.utils import pagination_metadata, str_to_bool
-from iib.workers.tasks.build import handle_add_request
+from iib.workers.tasks.build import handle_add_request, handle_rm_request
 from iib.workers.tasks.general import failed_request_callback
 from iib.workers.tasks.placeholder import ping
 
@@ -201,7 +201,17 @@ def rm_operators():
     db.session.add(request)
     db.session.commit()
 
-    # TODO: call the celery task to remove the operator from the index image
+    error_callback = failed_request_callback.s(request.id)
+    handle_rm_request.apply_async(
+        args=[
+            payload['operators'],
+            payload['binary_image'],
+            request.id,
+            payload['from_index'],
+            payload.get('add_arches'),
+        ],
+        link_error=error_callback,
+    )
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201

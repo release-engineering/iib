@@ -392,6 +392,22 @@ def _skopeo_inspect(*args, use_creds=False):
     return json.loads(_run_cmd(cmd, exc_msg=exc_msg))
 
 
+def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
+    """
+    Verify if the index image has changed since the IIB build request started
+
+    :param str resolved_prebuild_from_index: resolved index image before starting the build
+    :param str unresolved_from_index: unresolved index image provided as API input
+    :raises iib.exceptions.IIBError: if the index image has changed since IIB build started.
+    """
+    resolved_post_build_from_index = _get_resolved_image(unresolved_from_index)
+    if resolved_post_build_from_index != resolved_prebuild_from_index:
+        raise IIBError(
+            'The supplied from_index image changed during the IIB request.'
+            ' Please resubmit the request.'
+        )
+
+
 @app.task
 def handle_add_request(bundles, binary_image, request_id, from_index=None, add_arches=None):
     """
@@ -484,6 +500,107 @@ def opm_index_add(bundles, binary_image, request_id, from_index=None):
             cmd,
             {'cwd': temp_dir},
             exc_msg=f'Failed to add the bundles to the index image on the arch {_get_arch()}',
+        )
+
+        _fix_opm_path(temp_dir)
+        _build_image(temp_dir, request_id)
+
+    _push_arch_image(request_id)
+    update_request(
+        request_id, {'arches': [_get_arch()]}, exc_msg=f'Failed adding the arch {_get_arch()}'
+    )
+
+
+@app.task
+def handle_rm_request(operators, binary_image, request_id, from_index, add_arches=None):
+    """
+    Coordinate the work needed to remove the input operators and rebuild the index image.
+
+    :param list operators: a list of strings representing the name of the operators to
+        remove from the index image.
+    :param str binary_image: the pull specification of the image where the opm binary gets copied
+        from.
+    :param int request_id: the ID of the IIB build request
+    :param str from_index: the pull specification of the image containing the index that the index
+        image build will be based from.
+    :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
+        currently built for.
+    :raises iib.exceptions.IIBError: if the index image build fails.
+    """
+    prebuild_info = _prepare_request_for_build(binary_image, request_id, from_index, add_arches)
+
+    error_callback = failed_request_callback.s(request_id=request_id)
+    arches = prebuild_info['arches']
+    for arch in sorted(arches):
+        # from_index is not resolved because podman does not support digest references
+        # https://github.com/containers/libpod/issues/5234 is filed for it
+        opm_index_rm.apply_async(
+            args=[operators, prebuild_info['binary_image_resolved'], request_id, from_index],
+            link_error=error_callback,
+            queue=f'iib_{arch}',
+            routing_key=f'iib_{arch}',
+        )
+
+    if not _poll_request(request_id, arches):
+        log.error('Not finishing the request since one of the underlying builds failed')
+        return
+
+    _verify_index_image(prebuild_info['from_index_resolved'], from_index)
+
+    _finish_request_post_build(request_id, arches)
+
+
+@app.task
+def opm_index_rm(operators, binary_image, request_id, from_index):
+    """
+    Build and push an operator index image after removing operators from the index image.
+
+    :param list operators: a list of strings representing the names of operators to
+        remove from the index image being built.
+    :param str binary_image: the pull specification of the image where the opm binary gets copied
+        from.
+    :param int request_id: the ID of the IIB build request
+    :param str from_index: the pull specification of the image containing the index that the index
+        image build will be based from.
+    :raises iib.exceptions.IIBError: if the index image build fails.
+    """
+    request = get_request(request_id)
+    if request['state'] == 'failed':
+        set_request_state(
+            request_id,
+            'failed',
+            f'Not building for the arch {_get_arch()} since the request has already failed',
+        )
+        return
+
+    _cleanup()
+    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        # TODO: Once https://github.com/operator-framework/operator-registry/pull/173 is
+        # released, opm can just call podman directly for us.
+        cmd = [
+            'opm',
+            'index',
+            'rm',
+            '--generate',
+            '--binary-image',
+            binary_image,
+            '--from-index',
+            from_index,
+            '--operators',
+            ','.join(operators),
+        ]
+
+        log.info(
+            'Generating the database file from an existing database %s and excluding'
+            ' the following operator(s): %s',
+            from_index,
+            ', '.join(operators),
+        )
+
+        _run_cmd(
+            cmd,
+            {'cwd': temp_dir},
+            exc_msg=f'Failed to remove operators from the index image on the arch {_get_arch()}',
         )
 
         _fix_opm_path(temp_dir)
