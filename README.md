@@ -18,3 +18,6 @@ When installing the dependencies in a production environment, run
 `pip install --require-hashes -r requirements.txt`. Alternatively, you may use
 `pip-sync requirements.txt`, which will make sure your virtualenv only has the packages listed in
 `requirements.txt`.
+
+To ensure the pinned dependencies are not vulnerable, this project uses
+[safety](https://github.com/pyupio/safety), which runs on every pull-request.
