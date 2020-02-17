@@ -1,2 +1,0 @@
--rrequirements.txt
--rrequirements-test.txt
