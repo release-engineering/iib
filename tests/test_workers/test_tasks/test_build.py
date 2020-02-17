@@ -255,8 +255,11 @@ def test_skopeo_inspect(mock_run_cmd, use_creds):
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build.opm_index_add')
 @mock.patch('iib.workers.tasks.build._poll_request')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._finish_request_post_build')
-def test_handle_add_request(mock_frpb, mock_pr, mock_oia, mock_prfb, request_succeeded):
+def test_handle_add_request(
+    mock_frpb, mock_vii, mock_pr, mock_oia, mock_prfb, request_succeeded,
+):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
         'arches': arches,
@@ -278,8 +281,10 @@ def test_handle_add_request(mock_frpb, mock_pr, mock_oia, mock_prfb, request_suc
     mock_pr.assert_called_once()
     if request_succeeded:
         mock_frpb.assert_called_once()
+        mock_vii.assert_called_once()
     else:
         mock_frpb.assert_not_called()
+        mock_vii.assert_not_called()
 
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
