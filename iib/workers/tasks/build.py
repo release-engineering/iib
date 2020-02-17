@@ -432,13 +432,10 @@ def handle_add_request(bundles, binary_image, request_id, from_index=None, add_a
     for arch in sorted(arches):
         # The bundles are not resolved since these are stable tags, and references
         # to a bundle image using a digest fails when using the opm command.
+        # from_index is not resolved because podman does not support digest references
+        # https://github.com/containers/libpod/issues/5234 is filed for it
         opm_index_add.apply_async(
-            args=[
-                bundles,
-                prebuild_info['binary_image_resolved'],
-                request_id,
-                prebuild_info['from_index_resolved'],
-            ],
+            args=[bundles, prebuild_info['binary_image_resolved'], request_id, from_index],
             link_error=error_callback,
             queue=f'iib_{arch}',
             routing_key=f'iib_{arch}',
@@ -447,6 +444,8 @@ def handle_add_request(bundles, binary_image, request_id, from_index=None, add_a
     if not _poll_request(request_id, arches):
         log.error('Not finishing the request since one of the underlying builds failed')
         return
+
+    _verify_index_image(prebuild_info['from_index_resolved'], from_index)
 
     _finish_request_post_build(request_id, arches)
 
