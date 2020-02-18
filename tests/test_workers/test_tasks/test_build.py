@@ -110,9 +110,19 @@ def test_get_image_arches(mock_si):
 
 
 @mock.patch('iib.workers.tasks.build._skopeo_inspect')
+def test_get_image_arches_manifest(mock_si):
+    mock_si.side_effect = [
+        {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
+        {'Architecture': 'amd64'},
+    ]
+    rv = build._get_image_arches('image:latest')
+    assert rv == {'amd64'}
+
+
+@mock.patch('iib.workers.tasks.build._skopeo_inspect')
 def test_get_image_arches_not_manifest_list(mock_si):
-    mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'}
-    with pytest.raises(IIBError, match='.+is not a v2 manifest list'):
+    mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json'}
+    with pytest.raises(IIBError, match='.+is neither a v2 manifest list nor a v2 manifest'):
         build._get_image_arches('image:latest')
 
 

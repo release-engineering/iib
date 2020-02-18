@@ -211,12 +211,17 @@ def _get_image_arches(pull_spec):
     """
     log.debug('Get the available arches for %s', pull_spec)
     skopeo_raw = _skopeo_inspect(f'docker://{pull_spec}', '--raw')
-    if skopeo_raw['mediaType'] != 'application/vnd.docker.distribution.manifest.list.v2+json':
-        raise IIBError(f'The pull specification of {pull_spec} is not a v2 manifest list')
-
     arches = set()
-    for manifest in skopeo_raw['manifests']:
-        arches.add(manifest['platform']['architecture'])
+    if skopeo_raw['mediaType'] == 'application/vnd.docker.distribution.manifest.list.v2+json':
+        for manifest in skopeo_raw['manifests']:
+            arches.add(manifest['platform']['architecture'])
+    elif skopeo_raw['mediaType'] == 'application/vnd.docker.distribution.manifest.v2+json':
+        skopeo_out = _skopeo_inspect(f'docker://{pull_spec}')
+        arches.add(skopeo_out['Architecture'])
+    else:
+        raise IIBError(
+            f'The pull specification of {pull_spec} is neither a v2 manifest list nor a v2 manifest'
+        )
 
     return arches
 
