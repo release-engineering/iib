@@ -16,7 +16,7 @@ from iib.workers.tasks.celery import app
 from iib.workers.tasks.general import failed_request_callback
 
 
-__all__ = ['handle_add_request', 'opm_index_add']
+__all__ = ['handle_add_request', 'opm_index_add', 'handle_rm_request', 'opm_index_rm']
 
 log = logging.getLogger(__name__)
 
