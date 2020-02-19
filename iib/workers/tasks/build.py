@@ -450,7 +450,8 @@ def handle_add_request(bundles, binary_image, request_id, from_index=None, add_a
         log.error('Not finishing the request since one of the underlying builds failed')
         return
 
-    _verify_index_image(prebuild_info['from_index_resolved'], from_index)
+    if from_index:
+        _verify_index_image(prebuild_info['from_index_resolved'], from_index)
 
     _finish_request_post_build(request_id, arches)
 
