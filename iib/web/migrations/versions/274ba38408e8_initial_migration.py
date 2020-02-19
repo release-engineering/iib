@@ -53,6 +53,7 @@ def upgrade():
         sa.Column('index_image_id', sa.Integer(), nullable=True),
         sa.Column('type', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=True),
+        sa.Column('organization', sa.String(), nullable=True),
         sa.ForeignKeyConstraint(['binary_image_id'], ['image.id']),
         sa.ForeignKeyConstraint(['binary_image_resolved_id'], ['image.id']),
         sa.ForeignKeyConstraint(['from_index_id'], ['image.id']),

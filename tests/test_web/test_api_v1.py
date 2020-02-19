@@ -52,6 +52,7 @@ def test_get_build(app, auth_env, client, db):
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
+        'organization': None,
         'state': 'complete',
         'state_history': [
             {
@@ -244,7 +245,13 @@ def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
 
 @mock.patch('iib.web.api_v1.handle_add_request')
 def test_add_bundle_success(mock_har, db, auth_env, client):
-    data = {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'add_arches': ['s390x']}
+    data = {
+        'bundles': ['some:thing'],
+        'binary_image': 'binary:image',
+        'add_arches': ['s390x'],
+        'organization': 'org',
+        'cnr_token': 'token',
+    }
 
     response_json = {
         'arches': [],
@@ -256,6 +263,7 @@ def test_add_bundle_success(mock_har, db, auth_env, client):
         'id': 1,
         'index_image': None,
         'state': 'in_progress',
+        'organization': 'org',
         'state_history': [
             {
                 'state': 'in_progress',
@@ -274,6 +282,9 @@ def test_add_bundle_success(mock_har, db, auth_env, client):
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv.status_code == 201
     assert response_json == rv_json
+    assert 'cnr_token' not in rv_json
+    assert 'token' not in mock_har.apply_async.call_args[1]['argsrepr']
+    assert '*****' in mock_har.apply_async.call_args[1]['argsrepr']
     mock_har.apply_async.assert_called_once()
 
 
@@ -342,6 +353,7 @@ def test_patch_request_success(db, worker_auth_env, client):
         'from_index_resolved': None,
         'id': 1,
         'index_image': 'index:image',
+        'organization': None,
         'state': 'complete',
         'state_history': [
             {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
@@ -389,6 +401,7 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
+        'organization': None,
         'state': 'in_progress',
         'state_history': [
             {
