@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import copy
+
 import flask
 from flask_login import current_user, login_required
 from werkzeug.exceptions import Unauthorized
@@ -84,17 +86,21 @@ def add_bundles():
     db.session.add(request)
     db.session.commit()
 
+    args = [
+        payload['bundles'],
+        payload['binary_image'],
+        request.id,
+        payload.get('from_index'),
+        payload.get('add_arches'),
+        payload.get('cnr_token'),
+        payload.get('organization'),
+    ]
+    safe_args = copy.copy(args)
+    if payload.get('cnr_token'):
+        safe_args[safe_args.index(payload['cnr_token'])] = '*****'
+
     error_callback = failed_request_callback.s(request.id)
-    handle_add_request.apply_async(
-        args=[
-            payload['bundles'],
-            payload['binary_image'],
-            request.id,
-            payload.get('from_index'),
-            payload.get('add_arches'),
-        ],
-        link_error=error_callback,
-    )
+    handle_add_request.apply_async(args=args, link_error=error_callback, argsrepr=repr(safe_args))
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201

@@ -55,6 +55,7 @@ class TestingConfig(DevelopmentConfig):
     """The testing IIB Celery configuration."""
 
     iib_arches = {'amd64', 's390x'}
+    iib_omps_url = 'some_url'
 
 
 def configure_celery(celery_app):

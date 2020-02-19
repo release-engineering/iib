@@ -229,6 +229,7 @@ class Request(db.Model):
     )
     index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
     operators = db.relationship('Operator', secondary=RequestOperator.__table__)
+    organization = db.Column(db.String, nullable=True)
     state = db.relationship('RequestState', foreign_keys=[request_state_id])
     states = db.relationship(
         'RequestState',
@@ -337,6 +338,7 @@ class Request(db.Model):
             'from_index': getattr(self.from_index, 'pull_specification', None),
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
             'index_image': getattr(self.index_image, 'pull_specification', None),
+            'organization': self.organization,
             'user': getattr(self.user, 'username', None),
         }
 
@@ -401,12 +403,14 @@ class Request(db.Model):
         request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
         # Validate from_index and cnr_token if specified
-        for param in ('from_index', 'cnr_token'):
+        for param in ('from_index', 'cnr_token', 'organization'):
             param_value = request_kwargs.pop(param, None)
             if param_value and not isinstance(param_value, str):
                 raise ValidationError(f'"{param}" must be a string')
             if param == 'from_index' and param_value:
                 request_kwargs['from_index'] = Image.get_or_create(pull_specification=param_value)
+            if param == 'organization':
+                request_kwargs['organization'] = param_value
 
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
@@ -428,7 +432,7 @@ class Request(db.Model):
         cls._from_json(
             request_kwargs,
             additional_required_params=['bundles'],
-            additional_optional_params=['from_index'],
+            additional_optional_params=['from_index', 'organization'],
         )
 
         request_kwargs['bundles'] = [

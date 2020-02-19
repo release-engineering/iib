@@ -8,10 +8,10 @@ from unittest import mock
 import pytest
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build
+from iib.workers.tasks import build, utils
 
 
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd):
     build._build_image('/some/dir', 3)
 
@@ -21,7 +21,7 @@ def test_build_image(mock_run_cmd):
     assert '/some/dir/index.Dockerfile' in build_args
 
 
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 def test_cleanup(mock_run_cmd):
     build._cleanup()
 
@@ -31,7 +31,7 @@ def test_cleanup(mock_run_cmd):
 
 
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     mock_td.return_value.__enter__.return_value = tmp_path
 
@@ -60,18 +60,13 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     assert manifest in manifest_tool_args
 
 
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.update_request')
-def test_finish_request_post_build(mock_ur, mock_capml, mock_srs):
+def test_finish_request_post_build(mock_ur):
     output_pull_spec = 'quay.io/namespace/some-image:3'
-    mock_capml.return_value = output_pull_spec
     request_id = 2
     arches = {'amd64'}
-    build._finish_request_post_build(request_id, arches)
+    build._finish_request_post_build(output_pull_spec, request_id, arches)
 
-    mock_srs.assert_called_once()
-    mock_capml.assert_called_once_with(request_id, arches)
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     assert update_request_payload.keys() == {'index_image', 'state', 'state_reason'}
@@ -96,7 +91,7 @@ def test_get_local_pull_spec(request_id):
     assert re.match(f'.+:{request_id}', rv)
 
 
-@mock.patch('iib.workers.tasks.build._skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_image_arches(mock_si):
     mock_si.return_value = {
         'mediaType': 'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -109,7 +104,7 @@ def test_get_image_arches(mock_si):
     assert rv == {'amd64', 's390x'}
 
 
-@mock.patch('iib.workers.tasks.build._skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_image_arches_manifest(mock_si):
     mock_si.side_effect = [
         {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
@@ -119,14 +114,14 @@ def test_get_image_arches_manifest(mock_si):
     assert rv == {'amd64'}
 
 
-@mock.patch('iib.workers.tasks.build._skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_image_arches_not_manifest_list(mock_si):
     mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json'}
     with pytest.raises(IIBError, match='.+is neither a v2 manifest list nor a v2 manifest'):
         build._get_image_arches('image:latest')
 
 
-@mock.patch('iib.workers.tasks.build._skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_resolved_image(mock_si):
     mock_si.return_value = {'Digest': 'sha256:abcdefg', 'Name': 'some-image'}
     rv = build._get_resolved_image('some-image')
@@ -233,7 +228,7 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 
 
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 def test_push_arch_image(mock_run_cmd, mock_glps):
     mock_glps.return_value = 'source:tag'
 
@@ -247,11 +242,11 @@ def test_push_arch_image(mock_run_cmd, mock_glps):
 
 
 @pytest.mark.parametrize('use_creds', (True, False))
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_skopeo_inspect(mock_run_cmd, use_creds):
     mock_run_cmd.return_value = '{"Name": "some-image"}'
     image = 'docker://some-image:latest'
-    rv = build._skopeo_inspect(image, use_creds=use_creds)
+    rv = utils.skopeo_inspect(image, use_creds=use_creds)
     assert rv == {"Name": "some-image"}
     skopeo_args = mock_run_cmd.call_args[0][0]
     expected = ['skopeo', 'inspect', image]
@@ -267,8 +262,25 @@ def test_skopeo_inspect(mock_run_cmd, use_creds):
 @mock.patch('iib.workers.tasks.build._poll_request')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._finish_request_post_build')
+@mock.patch('iib.workers.tasks.build.opm_index_export')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
+@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
+@mock.patch('iib.workers.tasks.build._cleanup')
 def test_handle_add_request(
-    mock_frpb, mock_vii, mock_pr, mock_oia, mock_prfb, request_succeeded,
+    mock_cleanup,
+    mock_vlpc,
+    mock_glsp,
+    mock_capml,
+    mock_srs,
+    mock_oie,
+    mock_frpb,
+    mock_vii,
+    mock_pr,
+    mock_oia,
+    mock_prfb,
+    request_succeeded,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -276,12 +288,19 @@ def test_handle_add_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
     }
+    mock_glsp.return_value = {'some_package'}
     mock_pr.return_value = request_succeeded
-
+    output_pull_spec = 'quay.io/namespace/some-image:3'
+    mock_capml.return_value = output_pull_spec
     build.handle_add_request(
-        ['some-bundle:2.3-1'], 'binary-image:latest', 3, 'from-index:latest', ['s390x']
+        ['some-bundle:2.3-1'],
+        'binary-image:latest',
+        3,
+        'from-index:latest',
+        ['s390x'],
+        'token',
+        'org',
     )
-
     mock_prfb.assert_called_once()
     mock_oia.apply_async.call_count == 2
     # Verify opm_index_add was scheduled on the correct workers
@@ -290,11 +309,19 @@ def test_handle_add_request(
         assert mock_oia.apply_async.call_args_list[i][1]['routing_key'] == f'iib_{arch}'
     mock_pr.assert_called_once()
     if request_succeeded:
+        mock_oie.assert_called_once()
         mock_frpb.assert_called_once()
         mock_vii.assert_called_once()
+        mock_capml.assert_called_once()
+        mock_srs.assert_called_once()
+        mock_cleanup.assert_called_once()
     else:
+        mock_oie.assert_not_called()
         mock_frpb.assert_not_called()
         mock_vii.assert_not_called()
+        mock_capml.assert_not_called()
+        mock_srs.assert_not_called()
+        mock_cleanup.assert_not_called()
 
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
@@ -303,7 +330,7 @@ def test_handle_add_request(
 @mock.patch('iib.workers.tasks.build._fix_opm_path')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_arch_image')
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_opm_index_add(
     mock_ur, mock_run_cmd, mock_pai, mock_bi, mock_fop, mock_cleanup, mock_gr, from_index
@@ -343,23 +370,23 @@ def test_opm_index_add_already_failed(mock_bi, mock_srs, mock_gr):
     mock_bi.assert_not_called()
 
 
-@mock.patch('iib.workers.tasks.build.subprocess.run')
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd(mock_sub_run):
     mock_rv = mock.Mock()
     mock_rv.returncode = 0
     mock_sub_run.return_value = mock_rv
 
-    build._run_cmd(['echo', 'hello world'], {'cwd': '/some/path'})
+    utils.run_cmd(['echo', 'hello world'], {'cwd': '/some/path'})
 
     mock_sub_run.assert_called_once()
 
 
 @pytest.mark.parametrize('exc_msg', (None, 'Houston, we have a problem!'))
-@mock.patch('iib.workers.tasks.build.subprocess.run')
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd_failed(mock_sub_run, caplog, exc_msg):
     # When running tests that involve Flask before this test, the iib.workers loggers
     # are disabled. This is an ugly workaround.
-    for logger in ('iib.workers', 'iib.workers.tasks', 'iib.workers.tasks.build'):
+    for logger in ('iib.workers', 'iib.workers.tasks', 'iib.workers.tasks.utils'):
         logging.getLogger(logger).disabled = False
 
     mock_rv = mock.Mock()
@@ -369,7 +396,7 @@ def test_run_cmd_failed(mock_sub_run, caplog, exc_msg):
 
     expected_exc = exc_msg or 'An unexpected error occurred'
     with pytest.raises(IIBError, match=expected_exc):
-        build._run_cmd(['echo', 'iib:iibpassword'], exc_msg=exc_msg)
+        utils.run_cmd(['echo', 'iib:iibpassword'], exc_msg=exc_msg)
 
     mock_sub_run.assert_called_once()
     # Verify that the password is not logged
@@ -415,7 +442,7 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build._fix_opm_path')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_arch_image')
-@mock.patch('iib.workers.tasks.build._run_cmd')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_opm_index_rm(mock_ur, mock_run_cmd, mock_pai, mock_bi, mock_fop, mock_cleanup, mock_gr):
     mock_gr.return_value = {'state': 'in_progress'}
