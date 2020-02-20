@@ -7,14 +7,6 @@ from iib.web import models
 from iib.web.models import Image, Request
 
 
-@mock.patch('iib.web.api_v1.ping')
-def test_example_endpoint(mock_ping, db, client):
-    response = client.get('/api/v1/test')
-    mock_ping.delay.assert_called_once()
-    assert response.status_code == 200
-    assert response.data == b'Test request success!'
-
-
 def test_get_build(app, auth_env, client, db):
     # flask_login.current_user is used in Request.from_json, which requires a request context
     with app.test_request_context(environ_base=auth_env):

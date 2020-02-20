@@ -9,15 +9,8 @@ from iib.web.models import Architecture, Image, Request, RequestState, RequestSt
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import handle_add_request, handle_rm_request
 from iib.workers.tasks.general import failed_request_callback
-from iib.workers.tasks.placeholder import ping
 
 api_v1 = flask.Blueprint('api_v1', __name__)
-
-
-@api_v1.route('/test', methods=['GET'])
-def get_request():
-    ping.delay()
-    return 'Test request success!'
 
 
 @api_v1.route('/builds/<int:request_id>')
