@@ -13,16 +13,20 @@ RUN dnf -y install \
     krb5-devel \
     https://kojipkgs.fedoraproject.org/packages/podman/1.7.0/3.fc30/x86_64/podman-1.7.0-3.fc30.x86_64.rpm \
     https://kojipkgs.fedoraproject.org/packages/runc/1.0.0/93.dev.gitb9b6cc6.fc30/x86_64/runc-1.0.0-93.dev.gitb9b6cc6.fc30.x86_64.rpm \
+    patch \
     python3-devel \
     python3-pip \
     skopeo \
     && dnf clean all
 # Set the default container storage so that podman can run in the container
 RUN sed -i 's_overlay_vfs_' /etc/containers/storage.conf
-COPY . .
 ADD https://github.com/operator-framework/operator-registry/releases/download/v1.5.9/linux-amd64-opm /usr/bin/opm
 RUN chmod +x /usr/bin/opm
 ADD https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 /usr/bin/manifest-tool
 RUN chmod +x /usr/bin/manifest-tool
+COPY . .
 RUN pip3 install .
+# Since requests is installed from PyPi, we want to patch it so that it uses the system CA bundle
+# instead of certifi
+RUN patch -d /usr/local/lib/python3.6/site-packages/requests -i /src/docker/requests_ca_bundle.patch
 CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]
