@@ -28,6 +28,8 @@ class Config(object):
     task_default_queue = 'iib'
     task_default_routing_key = 'iib'
     task_queues = (Queue('iib', routing_key='iib'), Queue('iib_amd64', routing_key='iib_amd64'))
+    # Requeue the message if the worker abruptly exits or is signaled
+    task_reject_on_worker_lost = True
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency = 1
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
