@@ -19,7 +19,7 @@ class Config(object):
     iib_image_push_template = '{registry}/operator-registry-index:{request_id}'
     iib_log_level = 'INFO'
     iib_poll_api_frequency = 15
-    include = ['iib.workers.tasks.build', 'iib.workers.tasks.placeholder']
+    include = ['iib.workers.tasks.build']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
