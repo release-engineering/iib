@@ -47,12 +47,14 @@ def test_get_build(app, auth_env, client, db):
         'arches': ['amd64', 's390x'],
         'binary_image': 'quay.io/namespace/binary_image:latest',
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
+        'bundle_mapping': {},
         'bundles': ['quay.io/namespace/bundle:1.0-3'],
         'from_index': 'quay.io/namespace/repo:latest',
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
         'organization': None,
+        'removed_operators': [],
         'state': 'complete',
         'state_history': [
             {
@@ -257,11 +259,13 @@ def test_add_bundle_success(mock_har, db, auth_env, client):
         'arches': [],
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
+        'bundle_mapping': {},
         'bundles': ['some:thing'],
         'from_index': None,
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
+        'removed_operators': [],
         'state': 'in_progress',
         'organization': 'org',
         'state_history': [
@@ -323,6 +327,18 @@ def test_add_bundle_success(mock_har, db, auth_env, client):
             },
             'The "state" key is required when "state_reason" is supplied',
         ),
+        (
+            {'bundle_mapping': 'not a dict'},
+            'The "bundle_mapping" key must be an object with the values as lists of strings',
+        ),
+        (
+            {'bundle_mapping': {'operator': 'not a list'}},
+            'The "bundle_mapping" key must be an object with the values as lists of strings',
+        ),
+        (
+            {'bundle_mapping': {'operator': [1, 2]}},
+            'The "bundle_mapping" key must be an object with the values as lists of strings',
+        ),
     ),
 )
 def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_env, client):
@@ -337,8 +353,21 @@ def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_en
 
 
 def test_patch_request_success(db, worker_auth_env, client):
+    bundles = [
+        'quay.io/some-operator:v1.0.0',
+        'quay.io/some-operator:v1.1.0',
+        'quay.io/some-operator2:v2.0.0',
+        'quay.io/some-operator2:v2.1.0',
+    ]
+
+    bundle_mapping = {
+        'some-operator': bundles[0:2],
+        'some-operator2': bundles[2:],
+    }
+
     data = {
         'arches': ['arches'],
+        'bundle_mapping': bundle_mapping,
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
@@ -348,12 +377,14 @@ def test_patch_request_success(db, worker_auth_env, client):
         'arches': ['arches'],
         'binary_image': 'quay.io/image:latest',
         'binary_image_resolved': None,
-        'bundles': [],
+        'bundle_mapping': bundle_mapping,
+        'bundles': bundles,
         'from_index': None,
         'from_index_resolved': None,
         'id': 1,
         'index_image': 'index:image',
         'organization': None,
+        'removed_operators': [],
         'state': 'complete',
         'state_history': [
             {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
@@ -372,6 +403,8 @@ def test_patch_request_success(db, worker_auth_env, client):
     db.session.add(binary_image)
     request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
     db.session.add(request)
+    for bundle in bundles:
+        request.bundles.append(Image.get_or_create(bundle))
     request.add_state('in_progress', 'Starting things up')
     db.session.commit()
 
@@ -396,12 +429,14 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
         'arches': [],
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
-        'operators': ['some:thing'],
+        'bundle_mapping': {},
+        'bundles': [],
         'from_index': 'index:image',
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
         'organization': None,
+        'removed_operators': ['some:thing'],
         'state': 'in_progress',
         'state_history': [
             {

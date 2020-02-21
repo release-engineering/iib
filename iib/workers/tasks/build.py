@@ -256,7 +256,9 @@ def _get_resolved_image(pull_spec):
     return pull_spec_resolved
 
 
-def _prepare_request_for_build(binary_image, request_id, from_index=None, add_arches=None):
+def _prepare_request_for_build(
+    binary_image, request_id, from_index=None, add_arches=None, bundles=None
+):
     """
     Prepare the request for the architecture specific builds.
 
@@ -274,10 +276,14 @@ def _prepare_request_for_build(binary_image, request_id, from_index=None, add_ar
     :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
+    :param list bundles: the list of bundles to create the bundle mapping on the request
     :return: a dictionary with the keys: arches, binary_image_resolved, and fom_index_resolved.
     :raises iib.exceptions.IIBError: if the image resolution fails or the architectures couldn't
         be detected.
     """
+    if bundles is None:
+        bundles = []
+
     set_request_state(request_id, 'in_progress', 'Resolving the images')
 
     if add_arches:
@@ -316,8 +322,15 @@ def _prepare_request_for_build(binary_image, request_id, from_index=None, add_ar
             )
         )
 
+    bundle_mapping = {}
+    for bundle in bundles:
+        operator = get_image_label(bundle, 'operators.operatorframework.io.bundle.package.v1')
+        if operator:
+            bundle_mapping.setdefault(operator, []).append(bundle)
+
     payload = {
         'binary_image_resolved': binary_image_resolved,
+        'bundle_mapping': bundle_mapping,
         'state': 'in_progress',
         'state_reason': f'Scheduling index image builds for the following arches: {arches_str}',
     }
@@ -405,6 +418,34 @@ def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
         )
 
 
+def get_image_labels(pull_spec):
+    """
+    Get the labels from the image.
+
+    :param list<str> labels: the labels to get
+    :return: the dictionary of the labels on the image
+    :rtype: dict
+    """
+    if pull_spec.startswith('docker://'):
+        full_pull_spec = pull_spec
+    else:
+        full_pull_spec = f'docker://{pull_spec}'
+    log.debug('Getting the labels from %s', full_pull_spec)
+    return skopeo_inspect(full_pull_spec).get('Labels', {})
+
+
+def get_image_label(pull_spec, label):
+    """
+    Get a specific label from the image.
+
+    :param str label: the label to get
+    :return: the label on the image or None
+    :rtype: str
+    """
+    log.debug('Getting the label of %s from %s', label, pull_spec)
+    return get_image_labels(pull_spec).get(label)
+
+
 @app.task
 def handle_add_request(
     bundles,
@@ -439,7 +480,9 @@ def handle_add_request(
     if legacy_support_packages:
         validate_legacy_params_and_config(legacy_support_packages, bundles, cnr_token, organization)
 
-    prebuild_info = _prepare_request_for_build(binary_image, request_id, from_index, add_arches)
+    prebuild_info = _prepare_request_for_build(
+        binary_image, request_id, from_index, add_arches, bundles
+    )
 
     error_callback = failed_request_callback.s(request_id=request_id)
     arches = prebuild_info['arches']
