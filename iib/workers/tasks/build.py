@@ -182,7 +182,7 @@ def _get_external_arch_pull_spec(request_id, arch=None, include_transport=False)
     :rtype: str
     """
     conf = get_worker_config()
-    pull_spec = conf['iib_arch_image_push_template'].format(
+    pull_spec = (conf["iib_image_push_template"] + '-{arch}').format(
         registry=conf['iib_registry'], request_id=request_id, arch=arch or conf['iib_arch']
     )
     if include_transport:
