@@ -15,7 +15,6 @@ class Config(object):
     broker_transport_options = {'max_retries': 10}
     iib_api_timeout = 30
     iib_arch = 'amd64'
-    iib_arch_image_push_template = '{registry}/operator-registry-index:{request_id}-{arch}'
     iib_arches = {'amd64'}
     iib_image_push_template = '{registry}/operator-registry-index:{request_id}'
     iib_log_level = 'INFO'
