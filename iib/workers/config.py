@@ -64,7 +64,7 @@ def configure_celery(celery_app):
     :param celery.Celery celery: the Celery application instance to configure
     """
     config = ProductionConfig
-    prod_config_file_path = '/etc/iib/celery.py'
+    prod_config_file_path = os.getenv('IIB_CELERY_CONFIG', '/etc/iib/celery.py')
     if os.getenv('IIB_DEV', '').lower() == 'true':
         config = DevelopmentConfig
     elif os.getenv('IIB_TESTING', 'false').lower() == 'true':
