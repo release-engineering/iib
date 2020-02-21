@@ -7,7 +7,7 @@ from werkzeug.exceptions import Unauthorized
 
 from iib.exceptions import ValidationError
 from iib.web import db
-from iib.web.models import Architecture, Image, Request, RequestState, RequestStateMapping
+from iib.web.models import Architecture, Image, Operator, Request, RequestState, RequestStateMapping
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import handle_add_request, handle_rm_request
 from iib.workers.tasks.general import failed_request_callback
@@ -126,6 +126,7 @@ def patch_request(request_id):
     valid_keys = {
         'arches',
         'binary_image_resolved',
+        'bundle_mapping',
         'from_index_resolved',
         'index_image',
         'state',
@@ -140,6 +141,13 @@ def patch_request(request_id):
     for key, value in payload.items():
         if key == 'arches':
             Architecture.validate_architecture_json(value)
+        elif key == 'bundle_mapping':
+            exc_msg = f'The "{key}" key must be an object with the values as lists of strings'
+            if not isinstance(value, dict):
+                raise ValidationError(exc_msg)
+            for v in value.values():
+                if not isinstance(v, list) or any(not isinstance(s, str) for s in v):
+                    raise ValidationError(exc_msg)
         elif not value or not isinstance(value, str):
             raise ValidationError(f'The value for "{key}" must be a non-empty string')
 
@@ -170,6 +178,12 @@ def patch_request(request_id):
 
     for arch in payload.get('arches', []):
         request.add_architecture(arch)
+
+    for operator, bundles in payload.get('bundle_mapping', {}).items():
+        operator_img = Operator.get_or_create(operator)
+        for bundle in bundles:
+            bundle_img = Image.get_or_create(bundle)
+            bundle_img.operator = operator_img
 
     db.session.commit()
 

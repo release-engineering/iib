@@ -122,6 +122,20 @@ def test_get_image_arches_not_manifest_list(mock_si):
 
 
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_get_image_labels(mock_si):
+    skopeo_rv = {'Labels': {'some_label': 'value'}}
+    mock_si.return_value = skopeo_rv
+    assert build.get_image_labels('some-image:latest') == skopeo_rv['Labels']
+
+
+@pytest.mark.parametrize('label, expected', (('some_label', 'value'), ('not_there', None)))
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_get_image_label(mock_si, label, expected):
+    mock_si.return_value = {'Labels': {'some_label': 'value'}}
+    assert build.get_image_label('some-image:latest', label) == expected
+
+
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_resolved_image(mock_si):
     mock_si.return_value = {'Digest': 'sha256:abcdefg', 'Name': 'some-image'}
     rv = build._get_resolved_image('some-image')
@@ -156,24 +170,44 @@ def test_poll_request_request_failed(mock_gr, mock_sleep):
 
 
 @pytest.mark.parametrize(
-    'add_arches, from_index, from_index_arches',
+    'add_arches, from_index, from_index_arches, bundles, expected_bundle_mapping',
     (
-        ([], 'some-index:latest', {'amd64'}),
-        (['amd64', 's390x'], None, set()),
-        (['s390x'], 'some-index:latest', {'amd64'}),
+        ([], 'some-index:latest', {'amd64'}, None, {}),
+        (['amd64', 's390x'], None, set(), None, {}),
+        (['s390x'], 'some-index:latest', {'amd64'}, None, {}),
+        (
+            ['amd64'],
+            None,
+            set(),
+            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            {
+                'some-bundle': ['quay.io/some-bundle:v1'],
+                'some-bundle2': ['quay.io/some-bundle2:v1'],
+            },
+        ),
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.build.get_image_label')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_prepare_request_for_build(
-    mock_ur, mock_gia, mock_gri, mock_srs, add_arches, from_index, from_index_arches,
+    mock_ur,
+    mock_gil,
+    mock_gia,
+    mock_gri,
+    mock_srs,
+    add_arches,
+    from_index,
+    from_index_arches,
+    bundles,
+    expected_bundle_mapping,
 ):
     binary_image_resolved = 'binary-image@sha256:abcdef'
     from_index_resolved = None
     expected_arches = set(add_arches) | from_index_arches
-    expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
+    expected_payload_keys = {'binary_image_resolved', 'bundle_mapping', 'state', 'state_reason'}
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
@@ -184,7 +218,10 @@ def test_prepare_request_for_build(
         mock_gri.side_effect = [binary_image_resolved]
         mock_gia.side_effect = [expected_arches]
 
-    rv = build._prepare_request_for_build('binary-image:latest', 1, from_index, add_arches)
+    if bundles:
+        mock_gil.side_effect = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
+
+    rv = build._prepare_request_for_build('binary-image:latest', 1, from_index, add_arches, bundles)
     assert rv == {
         'arches': expected_arches,
         'binary_image_resolved': binary_image_resolved,
@@ -192,6 +229,7 @@ def test_prepare_request_for_build(
     }
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
+    assert update_request_payload['bundle_mapping'] == expected_bundle_mapping
     assert update_request_payload.keys() == expected_payload_keys
 
 

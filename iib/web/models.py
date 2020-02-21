@@ -108,7 +108,10 @@ class Image(db.Model):
     """
 
     id = db.Column(db.Integer, primary_key=True)
+    operator_id = db.Column(db.Integer, db.ForeignKey('operator.id'))
     pull_specification = db.Column(db.String, nullable=False, index=True, unique=True)
+
+    operator = db.relationship('Operator')
 
     def __repr__(self):
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
@@ -335,17 +338,25 @@ class Request(db.Model):
             'binary_image_resolved': getattr(
                 self.binary_image_resolved, 'pull_specification', None
             ),
+            'bundle_mapping': {},
+            'bundles': [],
             'from_index': getattr(self.from_index, 'pull_specification', None),
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
             'index_image': getattr(self.index_image, 'pull_specification', None),
             'organization': self.organization,
+            'removed_operators': [],
             'user': getattr(self.user, 'username', None),
         }
 
         if self.type == RequestTypeMapping.__members__['add'].value:
-            rv['bundles'] = [bundle.pull_specification for bundle in self.bundles]
+            for bundle in self.bundles:
+                if bundle.operator:
+                    rv['bundle_mapping'].setdefault(bundle.operator.name, []).append(
+                        bundle.pull_specification
+                    )
+                rv['bundles'].append(bundle.pull_specification)
         else:
-            rv['operators'] = [operator.name for operator in self.operators]
+            rv['removed_operators'] = [operator.name for operator in self.operators]
 
         latest_state = None
         if verbose:
