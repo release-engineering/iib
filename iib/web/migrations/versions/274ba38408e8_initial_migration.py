@@ -24,6 +24,13 @@ def upgrade():
         sa.UniqueConstraint('name'),
     )
     op.create_table(
+        'operator',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('name', sa.String(), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('name'),
+    )
+    op.create_table(
         'image',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('operator_id', sa.Integer(), nullable=True),
@@ -31,13 +38,6 @@ def upgrade():
         sa.ForeignKeyConstraint(['operator_id'], ['operator.id']),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('pull_specification'),
-    )
-    op.create_table(
-        'operator',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('name'),
     )
     op.create_table(
         'user',
