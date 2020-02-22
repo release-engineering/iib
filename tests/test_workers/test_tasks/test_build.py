@@ -121,15 +121,8 @@ def test_get_image_arches_not_manifest_list(mock_si):
         build._get_image_arches('image:latest')
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_get_image_labels(mock_si):
-    skopeo_rv = {'Labels': {'some_label': 'value'}}
-    mock_si.return_value = skopeo_rv
-    assert build.get_image_labels('some-image:latest') == skopeo_rv['Labels']
-
-
 @pytest.mark.parametrize('label, expected', (('some_label', 'value'), ('not_there', None)))
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_label(mock_si, label, expected):
     mock_si.return_value = {'Labels': {'some_label': 'value'}}
     assert build.get_image_label('some-image:latest', label) == expected

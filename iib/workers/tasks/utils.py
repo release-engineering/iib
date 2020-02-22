@@ -11,6 +11,22 @@ from iib.workers.config import get_worker_config
 log = logging.getLogger(__name__)
 
 
+def get_image_labels(pull_spec):
+    """
+    Get the labels from the image.
+
+    :param list<str> labels: the labels to get
+    :return: the dictionary of the labels on the image
+    :rtype: dict
+    """
+    if pull_spec.startswith('docker://'):
+        full_pull_spec = pull_spec
+    else:
+        full_pull_spec = f'docker://{pull_spec}'
+    log.debug('Getting the labels from %s', full_pull_spec)
+    return skopeo_inspect(full_pull_spec).get('Labels', {})
+
+
 def skopeo_inspect(*args, use_creds=False):
     """
     Wrap the ``skopeo inspect`` command.

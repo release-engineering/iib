@@ -7,7 +7,7 @@ from iib.exceptions import IIBError
 from iib.workers.tasks import legacy
 
 
-@mock.patch('iib.workers.tasks.legacy.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_legacy_support_packages(mock_skopeo_inspect):
     mock_skopeo_inspect.return_value = {
         'Labels': {
