@@ -11,7 +11,7 @@ from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
 
-from iib.workers.tasks.utils import run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_labels, run_cmd
 
 log = logging.getLogger(__name__)
 
@@ -38,9 +38,9 @@ def get_legacy_support_packages(bundles):
     """
     packages = set()
     for bundle in bundles:
-        skopeo_out = skopeo_inspect(f'docker://{bundle}')
-        if skopeo_out['Labels'].get('com.redhat.delivery.backport', False):
-            packages.add(skopeo_out['Labels']['operators.operatorframework.io.bundle.package.v1'])
+        labels = get_image_labels(bundle)
+        if labels.get('com.redhat.delivery.backport', False):
+            packages.add(labels['operators.operatorframework.io.bundle.package.v1'])
 
     return packages
 

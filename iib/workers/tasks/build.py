@@ -17,7 +17,7 @@ from iib.workers.tasks.legacy import (
     opm_index_export,
     validate_legacy_params_and_config,
 )
-from iib.workers.tasks.utils import run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_labels, run_cmd, skopeo_inspect
 
 
 __all__ = ['handle_add_request', 'opm_index_add', 'handle_rm_request', 'opm_index_rm']
@@ -416,22 +416,6 @@ def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
             'The supplied from_index image changed during the IIB request.'
             ' Please resubmit the request.'
         )
-
-
-def get_image_labels(pull_spec):
-    """
-    Get the labels from the image.
-
-    :param list<str> labels: the labels to get
-    :return: the dictionary of the labels on the image
-    :rtype: dict
-    """
-    if pull_spec.startswith('docker://'):
-        full_pull_spec = pull_spec
-    else:
-        full_pull_spec = f'docker://{pull_spec}'
-    log.debug('Getting the labels from %s', full_pull_spec)
-    return skopeo_inspect(full_pull_spec).get('Labels', {})
 
 
 def get_image_label(pull_spec, label):
