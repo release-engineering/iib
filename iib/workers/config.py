@@ -19,6 +19,7 @@ class Config(object):
     iib_image_push_template = '{registry}/operator-registry-index:{request_id}'
     iib_log_level = 'INFO'
     iib_poll_api_frequency = 15
+    iib_required_labels = {}
     include = ['iib.workers.tasks.build']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
@@ -109,6 +110,9 @@ def validate_celery_config(conf, **kwargs):
 
     if not conf.get('iib_api_url'):
         raise ConfigError('iib_api_url must be set')
+
+    if not isinstance(conf['iib_required_labels'], dict):
+        raise ConfigError('iib_required_labels must be a dictionary')
 
 
 def get_worker_config():

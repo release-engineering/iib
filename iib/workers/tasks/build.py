@@ -418,6 +418,25 @@ def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
         )
 
 
+def _verify_labels(bundles):
+    """
+    Verify that the required labels are set on the input bundles.
+
+    :param list bundles: a list of strings representing the pull specifications of the bundles to
+        add to the index image being built.
+    :raises iib.exceptions.IIBError: if one of the bundles does not have the correct label value.
+    """
+    conf = get_worker_config()
+    if not conf['iib_required_labels']:
+        return
+
+    for bundle in bundles:
+        labels = get_image_labels(bundle)
+        for label, value in conf['iib_required_labels'].items():
+            if labels.get(label) != value:
+                raise IIBError(f'The bundle {bundle} does not have the label {label}={value}')
+
+
 def get_image_label(pull_spec, label):
     """
     Get a specific label from the image.
@@ -460,6 +479,8 @@ def handle_add_request(
     :raises iib.exceptions.IIBError: if the index image build fails or legacy support is required
         and one of ``cnr_token`` or ``organization`` is not specified.
     """
+    _verify_labels(bundles)
+
     legacy_support_packages = get_legacy_support_packages(bundles)
     if legacy_support_packages:
         validate_legacy_params_and_config(legacy_support_packages, bundles, cnr_token, organization)

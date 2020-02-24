@@ -272,6 +272,7 @@ def test_push_arch_image(mock_run_cmd, mock_glps):
 
 
 @pytest.mark.parametrize('request_succeeded', (True, False))
+@mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build.opm_index_add')
 @mock.patch('iib.workers.tasks.build._poll_request')
@@ -295,6 +296,7 @@ def test_handle_add_request(
     mock_pr,
     mock_oia,
     mock_prfb,
+    mock_vl,
     request_succeeded,
 ):
     arches = {'amd64', 's390x'}
@@ -316,6 +318,7 @@ def test_handle_add_request(
         'token',
         'org',
     )
+    mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
     mock_oia.apply_async.call_count == 2
     # Verify opm_index_add was scheduled on the correct workers
@@ -466,3 +469,28 @@ def test_verify_index_image_failure(mock_ri):
     )
     with pytest.raises(IIBError, match=match_str):
         build._verify_index_image('image:doesnt_work', 'unresolved_image')
+
+
+@pytest.mark.parametrize(
+    'iib_required_labels', ({'com.redhat.delivery.operator.bundle': 'true'}, {})
+)
+@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build.get_image_labels')
+def test_verify_labels(mock_gil, mock_gwc, iib_required_labels):
+    mock_gwc.return_value = {'iib_required_labels': iib_required_labels}
+    mock_gil.return_value = {'com.redhat.delivery.operator.bundle': 'true'}
+    build._verify_labels(['some-bundle:v1.0'])
+
+    if iib_required_labels:
+        mock_gil.assert_called_once()
+    else:
+        mock_gil.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build.get_image_labels')
+def test_verify_labels_fails(mock_gil, mock_gwc):
+    mock_gwc.return_value = {'iib_required_labels': {'com.redhat.delivery.operator.bundle': 'true'}}
+    mock_gil.return_value = {'lunch': 'pizza'}
+    with pytest.raises(IIBError, match='som'):
+        build._verify_labels(['some-bundle:v1.0'])
