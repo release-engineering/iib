@@ -48,7 +48,6 @@ class DevelopmentConfig(Config):
     iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
     iib_registry = 'registry:8443'
-    iib_registry_credentials = 'iib:iibpassword'
 
 
 class TestingConfig(DevelopmentConfig):
@@ -102,11 +101,6 @@ def validate_celery_config(conf, **kwargs):
     """
     if not conf.get('iib_registry'):
         raise ConfigError('iib_registry must be set to the destination container registry')
-
-    if not conf.get('iib_registry_credentials'):
-        raise ConfigError(
-            'iib_registry_credentials must be set in the format of "username:password"'
-        )
 
     if not conf.get('iib_api_url'):
         raise ConfigError('iib_api_url must be set')

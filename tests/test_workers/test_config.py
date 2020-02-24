@@ -38,18 +38,16 @@ def test_validate_celery_config():
         {
             'iib_api_url': 'http://localhost:8080/api/v1/',
             'iib_registry': 'registry',
-            'iib_registry_credentials': 'username:password',
             'iib_required_labels': {},
         }
     )
 
 
-@pytest.mark.parametrize('missing_key', ('iib_api_url', 'iib_registry', 'iib_registry_credentials'))
+@pytest.mark.parametrize('missing_key', ('iib_api_url', 'iib_registry'))
 def test_validate_celery_config_failure(missing_key):
     conf = {
         'iib_api_url': 'http://localhost:8080/api/v1/',
         'iib_registry': 'registry',
-        'iib_registry_credentials': 'username:password',
     }
     conf.pop(missing_key)
     with pytest.raises(ConfigError, match=f'{missing_key} must be set'):

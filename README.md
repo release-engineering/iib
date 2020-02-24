@@ -21,3 +21,14 @@ When installing the dependencies in a production environment, run
 
 To ensure the pinned dependencies are not vulnerable, this project uses
 [safety](https://github.com/pyupio/safety), which runs on every pull-request.
+
+## Registry Authentication
+
+IIB does not handle authentication with container registries directly. If authentication is needed,
+configure the `~/.docker/config.json` for the user running the IIB worker.
+
+During development, you may choose to add a volume entry of `- /root/.docker:/root/.docker:z` on the
+workers in `docker-compose.yml` so that your host's root user's Docker configuration with
+authentication is used by the workers. This is only needed if you are working with private images.
+Please note that the containers will modify this configuration since they authenticate with the
+registry created by docker-compose on startup.

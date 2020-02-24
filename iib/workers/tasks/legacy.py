@@ -58,9 +58,6 @@ def opm_index_export(packages, request_id, rebuilt_index_image, cnr_token, organ
         backported packages should be pushed to.
     :raises iib.exceptions.IIBError: if the export of packages fails.
     """
-    # Login into the registry to be able to access private repositories
-    _podman_login()
-
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         for package in packages:
             cmd = [
@@ -89,21 +86,6 @@ def opm_index_export(packages, request_id, rebuilt_index_image, cnr_token, organ
             _push_package_manifest(package_dir, cnr_token, organization)
 
     set_request_state(request_id, 'in_progress', 'Back ported packages successfully pushed to OMPS')
-
-
-def _podman_login():
-    """
-    Login into the registry to be able to access private repos.
-
-    :raises iib.exceptions.IIBError: if the login fails
-    """
-    conf = get_worker_config()
-    log.info('Logging in %s using podman', conf['iib_registry'])
-    username, password = conf['iib_registry_credentials'].split(':')
-    run_cmd(
-        ['podman', 'login', '-u', username, '-p', password, conf['iib_registry']],
-        exc_msg=f'Failed to login into the registry {conf["iib_registry"]}',
-    )
 
 
 def _push_package_manifest(package_dir, cnr_token, organization):
