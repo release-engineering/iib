@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import copy
 import json
 import logging
 import subprocess
 
 from iib.exceptions import IIBError
-from iib.workers.config import get_worker_config
 
 
 log = logging.getLogger(__name__)
@@ -27,12 +25,11 @@ def get_image_labels(pull_spec):
     return skopeo_inspect(full_pull_spec).get('Labels', {})
 
 
-def skopeo_inspect(*args, use_creds=False):
+def skopeo_inspect(*args):
     """
     Wrap the ``skopeo inspect`` command.
 
     :param *args: any arguments to pass to ``skopeo inspect``
-    :param bool use_creds: if true, the registry credentials in the configuration will be used
     :return: a dictionary of the JSON output from the skopeo inspect command
     :rtype: dict
     :raises iib.exceptions.IIBError: if the command fails
@@ -44,9 +41,6 @@ def skopeo_inspect(*args, use_creds=False):
             break
 
     cmd = ['skopeo', 'inspect'] + list(args)
-    if use_creds:
-        conf = get_worker_config()
-        cmd.extend(['--creds', conf['iib_registry_credentials']])
     return json.loads(run_cmd(cmd, exc_msg=exc_msg))
 
 
@@ -71,13 +65,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     response = subprocess.run(cmd, **params)
 
     if response.returncode != 0:
-        conf = get_worker_config()
-        _, password = conf['iib_registry_credentials'].split(':', 1)
-        sanitized_cmd = copy.copy(cmd)
-        for i, arg in enumerate(cmd):
-            if arg in (conf['iib_registry_credentials'], password):
-                sanitized_cmd[i] = '********'
-        log.error('The command "%s" failed with: %s', ' '.join(sanitized_cmd), response.stderr)
+        log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         raise IIBError(exc_msg or 'An unexpected error occurred')
 
     return response.stdout

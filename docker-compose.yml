@@ -70,6 +70,7 @@ services:
     - >-
       cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
       cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+      podman login --authfile ~/.docker/config.json -u iib -p iibpassword registry:8443 &&
       pip3 install watchdog[watchmedo] &&
       watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
         -- celery -A iib.workers.tasks worker -Q iib --loglevel=info
@@ -83,6 +84,7 @@ services:
       - /etc/pki/tls/certs/ca-bundle.crt:/host-ca-bundle.crt:ro
     depends_on:
       - rabbitmq
+      - registry
 
   iib-worker-amd64:
     build:
@@ -97,6 +99,7 @@ services:
     - >-
       cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
       cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+      podman login --authfile ~/.docker/config.json -u iib -p iibpassword registry:8443 &&
       pip3 install watchdog[watchmedo] &&
       watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
         -- celery -A iib.workers.tasks worker -Q iib_amd64 --loglevel=info
@@ -110,3 +113,4 @@ services:
       - /etc/pki/tls/certs/ca-bundle.crt:/host-ca-bundle.crt:ro
     depends_on:
       - rabbitmq
+      - registry

@@ -70,7 +70,6 @@ def _create_and_push_manifest_list(request_id, arches):
     :rtype: str
     :raises iib.exceptions.IIBError: if creating or pushing the manifest list fails
     """
-    conf = get_worker_config()
     output_pull_spec = get_rebuilt_index_image(request_id)
     log.info('Creating the manifest list %s', output_pull_spec)
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
@@ -108,18 +107,8 @@ def _create_and_push_manifest_list(request_id, arches):
                 manifest_yaml_f.read(),
             )
 
-        username, password = conf['iib_registry_credentials'].split(':', 1)
         run_cmd(
-            [
-                'manifest-tool',
-                '--username',
-                username,
-                '--password',
-                password,
-                'push',
-                'from-spec',
-                manifest_yaml,
-            ],
+            ['manifest-tool', 'push', 'from-spec', manifest_yaml],
             exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
         )
 
@@ -395,9 +384,8 @@ def _push_arch_image(request_id):
     source = _get_local_pull_spec(request_id)
     destination = _get_external_arch_pull_spec(request_id, include_transport=True)
     log.info('Pushing the index image %s to %s', source, destination)
-    conf = get_worker_config()
     run_cmd(
-        ['podman', 'push', '-q', source, destination, '--creds', conf['iib_registry_credentials']],
+        ['podman', 'push', '-q', source, destination],
         exc_msg=f'Failed to push the index image to {destination} on the arch {_get_arch()}',
     )
 

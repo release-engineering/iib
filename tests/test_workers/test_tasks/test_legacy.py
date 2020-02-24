@@ -21,16 +21,6 @@ def test_get_legacy_support_packages(mock_skopeo_inspect):
     assert packages == {'prometheus'}
 
 
-@mock.patch('iib.workers.tasks.legacy.run_cmd')
-def test_podman_login(mock_run_cmd):
-    legacy._podman_login()
-
-    mock_run_cmd.assert_called_once()
-    build_args = mock_run_cmd.call_args[0][0]
-    assert build_args[0:2] == ['podman', 'login']
-    assert 'iib' and 'iibpassword' in build_args
-
-
 @mock.patch('os.listdir')
 def test_verify_package_info_missing_pkg(mock_listdir):
     mock_listdir.return_value = ['package.yaml']
@@ -74,13 +64,12 @@ def test_push_package_manifest_failure(mock_requests, mock_open):
     mock_requests.assert_called_once()
 
 
-@mock.patch('iib.workers.tasks.legacy._podman_login')
 @mock.patch('iib.workers.tasks.legacy.run_cmd')
 @mock.patch('iib.workers.tasks.legacy._verify_package_info')
 @mock.patch('iib.workers.tasks.legacy._zip_package')
 @mock.patch('iib.workers.tasks.legacy._push_package_manifest')
 @mock.patch('iib.workers.tasks.legacy.set_request_state')
-def test_opm_index_export(mock_srs, mock_ppm, mock_zp, mock_vpi, mock_run_cmd, mock_pl):
+def test_opm_index_export(mock_srs, mock_ppm, mock_zp, mock_vpi, mock_run_cmd):
     packages = ['prometheus']
     legacy.opm_index_export(packages, 3, 'from:index', 'token', 'org')
 
@@ -89,7 +78,6 @@ def test_opm_index_export(mock_srs, mock_ppm, mock_zp, mock_vpi, mock_run_cmd, m
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[0:3] == ['opm', 'index', 'export']
     assert 'prometheus' in opm_args
-    mock_pl.assert_called_once()
     mock_vpi.assert_called_once()
     mock_zp.assert_called_once()
     mock_ppm.assert_called_once()
