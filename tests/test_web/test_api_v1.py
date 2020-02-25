@@ -84,6 +84,8 @@ def test_get_builds(app, auth_env, client, db):
         db.session.commit()
 
     rv_json = client.get('/api/v1/builds?page=2').json
+    # Verify the order_by is correct
+    assert rv_json['items'][0]['id'] == total_requests - app.config['IIB_MAX_PER_PAGE']
     assert len(rv_json['items']) == app.config['IIB_MAX_PER_PAGE']
     # This key is only present the verbose=true
     assert 'state_history' not in rv_json['items'][0]

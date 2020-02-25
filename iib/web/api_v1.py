@@ -46,7 +46,7 @@ def get_builds():
         query = query.join(Request.state)
         query = query.filter(RequestState.state == state_int)
 
-    pagination_query = query.paginate(max_per_page=max_per_page)
+    pagination_query = query.order_by(Request.id.desc()).paginate(max_per_page=max_per_page)
     requests = pagination_query.items
 
     query_params = {}
