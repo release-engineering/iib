@@ -286,6 +286,12 @@ def _prepare_request_for_build(
     if from_index:
         from_index_resolved = _get_resolved_image(from_index)
         from_index_arches = _get_image_arches(from_index_resolved)
+        if not arches.issubset(from_index_arches):
+            raise IIBError(
+                'The index image is not available for the following arches: {}'.format(
+                    ', '.join(sorted(arches - from_index_arches))
+                )
+            )
         arches = arches | from_index_arches
     else:
         from_index_resolved = None

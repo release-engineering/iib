@@ -166,7 +166,7 @@ def test_poll_request_request_failed(mock_gr, mock_sleep):
     (
         ([], 'some-index:latest', {'amd64'}, None, {}),
         (['amd64', 's390x'], None, set(), None, {}),
-        (['s390x'], 'some-index:latest', {'amd64'}, None, {}),
+        (['amd64'], 'some-index:latest', {'amd64'}, None, {}),
         (
             ['amd64'],
             None,
@@ -255,6 +255,19 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
     expected = 'The binary image is not available for the following arches.+'
     with pytest.raises(IIBError, match=expected):
         build._prepare_request_for_build('binary-image:latest', 1, add_arches=['s390x'])
+
+
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build._get_image_arches')
+def test_prepare_request_for_build_index_image_no_arch(mock_gia, mock_gri, mock_srs):
+    mock_gia.side_effect = [{'amd64'}, {'amd64'}]
+
+    expected = 'The index image is not available for the following arches.+'
+    with pytest.raises(IIBError, match=expected):
+        build._prepare_request_for_build(
+            'binary-image:latest', 1, from_index='index:image', add_arches=['s390x']
+        )
 
 
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
