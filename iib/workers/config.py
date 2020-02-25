@@ -3,8 +3,6 @@ import os
 import logging
 import types
 
-from kombu import Queue
-
 from iib.exceptions import ConfigError
 
 
@@ -14,20 +12,17 @@ class Config(object):
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
     iib_api_timeout = 30
-    iib_arch = 'amd64'
-    iib_arches = {'amd64'}
-    iib_image_push_template = '{registry}/operator-registry-index:{request_id}'
+    iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_log_level = 'INFO'
     iib_poll_api_frequency = 15
     iib_required_labels = {}
-    include = ['iib.workers.tasks.build']
+    include = ['iib.workers.tasks.build', 'iib.workers.tasks.general']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
     # Don't use the default 'celery' queue and routing key
     task_default_queue = 'iib'
     task_default_routing_key = 'iib'
-    task_queues = (Queue('iib', routing_key='iib'), Queue('iib_amd64', routing_key='iib_amd64'))
     # Requeue the message if the worker abruptly exits or is signaled
     task_reject_on_worker_lost = True
     # For now, only allow a single process so that all tasks are processed serially
@@ -53,7 +48,6 @@ class DevelopmentConfig(Config):
 class TestingConfig(DevelopmentConfig):
     """The testing IIB Celery configuration."""
 
-    iib_arches = {'amd64', 's390x'}
     iib_omps_url = 'some_url'
 
 
@@ -86,8 +80,6 @@ def configure_celery(celery_app):
             if not key.startswith('__') and not isinstance(value, types.ModuleType):
                 setattr(config, key, value)
 
-    # Force the iib_arches to be a set
-    config.iib_arches = set(config.iib_arches)
     celery_app.config_from_object(config, force=True)
     logging.getLogger('iib.workers').setLevel(celery_app.conf.iib_log_level)
 

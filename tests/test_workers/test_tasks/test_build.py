@@ -12,11 +12,11 @@ from iib.workers.tasks import build
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd):
-    build._build_image('/some/dir', 3)
+    build._build_image('/some/dir', 3, 'amd64')
 
     mock_run_cmd.assert_called_once()
     build_args = mock_run_cmd.call_args[0][0]
-    assert build_args[0:2] == ['podman', 'build']
+    assert build_args[0:2] == ['buildah', 'bud']
     assert '/some/dir/index.Dockerfile' in build_args
 
 
@@ -38,13 +38,13 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
     expected_manifest = textwrap.dedent(
         '''\
-        image: registry:8443/operator-registry-index:3
+        image: registry:8443/iib-build:3
         manifests:
-        - image: registry:8443/operator-registry-index:3-amd64
+        - image: registry:8443/iib-build:3-amd64
           platform:
             architecture: amd64
             os: linux
-        - image: registry:8443/operator-registry-index:3-s390x
+        - image: registry:8443/iib-build:3-s390x
           platform:
             architecture: s390x
             os: linux
@@ -68,7 +68,7 @@ def test_finish_request_post_build(mock_ur):
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload.keys() == {'index_image', 'state', 'state_reason'}
+    assert update_request_payload.keys() == {'arches', 'index_image', 'state', 'state_reason'}
     assert update_request_payload['index_image'] == output_pull_spec
 
 
@@ -83,11 +83,11 @@ def test_fix_opm_path(tmpdir):
     )
 
 
-@pytest.mark.parametrize('request_id', (1, 5))
-def test_get_local_pull_spec(request_id):
-    rv = build._get_local_pull_spec(request_id)
+@pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
+def test_get_local_pull_spec(request_id, arch):
+    rv = build._get_local_pull_spec(request_id, arch)
 
-    assert re.match(f'.+:{request_id}', rv)
+    assert re.match(f'.+:{request_id}-{arch}', rv)
 
 
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
@@ -134,31 +134,37 @@ def test_get_resolved_image(mock_si):
     assert rv == 'some-image@sha256:abcdefg'
 
 
-@mock.patch('iib.workers.tasks.build.time.sleep')
-@mock.patch('iib.workers.tasks.build.get_request')
-def test_poll_request(mock_gr, mock_sleep):
-    mock_gr.side_effect = [
-        {'arches': [], 'state': 'in_progress'},
-        {'arches': ['amd64'], 'state': 'in_progress'},
-        {'arches': ['s390x'], 'state': 'in_progress'},
-    ]
+@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._fix_opm_path')
+def test_opm_index_add(mock_fop, mock_run_cmd, from_index):
+    bundles = ['bundle:1.2', 'bundle:1.3']
+    build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index=from_index)
 
-    assert build._poll_request(3, {'amd64', 's390x'}) is True
-    mock_sleep.call_count == 3
-    mock_gr.call_count == 3
+    mock_run_cmd.assert_called_once()
+    opm_args = mock_run_cmd.call_args[0][0]
+    assert opm_args[0:3] == ['opm', 'index', 'add']
+    assert ','.join(bundles) in opm_args
+    if from_index:
+        assert '--from-index' in opm_args
+        assert from_index in opm_args
+    else:
+        assert '--from-index' not in opm_args
+    mock_fop.assert_called_once()
 
 
-@mock.patch('iib.workers.tasks.build.time.sleep')
-@mock.patch('iib.workers.tasks.build.get_request')
-def test_poll_request_request_failed(mock_gr, mock_sleep):
-    mock_gr.side_effect = [
-        {'arches': [], 'state': 'in_progress'},
-        {'arches': [], 'state': 'failed'},
-    ]
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._fix_opm_path')
+def test_opm_index_rm(mock_fop, mock_run_cmd):
+    operators = ['operator_1', 'operator_2']
+    build._opm_index_rm('/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest')
 
-    assert build._poll_request(3, {'amd64', 's390x'}) is False
-    mock_sleep.call_count == 2
-    mock_gr.call_count == 2
+    mock_run_cmd.assert_called_once()
+    opm_args = mock_run_cmd.call_args[0][0]
+    assert opm_args[0:3] == ['opm', 'index', 'rm']
+    assert ','.join(operators) in opm_args
+    assert 'some_index:latest' in opm_args
+    mock_fop.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -238,17 +244,6 @@ def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
-def test_prepare_request_for_build_no_arch_worker(mock_gia, mock_gri, mock_srs):
-    mock_gia.side_effect = [{'amd64', 'arm64'}]
-
-    expected = 'Building for the following requested arches is not supported.+'
-    with pytest.raises(IIBError, match=expected):
-        build._prepare_request_for_build('binary-image:latest', 1, add_arches=['arm64'])
-
-
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
 
@@ -257,38 +252,26 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
         build._prepare_request_for_build('binary-image:latest', 1, add_arches=['s390x'])
 
 
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
-def test_prepare_request_for_build_index_image_no_arch(mock_gia, mock_gri, mock_srs):
-    mock_gia.side_effect = [{'amd64'}, {'amd64'}]
-
-    expected = 'The index image is not available for the following arches.+'
-    with pytest.raises(IIBError, match=expected):
-        build._prepare_request_for_build(
-            'binary-image:latest', 1, from_index='index:image', add_arches=['s390x']
-        )
-
-
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_push_arch_image(mock_run_cmd, mock_glps):
+def test_push_image(mock_run_cmd, mock_glps):
     mock_glps.return_value = 'source:tag'
 
-    build._push_arch_image(3)
+    build._push_image(3, 'amd64')
 
     mock_run_cmd.assert_called_once()
     push_args = mock_run_cmd.call_args[0][0]
     assert push_args[0:2] == ['podman', 'push']
     assert 'source:tag' in push_args
-    assert 'docker://registry:8443/operator-registry-index:3-amd64' in push_args
+    assert 'docker://registry:8443/iib-build:3-amd64' in push_args
 
 
-@pytest.mark.parametrize('request_succeeded', (True, False))
+@mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
-@mock.patch('iib.workers.tasks.build.opm_index_add')
-@mock.patch('iib.workers.tasks.build._poll_request')
+@mock.patch('iib.workers.tasks.build._opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._finish_request_post_build')
 @mock.patch('iib.workers.tasks.build.opm_index_export')
@@ -296,9 +279,7 @@ def test_push_arch_image(mock_run_cmd, mock_glps):
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
-@mock.patch('iib.workers.tasks.build._cleanup')
 def test_handle_add_request(
-    mock_cleanup,
     mock_vlpc,
     mock_glsp,
     mock_capml,
@@ -306,11 +287,12 @@ def test_handle_add_request(
     mock_oie,
     mock_frpb,
     mock_vii,
-    mock_pr,
+    mock_pi,
+    mock_bi,
     mock_oia,
     mock_prfb,
     mock_vl,
-    request_succeeded,
+    mock_cleanup,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -318,99 +300,52 @@ def test_handle_add_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
     }
-    mock_glsp.return_value = {'some_package'}
-    mock_pr.return_value = request_succeeded
+    legacy_packages = {'some_package'}
+    mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
+
+    bundles = ['some-bundle:2.3-1']
+    cnr_token = 'token'
+    organization = 'org'
     build.handle_add_request(
-        ['some-bundle:2.3-1'],
-        'binary-image:latest',
-        3,
-        'from-index:latest',
-        ['s390x'],
-        'token',
-        'org',
+        bundles, 'binary-image:latest', 3, 'from-index:latest', ['s390x'], cnr_token, organization,
     )
+
+    mock_cleanup.assert_called_once()
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
-    mock_oia.apply_async.call_count == 2
-    # Verify opm_index_add was scheduled on the correct workers
-    for i, arch in enumerate(sorted(arches)):
-        assert mock_oia.apply_async.call_args_list[i][1]['queue'] == f'iib_{arch}'
-        assert mock_oia.apply_async.call_args_list[i][1]['routing_key'] == f'iib_{arch}'
-    mock_pr.assert_called_once()
-    if request_succeeded:
-        mock_oie.assert_called_once()
-        mock_frpb.assert_called_once()
-        mock_vii.assert_called_once()
-        mock_capml.assert_called_once()
-        mock_srs.assert_called_once()
-        mock_cleanup.assert_called_once()
-    else:
-        mock_oie.assert_not_called()
-        mock_frpb.assert_not_called()
-        mock_vii.assert_not_called()
-        mock_capml.assert_not_called()
-        mock_srs.assert_not_called()
-        mock_cleanup.assert_not_called()
 
+    add_args = mock_oia.call_args[0]
+    assert bundles in add_args
+    mock_oia.assert_called_once()
 
-@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
-@mock.patch('iib.workers.tasks.build.get_request')
-@mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._fix_opm_path')
-@mock.patch('iib.workers.tasks.build._build_image')
-@mock.patch('iib.workers.tasks.build._push_arch_image')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.update_request')
-def test_opm_index_add(
-    mock_ur, mock_run_cmd, mock_pai, mock_bi, mock_fop, mock_cleanup, mock_gr, from_index
-):
-    mock_gr.return_value = {'state': 'in_progress'}
-    bundles = ['bundle:1.2', 'bundle:1.3']
-    build.opm_index_add(bundles, 'binary-image:latest', 3, from_index=from_index)
+    assert mock_bi.call_count == len(arches)
+    assert mock_pi.call_count == len(arches)
 
-    # This is only directly called once in the actual function
-    mock_run_cmd.assert_called_once()
-    opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'add']
-    assert ','.join(bundles) in opm_args
-    if from_index:
-        assert '--from-index' in opm_args
-        assert from_index in opm_args
-    else:
-        assert '--from-index' not in opm_args
-    mock_gr.assert_called_once_with(3)
-    mock_cleanup.assert_called_once()
-    mock_fop.assert_called_once()
-    mock_bi.assert_called_once()
-    mock_pai.assert_called_once()
-    mock_ur.assert_called_once()
+    mock_oie.assert_called_once()
+    export_args = mock_oie.call_args[0]
+    assert legacy_packages in export_args
+    assert cnr_token in export_args
+    assert organization in export_args
 
-
-@mock.patch('iib.workers.tasks.build.get_request')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._build_image')
-def test_opm_index_add_already_failed(mock_bi, mock_srs, mock_gr):
-    mock_gr.return_value = {'state': 'failed'}
-    bundles = ['bundle:1.2', 'bundle:1.3']
-    build.opm_index_add(bundles, 'binary-image:latest', 3)
-
+    mock_frpb.assert_called_once()
+    mock_vii.assert_called_once()
+    mock_capml.assert_called_once()
     mock_srs.assert_called_once()
-    mock_gr.assert_called_once_with(3)
-    mock_bi.assert_not_called()
 
 
-@pytest.mark.parametrize('request_succeeded', (True, False))
+@mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
-@mock.patch('iib.workers.tasks.build.opm_index_rm')
-@mock.patch('iib.workers.tasks.build._poll_request')
+@mock.patch('iib.workers.tasks.build._opm_index_rm')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
-@mock.patch('iib.workers.tasks.build._finish_request_post_build')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build._finish_request_post_build')
 def test_handle_rm_request(
-    mock_capml, mock_srs, mock_frpb, mock_vii, mock_pr, mock_oir, mock_prfb, request_succeeded,
+    mock_frpb, mock_capml, mock_srs, mock_vii, mock_pi, mock_bi, mock_oir, mock_prfb, mock_cleanup
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -418,65 +353,17 @@ def test_handle_rm_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
     }
-    mock_pr.return_value = request_succeeded
     build.handle_rm_request(['some-operator'], 'binary-image:latest', 3, 'from-index:latest')
 
-    mock_prfb.assert_called_once()
-    mock_oir.apply_async.call_count == 2
-    # Verify opm_index_add was scheduled on the correct workers
-    for i, arch in enumerate(sorted(arches)):
-        assert mock_oir.apply_async.call_args_list[i][1]['queue'] == f'iib_{arch}'
-        assert mock_oir.apply_async.call_args_list[i][1]['routing_key'] == f'iib_{arch}'
-    mock_pr.assert_called_once()
-    if request_succeeded:
-        mock_vii.assert_called_once()
-        mock_frpb.assert_called_once()
-        mock_capml.assert_called_once()
-        mock_srs.assert_called_once()
-    else:
-        mock_vii.assert_not_called()
-        mock_frpb.assert_not_called()
-        mock_capml.assert_not_called()
-        mock_srs.assert_not_called()
-
-
-@mock.patch('iib.workers.tasks.build.get_request')
-@mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._fix_opm_path')
-@mock.patch('iib.workers.tasks.build._build_image')
-@mock.patch('iib.workers.tasks.build._push_arch_image')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.update_request')
-def test_opm_index_rm(mock_ur, mock_run_cmd, mock_pai, mock_bi, mock_fop, mock_cleanup, mock_gr):
-    mock_gr.return_value = {'state': 'in_progress'}
-    operators = ['operator_1', 'operator_2']
-    build.opm_index_rm(operators, 'binary-image:latest', 3, 'some_index:latest')
-
-    # This is only directly called once in the actual function
-    mock_run_cmd.assert_called_once()
-    opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'rm']
-    assert ','.join(operators) in opm_args
-    assert 'some_index:latest' in opm_args
-    mock_gr.assert_called_once_with(3)
     mock_cleanup.assert_called_once()
-    mock_fop.assert_called_once()
-    mock_bi.assert_called_once()
-    mock_pai.assert_called_once()
-    mock_ur.assert_called_once()
-
-
-@mock.patch('iib.workers.tasks.build.get_request')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._build_image')
-def test_opm_index_rm_already_failed(mock_bi, mock_srs, mock_gr):
-    mock_gr.return_value = {'state': 'failed'}
-    operators = ['operator_1', 'operator_2']
-    build.opm_index_rm(operators, 'binary-image:latest', 3, 'from:index')
-
+    mock_prfb.assert_called_once()
+    mock_oir.assert_called_once()
+    assert mock_bi.call_count == len(arches)
+    assert mock_pi.call_count == len(arches)
+    mock_vii.assert_called_once()
     mock_srs.assert_called_once()
-    mock_gr.assert_called_once_with(3)
-    mock_bi.assert_not_called()
+    mock_capml.assert_called_once()
+    mock_frpb.assert_called_once()
 
 
 @mock.patch('iib.workers.tasks.build._get_resolved_image')

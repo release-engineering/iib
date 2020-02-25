@@ -12,7 +12,7 @@ services:
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
     volumes:
-      - ./iib_data:/var/lib/registry:z
+      - ./iib_data/registry:/var/lib/registry:z
       - ./docker/registry/certs:/certs:z
       - ./docker/registry/auth:/auth:z
 
@@ -57,7 +57,7 @@ services:
     depends_on:
       - db
 
-  iib-worker-general:
+  iib-worker:
     build:
       context: .
       dockerfile: ./docker/Dockerfile-workers
@@ -73,36 +73,7 @@ services:
       podman login --authfile ~/.docker/config.json -u iib -p iibpassword registry:8443 &&
       pip3 install watchdog[watchmedo] &&
       watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
-        -- celery -A iib.workers.tasks worker -Q iib --loglevel=info
-    environment:
-      IIB_DEV: 'true'
-    # Make this privileged to be able to build container images
-    privileged: true
-    volumes:
-      - ./:/src:z
-      - ./docker/registry/certs:/certs:z
-      - /etc/pki/tls/certs/ca-bundle.crt:/host-ca-bundle.crt:ro
-    depends_on:
-      - rabbitmq
-      - registry
-
-  iib-worker-amd64:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile-workers
-    # Override the default command so that Celery auto-reloads on code changes.
-    # This also adds the self-signed CA that was used to sign the Docker registry's certificate
-    # to the trusted CA bundle. This will make podman trust the local Docker registry's certificate.
-    command:
-    - /bin/bash
-    - -c
-    - >-
-      cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
-      cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
-      podman login --authfile ~/.docker/config.json -u iib -p iibpassword registry:8443 &&
-      pip3 install watchdog[watchmedo] &&
-      watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
-        -- celery -A iib.workers.tasks worker -Q iib_amd64 --loglevel=info
+        -- celery -A iib.workers.tasks worker --loglevel=info
     environment:
       IIB_DEV: 'true'
     # Make this privileged to be able to build container images
