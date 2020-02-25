@@ -354,14 +354,14 @@ def test_opm_index_add(
     mock_ur, mock_run_cmd, mock_pai, mock_bi, mock_fop, mock_cleanup, mock_gr, from_index
 ):
     mock_gr.return_value = {'state': 'in_progress'}
-    binary_images = ['bundle:1.2', 'bundle:1.3']
-    build.opm_index_add(binary_images, 'binary-image:latest', 3, from_index=from_index)
+    bundles = ['bundle:1.2', 'bundle:1.3']
+    build.opm_index_add(bundles, 'binary-image:latest', 3, from_index=from_index)
 
     # This is only directly called once in the actual function
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[0:3] == ['opm', 'index', 'add']
-    assert ','.join(binary_images) in opm_args
+    assert ','.join(bundles) in opm_args
     if from_index:
         assert '--from-index' in opm_args
         assert from_index in opm_args
@@ -380,8 +380,8 @@ def test_opm_index_add(
 @mock.patch('iib.workers.tasks.build._build_image')
 def test_opm_index_add_already_failed(mock_bi, mock_srs, mock_gr):
     mock_gr.return_value = {'state': 'failed'}
-    binary_images = ['bundle:1.2', 'bundle:1.3']
-    build.opm_index_add(binary_images, 'binary-image:latest', 3)
+    bundles = ['bundle:1.2', 'bundle:1.3']
+    build.opm_index_add(bundles, 'binary-image:latest', 3)
 
     mock_srs.assert_called_once()
     mock_gr.assert_called_once_with(3)
