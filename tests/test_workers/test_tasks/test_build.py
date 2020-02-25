@@ -394,8 +394,10 @@ def test_opm_index_add_already_failed(mock_bi, mock_srs, mock_gr):
 @mock.patch('iib.workers.tasks.build._poll_request')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._finish_request_post_build')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 def test_handle_rm_request(
-    mock_frpb, mock_vii, mock_pr, mock_oir, mock_prfb, request_succeeded,
+    mock_capml, mock_srs, mock_frpb, mock_vii, mock_pr, mock_oir, mock_prfb, request_succeeded,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -416,9 +418,13 @@ def test_handle_rm_request(
     if request_succeeded:
         mock_vii.assert_called_once()
         mock_frpb.assert_called_once()
+        mock_capml.assert_called_once()
+        mock_srs.assert_called_once()
     else:
         mock_vii.assert_not_called()
         mock_frpb.assert_not_called()
+        mock_capml.assert_not_called()
+        mock_srs.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.build.get_request')

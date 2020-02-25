@@ -606,7 +606,10 @@ def handle_rm_request(operators, binary_image, request_id, from_index, add_arche
 
     _verify_index_image(prebuild_info['from_index_resolved'], from_index)
 
-    _finish_request_post_build(request_id, arches)
+    set_request_state(request_id, 'in_progress', 'Creating the manifest list')
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches)
+
+    _finish_request_post_build(output_pull_spec, request_id, arches)
 
 
 @app.task
