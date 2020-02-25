@@ -58,7 +58,6 @@ def test_validate_celery_config_iib_required_labels_not_dict():
     conf = {
         'iib_api_url': 'http://localhost:8080/api/v1/',
         'iib_registry': 'registry',
-        'iib_registry_credentials': 'username:password',
         'iib_required_labels': 123,
     }
     with pytest.raises(ConfigError, match='iib_required_labels must be a dictionary'):
