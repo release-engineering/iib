@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from flask import jsonify
+import kombu.exceptions
 from werkzeug.exceptions import HTTPException
 
 from iib.exceptions import ValidationError
@@ -25,6 +26,8 @@ def json_error(error):
         msg = str(error)
         if isinstance(error, ValidationError):
             status_code = 400
+        elif isinstance(error, kombu.exceptions.KombuError):
+            msg = 'Failed to connect to the broker to schedule a task'
 
         response = jsonify({'error': msg})
         response.status_code = status_code
