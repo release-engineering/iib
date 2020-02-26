@@ -451,3 +451,9 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
     mock_rm.apply_async.assert_called_once()
     assert rv.status_code == 201
     assert response_json == rv_json
+
+
+def test_not_found(client):
+    rv = client.get('/api/v1/builds/1234')
+    assert rv.status_code == 404
+    assert rv.json == {'error': 'The requested resource was not found'}
