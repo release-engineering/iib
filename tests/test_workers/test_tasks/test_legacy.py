@@ -82,3 +82,32 @@ def test_opm_index_export(mock_srs, mock_ppm, mock_zp, mock_vpi, mock_run_cmd):
     mock_zp.assert_called_once()
     mock_ppm.assert_called_once()
     mock_srs.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'cnr_token_val, error_msg',
+    (
+        (
+            None,
+            'Legacy support is required for prometheus;'
+            ' Both cnr_token and organization should be non-empty strings',
+        ),
+        ('token', 'IIB is not configured to handle the legacy app registry'),
+    ),
+)
+@mock.patch('iib.workers.tasks.legacy.get_worker_config')
+def test_validate_legacy_params_and_config_failure(mock_gwc, cnr_token_val, error_msg):
+    mock_gwc.return_value = {'iib_omps_url': None}
+    with pytest.raises(IIBError, match=error_msg):
+        legacy.validate_legacy_params_and_config(
+            ['prometheus'], ['quay.io/msd/bundle'], cnr_token_val, 'org'
+        )
+
+
+def test_validate_legacy_params_and_config_success():
+    try:
+        legacy.validate_legacy_params_and_config(
+            ['prometheus'], ['quay.io/msd/bundle'], 'cnr_token_val', 'org'
+        )
+    except IIBError as err:
+        pytest.fail(f'Unexpected failure: {err}')
