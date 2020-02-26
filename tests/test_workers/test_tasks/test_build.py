@@ -72,17 +72,6 @@ def test_finish_request_post_build(mock_ur):
     assert update_request_payload['index_image'] == output_pull_spec
 
 
-def test_fix_opm_path(tmpdir):
-    dockerfile = tmpdir.join('index.Dockerfile')
-    dockerfile.write('FROM image as builder\nFROM scratch\nCOPY --from=builder /build/bin/opm /opm')
-
-    build._fix_opm_path(str(tmpdir))
-
-    assert dockerfile.read() == (
-        'FROM image as builder\nFROM scratch\nCOPY --from=builder /bin/opm /opm'
-    )
-
-
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
 def test_get_local_pull_spec(request_id, arch):
     rv = build._get_local_pull_spec(request_id, arch)
@@ -136,8 +125,7 @@ def test_get_resolved_image(mock_si):
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build._fix_opm_path')
-def test_opm_index_add(mock_fop, mock_run_cmd, from_index):
+def test_opm_index_add(mock_run_cmd, from_index):
     bundles = ['bundle:1.2', 'bundle:1.3']
     build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index=from_index)
 
@@ -150,12 +138,10 @@ def test_opm_index_add(mock_fop, mock_run_cmd, from_index):
         assert from_index in opm_args
     else:
         assert '--from-index' not in opm_args
-    mock_fop.assert_called_once()
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build._fix_opm_path')
-def test_opm_index_rm(mock_fop, mock_run_cmd):
+def test_opm_index_rm(mock_run_cmd):
     operators = ['operator_1', 'operator_2']
     build._opm_index_rm('/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest')
 
@@ -164,7 +150,6 @@ def test_opm_index_rm(mock_fop, mock_run_cmd):
     assert opm_args[0:3] == ['opm', 'index', 'rm']
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
-    mock_fop.assert_called_once()
 
 
 @pytest.mark.parametrize(
