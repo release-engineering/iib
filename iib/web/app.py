@@ -37,7 +37,7 @@ def load_config(app):
 
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/
-def create_app(config_obj=None):
+def create_app(config_obj=None):  # pragma: no cover
     """
     Create a Flask application object.
 
