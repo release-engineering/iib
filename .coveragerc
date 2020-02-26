@@ -6,7 +6,6 @@ exclude_lines =
     if __name__ == .__main__.:
     def __repr__
 omit =
-    iib/web/app.py
     iib/web/manage.py
     iib/web/wsgi.py
     iib/web/config.py
