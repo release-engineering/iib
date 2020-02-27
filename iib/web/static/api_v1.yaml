@@ -1,0 +1,478 @@
+openapi: 3.0.2
+info:
+  description: |
+    IIB is a REST API to manage operator index container images.
+  license:
+    name: GPL-3.0
+  title: IIB API
+  version: '1.0'
+servers:
+  - url: /api/v1
+paths:
+  /builds:
+    get:
+      description: Return all the IIB build requests
+      parameters:
+        - name: page
+          in: query
+          description: The specific page to view
+          schema:
+            type: integer
+            example: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: The number of build requests to show per page
+          schema:
+            type: integer
+            example: 10
+            default: 20
+        - name: state
+          in: query
+          description: The state to filter the build requests by
+          schema:
+            type: string
+            example: in_progress
+            default: null
+        - name: verbose
+          in: query
+          description: 'Shows the same view as /builds/{id}'
+          schema:
+            type: boolean
+            example: true
+            default: false
+      responses:
+        '200':
+          description: A list of build requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Request'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          description: The query parameters are invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: >-
+                      awesome is not a valid request state. Valid states are:
+                      complete, failed, in_progress
+        '404':
+          description: No build requests were found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found
+  '/builds/{id}':
+    get:
+      description: Return a specific build request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The requested build request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestVerbose'
+        '404':
+          description: The build request wasn't found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found
+    patch:
+      description: Update a build request (requires special authorization)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The build request was updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The input data must be a JSON object
+        '401':
+          description: The user is not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+        '403':
+          description: The user is not allowed to create a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: This API endpoint is restricted to IIB workers
+        '404':
+          description: The request wasn't found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found
+      requestBody:
+        description: The keys to update
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestUpdate'
+      security:
+        - Kerberos Authentication: []
+  /builds/add:
+    post:
+      description: Submit a build request to add operator bundles to an index image
+      requestBody:
+        description: The build request to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestAdd'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"bundles" should be a non-empty array of strings'
+        '401':
+          description: The user is not allowed to create a request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+  /builds/rm:
+    post:
+      description: Submit a build request to remove operators from an index image
+      requestBody:
+        description: The build request to remove
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestRemove'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"operators" should be a non-empty array of strings'
+        '401':
+          description: The user is not allowed to submit a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+components:
+  schemas:
+    BundleMapping:
+      type: object
+      example:
+        some_operator:
+          - quay.io/user/openshift-bundle-example-container:v1
+      properties:
+        operator:
+          type: array
+          items:
+            type: string
+          example:
+            - some_bundle
+            - some_other_bundle
+    Pagination:
+      type: object
+      properties:
+        first:
+          type: string
+          example: >-
+            https://iib.domain.local/api/v1/builds?page=1&per_page=20&verbose=False
+        last:
+          type: string
+          example: >-
+            https://iib.domain.local/api/v1/builds?page=3&per_page=20&verbose=False
+        next:
+          type: string
+          example: >-
+            https://iib.domain.local/api/v1/builds?page=1&per_page=20&verbose=False
+        page:
+          type: integer
+          example: 1
+        pages:
+          type: integer
+          example: 3
+        per_page:
+          type: integer
+          example: 20
+        previous:
+          type: string
+          example: null
+        total:
+          type: integer
+          example: 45
+    Request:
+      type: object
+      properties:
+        arches:
+          type: array
+          items:
+            type: string
+          example:
+            - amd64
+            - s390x
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+        binary_image_resolved:
+          type: string
+          example: >-
+            quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+        bundles:
+          type: array
+          items:
+            type: string
+          example:
+            - 'quay.io/user/openshift-bundle-example-container:v1'
+        bundle_mapping:
+          $ref: '#/components/schemas/BundleMapping'
+        from_index:
+          type: string
+          example: 'quay.io/iib-stage/iib:4'
+        from_index_resolved:
+          type: string
+          example: >-
+            quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+        id:
+          type: integer
+          example: 1
+        index_image:
+          type: string
+          example: 'quay.io/iib-stage/iib:5'
+        organization:
+          type: string
+          example: openshift-operators
+        removed_operators:
+          type: array
+          items:
+            type: string
+          example:
+            - prometheus-operator
+        request_type:
+          type: string
+          example: add
+        state:
+          type: string
+          example: complete
+        state_reason:
+          type: string
+          example: Completed successfully
+        updated:
+          type: string
+          example: '2019-09-17T19:42:47.149979'
+        user:
+          type: string
+          example: msdhoni@DOMAIN.LOCAL
+    RequestAdd:
+      type: object
+      properties:
+        add_arches:
+          type: array
+          description: >
+            This add_arches array is required when from_index is not provided.
+          items:
+            type: string
+          example:
+            - amd64
+            - s390x
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+        bundles:
+          type: array
+          items:
+            type: string
+          example:
+            - 'quay.io/user/openshift-bundle-example-container:v1'
+        cnr_token:
+          type: string
+          description: >
+            This token is required only if support for legacy app registry is
+            required.
+          example: token
+        from_index:
+          type: string
+          description: >
+            from_index is required when add_arches is not provided.
+          example: 'quay.io/iib-stage/iib:4'
+        organization:
+          type: string
+          description: >
+            The organization is required only if support for legacy app registry
+            is required.
+          example: openshift-operators
+      required:
+        - binary_image
+        - bundles
+    RequestRemove:
+      type: object
+      properties:
+        add_arches:
+          type: array
+          items:
+            type: string
+          example:
+            - amd64
+            - s390x
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+        from_index:
+          type: string
+          example: 'quay.io/iib-stage/iib:4'
+        operators:
+          type: array
+          items:
+            type: string
+          example:
+            - quay.io/user/openshift-operator
+      required:
+        - binary_image
+        - from_index
+        - operators
+    RequestUpdate:
+      type: object
+      properties:
+        arches:
+          type: array
+          items:
+            type: string
+          example:
+            - amd64
+            - s390x
+        binary_image_resolved:
+          type: string
+          example: >-
+            quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+        bundle_mapping:
+          $ref: '#/components/schemas/BundleMapping'
+        from_index_resolved:
+          type: string
+          example: >-
+            quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+        index_image:
+          type: string
+          example: 'quay.io/iib-stage/iib:4'
+        state:
+          type: string
+          example: complete
+        state_reason:
+          type: string
+          example: Completed successfully
+    RequestVerbose:
+      allOf:
+        - $ref: '#/components/schemas/Request'
+        - type: object
+          properties:
+            state_history:
+              type: array
+              items:
+                $ref: '#/components/schemas/StateHistory'
+    StateHistory:
+      type: object
+      properties:
+        state:
+          type: string
+        state_reason:
+          type: string
+        updated:
+          type: string
+      example:
+        state: complete
+        state_reason: Completed successfully
+        updated: '2019-09-19T19:35:15.722265'
+  securitySchemes:
+    Kerberos Authentication:
+      type: http
+      scheme: negotiate
