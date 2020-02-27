@@ -355,8 +355,10 @@ class Request(db.Model):
                         bundle.pull_specification
                     )
                 rv['bundles'].append(bundle.pull_specification)
+            rv['request_type'] = 'add'
         else:
             rv['removed_operators'] = [operator.name for operator in self.operators]
+            rv['request_type'] = 'rm'
 
         latest_state = None
         if verbose:
