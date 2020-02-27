@@ -13,6 +13,7 @@ from iib.exceptions import ValidationError
 from iib.web import db
 from iib.web.api_v1 import api_v1
 from iib.web.auth import user_loader, load_user_from_request
+from iib.web.docs import docs
 from iib.web.errors import json_error
 
 # Import the models here so that Alembic will be guaranteed to detect them
@@ -76,6 +77,7 @@ def create_app(config_obj=None):  # pragma: no cover
     login_manager.user_loader(user_loader)
     login_manager.request_loader(load_user_from_request)
 
+    app.register_blueprint(docs)
     app.register_blueprint(api_v1, url_prefix='/api/v1')
     for code in default_exceptions.keys():
         app.register_error_handler(code, json_error)
