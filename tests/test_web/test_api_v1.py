@@ -370,6 +370,19 @@ def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_en
     assert error_msg == rv.json['error']
 
 
+def test_patch_request_forbidden_user(db, worker_forbidden_env, client):
+    binary_image = models.Image(pull_specification='quay.io/image:latest')
+    db.session.add(binary_image)
+    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    db.session.add(request)
+
+    rv = client.patch(
+        '/api/v1/builds/1', json={'arches': ['s390x']}, environ_base=worker_forbidden_env
+    )
+    assert rv.status_code == 403
+    assert 'This API endpoint is restricted to IIB workers' == rv.json['error']
+
+
 def test_patch_request_success(db, worker_auth_env, client):
     bundles = [
         'quay.io/some-operator:v1.0.0',
