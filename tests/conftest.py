@@ -64,3 +64,8 @@ def client(app):
 @pytest.fixture(scope='session')
 def worker_auth_env():
     return {'REMOTE_USER': 'worker@DOMAIN.LOCAL'}
+
+
+@pytest.fixture(scope='session')
+def worker_forbidden_env():
+    return {'REMOTE_USER': 'vkohli@DOMAIN.LOCAL'}
