@@ -3,7 +3,7 @@ import copy
 
 import flask
 from flask_login import current_user, login_required
-from werkzeug.exceptions import Unauthorized
+from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
@@ -108,13 +108,14 @@ def patch_request(request_id):
     :param int request_id: the request ID from the URL
     :return: a Flask JSON response
     :rtype: flask.Response
+    :raise Forbidden: If the user trying to patch a request is not an IIB worker
     :raise NotFound: if the request is not found
     :raise ValidationError: if the JSON is invalid
     """
     allowed_users = flask.current_app.config['IIB_WORKER_USERNAMES']
     # current_user.is_authenticated is only ever False when auth is disabled
     if current_user.is_authenticated and current_user.username not in allowed_users:
-        raise Unauthorized('This API endpoint is restricted to IIB workers')
+        raise Forbidden('This API endpoint is restricted to IIB workers')
 
     payload = flask.request.get_json()
     if not isinstance(payload, dict):
