@@ -47,6 +47,7 @@ def test_get_build(app, auth_env, client, db):
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
         'organization': None,
         'removed_operators': [],
+        'request_type': 'add',
         'state': 'complete',
         'state_history': [
             {
@@ -260,6 +261,7 @@ def test_add_bundle_success(mock_har, db, auth_env, client):
         'id': 1,
         'index_image': None,
         'removed_operators': [],
+        'request_type': 'add',
         'state': 'in_progress',
         'organization': 'org',
         'state_history': [
@@ -379,6 +381,7 @@ def test_patch_request_success(db, worker_auth_env, client):
         'index_image': 'index:image',
         'organization': None,
         'removed_operators': [],
+        'request_type': 'add',
         'state': 'complete',
         'state_history': [
             {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
@@ -431,6 +434,7 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
         'index_image': None,
         'organization': None,
         'removed_operators': ['some:thing'],
+        'request_type': 'rm',
         'state': 'in_progress',
         'state_history': [
             {
