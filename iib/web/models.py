@@ -385,7 +385,7 @@ class Request(db.Model):
         """
         # Validate all required parameters are present
         required_params = {'binary_image'} | set(additional_required_params or [])
-        optional_params = {'add_arches', 'cnr_token'} | set(additional_optional_params or [])
+        optional_params = {'add_arches'} | set(additional_optional_params or [])
 
         missing_params = required_params - request_kwargs.keys()
         if missing_params:
@@ -400,6 +400,11 @@ class Request(db.Model):
                 'The following parameters are invalid: {}'.format(', '.join(invalid_params))
             )
 
+        # Verify that all the required paramters are set and not empty
+        for param in required_params:
+            if not request_kwargs.get(param):
+                raise ValidationError(f'"{param}" must be set')
+
         # Check if both `from_index` and `add_arches` are not specified
         if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
             raise ValidationError('One of "from_index" or "add_arches" must be specified')
@@ -410,20 +415,17 @@ class Request(db.Model):
 
         # Validate binary_image is correctly provided
         binary_image = request_kwargs.pop('binary_image')
-        if not isinstance(binary_image, str) or not binary_image:
-            raise ValidationError('"binary_image" should be a non-empty string')
+        if not isinstance(binary_image, str):
+            raise ValidationError('"binary_image" must be a string')
 
         request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
-        # Validate from_index and cnr_token if specified
-        for param in ('from_index', 'cnr_token', 'organization'):
-            param_value = request_kwargs.pop(param, None)
-            if param_value and not isinstance(param_value, str):
-                raise ValidationError(f'"{param}" must be a string')
-            if param == 'from_index' and param_value:
-                request_kwargs['from_index'] = Image.get_or_create(pull_specification=param_value)
-            if param == 'organization':
-                request_kwargs['organization'] = param_value
+        if 'from_index' in request_kwargs:
+            if not isinstance(request_kwargs['from_index'], str):
+                raise ValidationError('"from_index" must be a string')
+            request_kwargs['from_index'] = Image.get_or_create(
+                pull_specification=request_kwargs['from_index']
+            )
 
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
@@ -441,6 +443,20 @@ class Request(db.Model):
             or any(not item or not isinstance(item, str) for item in bundles)
         ):
             raise ValidationError(f'"bundles" should be a non-empty array of strings')
+
+        for param in ('cnr_token', 'organization'):
+            if param not in request_kwargs:
+                continue
+
+            if not isinstance(request_kwargs[param], str):
+                raise ValidationError(f'"{param}" must be a string')
+
+            # If the value is empty, just remove it
+            if not request_kwargs[param]:
+                del request_kwargs[param]
+
+        # Always remove cnr_token from request_kwargs since it's not stored in the database
+        request_kwargs.pop('cnr_token', None)
 
         cls._from_json(
             request_kwargs,
