@@ -405,6 +405,16 @@ class Request(db.Model):
             if not request_kwargs.get(param):
                 raise ValidationError(f'"{param}" must be set')
 
+        # If any optional parameters are set but are empty, just remove them since they are
+        # treated as null values
+        for param in optional_params:
+            if (
+                param in request_kwargs
+                and not isinstance(request_kwargs.get(param), bool)
+                and not request_kwargs[param]
+            ):
+                del request_kwargs[param]
+
         # Check if both `from_index` and `add_arches` are not specified
         if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
             raise ValidationError('One of "from_index" or "add_arches" must be specified')
@@ -450,10 +460,6 @@ class Request(db.Model):
 
             if not isinstance(request_kwargs[param], str):
                 raise ValidationError(f'"{param}" must be a string')
-
-            # If the value is empty, just remove it
-            if not request_kwargs[param]:
-                del request_kwargs[param]
 
         # Always remove cnr_token from request_kwargs since it's not stored in the database
         request_kwargs.pop('cnr_token', None)
