@@ -130,7 +130,7 @@ def test_get_builds_invalid_state(app, client, db):
                 'binary_image': '',
                 'add_arches': ['s390x'],
             },
-            '"binary_image" should be a non-empty string',
+            '"binary_image" must be set',
         ),
         (
             {
@@ -167,15 +167,37 @@ def test_add_bundles_invalid_params_format(data, error_msg, db, auth_env, client
     assert error_msg == rv.json['error']
 
 
-def test_rm_operators_invalid_params_format(db, auth_env, client):
-    data = {
-        'from_index': 'pull:spec',
-        'binary_image': 'binary:image',
-        'add_arches': ['s390x'],
-    }
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x']},
+            '"operators" should be a non-empty array of strings',
+        ),
+        (
+            {
+                'cnr_token': 'token',
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'operators': ['prometheus'],
+            },
+            'The following parameters are invalid: cnr_token',
+        ),
+        (
+            {
+                'organization': 'organization',
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'operators': ['prometheus'],
+            },
+            'The following parameters are invalid: organization',
+        ),
+    ),
+)
+def test_rm_operators_invalid_params_format(db, auth_env, client, data, error_msg):
     rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
-    assert '"operators" should be a non-empty array of strings' == rv.json['error']
+    assert error_msg == rv.json['error']
 
 
 @pytest.mark.parametrize(
