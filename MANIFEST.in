@@ -1,2 +1,3 @@
 recursive-include iib/web/migrations *
+recursive-include iib/web/static *
 include requirements.txt LICENSE
