@@ -56,7 +56,7 @@ def opm_index_export(packages, request_id, rebuilt_index_image, cnr_token, organ
         app registry via OMPS.
     :param str organization: the organization name in the legacy app registry to which the
         backported packages should be pushed to.
-    :raises iib.exceptions.IIBError: if the export of packages fails.
+    :raises IIBError: if the export of packages fails.
     """
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         for package in packages:
@@ -97,7 +97,7 @@ def _push_package_manifest(package_dir, cnr_token, organization):
         app registry via OMPS.
     :param str organization: the organization name in the legacy app registry to which
          the backported packages should be pushed to.
-    :raises iib.exceptions.IIBError: if the push is unsucessful
+    :raises IIBError: if the push is unsucessful
     """
     conf = get_worker_config()
     base_dir, _ = _get_base_dir_and_pkg_name(package_dir)
@@ -124,7 +124,7 @@ def validate_legacy_params_and_config(packages, bundles, cnr_token, organization
         app registry via OMPS.
     :param str organization: organization name in the legacy app registry to which the backported
         packages should be pushed to.
-    :raises iib.exceptions.IIBError: if legacy support is required and necessary params are missing.
+    :raises IIBError: if legacy support is required and necessary params are missing.
     """
     if packages and not all([cnr_token, organization]):
         packages_str = ', '.join(packages)
@@ -145,7 +145,7 @@ def _verify_package_info(package_dir, from_index):
 
     :param str package_dir: path to the exported package directory
     :param str from_index: the pull specification of the image image
-    :raises iib.exceptions.IIBError: if the generated package info is missing
+    :raises IIBError: if the generated package info is missing
     """
     _, package_name = _get_base_dir_and_pkg_name(package_dir)
     log.info('Verifying package_name %s', package_name)
@@ -161,7 +161,7 @@ def _zip_package(package_dir):
     Zip content of exported package to a ``manifests.zip`` file.
 
     :param str package_dir: path to the exported package directory
-    :raises iib.exceptions.IIBError: if unable to zip the exported package
+    :raises IIBError: if unable to zip the exported package
     """
     base_dir, package_name = _get_base_dir_and_pkg_name(package_dir)
     try:

@@ -29,10 +29,10 @@ def skopeo_inspect(*args):
     """
     Wrap the ``skopeo inspect`` command.
 
-    :param *args: any arguments to pass to ``skopeo inspect``
+    :param args: any arguments to pass to ``skopeo inspect``
     :return: a dictionary of the JSON output from the skopeo inspect command
     :rtype: dict
-    :raises iib.exceptions.IIBError: if the command fails
+    :raises IIBError: if the command fails
     """
     exc_msg = None
     for arg in args:
@@ -53,7 +53,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     :param str exc_msg: an optional exception message when the command fails
     :return: the command output
     :rtype: str
-    :raises iib.exceptions.IIBError: if the command fails
+    :raises IIBError: if the command fails
     """
     if not params:
         params = {}
