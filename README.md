@@ -1,6 +1,34 @@
 # iib
 A REST API to manage operator index container images
 
+## Coding Standards
+
+The codebase conforms to the style enforced by `flake8` with the following exceptions:
+* The maximum line length allowed is 100 characters instead of 80 characters
+
+In addition to `flake8`, docstrings are also enforced by the plugin `flake8-docstrings` with
+the following exemptions:
+* D100: Missing docstring in public module
+* D104: Missing docstring in public package
+* D105: Missing docstring in magic method
+
+The format of the docstrings should be in the
+[reStructuredText](https://docs.python-guide.org/writing/documentation/#restructuredtext-ref) style
+such as:
+```
+Get the IIB build request from the REST API.
+
+:param int request_id: the ID of the IIB request
+:return: the request
+:rtype: dict
+:raises IIBError: if the HTTP request fails
+```
+
+Additionally, `black` is used to enforce other coding standards with the following exceptions:
+* Single quotes are used instead of double quotes
+
+To verify that your code meets these standards, you may run `tox -e black,flake8`.
+
 ## Development Environment
 
 [docker-compose](https://docs.docker.com/compose/) is the supported mechanism for setting up a
