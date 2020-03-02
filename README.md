@@ -1,6 +1,12 @@
 # Index Image Build (IIB) Service
 A REST API to manage operator index container images
 
+## External Documentation
+
+* [API Documentation](http://release-engineering.github.io/iib)
+* [General Documentation](https://iib.readthedocs.io/en/latest/)
+* [Python Module Documentation](https://iib.readthedocs.io/en/latest/module_documentation/index.html)
+
 ## Coding Standards
 
 The codebase conforms to the style enforced by `flake8` with the following exceptions:
