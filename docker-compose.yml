@@ -76,6 +76,7 @@ services:
         -- celery -A iib.workers.tasks worker --loglevel=info
     environment:
       IIB_DEV: 'true'
+      REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
     # Make this privileged to be able to build container images
     privileged: true
     volumes:
