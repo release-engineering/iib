@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 def _get_base_dir_and_pkg_name(package_dir):
     """
-    Get the base directory and the package name from package directory
+    Get the base directory and the package name from package directory.
 
     :param str package_dir: path to the exported package directory
     :return: base_dir, package name
@@ -90,7 +90,7 @@ def opm_index_export(packages, request_id, rebuilt_index_image, cnr_token, organ
 
 def _push_package_manifest(package_dir, cnr_token, organization):
     """
-    Push ``manifests.zip`` file created for an exported package to OMPS
+    Push ``manifests.zip`` file created for an exported package to OMPS.
 
     :param str package_dir: path to the exported package directory.
     :param str cnr_token: the token required to push backported packages to the legacy
@@ -141,7 +141,7 @@ def validate_legacy_params_and_config(packages, bundles, cnr_token, organization
 
 def _verify_package_info(package_dir, from_index):
     """
-    Verify if the exported package info is generated correctly
+    Verify if the exported package info is generated correctly.
 
     :param str package_dir: path to the exported package directory
     :param str from_index: the pull specification of the image image

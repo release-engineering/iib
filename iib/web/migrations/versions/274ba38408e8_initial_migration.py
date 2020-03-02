@@ -1,5 +1,5 @@
 """
-Initial migration
+Initial migration.
 
 Revision ID: 274ba38408e8
 Create Date: 2020-02-06 13:26:54.944598

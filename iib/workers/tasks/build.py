@@ -407,7 +407,7 @@ def _push_image(request_id, arch):
 
 def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
     """
-    Verify if the index image has changed since the IIB build request started
+    Verify if the index image has changed since the IIB build request started.
 
     :param str resolved_prebuild_from_index: resolved index image before starting the build
     :param str unresolved_from_index: unresolved index image provided as API input

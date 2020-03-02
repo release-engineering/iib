@@ -55,9 +55,7 @@ class RequestTypeMapping(BaseEnum):
 
 
 class Architecture(db.Model):
-    """
-    An architecture associated with an image.
-    """
+    """An architecture associated with an image."""
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False, unique=True)
@@ -141,9 +139,7 @@ class Image(db.Model):
 
 
 class Operator(db.Model):
-    """
-    An operator that has been handled by IIB.
-    """
+    """An operator that has been handled by IIB."""
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False, index=True, unique=True)
@@ -324,6 +320,14 @@ class Request(db.Model):
             self.architectures.append(arch)
 
     def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of a build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+
         def _state_to_json(state):
             return {
                 'state': RequestStateMapping(state.state).name,
@@ -376,7 +380,7 @@ class Request(db.Model):
         request_kwargs, additional_required_params=None, additional_optional_params=None
     ):
         """
-        Validate and process request agnostic parameters
+        Validate and process request agnostic parameters.
 
         As part of the processing, the input ``request_kwargs`` parameter
         is updated to reference database objects where appropriate.
@@ -443,7 +447,7 @@ class Request(db.Model):
 
     @classmethod
     def from_add_json(cls, kwargs):
-        """ Handles JSON requests for Add API endpoint """
+        """Handle JSON requests for the Add API endpoint."""
         request_kwargs = deepcopy(kwargs)
 
         bundles = request_kwargs.get('bundles', [])
@@ -481,7 +485,7 @@ class Request(db.Model):
 
     @classmethod
     def from_remove_json(cls, kwargs):
-        """ Handles JSON requests for Remove API endpoint """
+        """Handle JSON requests for the Remove API endpoint."""
         request_kwargs = deepcopy(kwargs)
 
         operators = request_kwargs.get('operators', [])
@@ -503,6 +507,8 @@ class Request(db.Model):
 
 
 class RequestState(db.Model):
+    """Represents a state (historical or present) of a request."""
+
     id = db.Column(db.Integer, primary_key=True)
     request_id = db.Column(db.Integer, db.ForeignKey('request.id'), index=True, nullable=False)
     # This maps to a value in RequestStateMapping
@@ -525,6 +531,8 @@ class RequestState(db.Model):
 
 
 class User(db.Model, UserMixin):
+    """Represents an external user that owns an IIB request."""
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String, index=True, unique=True, nullable=False)
     requests = db.relationship('Request', foreign_keys=[Request.user_id], back_populates='user')
