@@ -34,11 +34,12 @@ def get_requests_session(auth=False):
 
 def get_request(request_id):
     """
-    Get the IIB build request.
+    Get the IIB build request from the REST API.
 
     :param int request_id: the ID of the IIB request
     :return: the request
     :rtype: dict
+    :raises iib.exceptions.IIBError: if the HTTP request fails
     """
     # Prevent a circular import
     from iib.workers.config import get_worker_config

@@ -102,6 +102,7 @@ def validate_celery_config(conf, **kwargs):
 
 
 def get_worker_config():
+    """Return the Celery configuration."""
     # Import this here to avoid a circular import
     import iib.workers.tasks.celery
 
