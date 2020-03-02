@@ -39,7 +39,7 @@ def get_request(request_id):
     :param int request_id: the ID of the IIB request
     :return: the request
     :rtype: dict
-    :raises iib.exceptions.IIBError: if the HTTP request fails
+    :raises IIBError: if the HTTP request fails
     """
     # Prevent a circular import
     from iib.workers.config import get_worker_config
@@ -76,7 +76,7 @@ def set_request_state(request_id, state, state_reason):
     :param str state_reason: the state reason to set the IIB request to
     :return: the updated request
     :rtype: dict
-    :raise iib.exceptions.IIBError: if the request to the IIB API fails
+    :raise IIBError: if the request to the IIB API fails
     """
     log.info(
         'Setting the state of request %d to "%s" with the reason "%s"',
@@ -98,7 +98,7 @@ def update_request(request_id, payload, exc_msg=None):
     :param str exc_msg: an optional custom exception that can be a template
     :return: the updated request
     :rtype: dict
-    :raises iib.exceptions.IIBError: if the request to the IIB API fails
+    :raises IIBError: if the request to the IIB API fails
     """
     # Prevent a circular import
     from iib.workers.config import get_worker_config
