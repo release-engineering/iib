@@ -29,6 +29,16 @@ Additionally, `black` is used to enforce other coding standards with the followi
 
 To verify that your code meets these standards, you may run `tox -e black,flake8`.
 
+## Running the Unit Tests
+
+The testing environment is managed by [tox](https://tox.readthedocs.io/en/latest/). Simply run
+`tox` and all the linting and unit tests will run.
+
+If you'd like to run a specific unit test, you can do the following:
+```bash
+tox -e py37 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
+```
+
 ## Development Environment
 
 [docker-compose](https://docs.docker.com/compose/) is the supported mechanism for setting up a
