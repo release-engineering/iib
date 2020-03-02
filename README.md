@@ -102,3 +102,48 @@ workers in `docker-compose.yml` so that your host's root user's Docker configura
 authentication is used by the workers. This is only needed if you are working with private images.
 Please note that the containers will modify this configuration since they authenticate with the
 registry created by docker-compose on startup.
+
+
+## Configuring the REST API
+
+To configure the IIB REST API, create a Python file at `/etc/iib/settings.py`. Any variables set in
+this configuration file will be applied to the Celery worker when running in production mode
+(default).
+
+The custom configuration options for the REST API are listed below:
+* `IIB_ADDITIONAL_LOGGERS` - a list of Python loggers that should have the same log level that is
+  set for `IIB_LOG_LEVEL`. This defaults to `[]`.
+* `IIB_LOG_FORMAT` - the format of the logs. This defaults to
+  `%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s`.
+* `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
+* `IIB_MAX_PER_PAGE` - the maximum number of build requests that can be shown on a single page.
+  This defaults to `20`.
+* `IIB_WORKER_USERNAMES` - the list of case-sensitve Kerberos principals that are allowed to update
+  build requests using the PATCH API endpoint. This defaults to `[]`.
+* `LOGIN_DISABLED` - determines if authentication is required. This defaults to `False`
+  (i.e. authentication is required).
+* `SQLALCHEMY_DATABASE_URI` - the database URI of the database the REST API connects to. See the
+  [Flask-SQLAlchemy configuration](https://flask-sqlalchemy.palletsprojects.com/en/2.x/config/#configuration-keys)
+  documentation.
+
+## Configuring the Worker(s)
+
+To configure an IIB Celery worker, create a Python file at `/etc/iib/celery.py`. The location
+can be overridden with the `IIB_CELERY_CONFIG` environment variable. This is useful if the worker is
+running on the same host as another worker or the REST API.
+
+Any variables set in this configuration file will be applied to the Celery worker when running in
+production mode (default).
+
+The custom configuration options for the Celery workers are listed below:
+* `broker_url` - the AMQP(S) URL to connect to RabbitMQ. See the
+  [broker_url](https://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url)
+  configuration documentation.
+* `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
+  `30` seconds.
+* `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
+* `iib_image_push_template` - the Python string template of the push destination for the resulting
+  manifest list. The available variables are `registry` and `request_id`. The default value is
+  `{registry}/iib-build:{request_id}`.
+* `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
+* `iib_registry` - the container registry to push images to (e.g. `quay.io`).
