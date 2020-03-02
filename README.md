@@ -147,3 +147,34 @@ The custom configuration options for the Celery workers are listed below:
   `{registry}/iib-build:{request_id}`.
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_registry` - the container registry to push images to (e.g. `quay.io`).
+
+## Read the Docs Documentation
+
+### Build the Docs
+
+To build and serve the docs, run the following commands:
+```
+$ tox -e docs
+$ google-chrome .tox/docs_out/index.html
+```
+
+### Expanding the Docs
+
+To document a new Python module, find the `rst` file of the corresponding Python package that
+contains the module. Once found, add a section under "Submodules" in alphabetical order such as:
+```
+iib.workers.tasks.build module
+------------------------------
+
+.. automodule:: iib.workers.tasks.build
+   :ignore-module-all:
+   :members:
+   :private-members:
+   :show-inheritance:
+```
+
+Some of the options include:
+* `ignore-module-all` - include all members regardless of the definition of `__all__`.
+* `members` - automatically document the members in that Python module.
+* `private-members` - include private functions and methods.
+* `show-inheritance` - show the class inheritance.

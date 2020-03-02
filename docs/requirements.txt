@@ -1,0 +1,10 @@
+celery
+flask
+flask-login
+flask-migrate
+flask-sqlalchemy
+psycopg2-binary
+recommonmark
+requests
+sphinx
+sphinx_rtd_theme
