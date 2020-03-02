@@ -1,4 +1,4 @@
-# iib
+# Index Image Build (IIB) Service
 A REST API to manage operator index container images
 
 ## Coding Standards
