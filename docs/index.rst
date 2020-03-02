@@ -9,6 +9,7 @@ Welcome to the IIB documentation!
 
    gettingstarted
    module_documentation/index
+   API Documentation <https://release-engineering.github.io/iib/>
 
 
 Indices and tables
