@@ -1,6 +1,38 @@
 # iib
 A REST API to manage operator index container images
 
+## Development Environment
+
+[docker-compose](https://docs.docker.com/compose/) is the supported mechanism for setting up a
+development environment. This will automatically run the following containers:
+* **iib-api** - the IIB REST API. This is accessible at [http://localhost:8080](http://localhost:8080).
+* **iib-worker** - the IIB Celery worker.
+* **rabbitmq** - the RabbitMQ instance for communicating between the API and the worker. The
+  management UI is accessible at [http://localhost:8081](http://localhost:8081). The username is
+  `iib` and the password is `iib`.
+* **db** - the Postgresql database used by the IIB REST API.
+* **registry** - the Docker Registry where the worker pushes its build index images to. This is
+  accessible at docker://localhost:8443.
+
+The Flask application will automatically reload if there is a change in the codebase. If invalid
+syntax is added in the code, the `iib-api` container may shutdown. The Celery worker will
+automatically restart if there is a change under the `iib/workers` directory.
+
+To run a built index image from the development registry, you can perform the following:
+```bash
+podman login --tls-verify=false -u iib -p iibpassword localhost:8443
+podman pull --tls-verify=false localhost:8443/iib-build:1
+```
+
+If you are using Docker (a modern version is required), you can perform the following:
+```bash
+sudo docker login -u iib -p iibpassword localhost:8443
+sudo docker run localhost:8443/iib-build:1
+```
+
+If your development environment requires accessing a private container registry, please read
+the section titled Registry Authentication.
+
 ## Dependency Management
 
 To manage dependencies, this project uses [pip-tools](https://github.com/jazzband/pip-tools) so that
