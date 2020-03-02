@@ -14,7 +14,6 @@ class Config(object):
     iib_api_timeout = 30
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_log_level = 'INFO'
-    iib_poll_api_frequency = 15
     iib_required_labels = {}
     include = ['iib.workers.tasks.build', 'iib.workers.tasks.general']
     # The task messages will be acknowledged after the task has been executed,
