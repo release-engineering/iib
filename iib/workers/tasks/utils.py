@@ -62,6 +62,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     params.setdefault('stderr', subprocess.PIPE)
     params.setdefault('stdout', subprocess.PIPE)
 
+    log.debug('Running the command "%s"', cmd)
     response = subprocess.run(cmd, **params)
 
     if response.returncode != 0:
