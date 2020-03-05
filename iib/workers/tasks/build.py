@@ -403,6 +403,19 @@ def _push_image(request_id, arch):
         exc_msg=f'Failed to push the index image to {destination} for the arch {arch}',
     )
 
+    log.debug(f'Verifying that {destination} was pushed as a v2 manifest due to RHBZ#1810768')
+    skopeo_raw = skopeo_inspect(destination, '--raw')
+    if skopeo_raw['schemaVersion'] != 2:
+        log.warning(
+            'The manifest for %s ended up using schema version 1 due to RHBZ#1810768. Manually '
+            'fixing it with skopeo.',
+            destination,
+        )
+        run_cmd(
+            ['skopeo', 'copy', '--format', 'v2s2', destination, destination],
+            exc_msg=f'Failed to fix the manifest schema version on {destination}',
+        )
+
 
 def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
     """

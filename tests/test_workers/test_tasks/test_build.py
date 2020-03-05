@@ -237,18 +237,27 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
         build._prepare_request_for_build('binary-image:latest', 1, add_arches=['s390x'])
 
 
+@pytest.mark.parametrize('schema_version', (1, 2))
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_push_image(mock_run_cmd, mock_glps):
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_push_image(mock_si, mock_run_cmd, mock_glps, schema_version):
     mock_glps.return_value = 'source:tag'
+    mock_si.return_value = {'schemaVersion': schema_version}
 
     build._push_image(3, 'amd64')
 
-    mock_run_cmd.assert_called_once()
-    push_args = mock_run_cmd.call_args[0][0]
+    push_args = mock_run_cmd.mock_calls[0][1][0]
     assert push_args[0:2] == ['podman', 'push']
     assert 'source:tag' in push_args
-    assert 'docker://registry:8443/iib-build:3-amd64' in push_args
+    destination = 'docker://registry:8443/iib-build:3-amd64'
+    assert destination in push_args
+
+    if schema_version == 1:
+        skopeo_args = mock_run_cmd.mock_calls[1][1][0]
+        assert skopeo_args == ['skopeo', 'copy', '--format', 'v2s2', destination, destination]
+    else:
+        mock_run_cmd.assert_called_once()
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
