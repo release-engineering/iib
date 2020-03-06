@@ -81,7 +81,8 @@ def skopeo_inspect(*args):
             exc_msg = f'Failed to inspect {arg}. Make sure it exists and is accessible to IIB.'
             break
 
-    cmd = ['skopeo', 'inspect'] + list(args)
+    skopeo_timeout = get_worker_config().iib_skopeo_timeout
+    cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'inspect'] + list(args)
     return json.loads(run_cmd(cmd, exc_msg=exc_msg))
 
 
