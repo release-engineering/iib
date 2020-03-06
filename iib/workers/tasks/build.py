@@ -134,9 +134,22 @@ def _finish_request_post_build(output_pull_spec, request_id, arches):
     :param set arches: the set of arches that were built as part of this request
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
+    conf = get_worker_config()
+    if conf['iib_index_image_output_registry']:
+        index_image = output_pull_spec.replace(
+            conf['iib_registry'], conf['iib_index_image_output_registry'], 1
+        )
+        log.info(
+            'Changed the index_image pull specification from %s to %s',
+            output_pull_spec,
+            index_image,
+        )
+    else:
+        index_image = output_pull_spec
+
     payload = {
         'arches': list(arches),
-        'index_image': output_pull_spec,
+        'index_image': index_image,
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }

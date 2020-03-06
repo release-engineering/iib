@@ -59,17 +59,28 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     assert manifest in manifest_tool_args
 
 
+@pytest.mark.parametrize('iib_index_image_output_registry', (None, 'registry-proxy.domain.local'))
+@mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build.update_request')
-def test_finish_request_post_build(mock_ur):
+def test_finish_request_post_build(mock_ur, mock_gwc, iib_index_image_output_registry):
     output_pull_spec = 'quay.io/namespace/some-image:3'
     request_id = 2
     arches = {'amd64'}
+    mock_gwc.return_value = {
+        'iib_index_image_output_registry': iib_index_image_output_registry,
+        'iib_registry': 'quay.io',
+    }
     build._finish_request_post_build(output_pull_spec, request_id, arches)
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     assert update_request_payload.keys() == {'arches', 'index_image', 'state', 'state_reason'}
-    assert update_request_payload['index_image'] == output_pull_spec
+    if iib_index_image_output_registry:
+        assert update_request_payload['index_image'] == (
+            'registry-proxy.domain.local/namespace/some-image:3'
+        )
+    else:
+        assert update_request_payload['index_image'] == output_pull_spec
 
 
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))

@@ -13,6 +13,7 @@ class Config(object):
     broker_transport_options = {'max_retries': 10}
     iib_api_timeout = 30
     iib_image_push_template = '{registry}/iib-build:{request_id}'
+    iib_index_image_output_registry = None
     iib_log_level = 'INFO'
     iib_required_labels = {}
     include = ['iib.workers.tasks.build', 'iib.workers.tasks.general']
