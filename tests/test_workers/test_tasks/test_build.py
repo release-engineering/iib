@@ -88,7 +88,16 @@ def test_fix_schema_version(mock_run_cmd):
     destination = 'some_destination'
     build._fix_schema_version(destination)
     skopeo_args = mock_run_cmd.mock_calls[0][1][0]
-    assert skopeo_args == ['skopeo', 'copy', '--format', 'v2s2', destination, destination]
+    assert skopeo_args == [
+        'skopeo',
+        '--command-timeout',
+        '30s',
+        'copy',
+        '--format',
+        'v2s2',
+        destination,
+        destination,
+    ]
     mock_run_cmd.assert_called_once()
 
 

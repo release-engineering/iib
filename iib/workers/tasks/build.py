@@ -166,8 +166,18 @@ def _fix_schema_version(destination):
     :param str destination: destination where the index image was pushed
     :raises IIBError: if the command fails to update the schema version to v2s2
     """
+    skopeo_timeout = get_worker_config().iib_skopeo_timeout
     run_cmd(
-        ['skopeo', 'copy', '--format', 'v2s2', destination, destination],
+        [
+            'skopeo',
+            '--command-timeout',
+            skopeo_timeout,
+            'copy',
+            '--format',
+            'v2s2',
+            destination,
+            destination,
+        ],
         exc_msg=f'Failed to fix the manifest schema version on {destination}',
     )
 

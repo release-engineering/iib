@@ -156,6 +156,8 @@ The custom configuration options for the Celery workers are listed below:
   `{registry}/iib-build:{request_id}`.
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_registry` - the container registry to push images to (e.g. `quay.io`).
+* `iib_skopeo_timeout` - the command timeout for skopeo commands run by IIB. This defaults to
+  `30s` (30 seconds).
 * `iib_total_attempts` - the total number of attempts to make at trying a function relating to the
   container registry before erroring out. This defaults to `5`.
 
