@@ -15,6 +15,7 @@ class Config(object):
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_log_level = 'INFO'
     iib_required_labels = {}
+    iib_total_attempts = 5
     include = ['iib.workers.tasks.build', 'iib.workers.tasks.general']
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before

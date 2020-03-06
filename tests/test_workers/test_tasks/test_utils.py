@@ -15,6 +15,20 @@ def test_get_image_labels(mock_si):
     assert utils.get_image_labels('some-image:latest') == skopeo_rv['Labels']
 
 
+def test_retry():
+    mock_func = mock.Mock()
+
+    @utils.retry(attempts=3, wait_on=IIBError)
+    def _func_to_retry():
+        mock_func()
+        raise IIBError('Some error')
+
+    with pytest.raises(IIBError, match='Some error'):
+        _func_to_retry()
+
+    assert mock_func.call_count == 3
+
+
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd(mock_sub_run):
     mock_rv = mock.Mock()

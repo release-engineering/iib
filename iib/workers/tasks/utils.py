@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import functools
 import json
 import logging
 import subprocess
 
 from iib.exceptions import IIBError
-
+from iib.workers.config import get_worker_config
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +26,46 @@ def get_image_labels(pull_spec):
     return skopeo_inspect(full_pull_spec).get('Labels', {})
 
 
+def retry(
+    attempts=get_worker_config().iib_total_attempts, wait_on=Exception, logger=None,
+):
+    """
+    Retry a section of code until success or max attempts are reached.
+
+    :param int attempts: the total number of attempts to make before erroring out
+    :param Exception wait_on: the exception on encountering which the function will be retried
+    :param logging logger: the logger to log the messages on
+    :raises IIBError: if the maximum attempts are reached
+    """
+
+    def wrapper(function):
+        @functools.wraps(function)
+        def inner(*args, **kwargs):
+            remaining_attempts = attempts
+            while True:
+                try:
+                    return function(*args, **kwargs)
+                except wait_on as e:
+                    remaining_attempts -= 1
+                    if remaining_attempts <= 0:
+                        if logger is not None:
+                            logger.exception(
+                                'The maximum number of attempts (%s) have failed', attempts
+                            )
+                        raise
+                    if logger is not None:
+                        logger.warning(
+                            'Exception %r raised from %r.  Retrying now',
+                            e,
+                            f'{function.__module__}.{function.__name__}',
+                        )
+
+        return inner
+
+    return wrapper
+
+
+@retry(wait_on=IIBError, logger=log)
 def skopeo_inspect(*args):
     """
     Wrap the ``skopeo inspect`` command.
