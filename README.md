@@ -148,6 +148,9 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
   `30` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
+* `iib_index_image_output_registry` - if set, that value will replace the value from `iib_registry`
+  in the output `index_image` pull specification. This is useful if you'd like users of IIB to
+  pull from a proxy to a registry instead of the registry directly.
 * `iib_image_push_template` - the Python string template of the push destination for the resulting
   manifest list. The available variables are `registry` and `request_id`. The default value is
   `{registry}/iib-build:{request_id}`.
