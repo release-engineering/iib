@@ -13,7 +13,7 @@ from iib.workers.tasks.legacy import (
     opm_index_export,
     validate_legacy_params_and_config,
 )
-from iib.workers.tasks.utils import get_image_labels, run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_labels, retry, run_cmd, skopeo_inspect
 
 
 __all__ = ['handle_add_request', 'handle_rm_request']
@@ -154,6 +154,22 @@ def _finish_request_post_build(output_pull_spec, request_id, arches):
         'state_reason': 'The request completed successfully',
     }
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
+
+
+@retry(wait_on=IIBError, logger=log)
+def _fix_schema_version(destination):
+    """
+    Fix the manifest schema version of the single arch index image in the configured registry.
+
+    This method can be removed once RHBZ#1810768 is resolved.
+
+    :param str destination: destination where the index image was pushed
+    :raises IIBError: if the command fails to update the schema version to v2s2
+    """
+    run_cmd(
+        ['skopeo', 'copy', '--format', 'v2s2', destination, destination],
+        exc_msg=f'Failed to fix the manifest schema version on {destination}',
+    )
 
 
 def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
@@ -400,6 +416,7 @@ def _prepare_request_for_build(
     }
 
 
+@retry(wait_on=IIBError, logger=log)
 def _push_image(request_id, arch):
     """
     Push the single arch index image to the configured registry.
@@ -424,10 +441,7 @@ def _push_image(request_id, arch):
             'fixing it with skopeo.',
             destination,
         )
-        run_cmd(
-            ['skopeo', 'copy', '--format', 'v2s2', destination, destination],
-            exc_msg=f'Failed to fix the manifest schema version on {destination}',
-        )
+        _fix_schema_version(destination)
 
 
 def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):

@@ -83,6 +83,25 @@ def test_finish_request_post_build(mock_ur, mock_gwc, iib_index_image_output_reg
         assert update_request_payload['index_image'] == output_pull_spec
 
 
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_fix_schema_version(mock_run_cmd):
+    destination = 'some_destination'
+    build._fix_schema_version(destination)
+    skopeo_args = mock_run_cmd.mock_calls[0][1][0]
+    assert skopeo_args == ['skopeo', 'copy', '--format', 'v2s2', destination, destination]
+    mock_run_cmd.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_fix_schema_version_fail_max_retries(mock_run_cmd):
+    match_str = 'Something went wrong'
+    mock_run_cmd.side_effect = IIBError(match_str)
+    destination = 'some_destination'
+    with pytest.raises(IIBError, match=match_str):
+        build._fix_schema_version(destination)
+        assert mock_run_cmd.call_count == 5
+
+
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
 def test_get_local_pull_spec(request_id, arch):
     rv = build._get_local_pull_spec(request_id, arch)
@@ -252,7 +271,8 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_push_image(mock_si, mock_run_cmd, mock_glps, schema_version):
+@mock.patch('iib.workers.tasks.build._fix_schema_version')
+def test_push_image(mock_fsv, mock_si, mock_run_cmd, mock_glps, schema_version):
     mock_glps.return_value = 'source:tag'
     mock_si.return_value = {'schemaVersion': schema_version}
 
@@ -265,8 +285,7 @@ def test_push_image(mock_si, mock_run_cmd, mock_glps, schema_version):
     assert destination in push_args
 
     if schema_version == 1:
-        skopeo_args = mock_run_cmd.mock_calls[1][1][0]
-        assert skopeo_args == ['skopeo', 'copy', '--format', 'v2s2', destination, destination]
+        mock_fsv.assert_called_once_with(destination)
     else:
         mock_run_cmd.assert_called_once()
 
