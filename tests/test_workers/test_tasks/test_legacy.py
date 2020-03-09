@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 from unittest import mock
 
 import pytest
@@ -56,8 +57,23 @@ def test_push_package_manifest_success(mock_requests, mock_open):
 @mock.patch('iib.workers.tasks.legacy.requests.post')
 def test_push_package_manifest_failure(mock_requests, mock_open):
     mock_requests.return_value.ok = False
-    mock_requests.return_value.json.return_value = {"error": "Unauthorized"}
-    expected = 'Push to organization in the legacy app registry was unsucessful'
+    mock_requests.return_value.json.return_value = {"message": "Unauthorized"}
+    expected = 'Push to organization in the legacy app registry was unsucessful: Unauthorized'
+    with pytest.raises(IIBError, match=expected):
+        legacy._push_package_manifest('something/download-pkg', 'cnr_token', 'organization')
+    mock_open.assert_called_once_with('something/manifests.zip', 'rb')
+    mock_requests.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.legacy.open')
+@mock.patch('iib.workers.tasks.legacy.requests.post')
+def test_push_package_manifest_failure_invalid_json(mock_requests, mock_open):
+    mock_requests.return_value.ok = False
+    mock_requests.return_value.json.side_effect = json.JSONDecodeError('Invalid Json', '', 1)
+    mock_requests.return_value.text = 'Something went wrong'
+    expected = (
+        'Push to organization in the legacy app registry was unsucessful: Something went wrong'
+    )
     with pytest.raises(IIBError, match=expected):
         legacy._push_package_manifest('something/download-pkg', 'cnr_token', 'organization')
     mock_open.assert_called_once_with('something/manifests.zip', 'rb')
