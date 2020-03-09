@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # This file can be deleted once OMPS is retired
+import json
 import logging
 import os
 import shutil
@@ -111,7 +112,13 @@ def _push_package_manifest(package_dir, cnr_token, organization):
         )
         if not resp.ok:
             log.error('Request to OMPS failed: %s', resp.text)
-            raise IIBError(f'Push to {organization} in the legacy app registry was unsucessful')
+            try:
+                error_msg = resp.json().get('message', 'An unknown error occured')
+            except json.JSONDecodeError:
+                error_msg = resp.text
+            raise IIBError(
+                f'Push to {organization} in the legacy app registry was unsucessful: {error_msg}'
+            )
 
 
 def validate_legacy_params_and_config(packages, bundles, cnr_token, organization):
