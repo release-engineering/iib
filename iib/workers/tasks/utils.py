@@ -2,6 +2,7 @@
 import functools
 import json
 import logging
+import re
 import subprocess
 
 from iib.exceptions import IIBError
@@ -97,6 +98,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     :rtype: str
     :raises IIBError: if the command fails
     """
+    exc_msg = exc_msg or 'An unexpected error occurred'
     if not params:
         params = {}
     params.setdefault('universal_newlines', True)
@@ -109,6 +111,15 @@ def run_cmd(cmd, params=None, exc_msg=None):
 
     if response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
-        raise IIBError(exc_msg or 'An unexpected error occurred')
+        if cmd[0] == 'opm':
+            # Caputre the fatal error
+            regex = r'^(?:.+level=fatal .*error=")(.+)(?:")$'
+            # Start from the last log message since that is often where the failure occurs
+            for msg in reversed(response.stderr.splitlines()):
+                match = re.match(regex, msg)
+                if match:
+                    raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+
+        raise IIBError(exc_msg)
 
     return response.stdout
