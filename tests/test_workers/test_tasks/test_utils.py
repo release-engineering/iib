@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import logging
 from unittest import mock
 
 import pytest
@@ -43,11 +42,6 @@ def test_run_cmd(mock_sub_run):
 @pytest.mark.parametrize('exc_msg', (None, 'Houston, we have a problem!'))
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd_failed(mock_sub_run, exc_msg):
-    # When running tests that involve Flask before this test, the iib.workers loggers
-    # are disabled. This is an ugly workaround.
-    for logger in ('iib.workers', 'iib.workers.tasks', 'iib.workers.tasks.utils'):
-        logging.getLogger(logger).disabled = False
-
     mock_rv = mock.Mock()
     mock_rv.returncode = 1
     mock_rv.stderr = 'some failure'
