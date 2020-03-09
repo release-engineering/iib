@@ -54,6 +54,34 @@ def test_run_cmd_failed(mock_sub_run, exc_msg):
     mock_sub_run.assert_called_once()
 
 
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_opm(mock_sub_run):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = (
+        'time="2020-03-09T08:58:21-04:00" level=info msg="loading bundle file" '
+        'dir=bundle_tmp922306995/manifests file=volumesnapshotlocation.crd.yaml load=bundle\n'
+        'time="2020-03-09T08:58:21-04:00" level=fatal msg="permissive mode disabled" '
+        'bundles="[quay.io/ns/some_bundle:v1.0]" error="error loading bundle from image: Error '
+        'adding package error loading bundle into db: cam-operator.v1.0.1 specifies replacement '
+        'that couldn\'t be found"'
+    )
+    mock_sub_run.return_value = mock_rv
+
+    expected_exc = (
+        'Failed to add the bundles to the index image: error loading bundle from image: Error '
+        'adding package error loading bundle into db: cam-operator.v1.0.1 specifies replacement '
+        'that couldn\'t be found'
+    )
+    with pytest.raises(IIBError, match=expected_exc):
+        utils.run_cmd(
+            ['opm', 'index', 'add', '--generate', '--bundles', 'quay.io/ns/some_bundle:v1.0'],
+            exc_msg='Failed to add the bundles to the index image',
+        )
+
+    mock_sub_run.assert_called_once()
+
+
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_skopeo_inspect(mock_run_cmd):
     mock_run_cmd.return_value = '{"Name": "some-image"}'
