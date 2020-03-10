@@ -81,19 +81,26 @@ def test_push_package_manifest_failure_invalid_json(mock_requests, mock_open):
 
 
 @mock.patch('iib.workers.tasks.legacy.run_cmd')
-@mock.patch('iib.workers.tasks.legacy._verify_package_info')
-@mock.patch('iib.workers.tasks.legacy._zip_package')
-@mock.patch('iib.workers.tasks.legacy._push_package_manifest')
-@mock.patch('iib.workers.tasks.legacy.set_request_state')
-def test_opm_index_export(mock_srs, mock_ppm, mock_zp, mock_vpi, mock_run_cmd):
-    packages = ['prometheus']
-    legacy.opm_index_export(packages, 3, 'from:index', 'token', 'org')
+def test_opm_index_export(mock_run_cmd):
+    legacy._opm_index_export('from:index', 'prometheus', '/')
 
     # This is only directly called once in the actual function
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[0:3] == ['opm', 'index', 'export']
     assert 'prometheus' in opm_args
+
+
+@mock.patch('iib.workers.tasks.legacy._verify_package_info')
+@mock.patch('iib.workers.tasks.legacy._zip_package')
+@mock.patch('iib.workers.tasks.legacy._push_package_manifest')
+@mock.patch('iib.workers.tasks.legacy.set_request_state')
+@mock.patch('iib.workers.tasks.legacy._opm_index_export')
+def test_export_legacy_packages(mock_oie, mock_srs, mock_ppm, mock_zp, mock_vpi):
+    packages = ['prometheus']
+    legacy.export_legacy_packages(packages, 3, 'from:index', 'token', 'org')
+
+    mock_oie.assert_called_once()
     mock_vpi.assert_called_once()
     mock_zp.assert_called_once()
     mock_ppm.assert_called_once()

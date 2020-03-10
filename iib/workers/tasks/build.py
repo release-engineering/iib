@@ -9,8 +9,8 @@ from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.legacy import (
+    export_legacy_packages,
     get_legacy_support_packages,
-    opm_index_export,
     validate_legacy_params_and_config,
 )
 from iib.workers.tasks.utils import get_image_labels, retry, run_cmd, skopeo_inspect
@@ -67,6 +67,7 @@ def _cleanup():
     )
 
 
+@retry(attempts=3, wait_on=IIBError, logger=log)
 def _create_and_push_manifest_list(request_id, arches):
     """
     Create and push the manifest list to the configured registry.
@@ -265,6 +266,7 @@ def _get_resolved_image(pull_spec):
     return pull_spec_resolved
 
 
+@retry(attempts=2, wait_on=IIBError, logger=log)
 def _opm_index_add(base_dir, bundles, binary_image, from_index=None):
     """
     Add the input bundles to an operator index.
@@ -305,6 +307,7 @@ def _opm_index_add(base_dir, bundles, binary_image, from_index=None):
     )
 
 
+@retry(attempts=2, wait_on=IIBError, logger=log)
 def _opm_index_rm(base_dir, operators, binary_image, from_index):
     """
     Remove the input operators from the operator index.
@@ -557,7 +560,7 @@ def handle_add_request(
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
 
     if legacy_support_packages:
-        opm_index_export(
+        export_legacy_packages(
             legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
         )
 

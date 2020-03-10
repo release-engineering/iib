@@ -307,7 +307,7 @@ def test_push_image(mock_fsv, mock_si, mock_run_cmd, mock_glps, schema_version):
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._finish_request_post_build')
-@mock.patch('iib.workers.tasks.build.opm_index_export')
+@mock.patch('iib.workers.tasks.build.export_legacy_packages')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
@@ -317,7 +317,7 @@ def test_handle_add_request(
     mock_glsp,
     mock_capml,
     mock_srs,
-    mock_oie,
+    mock_elp,
     mock_frpb,
     mock_vii,
     mock_pi,
@@ -356,8 +356,8 @@ def test_handle_add_request(
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
 
-    mock_oie.assert_called_once()
-    export_args = mock_oie.call_args[0]
+    mock_elp.assert_called_once()
+    export_args = mock_elp.call_args[0]
     assert legacy_packages in export_args
     assert cnr_token in export_args
     assert organization in export_args
