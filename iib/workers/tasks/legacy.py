@@ -11,10 +11,33 @@ import requests
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
-
-from iib.workers.tasks.utils import get_image_labels, run_cmd
+from iib.workers.tasks.utils import get_image_labels, retry, run_cmd
 
 log = logging.getLogger(__name__)
+
+
+def export_legacy_packages(packages, request_id, rebuilt_index_image, cnr_token, organization):
+    """
+    Export packages to be backported and push them via OMPS.
+
+    :param set packages: a set of strings representing the names of the packages to be exported.
+    :param int request_id: the ID of the IIB build request.
+    :param str rebuilt_index_image: the pull specification of the index image rebuilt by IIB.
+    :param str cnr_token: the token required to push backported packages to the legacy
+        app registry via OMPS.
+    :param str organization: the organization name in the legacy app registry to which the
+        backported packages should be pushed to.
+    :raises IIBError: if the export of packages fails.
+    """
+    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        for package in packages:
+            _opm_index_export(rebuilt_index_image, package, temp_dir)
+            package_dir = os.path.join(temp_dir, package)
+            _verify_package_info(package_dir, rebuilt_index_image)
+            _zip_package(package_dir)
+            _push_package_manifest(package_dir, cnr_token, organization)
+
+    set_request_state(request_id, 'in_progress', 'Back ported packages successfully pushed to OMPS')
 
 
 def _get_base_dir_and_pkg_name(package_dir):
@@ -46,47 +69,35 @@ def get_legacy_support_packages(bundles):
     return packages
 
 
-def opm_index_export(packages, request_id, rebuilt_index_image, cnr_token, organization):
+@retry(attempts=2, wait_on=IIBError, logger=log)
+def _opm_index_export(rebuilt_index_image, package, temp_dir):
     """
-    Export packages to be backported and push them via OMPS.
+    Export the package that needs to be backported.
 
-    :param set packages: a set of strings representing the names of the packages to be exported.
-    :param int request_id: the ID of the IIB build request
     :param str rebuilt_index_image: the pull specification of the index image rebuilt by IIB.
-    :param str cnr_token: the token required to push backported packages to the legacy
-        app registry via OMPS.
-    :param str organization: the organization name in the legacy app registry to which the
-        backported packages should be pushed to.
+    :param set package: a string representing the name of the package to be exported.
+    :param str temp_dir: path to the temporary directory where the package will be exported to.
     :raises IIBError: if the export of packages fails.
     """
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        for package in packages:
-            cmd = [
-                'opm',
-                'index',
-                'export',
-                '--index',
-                rebuilt_index_image,
-                '--package',
-                package,
-                '--download-folder',
-                package,
-            ]
+    cmd = [
+        'opm',
+        'index',
+        'export',
+        '--index',
+        rebuilt_index_image,
+        '--package',
+        package,
+        '--download-folder',
+        package,
+    ]
 
-            log.info('Generating the backported operator for package: %s', package)
+    log.info('Generating the backported operator for package: %s', package)
 
-            run_cmd(
-                cmd,
-                {'cwd': temp_dir},
-                exc_msg=f'Failed to push {package} to the legacy application registry',
-            )
-
-            package_dir = os.path.join(temp_dir, package)
-            _verify_package_info(package_dir, rebuilt_index_image)
-            _zip_package(package_dir)
-            _push_package_manifest(package_dir, cnr_token, organization)
-
-    set_request_state(request_id, 'in_progress', 'Back ported packages successfully pushed to OMPS')
+    run_cmd(
+        cmd,
+        {'cwd': temp_dir},
+        exc_msg=f'Failed to push {package} to the legacy application registry',
+    )
 
 
 def _push_package_manifest(package_dir, cnr_token, organization):
