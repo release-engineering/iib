@@ -112,7 +112,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     if response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         if cmd[0] == 'opm':
-            # Caputre the fatal error
+            # Capture the fatal error
             regex = r'^(?:.+level=fatal .*error=")(.+)(?:")$'
             # Start from the last log message since that is often where the failure occurs
             for msg in reversed(response.stderr.splitlines()):
