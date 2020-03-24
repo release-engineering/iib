@@ -536,6 +536,7 @@ def handle_add_request(
     """
     _verify_labels(bundles)
 
+    log.info('Checking if interacting with the legacy app registry is required')
     legacy_support_packages = get_legacy_support_packages(bundles)
     if legacy_support_packages:
         validate_legacy_params_and_config(legacy_support_packages, bundles, cnr_token, organization)
