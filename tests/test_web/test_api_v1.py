@@ -159,11 +159,33 @@ def test_get_builds_invalid_state(app, client, db):
             },
             'Architectures should be specified as a non-empty array of strings',
         ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'overwrite_from_index': 123,
+            },
+            'The "overwrite_from_index" parameter must be a boolean',
+        ),
     ),
 )
 def test_add_bundles_invalid_params_format(data, error_msg, db, auth_env, client):
     rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+def test_add_bundles_overwrite_not_allowed(client, db):
+    data = {
+        'binary_image': 'binary:image',
+        'bundles': ['some:thing'],
+        'from_index': 'pull:spec',
+        'overwrite_from_index': True,
+    }
+    rv = client.post(f'/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
+    assert rv.status_code == 403
+    error_msg = 'You must be a privileged user to set "overwrite_from_index"'
     assert error_msg == rv.json['error']
 
 
@@ -197,6 +219,19 @@ def test_add_bundles_invalid_params_format(data, error_msg, db, auth_env, client
 def test_rm_operators_invalid_params_format(db, auth_env, client, data, error_msg):
     rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+def test_rm_operators_overwrite_not_allowed(client, db):
+    data = {
+        'binary_image': 'binary:image',
+        'operators': ['prometheus'],
+        'from_index': 'pull:spec',
+        'overwrite_from_index': True,
+    }
+    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
+    assert rv.status_code == 403
+    error_msg = 'You must be a privileged user to set "overwrite_from_index"'
     assert error_msg == rv.json['error']
 
 
@@ -262,14 +297,16 @@ def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
     assert rv.json['error'] == 'One of "from_index" or "add_arches" must be specified'
 
 
+@pytest.mark.parametrize('overwrite_from_index', (False, True))
 @mock.patch('iib.web.api_v1.handle_add_request')
-def test_add_bundle_success(mock_har, db, auth_env, client):
+def test_add_bundle_success(mock_har, overwrite_from_index, db, auth_env, client):
     data = {
         'bundles': ['some:thing'],
         'binary_image': 'binary:image',
         'add_arches': ['s390x'],
         'organization': 'org',
         'cnr_token': 'token',
+        'overwrite_from_index': overwrite_from_index,
     }
 
     response_json = {

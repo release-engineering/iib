@@ -124,6 +124,8 @@ The custom configuration options for the REST API are listed below:
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
 * `IIB_MAX_PER_PAGE` - the maximum number of build requests that can be shown on a single page.
   This defaults to `20`.
+* `IIB_PRIVILEGED_USERNAMES` - the list of users that can perform privileged actions such
+  as overwriting the input index image with the built index image. This defaults to `[]`.
 * `IIB_WORKER_USERNAMES` - the list of case-sensitve Kerberos principals that are allowed to update
   build requests using the PATCH API endpoint. This defaults to `[]`.
 * `LOGIN_DISABLED` - determines if authentication is required. This defaults to `False`

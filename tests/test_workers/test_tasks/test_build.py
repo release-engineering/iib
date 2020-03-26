@@ -59,10 +59,20 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     assert manifest in manifest_tool_args
 
 
-@pytest.mark.parametrize('iib_index_image_output_registry', (None, 'registry-proxy.domain.local'))
+@pytest.mark.parametrize(
+    'iib_index_image_output_registry, from_index, overwrite',
+    (
+        (None, None, False),
+        ('registry-proxy.domain.local', None, False),
+        (None, 'quay.io/ns/iib:v4.5', True),
+    ),
+)
 @mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.update_request')
-def test_finish_request_post_build(mock_ur, mock_gwc, iib_index_image_output_registry):
+def test_finish_request_post_build(
+    mock_ur, mock_sc, mock_gwc, iib_index_image_output_registry, from_index, overwrite
+):
     output_pull_spec = 'quay.io/namespace/some-image:3'
     request_id = 2
     arches = {'amd64'}
@@ -70,45 +80,26 @@ def test_finish_request_post_build(mock_ur, mock_gwc, iib_index_image_output_reg
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
-    build._finish_request_post_build(output_pull_spec, request_id, arches)
+    build._finish_request_post_build(output_pull_spec, request_id, arches, from_index, overwrite)
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     assert update_request_payload.keys() == {'arches', 'index_image', 'state', 'state_reason'}
-    if iib_index_image_output_registry:
+    if overwrite:
+        assert update_request_payload['index_image'] == from_index
+        # Verify that the image was actually overwritten
+        assert mock_sc.call_args[0][:2] == (
+            f'docker://{output_pull_spec}',
+            f'docker://{from_index}',
+        )
+    elif iib_index_image_output_registry:
         assert update_request_payload['index_image'] == (
             'registry-proxy.domain.local/namespace/some-image:3'
         )
+        mock_sc.assert_not_called()
     else:
         assert update_request_payload['index_image'] == output_pull_spec
-
-
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_fix_schema_version(mock_run_cmd):
-    destination = 'some_destination'
-    build._fix_schema_version(destination)
-    skopeo_args = mock_run_cmd.mock_calls[0][1][0]
-    assert skopeo_args == [
-        'skopeo',
-        '--command-timeout',
-        '30s',
-        'copy',
-        '--format',
-        'v2s2',
-        destination,
-        destination,
-    ]
-    mock_run_cmd.assert_called_once()
-
-
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_fix_schema_version_fail_max_retries(mock_run_cmd):
-    match_str = 'Something went wrong'
-    mock_run_cmd.side_effect = IIBError(match_str)
-    destination = 'some_destination'
-    with pytest.raises(IIBError, match=match_str):
-        build._fix_schema_version(destination)
-        assert mock_run_cmd.call_count == 5
+        mock_sc.assert_not_called()
 
 
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
@@ -280,8 +271,8 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
-@mock.patch('iib.workers.tasks.build._fix_schema_version')
-def test_push_image(mock_fsv, mock_si, mock_run_cmd, mock_glps, schema_version):
+@mock.patch('iib.workers.tasks.build._skopeo_copy')
+def test_push_image(mock_sc, mock_si, mock_run_cmd, mock_glps, schema_version):
     mock_glps.return_value = 'source:tag'
     mock_si.return_value = {'schemaVersion': schema_version}
 
@@ -294,9 +285,52 @@ def test_push_image(mock_fsv, mock_si, mock_run_cmd, mock_glps, schema_version):
     assert destination in push_args
 
     if schema_version == 1:
-        mock_fsv.assert_called_once_with(destination)
+        mock_sc.assert_called_once()
     else:
         mock_run_cmd.assert_called_once()
+
+
+@pytest.mark.parametrize('copy_all', (False, True))
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_skopeo_copy(mock_run_cmd, copy_all):
+    destination = 'some_destination'
+    build._skopeo_copy(destination, destination, copy_all=copy_all)
+    skopeo_args = mock_run_cmd.mock_calls[0][1][0]
+    if copy_all:
+        expected = [
+            'skopeo',
+            '--command-timeout',
+            '30s',
+            'copy',
+            '--format',
+            'v2s2',
+            '--all',
+            destination,
+            destination,
+        ]
+    else:
+        expected = [
+            'skopeo',
+            '--command-timeout',
+            '30s',
+            'copy',
+            '--format',
+            'v2s2',
+            destination,
+            destination,
+        ]
+    assert skopeo_args == expected
+    mock_run_cmd.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_skopeo_copy_fail_max_retries(mock_run_cmd):
+    match_str = 'Something went wrong'
+    mock_run_cmd.side_effect = IIBError(match_str)
+    destination = 'some_destination'
+    with pytest.raises(IIBError, match=match_str):
+        build._skopeo_copy(destination, destination)
+        assert mock_run_cmd.call_count == 5
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')

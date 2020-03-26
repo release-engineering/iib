@@ -2,9 +2,11 @@
 from copy import deepcopy
 from enum import Enum
 
+from flask import current_app
 from flask_login import UserMixin, current_user
 import sqlalchemy
 from sqlalchemy.orm import joinedload
+from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
@@ -389,7 +391,9 @@ class Request(db.Model):
         """
         # Validate all required parameters are present
         required_params = {'binary_image'} | set(additional_required_params or [])
-        optional_params = {'add_arches'} | set(additional_optional_params or [])
+        optional_params = {'add_arches', 'overwrite_from_index'} | set(
+            additional_optional_params or []
+        )
 
         missing_params = required_params - request_kwargs.keys()
         if missing_params:
@@ -422,6 +426,18 @@ class Request(db.Model):
         # Check if both `from_index` and `add_arches` are not specified
         if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
             raise ValidationError('One of "from_index" or "add_arches" must be specified')
+
+        # Verify that `overwrite_from_index` is the correct type and the user is authorized to
+        # use it if set
+        overwrite = request_kwargs.pop('overwrite_from_index', False)
+        if not isinstance(overwrite, bool):
+            raise ValidationError('The "overwrite_from_index" parameter must be a boolean')
+
+        # current_user.is_authenticated is only ever False when auth is disabled
+        if current_user.is_authenticated:
+            privileged_users = current_app.config['IIB_PRIVILEGED_USERNAMES']
+            if overwrite and current_user.username not in privileged_users:
+                raise Forbidden('You must be a privileged user to set "overwrite_from_index"')
 
         # Validate add_arches are correctly provided
         add_arches = request_kwargs.pop('add_arches', [])
