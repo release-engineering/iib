@@ -62,6 +62,31 @@ def get_builds():
     return flask.jsonify(response)
 
 
+def _should_force_overwrite():
+    """
+    Determine if the ``overwrite_from_index`` parameter should be forced.
+
+    This is for clients that require this functionality but do not currently use the
+    ``overwrite_from_index`` parameter already.
+
+    :return: the boolean that determines if the overwrite should be forced
+    :rtype: bool
+    """
+    # current_user.is_authenticated is only ever False when auth is disabled
+    if not current_user.is_authenticated:
+        return False
+    privileged_users = flask.current_app.config['IIB_PRIVILEGED_USERNAMES']
+    force_ovewrite = flask.current_app.config['IIB_FORCE_OVERWRITE_FROM_INDEX']
+
+    should_force = current_user.username in privileged_users and force_ovewrite
+    if should_force:
+        flask.current_app.logger.info(
+            'The "overwrite_from_index" parameter is being forced to True'
+        )
+
+    return should_force
+
+
 @api_v1.route('/builds/add', methods=['POST'])
 @login_required
 def add_bundles():
@@ -87,7 +112,7 @@ def add_bundles():
         payload.get('add_arches'),
         payload.get('cnr_token'),
         payload.get('organization'),
-        payload.get('overwrite_from_index'),
+        _should_force_overwrite() or payload.get('overwrite_from_index'),
     ]
     safe_args = copy.copy(args)
     if payload.get('cnr_token'):
@@ -224,7 +249,7 @@ def rm_operators():
             request.id,
             payload['from_index'],
             payload.get('add_arches'),
-            payload.get('overwrite_from_index'),
+            _should_force_overwrite() or payload.get('overwrite_from_index'),
         ],
         link_error=error_callback,
     )

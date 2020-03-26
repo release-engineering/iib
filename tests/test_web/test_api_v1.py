@@ -347,6 +347,23 @@ def test_add_bundle_success(mock_har, overwrite_from_index, db, auth_env, client
     mock_har.apply_async.assert_called_once()
 
 
+@pytest.mark.parametrize('force_overwrite', (False, True))
+@mock.patch('iib.web.api_v1.handle_add_request')
+def test_add_bundle_forced_overwrite(mock_har, force_overwrite, app, auth_env, client, db):
+    app.config['IIB_FORCE_OVERWRITE_FROM_INDEX'] = force_overwrite
+    data = {
+        'bundles': ['some:thing'],
+        'binary_image': 'binary:image',
+        'add_arches': ['amd64'],
+        'overwrite_from_index': False,
+    }
+
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    mock_har.apply_async.assert_called_once()
+    assert mock_har.apply_async.call_args[1]['args'][-1] == force_overwrite
+
+
 @pytest.mark.parametrize(
     'data, error_msg',
     (
@@ -527,6 +544,23 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
     mock_rm.apply_async.assert_called_once()
     assert rv.status_code == 201
     assert response_json == rv_json
+
+
+@pytest.mark.parametrize('force_overwrite', (False, True))
+@mock.patch('iib.web.api_v1.handle_rm_request')
+def test_remove_operator_forced_overwrite(mock_hrr, force_overwrite, app, auth_env, client, db):
+    app.config['IIB_FORCE_OVERWRITE_FROM_INDEX'] = force_overwrite
+    data = {
+        'binary_image': 'binary:image',
+        'from_index': 'some:thing2',
+        'operators': ['some:thing'],
+        'overwrite_from_index': False,
+    }
+
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    mock_hrr.apply_async.assert_called_once()
+    assert mock_hrr.apply_async.call_args[1]['args'][-1] == force_overwrite
 
 
 def test_not_found(client):
