@@ -392,6 +392,12 @@ components:
             The organization is required only if support for legacy app registry
             is required.
           example: openshift-operators
+        overwrite_from_index:
+          type: boolean
+          description: >
+            Overwrites the input from_index image with the built index image. This can only be
+            performed by privileged users.
+          default: false
       required:
         - binary_image
         - bundles

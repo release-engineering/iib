@@ -87,6 +87,7 @@ def add_bundles():
         payload.get('add_arches'),
         payload.get('cnr_token'),
         payload.get('organization'),
+        payload.get('overwrite_from_index'),
     ]
     safe_args = copy.copy(args)
     if payload.get('cnr_token'):
@@ -223,6 +224,7 @@ def rm_operators():
             request.id,
             payload['from_index'],
             payload.get('add_arches'),
+            payload.get('overwrite_from_index'),
         ],
         link_error=error_callback,
     )
