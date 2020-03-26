@@ -119,6 +119,8 @@ this configuration file will be applied to the Celery worker when running in pro
 The custom configuration options for the REST API are listed below:
 * `IIB_ADDITIONAL_LOGGERS` - a list of Python loggers that should have the same log level that is
   set for `IIB_LOG_LEVEL`. This defaults to `[]`.
+* `IIB_FORCE_OVERWRITE_FROM_INDEX` - a boolean that determines if privileged users should be forced
+  to have `overwrite_from_index` set to `True`. This defaults to `False`.
 * `IIB_LOG_FORMAT` - the format of the logs. This defaults to
   `%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s`.
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
