@@ -24,9 +24,12 @@ copyright = datetime.today().strftime('%Y') + ', Red Hat Inc.'
 author = 'Red Hat - EXD'
 
 # -- General configuration ---------------------------------------------------
-extensions = ['celery.contrib.sphinx', 'sphinx.ext.autodoc', 'sphinx.ext.githubpages']
-source_suffix = ['.rst', '.md']
-source_parsers = {'.md': 'recommonmark.parser.CommonMarkParser'}
+extensions = [
+    'celery.contrib.sphinx',
+    'recommonmark',
+    'sphinx.ext.autodoc',
+    'sphinx.ext.githubpages',
+]
 master_doc = 'index'
 language = None
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
