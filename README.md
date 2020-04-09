@@ -1,4 +1,5 @@
 # Index Image Build (IIB) Service
+
 A REST API to manage operator index container images
 
 ## External Documentation
@@ -10,10 +11,12 @@ A REST API to manage operator index container images
 ## Coding Standards
 
 The codebase conforms to the style enforced by `flake8` with the following exceptions:
+
 * The maximum line length allowed is 100 characters instead of 80 characters
 
 In addition to `flake8`, docstrings are also enforced by the plugin `flake8-docstrings` with
 the following exemptions:
+
 * D100: Missing docstring in public module
 * D104: Missing docstring in public package
 * D105: Missing docstring in magic method
@@ -21,16 +24,20 @@ the following exemptions:
 The format of the docstrings should be in the
 [reStructuredText](https://docs.python-guide.org/writing/documentation/#restructuredtext-ref) style
 such as:
-```
+
+```python
+"""
 Get the IIB build request from the REST API.
 
 :param int request_id: the ID of the IIB request
 :return: the request
 :rtype: dict
 :raises IIBError: if the HTTP request fails
+"""
 ```
 
 Additionally, `black` is used to enforce other coding standards with the following exceptions:
+
 * Single quotes are used instead of double quotes
 
 To verify that your code meets these standards, you may run `tox -e black,flake8`.
@@ -41,6 +48,7 @@ The testing environment is managed by [tox](https://tox.readthedocs.io/en/latest
 `tox` and all the linting and unit tests will run.
 
 If you'd like to run a specific unit test, you can do the following:
+
 ```bash
 tox -e py37 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 ```
@@ -49,6 +57,7 @@ tox -e py37 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 
 [docker-compose](https://docs.docker.com/compose/) is the supported mechanism for setting up a
 development environment. This will automatically run the following containers:
+
 * **iib-api** - the IIB REST API. This is accessible at [http://localhost:8080](http://localhost:8080).
 * **iib-worker** - the IIB Celery worker.
 * **rabbitmq** - the RabbitMQ instance for communicating between the API and the worker. The
@@ -63,12 +72,14 @@ syntax is added in the code, the `iib-api` container may shutdown. The Celery wo
 automatically restart if there is a change under the `iib/workers` directory.
 
 To run a built index image from the development registry, you can perform the following:
+
 ```bash
 podman login --tls-verify=false -u iib -p iibpassword localhost:8443
 podman pull --tls-verify=false localhost:8443/iib-build:1
 ```
 
 If you are using Docker (a modern version is required), you can perform the following:
+
 ```bash
 sudo docker login -u iib -p iibpassword localhost:8443
 sudo docker run localhost:8443/iib-build:1
@@ -109,7 +120,6 @@ authentication is used by the workers. This is only needed if you are working wi
 Please note that the containers will modify this configuration since they authenticate with the
 registry created by docker-compose on startup.
 
-
 ## Configuring the REST API
 
 To configure the IIB REST API, create a Python file at `/etc/iib/settings.py`. Any variables set in
@@ -117,6 +127,7 @@ this configuration file will be applied to the Celery worker when running in pro
 (default).
 
 The custom configuration options for the REST API are listed below:
+
 * `IIB_ADDITIONAL_LOGGERS` - a list of Python loggers that should have the same log level that is
   set for `IIB_LOG_LEVEL`. This defaults to `[]`.
 * `IIB_FORCE_OVERWRITE_FROM_INDEX` - a boolean that determines if privileged users should be forced
@@ -146,6 +157,7 @@ Any variables set in this configuration file will be applied to the Celery worke
 production mode (default).
 
 The custom configuration options for the Celery workers are listed below:
+
 * `broker_url` - the AMQP(S) URL to connect to RabbitMQ. See the
   [broker_url](https://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url)
   configuration documentation.
@@ -170,16 +182,18 @@ The custom configuration options for the Celery workers are listed below:
 ### Build the Docs
 
 To build and serve the docs, run the following commands:
-```
-$ tox -e docs
-$ google-chrome .tox/docs_out/index.html
+
+```bash
+tox -e docs
+google-chrome .tox/docs_out/index.html
 ```
 
 ### Expanding the Docs
 
 To document a new Python module, find the `rst` file of the corresponding Python package that
 contains the module. Once found, add a section under "Submodules" in alphabetical order such as:
-```
+
+```rst
 iib.workers.tasks.build module
 ------------------------------
 
@@ -191,6 +205,7 @@ iib.workers.tasks.build module
 ```
 
 Some of the options include:
+
 * `ignore-module-all` - include all members regardless of the definition of `__all__`.
 * `members` - automatically document the members in that Python module.
 * `private-members` - include private functions and methods.
