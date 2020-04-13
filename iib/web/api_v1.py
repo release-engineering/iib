@@ -87,6 +87,20 @@ def _should_force_overwrite():
     return should_force
 
 
+def _get_user_queue():
+    """
+    Return the name of the celery task queue mapped to the current user.
+
+    :return: queue name to be used or None if the default queue should be used
+    :rtype: str or None
+    """
+    # current_user.is_authenticated is only ever False when auth is disabled
+    if not current_user.is_authenticated:
+        return
+
+    return flask.current_app.config['IIB_USER_TO_QUEUE'].get(current_user.username)
+
+
 @api_v1.route('/builds/add', methods=['POST'])
 @login_required
 def add_bundles():
@@ -119,7 +133,9 @@ def add_bundles():
         safe_args[safe_args.index(payload['cnr_token'])] = '*****'
 
     error_callback = failed_request_callback.s(request.id)
-    handle_add_request.apply_async(args=args, link_error=error_callback, argsrepr=repr(safe_args))
+    handle_add_request.apply_async(
+        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
+    )
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
@@ -252,6 +268,7 @@ def rm_operators():
             _should_force_overwrite() or payload.get('overwrite_from_index'),
         ],
         link_error=error_callback,
+        queue=_get_user_queue(),
     )
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)

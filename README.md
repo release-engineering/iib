@@ -139,6 +139,9 @@ The custom configuration options for the REST API are listed below:
   This defaults to `20`.
 * `IIB_PRIVILEGED_USERNAMES` - the list of users that can perform privileged actions such
   as overwriting the input index image with the built index image. This defaults to `[]`.
+* `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
+  This is useful in isolating the workload from certain users. The default queue is used for tasks
+  from users not found in the mapping. This defaults to `{}`.
 * `IIB_WORKER_USERNAMES` - the list of case-sensitve Kerberos principals that are allowed to update
   build requests using the PATCH API endpoint. This defaults to `[]`.
 * `LOGIN_DISABLED` - determines if authentication is required. This defaults to `False`
