@@ -4,18 +4,18 @@ from unittest import mock
 import pytest
 
 from iib.web import models
-from iib.web.models import Image, Request
+from iib.web.models import Image, RequestAdd
 
 
 def test_get_build(app, auth_env, client, db):
-    # flask_login.current_user is used in Request.from_json, which requires a request context
+    # flask_login.current_user is used in RequestAdd.from_json, which requires a request context
     with app.test_request_context(environ_base=auth_env):
         data = {
             'binary_image': 'quay.io/namespace/binary_image:latest',
             'bundles': [f'quay.io/namespace/bundle:1.0-3'],
             'from_index': f'quay.io/namespace/repo:latest',
         }
-        request = Request.from_add_json(data)
+        request = RequestAdd.from_json(data)
         request.binary_image_resolved = Image.get_or_create(
             'quay.io/namespace/binary_image@sha256:abcdef'
         )
@@ -70,7 +70,7 @@ def test_get_build(app, auth_env, client, db):
 
 def test_get_builds(app, auth_env, client, db):
     total_requests = 50
-    # flask_login.current_user is used in Request.from_json, which requires a request context
+    # flask_login.current_user is used in RequestAdd.from_json, which requires a request context
     with app.test_request_context(environ_base=auth_env):
         for i in range(total_requests):
             data = {
@@ -78,7 +78,7 @@ def test_get_builds(app, auth_env, client, db):
                 'bundles': [f'quay.io/namespace/bundle:{i}'],
                 'from_index': f'quay.io/namespace/repo:{i}',
             }
-            request = Request.from_add_json(data)
+            request = RequestAdd.from_json(data)
             if i % 5 == 0:
                 request.add_state('failed', 'Failed due to an unknown error')
             db.session.add(request)
@@ -442,7 +442,7 @@ def test_add_bundle_custom_user_queue(
 def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_env, client):
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    request = models.RequestAdd(binary_image=binary_image)
     db.session.add(request)
 
     rv = client.patch('/api/v1/builds/1', json=data, environ_base=worker_auth_env)
@@ -453,7 +453,7 @@ def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_en
 def test_patch_request_forbidden_user(db, worker_forbidden_env, client):
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    request = models.RequestAdd(binary_image=binary_image)
     db.session.add(request)
 
     rv = client.patch(
@@ -513,7 +513,7 @@ def test_patch_request_success(db, worker_auth_env, client):
 
     binary_image = models.Image(pull_specification='quay.io/image:latest')
     db.session.add(binary_image)
-    request = models.Request(binary_image=binary_image, type=models.RequestTypeMapping.add.value,)
+    request = models.RequestAdd(binary_image=binary_image)
     db.session.add(request)
     for bundle in bundles:
         request.bundles.append(Image.get_or_create(bundle))

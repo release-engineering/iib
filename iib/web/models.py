@@ -5,7 +5,8 @@ from enum import Enum
 from flask import current_app
 from flask_login import UserMixin, current_user
 import sqlalchemy
-from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.orm import joinedload, validates
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
@@ -52,6 +53,7 @@ class RequestStateMapping(BaseEnum):
 class RequestTypeMapping(BaseEnum):
     """An Enum that represents the request types."""
 
+    generic = 0
     add = 1
     rm = 2
 
@@ -167,51 +169,53 @@ class Operator(db.Model):
         return operator
 
 
-class RequestOperator(db.Model):
-    """An association table between requests and the bundles they contain."""
+class RequestRmOperator(db.Model):
+    """An association table between rm requests and the operators they contain."""
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_id = db.Column(
-        db.Integer, db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
+    request_rm_id = db.Column(
+        db.Integer,
+        db.ForeignKey('request_rm.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
     )
     operator_id = db.Column(
         db.Integer, db.ForeignKey('operator.id'), autoincrement=False, index=True, primary_key=True
     )
 
-    __table_args__ = (db.UniqueConstraint('request_id', 'operator_id'),)
+    __table_args__ = (db.UniqueConstraint('request_rm_id', 'operator_id'),)
 
 
-class RequestBundle(db.Model):
-    """An association table between requests and the bundles they contain."""
+class RequestAddBundle(db.Model):
+    """An association table between add requests and the bundles they contain."""
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_id = db.Column(
-        db.Integer, db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
+    request_add_id = db.Column(
+        db.Integer,
+        db.ForeignKey('request_add.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
     )
     image_id = db.Column(
         db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
     )
 
-    __table_args__ = (db.UniqueConstraint('request_id', 'image_id'),)
+    __table_args__ = (db.UniqueConstraint('request_add_id', 'image_id'),)
 
 
 class Request(db.Model):
-    """An index image build request."""
+    """A generic image build request."""
+
+    __tablename__ = 'request'
 
     id = db.Column(db.Integer, primary_key=True)
     architectures = db.relationship(
         'Architecture', order_by='Architecture.name', secondary=RequestArchitecture.__table__
     )
-    # The image that opm binary comes from
-    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
-    binary_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    # An optional index image to base the request from
-    from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    from_index_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    # The built index image
-    index_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
     request_state_id = db.Column(
         db.Integer, db.ForeignKey('request_state.id'), index=True, unique=True
     )
@@ -219,18 +223,6 @@ class Request(db.Model):
     type = db.Column(db.Integer, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
-    binary_image = db.relationship('Image', foreign_keys=[binary_image_id], uselist=False)
-    binary_image_resolved = db.relationship(
-        'Image', foreign_keys=[binary_image_resolved_id], uselist=False
-    )
-    bundles = db.relationship('Image', secondary=RequestBundle.__table__)
-    from_index = db.relationship('Image', foreign_keys=[from_index_id], uselist=False)
-    from_index_resolved = db.relationship(
-        'Image', foreign_keys=[from_index_resolved_id], uselist=False
-    )
-    index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
-    operators = db.relationship('Operator', secondary=RequestOperator.__table__)
-    organization = db.Column(db.String, nullable=True)
     state = db.relationship('RequestState', foreign_keys=[request_state_id])
     states = db.relationship(
         'RequestState',
@@ -240,8 +232,28 @@ class Request(db.Model):
     )
     user = db.relationship('User', back_populates='requests')
 
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['generic'].value,
+        'polymorphic_on': type,
+    }
+
+    @validates('type')
+    def validate_type(self, key, type_num):
+        """
+        Verify the type number used is valid.
+
+        :param str key: the name of the database column
+        :param int type_num: the request type number to be verified
+        :return: the request type number
+        :rtype: int
+        :raises ValidationError: if the request type is invalid
+        """
+        if not any(type_num == num.value for num in RequestTypeMapping):
+            raise ValidationError(f'{type_num} is not a valid request type number')
+        return type_num
+
     def __repr__(self):
-        return '<Request {0!r}>'.format(self.id)
+        return '<{0} {1!r}>'.format(self.__class__.__name__, self.id)
 
     def add_state(self, state, state_reason):
         """
@@ -274,37 +286,6 @@ class Request(db.Model):
         db.session.flush()
         self.request_state_id = request_state.id
 
-    @staticmethod
-    def get_query_options(verbose=False):
-        """
-        Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
-
-        This will add the joins ahead of time on relationships that are accessed in the ``to_json``
-        method to avoid individual select statements when the relationships are accessed.
-
-        :param bool verbose: if the request relationships should be loaded for verbose JSON output
-        :return: a list of SQLAlchemy query options
-        :rtype: list
-        """
-        # Tell SQLAlchemy to join on the relationships that are part of the JSON to avoid
-        # additional SQL queries
-        query_options = [
-            joinedload(Request.binary_image),
-            joinedload(Request.binary_image_resolved),
-            joinedload(Request.bundles),
-            joinedload(Request.from_index),
-            joinedload(Request.from_index_resolved),
-            joinedload(Request.index_image),
-            joinedload(Request.operators),
-            joinedload(Request.user),
-        ]
-        if verbose:
-            query_options.append(joinedload(Request.states))
-        else:
-            query_options.append(joinedload(Request.state))
-
-        return query_options
-
     def add_architecture(self, arch_name):
         """
         Add an architecture associated with this image.
@@ -321,14 +302,35 @@ class Request(db.Model):
         if arch not in self.architectures:
             self.architectures.append(arch)
 
+    @classmethod
+    def from_json(cls, kwargs):
+        """
+        Handle JSON requests for a request API endpoint.
+
+        Child classes MUST override this method.
+
+        :param dict kwargs: the user provided parameters to create a Request
+        :return: an object representation of the request
+        :retype: Request
+        """
+        raise NotImplementedError('{} does not implement from_json'.format(cls.__name__))
+
     def to_json(self, verbose=True):
         """
-        Provide the JSON representation of a build request.
+        Provide the basic JSON representation of a build request.
+
+        Child classes are expected to enhance the JSON representation as needed.
 
         :param bool verbose: determines if the JSON output should be verbose
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
+        rv = {
+            'id': self.id,
+            'arches': [arch.name for arch in self.architectures],
+            'request_type': RequestTypeMapping(self.type).name,
+            'user': getattr(self.user, 'username', None),
+        }
 
         def _state_to_json(state):
             return {
@@ -336,35 +338,6 @@ class Request(db.Model):
                 'state_reason': state.state_reason,
                 'updated': state.updated.isoformat() + 'Z',
             }
-
-        rv = {
-            'id': self.id,
-            'arches': [arch.name for arch in self.architectures],
-            'binary_image': self.binary_image.pull_specification,
-            'binary_image_resolved': getattr(
-                self.binary_image_resolved, 'pull_specification', None
-            ),
-            'bundle_mapping': {},
-            'bundles': [],
-            'from_index': getattr(self.from_index, 'pull_specification', None),
-            'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
-            'index_image': getattr(self.index_image, 'pull_specification', None),
-            'organization': self.organization,
-            'removed_operators': [],
-            'user': getattr(self.user, 'username', None),
-        }
-
-        if self.type == RequestTypeMapping.__members__['add'].value:
-            for bundle in self.bundles:
-                if bundle.operator:
-                    rv['bundle_mapping'].setdefault(bundle.operator.name, []).append(
-                        bundle.pull_specification
-                    )
-                rv['bundles'].append(bundle.pull_specification)
-            rv['request_type'] = 'add'
-        else:
-            rv['removed_operators'] = [operator.name for operator in self.operators]
-            rv['request_type'] = 'rm'
 
         latest_state = None
         if verbose:
@@ -376,6 +349,101 @@ class Request(db.Model):
         rv.update(latest_state or _state_to_json(self.state))
 
         return rv
+
+
+def get_request_query_options(verbose=False):
+    """
+    Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
+
+    This will add the joins ahead of time on relationships that are accessed in the ``to_json``
+    methods to avoid individual select statements when the relationships are accessed.
+
+    :param bool verbose: if the request relationships should be loaded for verbose JSON output
+    :return: a list of SQLAlchemy query options
+    :rtype: list
+    """
+    # Tell SQLAlchemy to join on the relationships that are part of the JSON to avoid
+    # additional SQL queries
+    query_options = [
+        joinedload(Request.user),
+        joinedload(RequestAdd.binary_image),
+        joinedload(RequestAdd.binary_image_resolved),
+        joinedload(RequestAdd.bundles),
+        joinedload(RequestAdd.from_index),
+        joinedload(RequestAdd.from_index_resolved),
+        joinedload(RequestAdd.index_image),
+        joinedload(RequestRm.binary_image),
+        joinedload(RequestRm.binary_image_resolved),
+        joinedload(RequestRm.from_index),
+        joinedload(RequestRm.from_index_resolved),
+        joinedload(RequestRm.index_image),
+        joinedload(RequestRm.operators),
+    ]
+    if verbose:
+        query_options.append(joinedload(Request.states))
+    else:
+        query_options.append(joinedload(Request.state))
+
+    return query_options
+
+
+class RequestIndexImageMixin:
+    """
+    A class for shared functionality between index image requests.
+
+    This class uses the Mixin pattern as defined in:
+    https://docs.sqlalchemy.org/en/13/orm/extensions/declarative/mixins.html
+    """
+
+    @declared_attr
+    def binary_image_id(cls):
+        """Return the ID of the image that the opm binary comes from."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+
+    @declared_attr
+    def binary_image_resolved_id(cls):
+        """Return the ID of the resolved image that the opm binary comes from."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def binary_image(cls):
+        """Return the relationship to the image that the opm binary comes from."""
+        return db.relationship('Image', foreign_keys=[cls.binary_image_id], uselist=False)
+
+    @declared_attr
+    def binary_image_resolved(cls):
+        """Return the relationship to the resolved image that the opm binary comes from."""
+        return db.relationship('Image', foreign_keys=[cls.binary_image_resolved_id], uselist=False)
+
+    @declared_attr
+    def from_index_id(cls):
+        """Return the ID of the index image to base the request from."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def from_index_resolved_id(cls):
+        """Return the ID of the resolved index image to base the request from."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def from_index(cls):
+        """Return the relationship of the index image to base the request from."""
+        return db.relationship('Image', foreign_keys=[cls.from_index_id], uselist=False)
+
+    @declared_attr
+    def from_index_resolved(cls):
+        """Return the relationship of the resolved index image to base the request from."""
+        return db.relationship('Image', foreign_keys=[cls.from_index_resolved_id], uselist=False)
+
+    @declared_attr
+    def index_image_id(cls):
+        """Return the ID of the built index image."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def index_image(cls):
+        """Return the relationship to the built index image."""
+        return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
     @staticmethod
     def _from_json(
@@ -395,33 +463,9 @@ class Request(db.Model):
             additional_optional_params or []
         )
 
-        missing_params = required_params - request_kwargs.keys()
-        if missing_params:
-            raise ValidationError(
-                'Missing required parameter(s): {}'.format(', '.join(missing_params))
-            )
-
-        # Don't allow the user to set arbitrary columns or relationships
-        invalid_params = request_kwargs.keys() - required_params - optional_params
-        if invalid_params:
-            raise ValidationError(
-                'The following parameters are invalid: {}'.format(', '.join(invalid_params))
-            )
-
-        # Verify that all the required paramters are set and not empty
-        for param in required_params:
-            if not request_kwargs.get(param):
-                raise ValidationError(f'"{param}" must be set')
-
-        # If any optional parameters are set but are empty, just remove them since they are
-        # treated as null values
-        for param in optional_params:
-            if (
-                param in request_kwargs
-                and not isinstance(request_kwargs.get(param), bool)
-                and not request_kwargs[param]
-            ):
-                del request_kwargs[param]
+        validate_request_params(
+            request_kwargs, required_params=required_params, optional_params=optional_params,
+        )
 
         # Check if both `from_index` and `add_arches` are not specified
         if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
@@ -461,8 +505,51 @@ class Request(db.Model):
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
 
+    def get_common_index_image_json(self):
+        """
+        Return the common set of attributes for an index image request.
+
+        For compatibility between the different types of index image
+        requests, any index image request must provide the combination
+        of possible attributes. For example, the "bundles" attribute is
+        always included even though it's only used by RequestAdd.
+
+        The specialized index image requests should modify the value of
+        the attributes as needed.
+
+        :return: a partial dictionary representing the JSON of the index image build request
+        :rtype: dict
+        """
+        return {
+            'binary_image': self.binary_image.pull_specification,
+            'binary_image_resolved': getattr(
+                self.binary_image_resolved, 'pull_specification', None
+            ),
+            'bundle_mapping': {},
+            'bundles': [],
+            'from_index': getattr(self.from_index, 'pull_specification', None),
+            'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
+            'index_image': getattr(self.index_image, 'pull_specification', None),
+            'organization': None,
+            'removed_operators': [],
+        }
+
+
+class RequestAdd(Request, RequestIndexImageMixin):
+    """An "add" index image build request."""
+
+    __tablename__ = 'request_add'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    bundles = db.relationship('Image', secondary=RequestAddBundle.__table__)
+    organization = db.Column(db.String, nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['add'].value,
+    }
+
     @classmethod
-    def from_add_json(cls, kwargs):
+    def from_json(cls, kwargs):
         """Handle JSON requests for the Add API endpoint."""
         request_kwargs = deepcopy(kwargs)
 
@@ -494,13 +581,49 @@ class Request(db.Model):
             Image.get_or_create(pull_specification=item) for item in bundles
         ]
 
-        request_kwargs['type'] = RequestTypeMapping.__members__['add'].value
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
         return request
 
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of an "add" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv.update(self.get_common_index_image_json())
+        rv['organization'] = self.organization
+
+        for bundle in self.bundles:
+            if bundle.operator:
+                rv['bundle_mapping'].setdefault(bundle.operator.name, []).append(
+                    bundle.pull_specification
+                )
+            rv['bundles'].append(bundle.pull_specification)
+
+        return rv
+
+
+class RequestRm(Request, RequestIndexImageMixin):
+    """A "rm" index image build request."""
+
+    __tablename__ = 'request_rm'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    # The ID of the index image to base the request from. This is always
+    # required for "rm" requests.
+    from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    operators = db.relationship('Operator', secondary=RequestRmOperator.__table__)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['rm'].value,
+    }
+
     @classmethod
-    def from_remove_json(cls, kwargs):
+    def from_json(cls, kwargs):
         """Handle JSON requests for the Remove API endpoint."""
         request_kwargs = deepcopy(kwargs)
 
@@ -516,10 +639,23 @@ class Request(db.Model):
 
         request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
 
-        request_kwargs['type'] = RequestTypeMapping.__members__['rm'].value
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
         return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of an "rm" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv.update(self.get_common_index_image_json())
+        rv['removed_operators'] = [operator.name for operator in self.operators]
+
+        return rv
 
 
 class RequestState(db.Model):
@@ -569,3 +705,42 @@ class User(db.Model, UserMixin):
             db.session.add(user)
 
         return user
+
+
+def validate_request_params(request_params, required_params, optional_params):
+    """
+    Validate parameters for a build request.
+
+    All required parameters must be set in the request_params and
+    unknown parameters are not allowed.
+
+    :param dict request_params: the request parameters provided by the user
+    :param set required_params: the set of required parameters
+    :param set optional_params: the set of optional parameters
+    :raises iib.exceptions.ValidationError: if validation of parameters fails
+    """
+    missing_params = required_params - request_params.keys()
+    if missing_params:
+        raise ValidationError('Missing required parameter(s): {}'.format(', '.join(missing_params)))
+
+    # Don't allow the user to set arbitrary columns or relationships
+    invalid_params = request_params.keys() - required_params - optional_params
+    if invalid_params:
+        raise ValidationError(
+            'The following parameters are invalid: {}'.format(', '.join(invalid_params))
+        )
+
+    # Verify that all the required parameters are set and not empty
+    for param in required_params:
+        if not request_params.get(param):
+            raise ValidationError(f'"{param}" must be set')
+
+    # If any optional parameters are set but are empty, just remove them since they are
+    # treated as null values
+    for param in optional_params:
+        if (
+            param in request_params
+            and not isinstance(request_params.get(param), bool)
+            and not request_params[param]
+        ):
+            del request_params[param]
