@@ -3,11 +3,22 @@ import copy
 
 import flask
 from flask_login import current_user, login_required
+from sqlalchemy.orm import with_polymorphic
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
-from iib.web.models import Architecture, Image, Operator, Request, RequestState, RequestStateMapping
+from iib.web.models import (
+    Architecture,
+    Image,
+    Operator,
+    Request,
+    RequestAdd,
+    RequestRm,
+    RequestState,
+    RequestStateMapping,
+    get_request_query_options,
+)
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import handle_add_request, handle_rm_request
 from iib.workers.tasks.general import failed_request_callback
@@ -24,7 +35,9 @@ def get_build(request_id):
     :rtype: flask.Response
     :raise NotFound: if the request is not found
     """
-    query = Request.query.options(*Request.get_query_options(verbose=True))
+    # Create an alias class to load the polymorphic classes
+    poly_request = with_polymorphic(Request, '*')
+    query = poly_request.query.options(*get_request_query_options(verbose=True))
     return flask.jsonify(query.get_or_404(request_id).to_json())
 
 
@@ -39,7 +52,9 @@ def get_builds():
     verbose = str_to_bool(flask.request.args.get('verbose'))
     max_per_page = flask.current_app.config['IIB_MAX_PER_PAGE']
 
-    query = Request.query.options(*Request.get_query_options(verbose=verbose))
+    # Create an alias class to load the polymorphic classes
+    poly_request = with_polymorphic(Request, '*')
+    query = poly_request.query.options(*get_request_query_options(verbose=verbose))
     if state:
         RequestStateMapping.validate_state(state)
         state_int = RequestStateMapping.__members__[state].value
@@ -114,7 +129,7 @@ def add_bundles():
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
-    request = Request.from_add_json(payload)
+    request = RequestAdd.from_json(payload)
     db.session.add(request)
     db.session.commit()
 
@@ -253,7 +268,7 @@ def rm_operators():
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
-    request = Request.from_remove_json(payload)
+    request = RequestRm.from_json(payload)
     db.session.add(request)
     db.session.commit()
 
