@@ -56,11 +56,26 @@ def upgrade():
         sa.Column('type', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=True),
         sa.Column('organization', sa.String(), nullable=True),
-        sa.ForeignKeyConstraint(['binary_image_id'], ['image.id']),
-        sa.ForeignKeyConstraint(['binary_image_resolved_id'], ['image.id']),
-        sa.ForeignKeyConstraint(['from_index_id'], ['image.id']),
-        sa.ForeignKeyConstraint(['from_index_resolved_id'], ['image.id']),
-        sa.ForeignKeyConstraint(['index_image_id'], ['image.id']),
+        # We specify the constraint names here retroactively to match the
+        # naming convention used by Postgreql. This will allow us to drop them
+        # in a future migration.
+        sa.ForeignKeyConstraint(
+            ['binary_image_id'], ['image.id'], name='request_binary_image_id_fkey',
+        ),
+        sa.ForeignKeyConstraint(
+            ['binary_image_resolved_id'],
+            ['image.id'],
+            name='request_binary_image_resolved_id_fkey',
+        ),
+        sa.ForeignKeyConstraint(
+            ['from_index_id'], ['image.id'], name='request_from_index_id_fkey',
+        ),
+        sa.ForeignKeyConstraint(
+            ['from_index_resolved_id'], ['image.id'], name='request_from_index_resolved_id_fkey',
+        ),
+        sa.ForeignKeyConstraint(
+            ['index_image_id'], ['image.id'], name='request_index_image_id_fkey'
+        ),
         sa.ForeignKeyConstraint(['user_id'], ['user.id']),
         sa.PrimaryKeyConstraint('id'),
     )
