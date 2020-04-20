@@ -3,7 +3,6 @@ from unittest import mock
 
 import pytest
 
-from iib.web import models
 from iib.web.models import Image, RequestAdd
 
 
@@ -439,31 +438,117 @@ def test_add_bundle_custom_user_queue(
         ),
     ),
 )
-def test_patch_request_invalid_params_format(data, error_msg, db, worker_auth_env, client):
-    binary_image = models.Image(pull_specification='quay.io/image:latest')
-    db.session.add(binary_image)
-    request = models.RequestAdd(binary_image=binary_image)
-    db.session.add(request)
-
-    rv = client.patch('/api/v1/builds/1', json=data, environ_base=worker_auth_env)
+def test_patch_add_request_invalid_params_format(
+    data, error_msg, minimal_request_add, worker_auth_env, client
+):
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request_add.id}', json=data, environ_base=worker_auth_env
+    )
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
 
 
-def test_patch_request_forbidden_user(db, worker_forbidden_env, client):
-    binary_image = models.Image(pull_specification='quay.io/image:latest')
-    db.session.add(binary_image)
-    request = models.RequestAdd(binary_image=binary_image)
-    db.session.add(request)
-
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {
+                'arches': [''],
+                'binary_image_resolved': 'resolved:binary',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'Architectures should be specified as a non-empty array of strings',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'binary_image_resolved': '',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'The value for "binary_image_resolved" must be a non-empty string',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'binary_image_resolved': 'resolved:binary',
+                'from_index_resolved': 'resolved:index',
+                'index_image': 'index:image',
+                'state_reason': 'state_reason',
+            },
+            'The "state" key is required when "state_reason" is supplied',
+        ),
+    ),
+)
+def test_patch_rm_request_invalid_params_format(
+    data, error_msg, minimal_request_rm, worker_auth_env, client
+):
     rv = client.patch(
-        '/api/v1/builds/1', json={'arches': ['s390x']}, environ_base=worker_forbidden_env
+        f'/api/v1/builds/{minimal_request_rm.id}', json=data, environ_base=worker_auth_env
+    )
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {
+                'arches': [''],
+                'from_bundle_image_resolved': 'resolved:bundle',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'Architectures should be specified as a non-empty array of strings',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'from_bundle_image_resolved': '',
+                'state': 'state',
+                'state_reason': 'state:reason',
+            },
+            'The value for "from_bundle_image_resolved" must be a non-empty string',
+        ),
+        (
+            {
+                'arches': ['s390x'],
+                'from_bundle_image_resolved': 'resolved:bundle',
+                'state_reason': 'state_reason',
+            },
+            'The "state" key is required when "state_reason" is supplied',
+        ),
+    ),
+)
+def test_patch_regenerate_bundle_request_invalid_params_format(
+    data, error_msg, minimal_request_regenerate_bundle, worker_auth_env, client
+):
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request_regenerate_bundle.id}',
+        json=data,
+        environ_base=worker_auth_env,
+    )
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+def test_patch_request_forbidden_user(minimal_request, worker_forbidden_env, client):
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request.id}',
+        json={'arches': ['s390x']},
+        environ_base=worker_forbidden_env,
     )
     assert rv.status_code == 403
     assert 'This API endpoint is restricted to IIB workers' == rv.json['error']
 
 
-def test_patch_request_success(db, worker_auth_env, client):
+def test_patch_request_add_success(db, minimal_request_add, worker_auth_env, client):
     bundles = [
         'quay.io/some-operator:v1.0.0',
         'quay.io/some-operator:v1.1.0',
@@ -482,17 +567,18 @@ def test_patch_request_success(db, worker_auth_env, client):
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
+        'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
     response_json = {
         'arches': ['arches'],
-        'binary_image': 'quay.io/image:latest',
-        'binary_image_resolved': None,
+        'binary_image': 'quay.io/add/binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
         'from_index': None,
         'from_index_resolved': None,
-        'id': 1,
+        'id': minimal_request_add.id,
         'index_image': 'index:image',
         'organization': None,
         'removed_operators': [],
@@ -511,21 +597,118 @@ def test_patch_request_success(db, worker_auth_env, client):
         'user': None,
     }
 
-    binary_image = models.Image(pull_specification='quay.io/image:latest')
-    db.session.add(binary_image)
-    request = models.RequestAdd(binary_image=binary_image)
-    db.session.add(request)
     for bundle in bundles:
-        request.bundles.append(Image.get_or_create(bundle))
-    request.add_state('in_progress', 'Starting things up')
+        minimal_request_add.bundles.append(Image.get_or_create(bundle))
+    minimal_request_add.add_state('in_progress', 'Starting things up')
     db.session.commit()
 
-    rv = client.patch('/api/v1/builds/1', json=data, environ_base=worker_auth_env)
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request_add.id}', json=data, environ_base=worker_auth_env,
+    )
     rv_json = rv.json
+    assert rv.status_code == 200, rv_json
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
-    assert rv.status_code == 200
+    assert rv_json == response_json
+
+
+def test_patch_request_rm_success(db, minimal_request_rm, worker_auth_env, client):
+    data = {
+        'arches': ['arches'],
+        'state': 'complete',
+        'state_reason': 'All done!',
+        'index_image': 'index:image',
+        'binary_image_resolved': 'binary-image@sha256:1234',
+    }
+
+    response_json = {
+        'arches': ['arches'],
+        'binary_image': minimal_request_rm.binary_image.pull_specification,
+        'binary_image_resolved': 'binary-image@sha256:1234',
+        'bundle_mapping': {},
+        'bundles': [],
+        'from_index': 'quay.io/rm/index-image:latest',
+        'from_index_resolved': None,
+        'id': minimal_request_rm.id,
+        'index_image': 'index:image',
+        'organization': None,
+        'removed_operators': ['operator'],
+        'request_type': 'rm',
+        'state': 'complete',
+        'state_history': [
+            {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
+            {
+                'state': 'in_progress',
+                'state_reason': 'Starting things up',
+                'updated': '2020-02-12T17:03:00Z',
+            },
+        ],
+        'state_reason': 'All done!',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': None,
+    }
+
+    minimal_request_rm.add_state('in_progress', 'Starting things up')
+    db.session.commit()
+
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request_rm.id}', json=data, environ_base=worker_auth_env,
+    )
+    rv_json = rv.json
+    assert rv.status_code == 200, rv_json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
+    assert rv_json == response_json
+
+
+def test_patch_request_regenerate_bundle_success(
+    db, minimal_request_regenerate_bundle, worker_auth_env, client
+):
+    data = {
+        'arches': ['arches'],
+        'state': 'complete',
+        'state_reason': 'All done!',
+        'bundle_image': 'bundle:image',
+        'from_bundle_image_resolved': 'from-bundle-image:resolved',
+    }
+
+    response_json = {
+        'arches': ['arches'],
+        'bundle_image': 'bundle:image',
+        'from_bundle_image': minimal_request_regenerate_bundle.from_bundle_image.pull_specification,
+        'from_bundle_image_resolved': 'from-bundle-image:resolved',
+        'id': minimal_request_regenerate_bundle.id,
+        'organization': None,
+        'request_type': 'regenerate-bundle',
+        'state': 'complete',
+        'state_history': [
+            {'state': 'complete', 'state_reason': 'All done!', 'updated': '2020-02-12T17:03:00Z'},
+            {
+                'state': 'in_progress',
+                'state_reason': 'Starting things up',
+                'updated': '2020-02-12T17:03:00Z',
+            },
+        ],
+        'state_reason': 'All done!',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': None,
+    }
+
+    minimal_request_regenerate_bundle.add_state('in_progress', 'Starting things up')
+    db.session.commit()
+
+    rv = client.patch(
+        f'/api/v1/builds/{minimal_request_regenerate_bundle.id}',
+        json=data,
+        environ_base=worker_auth_env,
+    )
+    rv_json = rv.json
+    assert rv.status_code == 200, rv_json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv_json == response_json
 
 
@@ -619,3 +802,98 @@ def test_not_found(client):
     rv = client.get('/api/v1/builds/1234')
     assert rv.status_code == 404
     assert rv.json == {'error': 'The requested resource was not found'}
+
+
+@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+def test_regenerate_bundle_success(mock_hrbr, db, auth_env, client):
+    data = {
+        'from_bundle_image': 'registry.example.com/bundle-image:latest',
+    }
+
+    # Assume a timestamp to simplify tests
+    _timestamp = '2020-02-12T17:03:00Z'
+
+    response_json = {
+        'arches': [],
+        'bundle_image': None,
+        'from_bundle_image': 'registry.example.com/bundle-image:latest',
+        'from_bundle_image_resolved': None,
+        'organization': None,
+        'id': 1,
+        'request_type': 'regenerate-bundle',
+        'state': 'in_progress',
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': _timestamp,
+            }
+        ],
+        'state_reason': 'The request was initiated',
+        'updated': _timestamp,
+        'user': 'tbrady@DOMAIN.LOCAL',
+    }
+
+    rv = client.post('/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = _timestamp
+    rv_json['updated'] = _timestamp
+    assert response_json == rv_json
+    mock_hrbr.apply_async.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        ({'from_bundle_image': ''}, '"from_bundle_image" must be set'),
+        ({'from_bundle_image': 123}, '"from_bundle_image" must be a string'),
+        (
+            {'from_bundle_image': 'registry.example.com/bundle-image:latest', 'organization': 123},
+            '"organization" must be a string',
+        ),
+        (
+            {'from_bundle_image': 'registry.example.com/bundle-image:latest', 'spam': 'maps'},
+            'The following parameters are invalid: spam',
+        ),
+    ),
+)
+def test_regenerate_bundle_invalid_params_format(data, error_msg, db, auth_env, client):
+    rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        ({}, 'Missing required parameter(s): from_bundle_image'),
+        ({'organization': 'acme'}, 'Missing required parameter(s): from_bundle_image'),
+    ),
+)
+def test_regenerate_bundle_missing_required_param(data, error_msg, db, auth_env, client):
+    rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert rv.json['error'] == error_msg
+
+
+@pytest.mark.parametrize(
+    'user_to_queue, expected_queue',
+    (
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, 'Buccaneers'),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, None),
+    ),
+)
+@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+def test_regenerate_bundle_custom_user_queue(
+    mock_hrbr, app, auth_env, client, user_to_queue, expected_queue
+):
+    app.config['IIB_USER_TO_QUEUE'] = user_to_queue
+    data = {'from_bundle_image': 'registry.example.com/bundle-image:latest'}
+
+    rv = client.post('/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    assert rv.status_code == 201, rv.json
+    mock_hrbr.apply_async.assert_called_once()
+    mock_hrbr.apply_async.assert_called_with(
+        args=mock.ANY, link_error=mock.ANY, queue=expected_queue
+    )

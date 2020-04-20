@@ -50,11 +50,12 @@ def test_get_state_names():
 
 
 def test_get_type_names():
-    assert models.RequestTypeMapping.get_names() == ['add', 'generic', 'rm']
+    assert models.RequestTypeMapping.get_names() == ['add', 'generic', 'regenerate_bundle', 'rm']
 
 
 @pytest.mark.parametrize(
-    'type_num, is_valid', [(0, True), (1, True), (2, True), (3, False), ('1', False), (None, False)]
+    'type_num, is_valid',
+    [(0, True), (1, True), (2, True), (3, True), (5, False), ('1', False), (None, False)],
 )
 def test_request_type_validation(type_num, is_valid):
     if is_valid:
@@ -62,34 +63,3 @@ def test_request_type_validation(type_num, is_valid):
     else:
         with pytest.raises(ValidationError, match=f'{type_num} is not a valid request type number'):
             models.Request(type=type_num)
-
-
-@pytest.fixture(params=[models.RequestAdd, models.RequestRm])
-def minimal_request(db, request):
-    """
-    Create and return an instance of the request class from the fixture params.
-
-    The request instance will have the minimal set of required attributes set,
-    and it'll be committed to the database.
-
-    :param _pytest.fixtures.SubRequest request: the Request subclass to instantiate
-    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
-    :return: the newly created request object
-    :rtype: Request
-    """
-    kwargs = {}
-
-    request_class = request.param
-    if request_class in (models.RequestAdd, models.RequestRm):
-        binary_image = models.Image(pull_specification='quay.io/binary-image:latest')
-        db.session.add(binary_image)
-        kwargs['binary_image'] = binary_image
-
-    if request_class == models.RequestRm:
-        from_index_image = models.Image(pull_specification='quay.io/index-image:latest')
-        db.session.add(from_index_image)
-        kwargs['from_index'] = from_index_image
-
-    request = request_class(**kwargs)
-    db.session.add(request)
-    return request
