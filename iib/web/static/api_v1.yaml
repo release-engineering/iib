@@ -52,7 +52,9 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: '#/components/schemas/Request'
+                      oneOf:
+                        - $ref: '#/components/schemas/RequestIndexImage'
+                        - $ref: '#/components/schemas/RequestRegenerateBundle'
                   meta:
                     $ref: '#/components/schemas/Pagination'
         '400':
@@ -93,7 +95,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestVerbose'
+                oneOf:
+                  - $ref: '#/components/schemas/RequestIndexImageVerbose'
+                  - $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
         '404':
           description: The build request wasn't found
           content:
@@ -119,7 +123,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestVerbose'
+                oneOf:
+                  - $ref: '#/components/schemas/RequestIndexImageVerbose'
+                  - $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
         '400':
           description: The input is invalid
           content:
@@ -166,6 +172,7 @@ paths:
         content:
           application/json:
             schema:
+              # TODO: update to include Regenerate Bundle attrs
               $ref: '#/components/schemas/RequestUpdate'
       security:
         - Kerberos Authentication: []
@@ -187,7 +194,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestVerbose'
+                $ref: '#/components/schemas/RequestIndexImageVerbose'
         '400':
           description: The input is invalid
           content:
@@ -226,7 +233,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestVerbose'
+                $ref: '#/components/schemas/RequestIndexImageVerbose'
         '400':
           description: The input is invalid
           content:
@@ -237,6 +244,45 @@ paths:
                   error:
                     type: string
                     example: '"operators" should be a non-empty array of strings'
+        '401':
+          description: The user is not allowed to submit a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+  /builds/regenerate-bundle:
+    post:
+      description: Submit a build request to regenerate an operator bundle image
+      requestBody:
+        description: The build request to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"organization" must be a string'
         '401':
           description: The user is not allowed to submit a build request with this input
           content:
@@ -302,43 +348,9 @@ components:
           example:
             - amd64
             - s390x
-        binary_image:
-          type: string
-          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
-        binary_image_resolved:
-          type: string
-          example: >-
-            quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
-        bundles:
-          type: array
-          items:
-            type: string
-          example:
-            - 'quay.io/user/openshift-bundle-example-container:v1'
-        bundle_mapping:
-          $ref: '#/components/schemas/BundleMapping'
-        from_index:
-          type: string
-          example: 'quay.io/iib-stage/iib:4'
-        from_index_resolved:
-          type: string
-          example: >-
-            quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
         id:
           type: integer
           example: 1
-        index_image:
-          type: string
-          example: 'quay.io/iib-stage/iib:5'
-        organization:
-          type: string
-          example: openshift-operators
-        removed_operators:
-          type: array
-          items:
-            type: string
-          example:
-            - prometheus-operator
         request_type:
           type: string
           example: add
@@ -354,6 +366,45 @@ components:
         user:
           type: string
           example: msdhoni@DOMAIN.LOCAL
+    RequestIndexImage:
+      allOf:
+        - $ref: '#/components/schemas/Request'
+        - type: object
+          properties:
+            binary_image:
+              type: string
+              example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+            binary_image_resolved:
+              type: string
+              example: >-
+                quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            bundles:
+              type: array
+              items:
+                type: string
+              example:
+                - 'quay.io/user/openshift-bundle-example-container:v1'
+            bundle_mapping:
+              $ref: '#/components/schemas/BundleMapping'
+            from_index:
+              type: string
+              example: 'quay.io/iib-stage/iib:4'
+            from_index_resolved:
+              type: string
+              example: >-
+                quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            index_image:
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            organization:
+              type: string
+              example: openshift-operators
+            removed_operators:
+              type: array
+              items:
+                type: string
+              example:
+                - prometheus-operator
     RequestAdd:
       type: object
       properties:
@@ -427,6 +478,26 @@ components:
         - binary_image
         - from_index
         - operators
+    RequestRegenerateBundle:
+      allOf:
+        - $ref: '#/components/schemas/Request'
+        - type: object
+          properties:
+            from_bundle_image:
+              type: string
+              description: >-
+                The pull specification of the original bundle image that will be modified.
+              example: 'quay.io/user/openshift-bundle-example-container:v1'
+            organization:
+              type: string
+              description: >-
+                The name of the organization the bundle should be regenerated for. If provided,
+                the value must exist in IIB's server configuration. This will be used to perform
+                various modifications in the operator metadata embeded in the operator bundle
+                image, e.g. change the container registry, or the operator package name.
+              example: openshift-operators
+          required:
+            - from_bundle_image
     RequestUpdate:
       type: object
       properties:
@@ -441,8 +512,16 @@ components:
           type: string
           example: >-
             quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+        bundle_image:
+          type: string
+          example: >-
+            quay.io/user/openshift-bundle-example-container:v1
         bundle_mapping:
           $ref: '#/components/schemas/BundleMapping'
+        from_bundle_image_resolved:
+          type: string
+          example: >-
+            quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
         from_index_resolved:
           type: string
           example: >-
@@ -465,6 +544,14 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/StateHistory'
+    RequestIndexImageVerbose:
+      allOf:
+        - $ref: '#/components/schemas/RequestVerbose'
+        - $ref: '#/components/schemas/RequestIndexImage'
+    RequestRegenerateBundleVerbose:
+      allOf:
+        - $ref: '#/components/schemas/RequestVerbose'
+        - $ref: '#/components/schemas/RequestRegenerateBundle'
     StateHistory:
       type: object
       properties:

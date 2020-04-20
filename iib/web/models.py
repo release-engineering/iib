@@ -56,6 +56,18 @@ class RequestTypeMapping(BaseEnum):
     generic = 0
     add = 1
     rm = 2
+    regenerate_bundle = 3
+
+    @classmethod
+    def pretty(cls, num):
+        """
+        Return the prettified version of the enum value.
+
+        :param int num: the enum value
+        :return: the prettified string representation of the enum value
+        :rtype: str
+        """
+        return cls(num).name.replace('_', '-')
 
 
 class Architecture(db.Model):
@@ -328,7 +340,7 @@ class Request(db.Model):
         rv = {
             'id': self.id,
             'arches': [arch.name for arch in self.architectures],
-            'request_type': RequestTypeMapping(self.type).name,
+            'request_type': RequestTypeMapping.pretty(self.type),
             'user': getattr(self.user, 'username', None),
         }
 
@@ -349,6 +361,15 @@ class Request(db.Model):
         rv.update(latest_state or _state_to_json(self.state))
 
         return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        return {'arches', 'state', 'state_reason'}
 
 
 def get_request_query_options(verbose=False):
@@ -372,6 +393,9 @@ def get_request_query_options(verbose=False):
         joinedload(RequestAdd.from_index),
         joinedload(RequestAdd.from_index_resolved),
         joinedload(RequestAdd.index_image),
+        joinedload(RequestRegenerateBundle.bundle_image),
+        joinedload(RequestRegenerateBundle.from_bundle_image),
+        joinedload(RequestRegenerateBundle.from_bundle_image_resolved),
         joinedload(RequestRm.binary_image),
         joinedload(RequestRm.binary_image_resolved),
         joinedload(RequestRm.from_index),
@@ -534,6 +558,20 @@ class RequestIndexImageMixin:
             'removed_operators': [],
         }
 
+    def get_index_image_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        return {
+            'binary_image_resolved',
+            'from_bundle_image_resolved',
+            'from_index_resolved',
+            'index_image',
+        }
+
 
 class RequestAdd(Request, RequestIndexImageMixin):
     """An "add" index image build request."""
@@ -606,6 +644,18 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
         return rv
 
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
+        rv.update({'bundles', 'bundle_mapping'})
+        return rv
+
 
 class RequestRm(Request, RequestIndexImageMixin):
     """A "rm" index image build request."""
@@ -655,6 +705,103 @@ class RequestRm(Request, RequestIndexImageMixin):
         rv.update(self.get_common_index_image_json())
         rv['removed_operators'] = [operator.name for operator in self.operators]
 
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
+        return rv
+
+
+class RequestRegenerateBundle(Request):
+    """A "regenerate_bundle" image build request."""
+
+    __tablename__ = 'request_regenerate_bundle'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    # The ID of the regenerated bundle image
+    bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    bundle_image = db.relationship('Image', foreign_keys=[bundle_image_id], uselist=False)
+    # The ID of the bundle image to be regenerated
+    from_bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    from_bundle_image = db.relationship('Image', foreign_keys=[from_bundle_image_id], uselist=False)
+    # The ID of the resolved bundle image to be regenerated
+    from_bundle_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    from_bundle_image_resolved = db.relationship(
+        'Image', foreign_keys=[from_bundle_image_resolved_id], uselist=False
+    )
+    # The name of the organization the bundle should be regenerated for
+    organization = db.Column(db.String, nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value,
+    }
+
+    @classmethod
+    def from_json(cls, kwargs):
+        """Handle JSON requests for the Regenerate Bundle API endpoint."""
+        request_kwargs = deepcopy(kwargs)
+
+        validate_request_params(
+            request_kwargs, required_params={'from_bundle_image'}, optional_params={'organization'},
+        )
+
+        # Validate organization is correctly provided
+        organization = request_kwargs.get('organization')
+        if organization and not isinstance(organization, str):
+            raise ValidationError('"organization" must be a string')
+
+        # Validate from_bundle_image is correctly provided
+        from_bundle_image = request_kwargs.pop('from_bundle_image')
+        if not isinstance(from_bundle_image, str):
+            raise ValidationError('"from_bundle_image" must be a string')
+
+        request_kwargs['from_bundle_image'] = Image.get_or_create(
+            pull_specification=from_bundle_image
+        )
+
+        # current_user.is_authenticated is only ever False when auth is disabled
+        if current_user.is_authenticated:
+            request_kwargs['user'] = current_user
+
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of a "regenerate-bundle" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv['bundle_image'] = getattr(self.bundle_image, 'pull_specification', None)
+        rv['from_bundle_image'] = self.from_bundle_image.pull_specification
+        rv['from_bundle_image_resolved'] = getattr(
+            self.from_bundle_image_resolved, 'pull_specification', None
+        )
+        rv['organization'] = self.organization
+
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.add('bundle_image')
+        rv.add('from_bundle_image_resolved')
         return rv
 
 

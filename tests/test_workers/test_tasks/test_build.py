@@ -12,12 +12,12 @@ from iib.workers.tasks import build
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd):
-    build._build_image('/some/dir', 3, 'amd64')
+    build._build_image('/some/dir', 'some.Dockerfile', 3, 'amd64')
 
     mock_run_cmd.assert_called_once()
     build_args = mock_run_cmd.call_args[0][0]
     assert build_args[0:2] == ['buildah', 'bud']
-    assert '/some/dir/index.Dockerfile' in build_args
+    assert '/some/dir/some.Dockerfile' in build_args
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
@@ -467,3 +467,79 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
     mock_gil.return_value = {'lunch': 'pizza'}
     with pytest.raises(IIBError, match='som'):
         build._verify_labels(['some-bundle:v1.0'])
+
+
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.update_request')
+def test_handle_regenerate_bundle_request(
+    mock_ur, mock_capml, mock_srs, mock_pi, mock_bi, mock_gia, mock_gri, mock_cleanup
+):
+    arches = ['amd64', 's390x']
+    from_bundle_image = 'bundle-image:latest'
+    from_bundle_image_resolved = 'bundle-image@sha256:abcdef'
+    bundle_image = 'regenerated-bundle-image:99'
+    organization = 'acme'
+    request_id = 99
+
+    mock_gri.return_value = from_bundle_image_resolved
+    mock_gia.return_value = list(arches)
+    mock_capml.return_value = bundle_image
+
+    build.handle_regenerate_bundle_request(from_bundle_image, organization, request_id)
+
+    mock_cleanup.assert_called_once()
+
+    mock_gri.assert_called_once()
+    mock_gri.assert_called_with('bundle-image:latest')
+
+    mock_gia.assert_called_once()
+    mock_gia.assert_called_with('bundle-image@sha256:abcdef')
+
+    assert mock_bi.call_count == len(arches)
+    assert mock_pi.call_count == len(arches)
+    for arch in arches:
+        mock_bi.assert_any_call(mock.ANY, 'Dockerfile', request_id, arch)
+        mock_pi.assert_any_call(request_id, arch)
+
+    assert mock_srs.call_count == 2
+    mock_srs.assert_has_calls(
+        [
+            mock.call(request_id, 'in_progress', 'Resolving from_bundle_image'),
+            mock.call(request_id, 'in_progress', 'Creating the manifest list'),
+        ]
+    )
+
+    mock_capml.assert_called_once_with(request_id, list(arches))
+
+    assert mock_ur.call_count == 2
+    mock_ur.assert_has_calls(
+        [
+            mock.call(
+                request_id,
+                {
+                    'from_bundle_image_resolved': from_bundle_image_resolved,
+                    'state': 'in_progress',
+                    'state_reason': (
+                        'Regenerating the bundle image for the following arches: amd64, s390x'
+                    ),
+                },
+                exc_msg='Failed setting the resolved "from_bundle_image" on the request',
+            ),
+            mock.call(
+                request_id,
+                {
+                    'arches': list(arches),
+                    'bundle_image': bundle_image,
+                    'state': 'complete',
+                    'state_reason': 'The request completed successfully',
+                },
+                exc_msg='Failed setting the bundle image on the request',
+            ),
+        ]
+    )

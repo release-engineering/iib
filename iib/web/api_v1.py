@@ -14,13 +14,18 @@ from iib.web.models import (
     Operator,
     Request,
     RequestAdd,
+    RequestRegenerateBundle,
     RequestRm,
     RequestState,
     RequestStateMapping,
     get_request_query_options,
 )
 from iib.web.utils import pagination_metadata, str_to_bool
-from iib.workers.tasks.build import handle_add_request, handle_rm_request
+from iib.workers.tasks.build import (
+    handle_add_request,
+    handle_regenerate_bundle_request,
+    handle_rm_request,
+)
 from iib.workers.tasks.general import failed_request_callback
 
 api_v1 = flask.Blueprint('api_v1', __name__)
@@ -181,16 +186,9 @@ def patch_request(request_id):
     if not payload:
         raise ValidationError('At least one key must be specified to update the request')
 
-    valid_keys = {
-        'arches',
-        'binary_image_resolved',
-        'bundle_mapping',
-        'from_index_resolved',
-        'index_image',
-        'state',
-        'state_reason',
-    }
-    invalid_keys = payload.keys() - valid_keys
+    request = Request.query.get_or_404(request_id)
+
+    invalid_keys = payload.keys() - request.get_mutable_keys()
     if invalid_keys:
         raise ValidationError(
             'The following keys are not allowed: {}'.format(', '.join(invalid_keys))
@@ -214,7 +212,6 @@ def patch_request(request_id):
     elif 'state_reason' in payload and 'state' not in payload:
         raise ValidationError('The "state" key is required when "state_reason" is supplied')
 
-    request = Request.query.get_or_404(request_id)
     if 'state' in payload and 'state_reason' in payload:
         RequestStateMapping.validate_state(payload['state'])
         new_state = payload['state']
@@ -226,7 +223,14 @@ def patch_request(request_id):
         else:
             request.add_state(new_state, new_state_reason)
 
-    for key in ('binary_image_resolved', 'from_index_resolved', 'index_image'):
+    image_keys = (
+        'binary_image_resolved',
+        'bundle_image',
+        'from_bundle_image_resolved',
+        'from_index_resolved',
+        'index_image',
+    )
+    for key in image_keys:
         if key not in payload:
             continue
         key_value = payload.get(key, None)
@@ -282,6 +286,34 @@ def rm_operators():
             payload.get('add_arches'),
             _should_force_overwrite() or payload.get('overwrite_from_index'),
         ],
+        link_error=error_callback,
+        queue=_get_user_queue(),
+    )
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/regenerate-bundle', methods=['POST'])
+@login_required
+def regenerate_bundle():
+    """
+    Submit a request to regenerate an operator bundle image.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = RequestRegenerateBundle.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+
+    error_callback = failed_request_callback.s(request.id)
+    handle_regenerate_bundle_request.apply_async(
+        args=[payload['from_bundle_image'], payload.get('organization'), request.id],
         link_error=error_callback,
         queue=_get_user_queue(),
     )

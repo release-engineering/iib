@@ -4,6 +4,7 @@ import os
 import flask_migrate
 import pytest
 
+from iib.web import models
 from iib.web.app import create_app, db as _db
 from iib.web.config import TEST_DB_FILE
 
@@ -69,3 +70,96 @@ def worker_auth_env():
 @pytest.fixture(scope='session')
 def worker_forbidden_env():
     return {'REMOTE_USER': 'vkohli@DOMAIN.LOCAL'}
+
+
+@pytest.fixture(params=['add', 'rm', 'regenerate-bundle'])
+def minimal_request(
+    request, minimal_request_add, minimal_request_rm, minimal_request_regenerate_bundle
+):
+    """
+    Create and return an instance of each support request class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param _pytest.fixtures.SubRequest request: the Request subclass to instantiate
+    :param pytest.fixture minimal_request_add: instance of RequestAdd
+    :param pytest.fixture minimal_request_rm: instance of RequestRm
+    :param pytest.fixture minimal_request_regenerate_bundle: instance of RequestRegenerateBundle
+    :return: yield each request instance
+    :rtype: Request
+    """
+    # A pytest fixture should not be called directly. So we use the fixtures for each
+    # request class in this fixture, but then only return one at a time.
+    request_instances = {
+        'add': minimal_request_add,
+        'rm': minimal_request_rm,
+        'regenerate-bundle': minimal_request_regenerate_bundle,
+    }
+    return request_instances[request.param]
+
+
+@pytest.fixture()
+def minimal_request_add(db):
+    """
+    Create and return an instance of the RequestAdd class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestAdd
+    """
+    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
+    db.session.add(binary_image)
+    request = models.RequestAdd(binary_image=binary_image)
+    db.session.add(request)
+    db.session.commit()
+    return request
+
+
+@pytest.fixture()
+def minimal_request_rm(db):
+    """
+    Create and return an instance of the RequestRm class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestRm
+    """
+    binary_image = models.Image(pull_specification='quay.io/rm/binary-image:latest')
+    db.session.add(binary_image)
+    from_index_image = models.Image(pull_specification='quay.io/rm/index-image:latest')
+    db.session.add(from_index_image)
+    operator = models.Operator(name='operator')
+    db.session.add(operator)
+    request = models.RequestRm(
+        binary_image=binary_image, from_index=from_index_image, operators=[operator]
+    )
+    db.session.add(request)
+    db.session.commit()
+    return request
+
+
+@pytest.fixture()
+def minimal_request_regenerate_bundle(db):
+    """
+    Create and return an instance of the RequestRegenerateBundle class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestRegenerateBundle
+    """
+    from_bundle_image = models.Image(pull_specification='quay.io/regen-bundle/bundle-image:latest')
+    db.session.add(from_bundle_image)
+    request = models.RequestRegenerateBundle(from_bundle_image=from_bundle_image)
+    db.session.add(request)
+    db.session.commit()
+    return request
