@@ -99,7 +99,7 @@ run `pip-compile --generate-hashes --output-file=requirements.txt`. This is only
 adding a new package. To upgrade a package, use the `-P` argument of the `pip-compile` command.
 
 To update `requirements-test.txt`, run
-`pip-compile --generate-hashes setup.py requirements-test.in -o requirements-test.txt`.
+`pip-compile --generate-hashes requirements-test.in -o requirements-test.txt`.
 
 When installing the dependencies in a production environment, run
 `pip install --require-hashes -r requirements.txt`. Alternatively, you may use

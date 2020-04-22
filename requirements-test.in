@@ -1,3 +1,13 @@
+# The dependencies are duplcated from setup.py to avoid
+# confusing dependabot
+celery
 coverage
+flask
+flask-login
+flask-migrate
+flask-sqlalchemy
 pytest
+psycopg2-binary
 pytest-cov
+requests
+requests-kerberos
