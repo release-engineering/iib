@@ -36,6 +36,7 @@ def test_get_build(app, auth_env, client, db):
 
     expected = {
         'arches': ['amd64', 's390x'],
+        'batch': 1,
         'binary_image': 'quay.io/namespace/binary_image:latest',
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
         'bundle_mapping': {},
@@ -103,6 +104,11 @@ def test_get_builds(app, auth_env, client, db):
     assert rv_json['meta']['per_page'] == 5
     assert rv_json['meta']['total'] == total_failed_requests
 
+    rv_json = client.get('/api/v1/builds?batch=3').json
+    assert len(rv_json['items']) == 1
+    assert 'batch=3' in rv_json['meta']['first']
+    assert rv_json['meta']['total'] == 1
+
     rv_json = client.get('/api/v1/builds?verbose=true&per_page=1').json
     # This key is only present the verbose=true
     assert 'state_history' in rv_json['items'][0]
@@ -117,6 +123,13 @@ def test_get_builds_invalid_state(app, client, db):
             'failed, in_progress'
         )
     }
+
+
+@pytest.mark.parametrize('batch', (0, 'right_one'))
+def test_get_builds_invalid_batch(batch, app, client, db):
+    rv = client.get(f'/api/v1/builds?batch={batch}')
+    assert rv.status_code == 400
+    assert rv.json == {'error': 'The batch must be a positive integer'}
 
 
 @pytest.mark.parametrize(
@@ -310,6 +323,7 @@ def test_add_bundle_success(mock_har, overwrite_from_index, db, auth_env, client
 
     response_json = {
         'arches': [],
+        'batch': 1,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
@@ -572,6 +586,7 @@ def test_patch_request_add_success(db, minimal_request_add, worker_auth_env, cli
 
     response_json = {
         'arches': ['arches'],
+        'batch': 1,
         'binary_image': 'quay.io/add/binary-image:latest',
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
@@ -624,6 +639,7 @@ def test_patch_request_rm_success(db, minimal_request_rm, worker_auth_env, clien
 
     response_json = {
         'arches': ['arches'],
+        'batch': 1,
         'binary_image': minimal_request_rm.binary_image.pull_specification,
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': {},
@@ -676,6 +692,7 @@ def test_patch_request_regenerate_bundle_success(
 
     response_json = {
         'arches': ['arches'],
+        'batch': 1,
         'bundle_image': 'bundle:image',
         'from_bundle_image': minimal_request_regenerate_bundle.from_bundle_image.pull_specification,
         'from_bundle_image_resolved': 'from-bundle-image:resolved',
@@ -722,6 +739,7 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
 
     response_json = {
         'arches': [],
+        'batch': 1,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
@@ -815,6 +833,7 @@ def test_regenerate_bundle_success(mock_hrbr, db, auth_env, client):
 
     response_json = {
         'arches': [],
+        'batch': 1,
         'bundle_image': None,
         'from_bundle_image': 'registry.example.com/bundle-image:latest',
         'from_bundle_image_resolved': None,
