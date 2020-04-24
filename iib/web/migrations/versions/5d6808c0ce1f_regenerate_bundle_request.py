@@ -52,9 +52,9 @@ def downgrade():
     # there are no records of that type in the database since the data loss is
     # irreversible.
     regenerate_bundle_requests = connection.execute(
-        request_table.select(
-            whereclause=request_table.c.type == REQUEST_TYPE_REGENERATE_BUNDLE
-        ).count()
+        sa.select([sa.func.count()])
+        .select_from(request_table)
+        .where(request_table.c.type == REQUEST_TYPE_REGENERATE_BUNDLE)
     ).scalar()
     if regenerate_bundle_requests:
         raise RuntimeError(
