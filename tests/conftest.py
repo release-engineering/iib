@@ -113,7 +113,9 @@ def minimal_request_add(db):
     """
     binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
     db.session.add(binary_image)
-    request = models.RequestAdd(binary_image=binary_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    request = models.RequestAdd(batch=batch, binary_image=binary_image)
     db.session.add(request)
     db.session.commit()
     return request
@@ -137,8 +139,10 @@ def minimal_request_rm(db):
     db.session.add(from_index_image)
     operator = models.Operator(name='operator')
     db.session.add(operator)
+    batch = models.Batch()
+    db.session.add(batch)
     request = models.RequestRm(
-        binary_image=binary_image, from_index=from_index_image, operators=[operator]
+        batch=batch, binary_image=binary_image, from_index=from_index_image, operators=[operator]
     )
     db.session.add(request)
     db.session.commit()
@@ -159,7 +163,9 @@ def minimal_request_regenerate_bundle(db):
     """
     from_bundle_image = models.Image(pull_specification='quay.io/regen-bundle/bundle-image:latest')
     db.session.add(from_bundle_image)
-    request = models.RequestRegenerateBundle(from_bundle_image=from_bundle_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    request = models.RequestRegenerateBundle(batch=batch, from_bundle_image=from_bundle_image)
     db.session.add(request)
     db.session.commit()
     return request

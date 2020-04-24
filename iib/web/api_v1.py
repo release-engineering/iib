@@ -10,6 +10,7 @@ from iib.exceptions import ValidationError
 from iib.web import db
 from iib.web.models import (
     Architecture,
+    Batch,
     Image,
     Operator,
     Request,
@@ -53,6 +54,7 @@ def get_builds():
 
     :rtype: flask.Response
     """
+    batch_id = flask.request.args.get('batch')
     state = flask.request.args.get('state')
     verbose = str_to_bool(flask.request.args.get('verbose'))
     max_per_page = flask.current_app.config['IIB_MAX_PER_PAGE']
@@ -66,6 +68,10 @@ def get_builds():
         query = query.join(Request.state)
         query = query.filter(RequestState.state == state_int)
 
+    if batch_id is not None:
+        batch_id = Batch.validate_batch(batch_id)
+        query = query.filter_by(batch_id=batch_id)
+
     pagination_query = query.order_by(Request.id.desc()).paginate(max_per_page=max_per_page)
     requests = pagination_query.items
 
@@ -74,6 +80,8 @@ def get_builds():
         query_params['state'] = state
     if verbose:
         query_params['verbose'] = verbose
+    if batch_id:
+        query_params['batch'] = batch_id
 
     response = {
         'items': [request.to_json(verbose=verbose) for request in requests],

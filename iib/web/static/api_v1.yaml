@@ -13,6 +13,13 @@ paths:
     get:
       description: Return all the IIB build requests
       parameters:
+        - name: batch
+          in: query
+          description: The batch to filter the build requests by
+          schema:
+            type: integer
+            example: 23
+            default: null
         - name: page
           in: query
           description: The specific page to view
@@ -348,6 +355,10 @@ components:
           example:
             - amd64
             - s390x
+        batch:
+          type: integer
+          example: 23
+          description: The batch that the request is a part of
         id:
           type: integer
           example: 1

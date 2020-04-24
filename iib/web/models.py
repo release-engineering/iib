@@ -228,6 +228,8 @@ class Request(db.Model):
     architectures = db.relationship(
         'Architecture', order_by='Architecture.name', secondary=RequestArchitecture.__table__
     )
+    batch_id = db.Column(db.Integer, db.ForeignKey('batch.id'), index=True, nullable=False)
+    batch = db.relationship('Batch', back_populates='requests')
     request_state_id = db.Column(
         db.Integer, db.ForeignKey('request_state.id'), index=True, unique=True
     )
@@ -340,6 +342,7 @@ class Request(db.Model):
         rv = {
             'id': self.id,
             'arches': [arch.name for arch in self.architectures],
+            'batch': self.batch.id,
             'request_type': RequestTypeMapping.pretty(self.type),
             'user': getattr(self.user, 'username', None),
         }
@@ -370,6 +373,41 @@ class Request(db.Model):
         :rtype: set
         """
         return {'arches', 'state', 'state_reason'}
+
+
+class Batch(db.Model):
+    """A batch associated with one or more requests."""
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    requests = db.relationship('Request', foreign_keys=[Request.batch_id], back_populates='batch')
+
+    @staticmethod
+    def validate_batch(batch_id):
+        """
+        Validate the input batch ID.
+
+        If the input batch ID is a string, it will be converted to an integer and returned.
+
+        :param int batch_id: the ID of the batch
+        :raise ValidationError: if the batch ID is invalid
+        :return: the validated batch ID
+        :rtype: int
+        """
+        rv = batch_id
+        error_msg = 'The batch must be a positive integer'
+        if isinstance(batch_id, str):
+            try:
+                rv = int(batch_id)
+            except ValueError:
+                raise ValidationError(error_msg)
+        elif not isinstance(batch_id, int):
+            raise ValidationError(error_msg)
+
+        if rv < 1:
+            raise ValidationError(error_msg)
+
+        return rv
 
 
 def get_request_query_options(verbose=False):
@@ -528,6 +566,11 @@ class RequestIndexImageMixin:
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
+
+        # Add the request to a new batch
+        batch = Batch()
+        db.session.add(batch)
+        request_kwargs['batch'] = batch
 
     def get_common_index_image_json(self):
         """
@@ -769,6 +812,11 @@ class RequestRegenerateBundle(Request):
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
+
+        # Add the request to a new batch
+        batch = Batch()
+        db.session.add(batch)
+        request_kwargs['batch'] = batch
 
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
