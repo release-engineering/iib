@@ -4,6 +4,8 @@ import os
 import tempfile
 import textwrap
 
+from operator_manifest.operator import ImageName, OperatorManifest
+
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
@@ -677,14 +679,16 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     update_request(request_id, payload, exc_msg=exc_msg)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        # TODO: Pin related images to digests
-        # TODO: Apply organization specific modifications
+        manifests_path = os.path.join(temp_dir, 'manifests')
+        _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
+        _adjust_operator_manifests(manifests_path)
 
         with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
             dockerfile.write(
                 textwrap.dedent(
                     f"""\
                         FROM {from_bundle_image_resolved}
+                        COPY ./manifests /manifests
                     """
                 )
             )
@@ -703,3 +707,68 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
         'state_reason': 'The request completed successfully',
     }
     update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+
+
+def _copy_files_from_image(image, src_path, dest_path):
+    """
+    Copy a file from the container image into the given destination path.
+
+    The file may be a directory.
+
+    :param str image: the pull specification of the container image.
+    :param str src_path: the full path within the container image to copy from.
+    :param str dest_path: the full path on the local host to copy into.
+    """
+    # One way to copy a file from the image is to create a container from its filesystem
+    # so the contents can be read. To create a container, podman always requires that a
+    # command for the container is set. In this method, however, the command is not needed
+    # because the container is never started, only created. Use a dummy command to satisfy
+    # podman.
+    container_command = 'unused'
+    container_id = run_cmd(
+        ['podman', 'create', image, container_command],
+        exc_msg=f'Failed to create a container for {image}',
+    ).strip()
+    try:
+        run_cmd(
+            ['podman', 'cp', f'{container_id}:{src_path}', dest_path],
+            exc_msg=f'Failed to copy the contents of {container_id}:{src_path} into {dest_path}',
+        )
+    finally:
+        try:
+            run_cmd(
+                ['podman', 'rm', container_id],
+                exc_msg=f'Failed to remove the container {container_id} for image {image}',
+            )
+        except IIBError as e:
+            # Failure to remove the temporary container shouldn't cause the IIB request to fail.
+            log.exception(e)
+
+
+def _adjust_operator_manifests(manifests_path):
+    """
+    Apply modifications to the operator manifests at the given location.
+
+    For any container image pull spec found in the Operator CSV files, replace floating
+    tags with pinned digests, e.g. `image:latest` becomes `image@sha256:...`.
+
+    This method relies on the OperatorManifest class to properly identify and apply the
+    modifications as needed.
+
+    :param str manifests_path: the full path to the directory containing the operator manifests.
+    """
+    operator_manifest = OperatorManifest.from_directory(manifests_path)
+    found_pullspecs = set()
+    for operator_csv in operator_manifest.files:
+        for pullspec in operator_csv.get_pullspecs():
+            found_pullspecs.add(pullspec)
+
+    # Resolve pull specs to container image digests
+    replacement_pullspecs = {
+        pullspec: ImageName.parse(_get_resolved_image(pullspec)) for pullspec in found_pullspecs
+    }
+
+    # Apply modifications to the operator bundle image metadata
+    for operator_csv in operator_manifest.files:
+        operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
+        operator_csv.dump()

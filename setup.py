@@ -14,6 +14,7 @@ setup(
         'flask-login',
         'flask-migrate',
         'flask-sqlalchemy',
+        'operator-manifest',
         'psycopg2-binary',
         'requests',
         'requests-kerberos',

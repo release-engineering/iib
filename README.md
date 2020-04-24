@@ -180,6 +180,16 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_total_attempts` - the total number of attempts to make at trying a function relating to the
   container registry before erroring out. This defaults to `5`.
 
+## Regenerating Bundle Images
+
+In addition to building operator index images, IIB can also be used to regenerate operator bundle
+images. This is useful for applying modifications to the manifests embedded in the bundle image.
+IIB uses the [operator-manifest](https://github.com/containerbuildsystem/operator-manifest) library
+to assist in these modifications. Currently, IIB will pin any container image pull specification
+to its corresponding digest. See the different
+[pull specifications](https://github.com/containerbuildsystem/operator-manifest#pull-specifications)
+to which this process applies to.
+
 ## Read the Docs Documentation
 
 ### Build the Docs

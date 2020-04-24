@@ -3,6 +3,7 @@ flask
 flask-login
 flask-migrate
 flask-sqlalchemy
+operator-manifest
 psycopg2-binary
 recommonmark
 requests
