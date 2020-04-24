@@ -478,13 +478,24 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build._adjust_operator_manifests')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_handle_regenerate_bundle_request(
-    mock_ur, mock_capml, mock_srs, mock_pi, mock_bi, mock_gia, mock_gri, mock_cleanup
+    mock_ur,
+    mock_capml,
+    mock_srs,
+    mock_pi,
+    mock_bi,
+    mock_aop,
+    mock_cffi,
+    mock_gia,
+    mock_gri,
+    mock_cleanup,
 ):
     arches = ['amd64', 's390x']
     from_bundle_image = 'bundle-image:latest'
@@ -506,6 +517,10 @@ def test_handle_regenerate_bundle_request(
 
     mock_gia.assert_called_once()
     mock_gia.assert_called_with('bundle-image@sha256:abcdef')
+
+    mock_cffi.assert_called_once_with('bundle-image@sha256:abcdef', '/manifests', mock.ANY)
+
+    mock_aop.assert_called_once()
 
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
@@ -549,3 +564,69 @@ def test_handle_regenerate_bundle_request(
             ),
         ]
     )
+
+
+@pytest.mark.parametrize('fail_rm', (True, False))
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_copy_files_from_image(mock_run_cmd, fail_rm):
+    image = 'bundle-image:latest'
+    src_path = '/manifests'
+    dest_path = '/destination/path/manifests'
+
+    container_id = 'df2ff736efeaff598330a128b3dc4875caf254d9f416cefd86ec009b74d1488b'
+
+    side_effect = [f'{container_id}\n', '']
+    if fail_rm:
+        side_effect.append(IIBError('Uh oh! Something went wrong.'))
+    else:
+        side_effect.append('')
+    mock_run_cmd.side_effect = side_effect
+
+    build._copy_files_from_image(image, src_path, dest_path)
+
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(['podman', 'create', image, 'unused'], exc_msg=mock.ANY),
+            mock.call(['podman', 'cp', f'{container_id}:{src_path}', dest_path], exc_msg=mock.ANY),
+            mock.call(['podman', 'rm', container_id], exc_msg=mock.ANY),
+        ]
+    )
+
+
+@mock.patch('iib.workers.tasks.build._get_resolved_image')
+def test_adjust_operator_manifests(mock_gri, tmpdir):
+    manifests_dir = tmpdir.mkdir('manifests')
+    csv1 = manifests_dir.join('csv1.yaml')
+    csv2 = manifests_dir.join('csv2.yaml')
+
+    # NOTE: The OperatorManifest class is capable of modifying pull specs found in
+    # various locations within the CSV file. Since IIB relies on this class to do
+    # such modifications, this test only verifies that at least one of the locations
+    # is being handled properly. This is to ensure IIB is using OperatorManifest
+    # correctly.
+    csv_template = textwrap.dedent(
+        """\
+        apiVersion: operators.example.com/v1
+        kind: ClusterServiceVersion
+        metadata:
+          name: amqstreams.v1.0.0
+          namespace: placeholder
+          annotations:
+            containerImage: quay.io/operator/image{ref}
+        """
+    )
+    csv1.write(csv_template.format(ref=':v1'))
+    csv2.write(csv_template.format(ref=':v2'))
+
+    def _get_resolved_image(image):
+        return {
+            'quay.io/operator/image:v1': 'quay.io/operator/image@sha256:123456',
+            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+        }[image.to_str()]
+
+    mock_gri.side_effect = _get_resolved_image
+
+    build._adjust_operator_manifests(str(manifests_dir))
+
+    assert csv1.read_text('utf-8') == csv_template.format(ref='@sha256:123456')
+    assert csv2.read_text('utf-8') == csv_template.format(ref='@sha256:654321')

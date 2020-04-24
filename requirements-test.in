@@ -6,8 +6,9 @@ flask
 flask-login
 flask-migrate
 flask-sqlalchemy
-pytest
+operator-manifest
 psycopg2-binary
+pytest
 pytest-cov
 requests
 requests-kerberos
