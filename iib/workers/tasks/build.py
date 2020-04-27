@@ -411,10 +411,11 @@ def _prepare_request_for_build(
 
     payload = {
         'binary_image_resolved': binary_image_resolved,
-        'bundle_mapping': bundle_mapping,
         'state': 'in_progress',
         'state_reason': f'Building the index image for the following arches: {arches_str}',
     }
+    if bundle_mapping:
+        payload['bundle_mapping'] = bundle_mapping
     if from_index_resolved:
         payload['from_index_resolved'] = from_index_resolved
     exc_msg = 'Failed setting the resolved images on the request'

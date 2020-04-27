@@ -220,7 +220,9 @@ def test_prepare_request_for_build(
     binary_image_resolved = 'binary-image@sha256:abcdef'
     from_index_resolved = None
     expected_arches = set(add_arches) | from_index_arches
-    expected_payload_keys = {'binary_image_resolved', 'bundle_mapping', 'state', 'state_reason'}
+    expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
+    if expected_bundle_mapping:
+        expected_payload_keys.add('bundle_mapping')
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
@@ -242,7 +244,11 @@ def test_prepare_request_for_build(
     }
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload['bundle_mapping'] == expected_bundle_mapping
+    if expected_bundle_mapping:
+        assert update_request_payload['bundle_mapping'] == expected_bundle_mapping
+    else:
+        assert 'bundle_mapping' not in update_request_payload
+
     assert update_request_payload.keys() == expected_payload_keys
 
 
