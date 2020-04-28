@@ -352,7 +352,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
+@mock.patch('iib.workers.tasks.build.gate_bundles')
 def test_handle_add_request(
+    mock_gb,
     mock_vlpc,
     mock_glsp,
     mock_capml,
@@ -381,13 +383,23 @@ def test_handle_add_request(
     bundles = ['some-bundle:2.3-1']
     cnr_token = 'token'
     organization = 'org'
+    greenwave_config = {'some_key': 'other_value'}
     build.handle_add_request(
-        bundles, 'binary-image:latest', 3, 'from-index:latest', ['s390x'], cnr_token, organization,
+        bundles,
+        'binary-image:latest',
+        3,
+        'from-index:latest',
+        ['s390x'],
+        cnr_token,
+        organization,
+        False,
+        greenwave_config,
     )
 
     mock_cleanup.assert_called_once()
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
+    mock_gb.assert_called_once()
 
     add_args = mock_oia.call_args[0]
     assert bundles in add_args
@@ -406,6 +418,32 @@ def test_handle_add_request(
     mock_vii.assert_called_once()
     mock_capml.assert_called_once()
     mock_srs.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.tasks.build._verify_labels')
+def test_handle_add_request_gating_failure(mock_vl, mock_gb):
+    error_msg = 'Gating failure!'
+    mock_gb.side_effect = IIBError(error_msg)
+
+    bundles = ['some-bundle:2.3-1']
+    cnr_token = 'token'
+    organization = 'org'
+    greenwave_config = {'some_key': 'other_value'}
+    with pytest.raises(IIBError, match=error_msg):
+        build.handle_add_request(
+            bundles,
+            'binary-image:latest',
+            3,
+            'from-index:latest',
+            ['s390x'],
+            cnr_token,
+            organization,
+            False,
+            greenwave_config,
+        )
+    mock_vl.assert_called_once()
+    mock_gb.assert_called_once_with(bundles, greenwave_config)
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')

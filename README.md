@@ -137,6 +137,10 @@ The custom configuration options for the REST API are listed below:
   set for `IIB_LOG_LEVEL`. This defaults to `[]`.
 * `IIB_FORCE_OVERWRITE_FROM_INDEX` - a boolean that determines if privileged users should be forced
   to have `overwrite_from_index` set to `True`. This defaults to `False`.
+* `IIB_GREENWAVE_CONFIG` - the mapping, `dict(<str>: dict(<str>:<str>))`, of celery task queues to
+  another dictionary of [Greenwave](https://docs.pagure.org/greenwave/) query parameters to their
+  values. This is useful in setting up customized gating for each queue. This defaults to `{}`. Use
+  the task queue name as `None` to configure Greenwave config for the default Celery task queue.
 * `IIB_LOG_FORMAT` - the format of the logs. This defaults to
   `%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s`.
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
@@ -198,6 +202,8 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
   `30` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
+* `iib_greenwave_url` - the URL to the Greenwave REST API if gating is desired
+  (e.g. `https://greenwave.domain.local/api/v1.0/`). This defaults to `None`.
 * `iib_index_image_output_registry` - if set, that value will replace the value from `iib_registry`
   in the output `index_image` pull specification. This is useful if you'd like users of IIB to
   pull from a proxy to a registry instead of the registry directly.
@@ -233,6 +239,13 @@ the application properties: `batch`, `id`, `state`, and `user`.
 The batch state change message body is a JSON object with the following keys: `batch`,
 `request_ids`, `state`, and `user`. The message has the following keys set in the application
 properties: `batch`, `state`, and `user`.
+
+## Gating Bundle Images
+
+In addition to building operator index images, IIB can also gate your bundle images before adding
+them to the index image. If a Greenwave configuration is setup for your queue, IIB will query
+Greenwave to check if your bundle image builds have passed the tests in the Greenwave policy you
+have defined. The IIB request submitted to that queue will succeed only if the policy is satisfied.
 
 ## Read the Docs Documentation
 

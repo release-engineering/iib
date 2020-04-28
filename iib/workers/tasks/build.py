@@ -10,6 +10,7 @@ from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
+from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.legacy import (
     export_legacy_packages,
     get_legacy_support_packages,
@@ -547,6 +548,7 @@ def handle_add_request(
     cnr_token=None,
     organization=None,
     overwrite_from_index=False,
+    greenwave_config=None,
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -567,10 +569,15 @@ def handle_add_request(
         packages should be pushed to.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
+    :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
     _verify_labels(bundles)
+
+    # Check if Gating passes for all the bundles
+    if greenwave_config:
+        gate_bundles(bundles, greenwave_config)
 
     log.info('Checking if interacting with the legacy app registry is required')
     legacy_support_packages = get_legacy_support_packages(bundles)

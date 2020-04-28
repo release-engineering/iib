@@ -395,7 +395,7 @@ def test_add_bundle_forced_overwrite(
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    assert mock_har.apply_async.call_args[1]['args'][-1] == force_overwrite
+    assert mock_har.apply_async.call_args[1]['args'][-2] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 

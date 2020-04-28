@@ -146,6 +146,7 @@ def add_bundles():
     db.session.add(request)
     db.session.commit()
 
+    celery_queue = _get_user_queue()
     args = [
         payload['bundles'],
         payload['binary_image'],
@@ -155,6 +156,7 @@ def add_bundles():
         payload.get('cnr_token'),
         payload.get('organization'),
         _should_force_overwrite() or payload.get('overwrite_from_index'),
+        flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
     ]
     safe_args = copy.copy(args)
     if payload.get('cnr_token'):
@@ -162,7 +164,7 @@ def add_bundles():
 
     error_callback = failed_request_callback.s(request.id)
     handle_add_request.apply_async(
-        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
+        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
     )
 
     messaging.send_message_for_state_change(request, new_batch_msg=True)
