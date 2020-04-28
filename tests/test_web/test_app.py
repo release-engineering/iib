@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from unittest import mock
 
-from iib.web.app import load_config
+import pytest
+
+from iib.web.app import load_config, validate_api_config
+from iib.exceptions import ConfigError
 
 
 @mock.patch('iib.web.app.os.getenv')
@@ -30,3 +33,62 @@ def test_load_config_prod(mock_isfile, mock_getenv):
     mock_app.config.from_object.assert_called_once_with('iib.web.config.ProductionConfig')
     mock_isfile.assert_called_once()
     mock_app.config.from_pyfile.assert_called_once_with('/etc/iib/settings.py')
+
+
+@pytest.mark.parametrize(
+    'config, error_msg',
+    (
+        (
+            {
+                'IIB_GREENWAVE_CONFIG': {
+                    'patriots': {'subject_type': 'st', 'product_version': 'pv'},
+                    None: {'subject_type': 'st', 'product_version': 'pv'},
+                },
+                'IIB_USER_TO_QUEUE': {'tbrady': 'not-patriots'},
+            },
+            'The following queues are invalid in "IIB_GREENWAVE_CONFIG": patriots',
+        ),
+        (
+            {
+                'IIB_GREENWAVE_CONFIG': {
+                    'iib-user': {'subject_type': 'st', 'product_version': 'pv'}
+                },
+                'IIB_USER_TO_QUEUE': {'msdhoni': 'iib-user'},
+            },
+            'Missing required params decision_context for queue iib-user in "IIB_GREENWAVE_CONFIG"',
+        ),
+        (
+            {
+                'IIB_GREENWAVE_CONFIG': {
+                    'iib-user': {
+                        'subject_type': 'st',
+                        'product_version': 'pv',
+                        'decision_context': 'dc',
+                        'malicious': 'mal',
+                    },
+                },
+                'IIB_USER_TO_QUEUE': {'msdhoni': 'iib-user'},
+            },
+            'Invalid params malicious for queue iib-user in "IIB_GREENWAVE_CONFIG"',
+        ),
+        (
+            {
+                'IIB_GREENWAVE_CONFIG': {
+                    'iib-user': {
+                        'subject_type': 'not_koji_build',
+                        'product_version': 'pv',
+                        'decision_context': 'dc',
+                    },
+                },
+                'IIB_USER_TO_QUEUE': {'msdhoni': 'iib-user'},
+            },
+            (
+                'IIB only supports gating for subject_type "koji_build". Invalid subject_type '
+                'not_koji_build defined for queue iib-user in "IIB_GREENWAVE_CONFIG"'
+            ),
+        ),
+    ),
+)
+def test_validate_api_config_failure_greenwave_params(config, error_msg):
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)

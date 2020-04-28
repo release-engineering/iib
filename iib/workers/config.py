@@ -12,6 +12,7 @@ class Config(object):
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
     iib_api_timeout = 30
+    iib_greenwave_url = None
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry = None
     iib_log_level = 'INFO'
@@ -50,6 +51,7 @@ class DevelopmentConfig(Config):
 class TestingConfig(DevelopmentConfig):
     """The testing IIB Celery configuration."""
 
+    iib_greenwave_url = 'some_url'
     iib_omps_url = 'some_url'
 
 

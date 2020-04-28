@@ -9,7 +9,7 @@ from flask_migrate import Migrate
 import kombu.exceptions
 from werkzeug.exceptions import default_exceptions
 
-from iib.exceptions import ValidationError
+from iib.exceptions import ConfigError, ValidationError
 from iib.web import db
 from iib.web.api_v1 import api_v1
 from iib.web.auth import user_loader, load_user_from_request
@@ -38,6 +38,50 @@ def load_config(app):
         app.config.from_pyfile(config_file)
 
 
+def validate_api_config(config):
+    """
+    Determine if the configuration is valid.
+
+    :param dict config: the dict containing the IIB REST API config
+    :raises ConfigError: if the config is invalid
+    """
+    if config['IIB_GREENWAVE_CONFIG']:
+        defined_queue_names = set(config['IIB_USER_TO_QUEUE'].values())
+        invalid_greenwave_queues = set(config['IIB_GREENWAVE_CONFIG'].keys()) - defined_queue_names
+        # The queue_name `None` is the configuration for the default Celery queue
+        invalid_greenwave_queues.discard(None)
+        if invalid_greenwave_queues:
+            raise ConfigError(
+                f'The following queues are invalid in "IIB_GREENWAVE_CONFIG"'
+                f': {", ".join(invalid_greenwave_queues)}'
+            )
+
+        required_params = {'decision_context', 'product_version', 'subject_type'}
+        for queue_name, greenwave_config in config['IIB_GREENWAVE_CONFIG'].items():
+            defined_params = set(greenwave_config.keys())
+
+            missing_params = required_params - defined_params
+            if missing_params:
+                raise ConfigError(
+                    f'Missing required params {", ".join(missing_params)} for queue {queue_name} '
+                    'in "IIB_GREENWAVE_CONFIG"'
+                )
+
+            invalid_params = defined_params - required_params
+            if invalid_params:
+                raise ConfigError(
+                    f'Invalid params {", ".join(invalid_params)} for queue {queue_name} '
+                    'in "IIB_GREENWAVE_CONFIG"'
+                )
+
+            if greenwave_config['subject_type'] != 'koji_build':
+                raise ConfigError(
+                    'IIB only supports gating for subject_type "koji_build". Invalid subject_type '
+                    f'{greenwave_config["subject_type"]} defined for queue '
+                    f'{queue_name} in "IIB_GREENWAVE_CONFIG"'
+                )
+
+
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/
 def create_app(config_obj=None):  # pragma: no cover
@@ -54,6 +98,9 @@ def create_app(config_obj=None):  # pragma: no cover
         app.config.from_object(config_obj)
     else:
         load_config(app)
+
+    # Validate the config
+    validate_api_config(app.config)
 
     # Configure logging
     default_handler.setFormatter(
