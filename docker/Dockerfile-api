@@ -2,6 +2,7 @@ FROM centos:8
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
+# openssl-devel is required when compiling python-qpid-proton to support SSL
 RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
@@ -11,6 +12,7 @@ RUN dnf -y install \
     krb5-devel \
     mod_auth_gssapi \
     mod_ssl \
+    openssl-devel \
     python3-devel \
     python3-pip \
     && dnf clean all

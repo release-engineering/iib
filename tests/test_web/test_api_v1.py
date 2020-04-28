@@ -182,13 +182,16 @@ def test_get_builds_invalid_batch(batch, app, client, db):
         ),
     ),
 )
-def test_add_bundles_invalid_params_format(data, error_msg, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundles_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
     rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
-def test_add_bundles_overwrite_not_allowed(client, db):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
     data = {
         'binary_image': 'binary:image',
         'bundles': ['some:thing'],
@@ -199,6 +202,7 @@ def test_add_bundles_overwrite_not_allowed(client, db):
     assert rv.status_code == 403
     error_msg = 'You must be a privileged user to set "overwrite_from_index"'
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -228,13 +232,16 @@ def test_add_bundles_overwrite_not_allowed(client, db):
         ),
     ),
 )
-def test_rm_operators_invalid_params_format(db, auth_env, client, data, error_msg):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_rm_operators_invalid_params_format(mock_smfsc, db, auth_env, client, data, error_msg):
     rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
-def test_rm_operators_overwrite_not_allowed(client, db):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
     data = {
         'binary_image': 'binary:image',
         'operators': ['prometheus'],
@@ -245,6 +252,7 @@ def test_rm_operators_overwrite_not_allowed(client, db):
     assert rv.status_code == 403
     error_msg = 'You must be a privileged user to set "overwrite_from_index"'
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -260,10 +268,12 @@ def test_rm_operators_overwrite_not_allowed(client, db):
         ),
     ),
 )
-def test_add_bundle_missing_required_param(data, error_msg, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_missing_required_param(mock_smfsc, data, error_msg, db, auth_env, client):
     rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -283,13 +293,16 @@ def test_add_bundle_missing_required_param(data, error_msg, db, auth_env, client
         ),
     ),
 )
-def test_rm_operator_missing_required_param(data, error_msg, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_rm_operator_missing_required_param(mock_smfsc, data, error_msg, db, auth_env, client):
     rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
+    mock_smfsc.assert_not_called()
 
 
-def test_add_bundle_invalid_param(db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_invalid_param(mock_smfsc, db, auth_env, client):
     data = {
         'best_batsman': 'Virat Kohli',
         'binary_image': 'binary:image',
@@ -299,19 +312,23 @@ def test_add_bundle_invalid_param(db, auth_env, client):
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == 'The following parameters are invalid: best_batsman'
+    mock_smfsc.assert_not_called()
 
 
-def test_add_bundle_from_index_and_add_arches_missing(db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, client):
     data = {'bundles': ['some:thing'], 'binary_image': 'binary:image'}
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == 'One of "from_index" or "add_arches" must be specified'
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize('overwrite_from_index', (False, True))
 @mock.patch('iib.web.api_v1.handle_add_request')
-def test_add_bundle_success(mock_har, overwrite_from_index, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth_env, client):
     data = {
         'bundles': ['some:thing'],
         'binary_image': 'binary:image',
@@ -358,11 +375,15 @@ def test_add_bundle_success(mock_har, overwrite_from_index, db, auth_env, client
     assert 'token' not in mock_har.apply_async.call_args[1]['argsrepr']
     assert '*****' in mock_har.apply_async.call_args[1]['argsrepr']
     mock_har.apply_async.assert_called_once()
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize('force_overwrite', (False, True))
 @mock.patch('iib.web.api_v1.handle_add_request')
-def test_add_bundle_forced_overwrite(mock_har, force_overwrite, app, auth_env, client, db):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_forced_overwrite(
+    mock_smfsc, mock_har, force_overwrite, app, auth_env, client, db
+):
     app.config['IIB_FORCE_OVERWRITE_FROM_INDEX'] = force_overwrite
     data = {
         'bundles': ['some:thing'],
@@ -375,6 +396,7 @@ def test_add_bundle_forced_overwrite(mock_har, force_overwrite, app, auth_env, c
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     assert mock_har.apply_async.call_args[1]['args'][-1] == force_overwrite
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize(
@@ -385,8 +407,9 @@ def test_add_bundle_forced_overwrite(mock_har, force_overwrite, app, auth_env, c
     ),
 )
 @mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_custom_user_queue(
-    mock_har, app, auth_env, client, user_to_queue, expected_queue
+    mock_smfsc, mock_har, app, auth_env, client, user_to_queue, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
@@ -401,6 +424,7 @@ def test_add_bundle_custom_user_queue(
     mock_har.apply_async.assert_called_with(
         args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize(
@@ -452,14 +476,16 @@ def test_add_bundle_custom_user_queue(
         ),
     ),
 )
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_patch_add_request_invalid_params_format(
-    data, error_msg, minimal_request_add, worker_auth_env, client
+    mock_smfsc, data, error_msg, minimal_request_add, worker_auth_env, client
 ):
     rv = client.patch(
         f'/api/v1/builds/{minimal_request_add.id}', json=data, environ_base=worker_auth_env
     )
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -499,14 +525,16 @@ def test_patch_add_request_invalid_params_format(
         ),
     ),
 )
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_patch_rm_request_invalid_params_format(
-    data, error_msg, minimal_request_rm, worker_auth_env, client
+    mock_smfsc, data, error_msg, minimal_request_rm, worker_auth_env, client
 ):
     rv = client.patch(
         f'/api/v1/builds/{minimal_request_rm.id}', json=data, environ_base=worker_auth_env
     )
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -540,8 +568,9 @@ def test_patch_rm_request_invalid_params_format(
         ),
     ),
 )
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_patch_regenerate_bundle_request_invalid_params_format(
-    data, error_msg, minimal_request_regenerate_bundle, worker_auth_env, client
+    mock_smfsc, data, error_msg, minimal_request_regenerate_bundle, worker_auth_env, client
 ):
     rv = client.patch(
         f'/api/v1/builds/{minimal_request_regenerate_bundle.id}',
@@ -550,9 +579,11 @@ def test_patch_regenerate_bundle_request_invalid_params_format(
     )
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
-def test_patch_request_forbidden_user(minimal_request, worker_forbidden_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_patch_request_forbidden_user(mock_smfsc, minimal_request, worker_forbidden_env, client):
     rv = client.patch(
         f'/api/v1/builds/{minimal_request.id}',
         json={'arches': ['s390x']},
@@ -560,9 +591,11 @@ def test_patch_request_forbidden_user(minimal_request, worker_forbidden_env, cli
     )
     assert rv.status_code == 403
     assert 'This API endpoint is restricted to IIB workers' == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
-def test_patch_request_add_success(db, minimal_request_add, worker_auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_auth_env, client):
     bundles = [
         'quay.io/some-operator:v1.0.0',
         'quay.io/some-operator:v1.1.0',
@@ -626,9 +659,11 @@ def test_patch_request_add_success(db, minimal_request_add, worker_auth_env, cli
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv_json == response_json
+    mock_smfsc.assert_called_once_with(mock.ANY)
 
 
-def test_patch_request_rm_success(db, minimal_request_rm, worker_auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_auth_env, client):
     data = {
         'arches': ['arches'],
         'state': 'complete',
@@ -677,10 +712,12 @@ def test_patch_request_rm_success(db, minimal_request_rm, worker_auth_env, clien
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv_json == response_json
+    mock_smfsc.assert_called_once_with(mock.ANY)
 
 
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_patch_request_regenerate_bundle_success(
-    db, minimal_request_regenerate_bundle, worker_auth_env, client
+    mock_smfsc, db, minimal_request_regenerate_bundle, worker_auth_env, client
 ):
     data = {
         'arches': ['arches'],
@@ -727,10 +764,12 @@ def test_patch_request_regenerate_bundle_success(
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
     assert rv_json == response_json
+    mock_smfsc.assert_called_once_with(mock.ANY)
 
 
 @mock.patch('iib.web.api_v1.handle_rm_request')
-def test_remove_operator_success(mock_rm, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
     data = {
         'operators': ['some:thing'],
         'binary_image': 'binary:image',
@@ -771,11 +810,15 @@ def test_remove_operator_success(mock_rm, db, auth_env, client):
     mock_rm.apply_async.assert_called_once()
     assert rv.status_code == 201
     assert response_json == rv_json
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize('force_overwrite', (False, True))
 @mock.patch('iib.web.api_v1.handle_rm_request')
-def test_remove_operator_forced_overwrite(mock_hrr, force_overwrite, app, auth_env, client, db):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_remove_operator_forced_overwrite(
+    mock_smfsc, mock_hrr, force_overwrite, app, auth_env, client, db
+):
     app.config['IIB_FORCE_OVERWRITE_FROM_INDEX'] = force_overwrite
     data = {
         'binary_image': 'binary:image',
@@ -788,6 +831,7 @@ def test_remove_operator_forced_overwrite(mock_hrr, force_overwrite, app, auth_e
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
     assert mock_hrr.apply_async.call_args[1]['args'][-1] == force_overwrite
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize(
@@ -798,8 +842,9 @@ def test_remove_operator_forced_overwrite(mock_hrr, force_overwrite, app, auth_e
     ),
 )
 @mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_remove_operator_custom_user_queue(
-    mock_hrr, app, auth_env, client, user_to_queue, expected_queue
+    mock_smfsc, mock_hrr, app, auth_env, client, user_to_queue, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
@@ -814,6 +859,7 @@ def test_remove_operator_custom_user_queue(
     mock_hrr.apply_async.assert_called_with(
         args=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 def test_not_found(client):
@@ -823,7 +869,8 @@ def test_not_found(client):
 
 
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
-def test_regenerate_bundle_success(mock_hrbr, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
     data = {
         'from_bundle_image': 'registry.example.com/bundle-image:latest',
     }
@@ -860,6 +907,7 @@ def test_regenerate_bundle_success(mock_hrbr, db, auth_env, client):
     rv_json['updated'] = _timestamp
     assert response_json == rv_json
     mock_hrbr.apply_async.assert_called_once()
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
 @pytest.mark.parametrize(
@@ -877,10 +925,12 @@ def test_regenerate_bundle_success(mock_hrbr, db, auth_env, client):
         ),
     ),
 )
-def test_regenerate_bundle_invalid_params_format(data, error_msg, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_regenerate_bundle_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
     rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -890,10 +940,14 @@ def test_regenerate_bundle_invalid_params_format(data, error_msg, db, auth_env, 
         ({'organization': 'acme'}, 'Missing required parameter(s): from_bundle_image'),
     ),
 )
-def test_regenerate_bundle_missing_required_param(data, error_msg, db, auth_env, client):
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_regenerate_bundle_missing_required_param(
+    mock_smfsc, data, error_msg, db, auth_env, client
+):
     rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
+    mock_smfsc.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -904,8 +958,9 @@ def test_regenerate_bundle_missing_required_param(data, error_msg, db, auth_env,
     ),
 )
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_custom_user_queue(
-    mock_hrbr, app, auth_env, client, user_to_queue, expected_queue
+    mock_smfsc, mock_hrbr, app, auth_env, client, user_to_queue, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {'from_bundle_image': 'registry.example.com/bundle-image:latest'}
@@ -916,3 +971,4 @@ def test_regenerate_bundle_custom_user_queue(
     mock_hrbr.apply_async.assert_called_with(
         args=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)

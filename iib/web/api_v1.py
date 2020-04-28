@@ -7,7 +7,7 @@ from sqlalchemy.orm import with_polymorphic
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
-from iib.web import db
+from iib.web import db, messaging
 from iib.web.models import (
     Architecture,
     Batch,
@@ -165,6 +165,7 @@ def add_bundles():
         args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
     )
 
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
 
@@ -220,6 +221,7 @@ def patch_request(request_id):
     elif 'state_reason' in payload and 'state' not in payload:
         raise ValidationError('The "state" key is required when "state_reason" is supplied')
 
+    state_updated = False
     if 'state' in payload and 'state_reason' in payload:
         RequestStateMapping.validate_state(payload['state'])
         new_state = payload['state']
@@ -230,6 +232,7 @@ def patch_request(request_id):
             flask.current_app.logger.info('Not adding a new state since it matches the last state')
         else:
             request.add_state(new_state, new_state_reason)
+            state_updated = True
 
     image_keys = (
         'binary_image_resolved',
@@ -256,6 +259,9 @@ def patch_request(request_id):
             bundle_img.operator = operator_img
 
     db.session.commit()
+
+    if state_updated:
+        messaging.send_message_for_state_change(request)
 
     if current_user.is_authenticated:
         flask.current_app.logger.info(
@@ -298,6 +304,7 @@ def rm_operators():
         queue=_get_user_queue(),
     )
 
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
 
@@ -326,5 +333,6 @@ def regenerate_bundle():
         queue=_get_user_queue(),
     )
 
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201

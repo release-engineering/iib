@@ -6,7 +6,7 @@ from flask import current_app
 from flask_login import UserMixin, current_user
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import joinedload, validates
+from sqlalchemy.orm import joinedload, load_only, validates
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
@@ -33,6 +33,16 @@ class RequestStateMapping(BaseEnum):
     in_progress = 1
     complete = 2
     failed = 3
+
+    @staticmethod
+    def get_final_states():
+        """
+        Get the states that are considered final for a request.
+
+        :return: a list of states
+        :rtype: list<str>
+        """
+        return ['complete', 'failed']
 
     @classmethod
     def validate_state(cls, state):
@@ -381,6 +391,64 @@ class Batch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     requests = db.relationship('Request', foreign_keys=[Request.batch_id], back_populates='batch')
+
+    @property
+    def state(self):
+        """
+        Get the state of the batch.
+
+        If one or more requests in the batch are ``in_progress``, then the batch is ``in_progress``.
+        Once all the requests in the batch have completed, if one or more requests are in the
+        ``failed`` state, then so is the batch. If all requests in the batch are in the ``complete``
+        state, then so is the batch.
+
+        :return: the state of the batch
+        :rtype: str
+        """
+        contains_failure = False
+        for state in self.request_states:
+            # If one of the requests is still in progress, the batch is also
+            if state == 'in_progress':
+                return 'in_progress'
+            elif state == 'failed':
+                contains_failure = True
+
+        # At this point, we know the batch is done
+        if contains_failure:
+            return 'failed'
+        else:
+            return 'complete'
+
+    @property
+    def request_ids(self):
+        """
+        Get the IDs of the requests in the batch.
+
+        :return: the set of requests IDs
+        :rtype: set
+        """
+        return {
+            result.id for result in db.session.query(Request.id).filter(Request.batch == self).all()
+        }
+
+    @property
+    def request_states(self):
+        """
+        Get the states of all the requests in the batch.
+
+        :return: the list of states
+        :rtype: list<str>
+        """
+        # Only load the columns that are required to get the current state of the requests
+        # in the batch
+        requests = (
+            db.session.query(Request)
+            .options(joinedload(Request.state).load_only(RequestState.state), load_only())
+            .filter(Request.batch_id == self.id)
+            .order_by(Request.id)
+            .all()
+        )
+        return [RequestStateMapping(request.state.state).name for request in requests]
 
     @staticmethod
     def validate_batch(batch_id):

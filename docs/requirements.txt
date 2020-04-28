@@ -4,6 +4,7 @@ flask-login
 flask-migrate
 flask-sqlalchemy
 operator-manifest
+python-qpid-proton
 psycopg2-binary
 recommonmark
 requests

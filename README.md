@@ -66,6 +66,11 @@ development environment. This will automatically run the following containers:
 * **db** - the Postgresql database used by the IIB REST API.
 * **registry** - the Docker Registry where the worker pushes its build index images to. This is
   accessible at docker://localhost:8443.
+* **message-broker** - the Apache ActiveMQ instance for publishing messages for external consumers.
+  The web console is accessible at [http://localhost:8161/admin](http://localhost:8161/admin). The
+  username is `admin` and the password is `admin`. The docker-compose environment is configured for
+  IIB to publish AMQP 1.0 messages to the Apache ActiveMQ instance at the destinations
+  `topic://VirtualTopic.eng.iib.batch.state` and `topic://VirtualTopic.eng.iib.build.state`.
 
 The Flask application will automatically reload if there is a change in the codebase. If invalid
 syntax is added in the code, the `iib-api` container may shutdown. The Celery worker will
@@ -150,6 +155,32 @@ The custom configuration options for the REST API are listed below:
   [Flask-SQLAlchemy configuration](https://flask-sqlalchemy.palletsprojects.com/en/2.x/config/#configuration-keys)
   documentation.
 
+The custom configuration options for AMQP 1.0 messaging are listed below:
+
+* `IIB_MESSAGING_BATCH_STATE_DESTINATION` - the AMQP 1.0 destination to send the batch state change
+  messages. If this is not set, IIB will not send these types of messages. If this is set,
+  `IIB_MESSAGING_URLS` must also be set.
+* `IIB_MESSAGING_BUILD_STATE_DESTINATION` - the AMQP 1.0 destination to send the build request state
+  change messages. If this is not set, IIB will not send these types of messages. If this is set,
+  `IIB_MESSAGING_URLS` must also be set.
+* `IIB_MESSAGING_CA` - the path to a file with the certificate authority that signed the certificate
+  of the AMQP 1.0 message broker. This defaults to `/etc/pki/tls/certs/ca-bundle.crt`.
+* `IIB_MESSAGING_CERT` - the path to the identity certificate used for authentication with the
+  AMQP 1.0 message broker. This defaults to `/etc/iib/messaging.crt`.
+* `IIB_MESSAGING_DURABLE` - determines if the messages are durable and cannot be lost due to an
+  unexpected termination or restart by the AMQP 1.0 broker. If the broker is not capable of
+  guaranteeing this, it may not accept the message. In that case, set this configuration option to
+  `False`. This defaults to `True`.
+* `IIB_MESSAGING_KEY` - the path to the private key of the identity certificate used for
+  authentication with the AMQP 1.0 message broker. This defaults to `/etc/iib/messaging.key`.
+* `IIB_MESSAGING_TIMEOUT` - the number of seconds before a messaging operation times out.
+  Examples of messaging operations include connecting to the broker and sending a message to the
+  broker. In this case, if the timeout is set to `30`, then it could take a maximum of 60 seconds
+  before the operation times out. This is because it can take up to 30 seconds to connect to the
+  broker and also up to 30 seconds for the message to be sent. This defaults to `30`.
+* `IIB_MESSAGING_URLS` - a list of AMQP(S) URLs to use when connecting to the AMQP 1.0 broker. This
+  must be set if messaging is enabled.
+
 ## Configuring the Worker(s)
 
 To configure an IIB Celery worker, create a Python file at `/etc/iib/celery.py`. The location
@@ -189,6 +220,19 @@ to assist in these modifications. Currently, IIB will pin any container image pu
 to its corresponding digest. See the different
 [pull specifications](https://github.com/containerbuildsystem/operator-manifest#pull-specifications)
 to which this process applies to.
+
+## Messaging
+
+IIB has support to send messages to an AMQP 1.0 broker. If configured to do so, IIB will send
+messages when a build request state changes and when a batch state changes.
+
+The build request state change message body is the JSON representation of the build request in
+the non-verbose format like in the `/builds` API endpoint. The message has the following keys set in
+the application properties: `batch`, `id`, `state`, and `user`.
+
+The batch state change message body is a JSON object with the following keys: `batch`,
+`request_ids`, `state`, and `user`. The message has the following keys set in the application
+properties: `batch`, `state`, and `user`.
 
 ## Read the Docs Documentation
 
