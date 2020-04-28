@@ -41,6 +41,10 @@ services:
     - /bin/sh
     - -c
     - >-
+      mkdir -p /etc/iib &&
+      cp /broker-certs/client.crt /etc/iib/messaging.crt &&
+      cp /broker-certs/client.key /etc/iib/messaging.key &&
+      cp /broker-certs/ca.crt /etc/iib/messaging-ca.crt &&
       pip3 uninstall -y iib &&
       python3 setup.py develop --no-deps &&
       iib wait-for-db &&
@@ -52,10 +56,12 @@ services:
       IIB_DEV: 'true'
     volumes:
       - ./:/src:z
+      - ./docker/message_broker/certs:/broker-certs:ro,z
     ports:
       - 8080:8080
     depends_on:
       - db
+      - message-broker
 
   iib-worker:
     build:
@@ -69,7 +75,7 @@ services:
     - -c
     - >-
       cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
-      cat /certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+      cat /registry-certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
       podman login --authfile ~/.docker/config.json -u iib -p iibpassword registry:8443 &&
       pip3 install watchdog[watchmedo] &&
       watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
@@ -82,8 +88,24 @@ services:
     volumes:
       - ./:/src:z
       - ./iib_data/worker:/var/lib/containers/storage:z
-      - ./docker/registry/certs:/certs:z
+      - ./docker/registry/certs:/registry-certs:ro,z
       - /etc/pki/tls/certs/ca-bundle.crt:/host-ca-bundle.crt:ro
     depends_on:
       - rabbitmq
       - registry
+
+  # This is an external message broker used to publish messages about state changes
+  message-broker:
+    build:
+      context: .
+      dockerfile: ./docker/message_broker/Dockerfile
+    volumes:
+      - message-broker-volume:/opt/activemq/data:z
+      - ./docker/message_broker/certs:/broker-certs:ro,z
+    ports:
+      - 5671:5671   # amqp+ssl
+      - 5672:5672   # amqp
+      - 8161:8161   # web console
+
+volumes:
+  message-broker-volume:

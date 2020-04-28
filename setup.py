@@ -15,6 +15,7 @@ setup(
         'flask-migrate',
         'flask-sqlalchemy',
         'operator-manifest',
+        'python-qpid-proton',
         'psycopg2-binary',
         'requests',
         'requests-kerberos',

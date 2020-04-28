@@ -15,6 +15,11 @@ class Config(object):
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
     IIB_LOG_LEVEL = 'INFO'
     IIB_MAX_PER_PAGE = 20
+    IIB_MESSAGING_CA = '/etc/pki/tls/certs/ca-bundle.crt'
+    IIB_MESSAGING_CERT = '/etc/iib/messaging.crt'
+    IIB_MESSAGING_DURABLE = True
+    IIB_MESSAGING_KEY = '/etc/iib/messaging.key'
+    IIB_MESSAGING_TIMEOUT = 30
     IIB_PRIVILEGED_USERNAMES = []
     IIB_USER_TO_QUEUE = {}
     IIB_WORKER_USERNAMES = []
@@ -31,6 +36,10 @@ class DevelopmentConfig(Config):
     """The development IIB Flask configuration."""
 
     IIB_LOG_LEVEL = 'DEBUG'
+    IIB_MESSAGING_BATCH_STATE_DESTINATION = 'topic://VirtualTopic.eng.iib.batch.state'
+    IIB_MESSAGING_BUILD_STATE_DESTINATION = 'topic://VirtualTopic.eng.iib.build.state'
+    IIB_MESSAGING_CA = '/etc/iib/messaging-ca.crt'
+    IIB_MESSAGING_URLS = ['amqps://message-broker:5671']
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://iib:iib@db:5432/iib'
     LOGIN_DISABLED = True
 

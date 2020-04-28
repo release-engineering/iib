@@ -1,0 +1,92 @@
+<beans
+  xmlns="http://www.springframework.org/schema/beans"
+  xmlns:amq="http://activemq.apache.org/schema/core"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-2.0.xsd
+  http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+  <!-- Allows us to use system properties and fabric as variables in this configuration file -->
+  <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+    <property name="locations">
+      <value>file:${activemq.conf}/credentials.properties</value>
+    </property>
+  </bean>
+
+
+  <broker xmlns="http://activemq.apache.org/schema/core" brokerName="localhost" dataDirectory="${activemq.data}" start="false" restartAllowed="false" schedulePeriodForDestinationPurge="3600000">
+    <destinationPolicy>
+      <policyMap>
+        <policyEntries>
+          <policyEntry topic=">" producerFlowControl="true" advisoryForConsumed="true" advisoryForDelivery="true" gcInactiveDestinations="true" inactiveTimoutBeforeGC="604800000">
+            <pendingMessageLimitStrategy>
+              <constantPendingMessageLimitStrategy limit="1000"/>
+            </pendingMessageLimitStrategy>
+          </policyEntry>
+          <policyEntry topic="ActiveMQ.Advisory.MasterBroker" producerFlowControl="true" advisoryForConsumed="true" advisoryForDelivery="true"/>
+          <policyEntry queue=">" producerFlowControl="false" memoryLimit="1mb" advisoryForConsumed="true" advisoryForDelivery="true" gcInactiveDestinations="true" inactiveTimoutBeforeGC="604800000">
+          </policyEntry>
+        </policyEntries>
+      </policyMap>
+    </destinationPolicy>
+
+    <destinationInterceptors>
+      <virtualDestinationInterceptor>
+        <virtualDestinations>
+          <virtualTopic name="VirtualTopic.>" prefix="Consumer.*.*." selectorAware="true" concurrentSend="true"/>
+        </virtualDestinations>
+      </virtualDestinationInterceptor>
+      <virtualDestinationInterceptor>
+        <virtualDestinations>
+          <compositeTopic forwardOnly="false" name="ActiveMQ.Advisory.MessageDelivered.>">
+            <forwardTo>
+              <queue physicalName="tracer_delivered_messages"/>
+            </forwardTo>
+          </compositeTopic>
+          <compositeTopic forwardOnly="false" name="ActiveMQ.Advisory.MessageConsumed.>">
+            <forwardTo>
+              <queue physicalName="tracer_consumed_messages"/>
+            </forwardTo>
+          </compositeTopic>
+        </virtualDestinations>
+      </virtualDestinationInterceptor>
+    </destinationInterceptors>
+
+    <managementContext>
+      <managementContext createConnector="false"/>
+    </managementContext>
+
+    <persistenceAdapter>
+      <kahaDB directory="${activemq.data}/kahadb"/>
+    </persistenceAdapter>
+
+    <destinations>
+      <queue physicalName="tracer_consumed_messages"/>
+      <queue physicalName="tracer_delivered_messages"/>
+    </destinations>
+
+    <systemUsage>
+      <systemUsage>
+        <memoryUsage>
+          <memoryUsage limit="64 mb"/>
+        </memoryUsage>
+        <storeUsage>
+          <storeUsage limit="1 gb"/>
+        </storeUsage>
+        <tempUsage>
+          <tempUsage limit="1 gb"/>
+        </tempUsage>
+      </systemUsage>
+    </systemUsage>
+
+    <sslContext>
+      <sslContext keyStore="/broker-certs/broker.ks" keyStorePassword="password" trustStore="/broker-certs/truststore.ts" trustStorePassword="password"/>
+    </sslContext>
+
+    <transportConnectors>
+      <transportConnector name="amqp" uri="amqp://0.0.0.0:5672?transport.transformer=jms"/>
+      <transportConnector name="amqp+ssl" uri="amqp+ssl://0.0.0.0:5671?needClientAuth=true&amp;transport.transformer=jms"/>
+    </transportConnectors>
+  </broker>
+
+  <import resource="jetty.xml" />
+</beans>

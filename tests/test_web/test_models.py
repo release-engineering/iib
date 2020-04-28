@@ -63,3 +63,51 @@ def test_request_type_validation(type_num, is_valid):
     else:
         with pytest.raises(ValidationError, match=f'{type_num} is not a valid request type number'):
             models.Request(type=type_num)
+
+
+@pytest.mark.parametrize('last_request_state', ('in_progress', 'failed', 'complete'))
+def test_batch_state(last_request_state, db):
+    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
+    db.session.add(binary_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    for i in range(3):
+        request = models.RequestAdd(batch=batch, binary_image=binary_image)
+        request.add_state('complete', 'Some reason')
+        db.session.add(request)
+
+    request = models.RequestAdd(batch=batch, binary_image=binary_image)
+    request.add_state(last_request_state, 'Some reason')
+    db.session.add(request)
+    db.session.commit()
+
+    assert request.batch.state == last_request_state
+
+
+def test_batch_request_ids(db):
+    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
+    db.session.add(binary_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    for i in range(3):
+        request = models.RequestAdd(batch=batch, binary_image=binary_image)
+        db.session.add(request)
+
+    db.session.commit()
+
+    assert request.batch.request_ids == {1, 2, 3}
+
+
+def test_batch_request_states(db):
+    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
+    db.session.add(binary_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    for state in ('in_progress', 'failed', 'complete'):
+        request = models.RequestAdd(batch=batch, binary_image=binary_image)
+        request.add_state(state, 'Some state')
+        db.session.add(request)
+
+    db.session.commit()
+
+    assert request.batch.request_states == ['in_progress', 'failed', 'complete']
