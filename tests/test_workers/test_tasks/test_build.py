@@ -477,6 +477,7 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.podman_pull')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build._adjust_operator_manifests')
@@ -494,6 +495,7 @@ def test_handle_regenerate_bundle_request(
     mock_aop,
     mock_cffi,
     mock_gia,
+    mock_pp,
     mock_gri,
     mock_cleanup,
 ):
@@ -514,6 +516,8 @@ def test_handle_regenerate_bundle_request(
 
     mock_gri.assert_called_once()
     mock_gri.assert_called_with('bundle-image:latest')
+
+    mock_pp.assert_called_once_with(from_bundle_image_resolved)
 
     mock_gia.assert_called_once()
     mock_gia.assert_called_with('bundle-image@sha256:abcdef')

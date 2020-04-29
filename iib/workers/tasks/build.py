@@ -15,7 +15,7 @@ from iib.workers.tasks.legacy import (
     get_legacy_support_packages,
     validate_legacy_params_and_config,
 )
-from iib.workers.tasks.utils import get_image_labels, retry, run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_labels, podman_pull, retry, run_cmd, skopeo_inspect
 
 
 __all__ = ['handle_add_request', 'handle_regenerate_bundle_request', 'handle_rm_request']
@@ -677,6 +677,9 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     }
     exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
     update_request(request_id, payload, exc_msg=exc_msg)
+
+    # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
+    podman_pull(from_bundle_image_resolved)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         manifests_path = os.path.join(temp_dir, 'manifests')
