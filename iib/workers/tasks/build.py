@@ -134,7 +134,12 @@ def _create_and_push_manifest_list(request_id, arches):
 
 
 def _finish_request_post_build(
-    output_pull_spec, request_id, arches, from_index=None, overwrite_from_index=False
+    output_pull_spec,
+    request_id,
+    arches,
+    from_index=None,
+    overwrite_from_index=False,
+    overwrite_from_index_token=None,
 ):
     """
     Finish the request after the manifest list has been pushed.
@@ -149,6 +154,8 @@ def _finish_request_post_build(
         the index image build was based from.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image.
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -156,12 +163,8 @@ def _finish_request_post_build(
         log.info(f'Ovewriting the index image {from_index} with {output_pull_spec}')
         index_image = from_index
         exc_msg = f'Failed to overwrite the input from_index container image of {index_image}'
-        _skopeo_copy(
-            f'docker://{output_pull_spec}',
-            f'docker://{index_image}',
-            copy_all=True,
-            exc_msg=exc_msg,
-        )
+        args = [f'docker://{output_pull_spec}', f'docker://{index_image}']
+        _skopeo_copy(*args, copy_all=True, dest_token=overwrite_from_index_token, exc_msg=exc_msg)
     elif conf['iib_index_image_output_registry']:
         index_image = output_pull_spec.replace(
             conf['iib_registry'], conf['iib_index_image_output_registry'], 1
@@ -206,7 +209,7 @@ def _get_local_pull_spec(request_id, arch, include_transport=False):
 
     :param int request_id: the ID of the IIB build request
     :param str arch: the specific architecture of the container image.
-    :param bool include_transport: if true, `containers-storage:localhost/` will be prefixed in
+    :param bool include_transport: if true, ``containers-storage:localhost/`` will be prefixed in
         the returned pull specification
     :return: the pull specification of the index image for this request.
     :rtype: str
@@ -456,6 +459,9 @@ def _push_image(request_id, arch):
         exc_msg=f'Failed to push the container image to {destination} for the arch {arch}',
     )
 
+    # Skopeo should've copied the image as v2 schema 2. Let's verify that this actually
+    # happened to avoid ambiguous errors later in the process that may be difficult to
+    # debug.
     log.debug(f'Verifying that {destination} was pushed as a v2 manifest')
     skopeo_raw = skopeo_inspect(destination, '--raw')
     if skopeo_raw['schemaVersion'] != 2:
@@ -463,19 +469,21 @@ def _push_image(request_id, arch):
 
 
 @retry(wait_on=IIBError, logger=log)
-def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
+def _skopeo_copy(source, destination, copy_all=False, dest_token=None, exc_msg=None):
     """
     Wrap the ``skopeo copy`` command.
 
     :param str source: the source to copy
     :param str destination: the destination to copy the source to
     :param bool copy_all: if True, it passes ``--all`` to the command
+    :param str dest_token: the token to pass to the ``--dest-token` parameter of the command.
+        If not provided, ``--dest-token`` parameter is also not provided.
     :param str exc_msg: a custom exception message to provide
     :raises IIBError: if the copy fails
     """
     skopeo_timeout = get_worker_config()['iib_skopeo_timeout']
     log.debug('Copying the container image %s to %s', source, destination)
-    args = [
+    cmd = [
         'skopeo',
         '--command-timeout',
         skopeo_timeout,
@@ -484,13 +492,16 @@ def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
         'v2s2',
     ]
     if copy_all:
-        args.append('--all')
+        cmd.append('--all')
+    if dest_token:
+        log.debug('Using user-provided token to copy the container image')
+        cmd.append('--dest-creds')
+        cmd.append(dest_token)
 
-    args.extend([source, destination])
+    cmd.extend([source, destination])
+    cmd_repr = ['*****' if part == dest_token else part for part in cmd]
 
-    run_cmd(
-        args, exc_msg=exc_msg or f'Failed to copy {source} to {destination}',
-    )
+    run_cmd(cmd, exc_msg=exc_msg or f'Failed to copy {source} to {destination}', cmd_repr=cmd_repr)
 
 
 def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
@@ -550,6 +561,7 @@ def handle_add_request(
     cnr_token=None,
     organization=None,
     overwrite_from_index=False,
+    overwrite_from_index_token=None,
     greenwave_config=None,
 ):
     """
@@ -571,6 +583,10 @@ def handle_add_request(
         packages should be pushed to.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
@@ -611,13 +627,24 @@ def handle_add_request(
         )
 
     _finish_request_post_build(
-        output_pull_spec, request_id, arches, from_index, overwrite_from_index
+        output_pull_spec,
+        request_id,
+        arches,
+        from_index,
+        overwrite_from_index,
+        overwrite_from_index_token,
     )
 
 
 @app.task
 def handle_rm_request(
-    operators, binary_image, request_id, from_index, add_arches=None, overwrite_from_index=False
+    operators,
+    binary_image,
+    request_id,
+    from_index,
+    add_arches=None,
+    overwrite_from_index=False,
+    overwrite_from_index_token=None,
 ):
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -633,6 +660,9 @@ def handle_rm_request(
         currently built for.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
@@ -652,7 +682,12 @@ def handle_rm_request(
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
 
     _finish_request_post_build(
-        output_pull_spec, request_id, arches, from_index, overwrite_from_index
+        output_pull_spec,
+        request_id,
+        arches,
+        from_index,
+        overwrite_from_index,
+        overwrite_from_index_token,
     )
 
 

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 from unittest import mock
 
 import pytest
@@ -180,6 +181,16 @@ def test_get_builds_invalid_batch(batch, app, client, db):
             },
             'The "overwrite_from_index" parameter must be a boolean',
         ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'overwrite_from_index': True,
+                'overwrite_from_index_token': True,
+            },
+            'The "overwrite_from_index_token" parameter must be a string',
+        ),
     ),
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
@@ -200,7 +211,10 @@ def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
     }
     rv = client.post(f'/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
     assert rv.status_code == 403
-    error_msg = 'You must be a privileged user to set "overwrite_from_index"'
+    error_msg = (
+        'You must be a privileged user to set "overwrite_from_index" without setting '
+        '"overwrite_from_index_token"'
+    )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
 
@@ -250,7 +264,10 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
     }
     rv = client.post(f'/api/v1/builds/rm', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
     assert rv.status_code == 403
-    error_msg = 'You must be a privileged user to set "overwrite_from_index"'
+    error_msg = (
+        'You must be a privileged user to set "overwrite_from_index" without setting '
+        '"overwrite_from_index_token"'
+    )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
 
@@ -265,6 +282,18 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
         (
             {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
             'Missing required parameter(s): binary_image',
+        ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'binary_image': 'binary:image',
+                'add_arches': ['s390x'],
+                'overwrite_from_index_token': 'username:password',
+            },
+            (
+                'The "overwrite_from_index" parameter is required when the '
+                '"overwrite_from_index_token" parameter is used'
+            ),
         ),
     ),
 )
@@ -290,6 +319,18 @@ def test_add_bundle_missing_required_param(mock_smfsc, data, error_msg, db, auth
         (
             {'operators': ['some:thing'], 'binary_image': 'pull:spec', 'add_arches': ['s390x']},
             'Missing required parameter(s): from_index',
+        ),
+        (
+            {
+                'operators': ['some:thing'],
+                'binary_image': 'pull:spec',
+                'from_index': 'pull:spec',
+                'overwrite_from_index_token': 'username:password',
+            },
+            (
+                'The "overwrite_from_index" parameter is required when the '
+                '"overwrite_from_index_token" parameter is used'
+            ),
         ),
     ),
 )
@@ -395,8 +436,35 @@ def test_add_bundle_forced_overwrite(
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    assert mock_har.apply_async.call_args[1]['args'][-2] == force_overwrite
+    # Third to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-3] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env, client, db):
+    token = 'username:password'
+    data = {
+        'bundles': ['some:thing'],
+        'binary_image': 'binary:image',
+        'add_arches': ['amd64'],
+        'overwrite_from_index': True,
+        'overwrite_from_index_token': token,
+    }
+
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    assert rv.status_code == 201
+    mock_har.apply_async.assert_called_once()
+    # Third to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-3] is True
+    # Second to last element in args is the overwrite_from_index_token parameter
+    assert mock_har.apply_async.call_args[1]['args'][-2] == token
+    assert 'overwrite_from_index_token' not in rv_json
+    assert token not in json.dumps(rv_json)
+    assert token not in mock_har.apply_async.call_args[1]['argsrepr']
+    assert '*****' in mock_har.apply_async.call_args[1]['argsrepr']
 
 
 @pytest.mark.parametrize(
@@ -830,8 +898,34 @@ def test_remove_operator_forced_overwrite(
     rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
-    assert mock_hrr.apply_async.call_args[1]['args'][-1] == force_overwrite
+    # Second to last element in args is the overwrite_from_index parameter
+    assert mock_hrr.apply_async.call_args[1]['args'][-2] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, auth_env, client, db):
+    token = 'username:password'
+    data = {
+        'binary_image': 'binary:image',
+        'from_index': 'some:thing2',
+        'operators': ['some:thing'],
+        'overwrite_from_index': True,
+        'overwrite_from_index_token': token,
+    }
+
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    assert rv.status_code == 201
+    mock_hrr.apply_async.assert_called_once()
+    # Second to last element in args is the overwrite_from_index parameter
+    assert mock_hrr.apply_async.call_args[1]['args'][-2] is True
+    assert mock_hrr.apply_async.call_args[1]['args'][-1] == token
+    assert 'overwrite_from_index_token' not in rv_json
+    assert token not in json.dumps(rv_json)
+    assert token not in mock_hrr.apply_async.call_args[1]['argsrepr']
+    assert '*****' in mock_hrr.apply_async.call_args[1]['argsrepr']
 
 
 @pytest.mark.parametrize(
@@ -857,7 +951,7 @@ def test_remove_operator_custom_user_queue(
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
     mock_hrr.apply_async.assert_called_with(
-        args=mock.ANY, link_error=mock.ANY, queue=expected_queue
+        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 

@@ -60,45 +60,67 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
 
 @pytest.mark.parametrize(
-    'iib_index_image_output_registry, from_index, overwrite',
+    'iib_index_image_output_registry, from_index, overwrite, overwrite_token, expected',
     (
-        (None, None, False),
-        ('registry-proxy.domain.local', None, False),
-        (None, 'quay.io/ns/iib:v4.5', True),
+        (None, None, False, None, '{default}'),
+        (
+            'registry-proxy.domain.local',
+            None,
+            False,
+            None,
+            'registry-proxy.domain.local/{default_no_registry}',
+        ),
+        (None, 'quay.io/ns/iib:v4.5', True, None, 'quay.io/ns/iib:v4.5'),
+        (None, 'quay.io/ns/iib:v5.4', True, 'username:password', 'quay.io/ns/iib:v5.4'),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_finish_request_post_build(
-    mock_ur, mock_sc, mock_gwc, iib_index_image_output_registry, from_index, overwrite
+    mock_ur,
+    mock_sc,
+    mock_gwc,
+    iib_index_image_output_registry,
+    from_index,
+    overwrite,
+    overwrite_token,
+    expected,
 ):
-    output_pull_spec = 'quay.io/namespace/some-image:3'
+    default_no_registry = 'namespace/some-image:3'
+    default = f'quay.io/{default_no_registry}'
+    expected_pull_spec = expected.format(default=default, default_no_registry=default_no_registry)
     request_id = 2
     arches = {'amd64'}
     mock_gwc.return_value = {
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
-    build._finish_request_post_build(output_pull_spec, request_id, arches, from_index, overwrite)
+    build._finish_request_post_build(
+        default, request_id, arches, from_index, overwrite, overwrite_token
+    )
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     assert update_request_payload.keys() == {'arches', 'index_image', 'state', 'state_reason'}
-    if overwrite:
-        assert update_request_payload['index_image'] == from_index
-        # Verify that the image was actually overwritten
-        assert mock_sc.call_args[0][:2] == (
-            f'docker://{output_pull_spec}',
-            f'docker://{from_index}',
+    assert update_request_payload['index_image'] == expected_pull_spec
+    if overwrite_token:
+        mock_sc.assert_called_once_with(
+            f'docker://{default}',
+            f'docker://{expected_pull_spec}',
+            copy_all=True,
+            dest_token='username:password',
+            exc_msg=mock.ANY,
         )
-    elif iib_index_image_output_registry:
-        assert update_request_payload['index_image'] == (
-            'registry-proxy.domain.local/namespace/some-image:3'
+    elif overwrite:
+        mock_sc.assert_called_once_with(
+            f'docker://{default}',
+            f'docker://{expected_pull_spec}',
+            copy_all=True,
+            dest_token=None,
+            exc_msg=mock.ANY,
         )
-        mock_sc.assert_not_called()
     else:
-        assert update_request_payload['index_image'] == output_pull_spec
         mock_sc.assert_not_called()
 
 
@@ -444,6 +466,7 @@ def test_handle_add_request(
         cnr_token,
         organization,
         False,
+        None,
         greenwave_config,
     )
 
@@ -491,6 +514,7 @@ def test_handle_add_request_gating_failure(mock_vl, mock_gb):
             cnr_token,
             organization,
             False,
+            None,
             greenwave_config,
         )
     mock_vl.assert_called_once()
