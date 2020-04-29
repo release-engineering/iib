@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import logging
 from unittest import mock
 
 import pytest
@@ -37,6 +38,26 @@ def test_run_cmd(mock_sub_run):
     utils.run_cmd(['echo', 'hello world'], {'cwd': '/some/path'})
 
     mock_sub_run.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_with_cmd_repr(mock_sub_run, caplog):
+    # Setting the logging level via caplog.set_level is not sufficient. The flask
+    # related settings from previous tests interfere with this.
+    utils_logger = logging.getLogger('iib.workers.tasks.utils')
+    utils_logger.disabled = False
+    utils_logger.setLevel(logging.DEBUG)
+
+    mock_sub_run.return_value = mock.Mock(returncode=0)
+
+    secret = 'top-secret'
+    secret_redacted = '*****'
+
+    utils.run_cmd(['echo', secret], cmd_repr=['echo', secret_redacted])
+
+    mock_sub_run.assert_called_once()
+    assert secret not in caplog.text
+    assert secret_redacted in caplog.text
 
 
 @pytest.mark.parametrize('exc_msg', (None, 'Houston, we have a problem!'))

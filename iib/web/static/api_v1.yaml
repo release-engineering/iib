@@ -458,8 +458,15 @@ components:
           type: boolean
           description: >
             Overwrites the input from_index image with the built index image. This can only be
-            performed by privileged users.
+            performed by privileged users unless overwrite_from_index_token is also provided.
           default: false
+        overwrite_from_index_token:
+          type: string
+          description: >
+            The token used for overwriting the input from_index image. This is required for
+            non-privileged users to use overwrite_from_index. The format of the token is in the
+            format "user:password".
+          example: token
       required:
         - binary_image
         - bundles
@@ -485,6 +492,19 @@ components:
             type: string
           example:
             - quay.io/user/openshift-operator
+        overwrite_from_index:
+          type: boolean
+          description: >
+            Overwrites the input from_index image with the built index image. This can only be
+            performed by privileged users unless overwrite_from_index_token is also provided.
+          default: false
+        overwrite_from_index_token:
+          type: string
+          description: >
+            The token used for overwriting the input from_index image. This is required for
+            non-privileged users to use overwrite_from_index. The format of the token must be in
+            the format "user:password".
+          example: token
       required:
         - binary_image
         - from_index

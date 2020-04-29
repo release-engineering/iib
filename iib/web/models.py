@@ -589,9 +589,11 @@ class RequestIndexImageMixin:
         """
         # Validate all required parameters are present
         required_params = {'binary_image'} | set(additional_required_params or [])
-        optional_params = {'add_arches', 'overwrite_from_index'} | set(
-            additional_optional_params or []
-        )
+        optional_params = {
+            'add_arches',
+            'overwrite_from_index',
+            'overwrite_from_index_token',
+        } | set(additional_optional_params or [])
 
         validate_request_params(
             request_kwargs, required_params=required_params, optional_params=optional_params,
@@ -601,17 +603,31 @@ class RequestIndexImageMixin:
         if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
             raise ValidationError('One of "from_index" or "add_arches" must be specified')
 
-        # Verify that `overwrite_from_index` is the correct type and the user is authorized to
-        # use it if set
+        # Verify that `overwrite_from_index` is the correct type
         overwrite = request_kwargs.pop('overwrite_from_index', False)
         if not isinstance(overwrite, bool):
             raise ValidationError('The "overwrite_from_index" parameter must be a boolean')
 
+        # Verify that `overwrite_from_index_token` is the correct type
+        overwrite_token = request_kwargs.pop('overwrite_from_index_token', None)
+        if overwrite_token:
+            if not isinstance(overwrite_token, str):
+                raise ValidationError('The "overwrite_from_index_token" parameter must be a string')
+            if overwrite_token and not overwrite:
+                raise ValidationError(
+                    'The "overwrite_from_index" parameter is required when'
+                    ' the "overwrite_from_index_token" parameter is used'
+                )
+
+        # Verify the user is authorized to use overwrite_from_index
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
             privileged_users = current_app.config['IIB_PRIVILEGED_USERNAMES']
-            if overwrite and current_user.username not in privileged_users:
-                raise Forbidden('You must be a privileged user to set "overwrite_from_index"')
+            if overwrite and not overwrite_token and current_user.username not in privileged_users:
+                raise Forbidden(
+                    'You must be a privileged user to set "overwrite_from_index" without'
+                    ' setting "overwrite_from_index_token"'
+                )
 
         # Validate add_arches are correctly provided
         add_arches = request_kwargs.pop('add_arches', [])

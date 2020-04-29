@@ -156,11 +156,14 @@ def add_bundles():
         payload.get('cnr_token'),
         payload.get('organization'),
         _should_force_overwrite() or payload.get('overwrite_from_index'),
+        payload.get('overwrite_from_index_token'),
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
     ]
     safe_args = copy.copy(args)
     if payload.get('cnr_token'):
         safe_args[safe_args.index(payload['cnr_token'])] = '*****'
+    if payload.get('overwrite_from_index_token'):
+        safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
 
     error_callback = failed_request_callback.s(request.id)
     handle_add_request.apply_async(
@@ -292,18 +295,23 @@ def rm_operators():
     db.session.add(request)
     db.session.commit()
 
+    args = [
+        payload['operators'],
+        payload['binary_image'],
+        request.id,
+        payload['from_index'],
+        payload.get('add_arches'),
+        _should_force_overwrite() or payload.get('overwrite_from_index'),
+        payload.get('overwrite_from_index_token'),
+    ]
+
+    safe_args = copy.copy(args)
+    if payload.get('overwrite_from_index_token'):
+        safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
+
     error_callback = failed_request_callback.s(request.id)
     handle_rm_request.apply_async(
-        args=[
-            payload['operators'],
-            payload['binary_image'],
-            request.id,
-            payload['from_index'],
-            payload.get('add_arches'),
-            _should_force_overwrite() or payload.get('overwrite_from_index'),
-        ],
-        link_error=error_callback,
-        queue=_get_user_queue(),
+        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
     )
 
     messaging.send_message_for_state_change(request, new_batch_msg=True)
