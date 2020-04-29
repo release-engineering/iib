@@ -87,6 +87,20 @@ def skopeo_inspect(*args):
     return json.loads(run_cmd(cmd, exc_msg=exc_msg))
 
 
+@retry(wait_on=IIBError, logger=log)
+def podman_pull(*args):
+    """
+    Wrap the ``podman pull`` command.
+
+    :param args: any arguments to pass to ``podman pull``
+    :raises IIBError: if the command fails
+    """
+    run_cmd(
+        ['podman', 'pull'] + list(args),
+        exc_msg=f'Failed to pull the container image {" ".join(args)}',
+    )
+
+
 def run_cmd(cmd, params=None, exc_msg=None):
     """
     Run the given command with the provided parameters.

@@ -91,3 +91,10 @@ def test_skopeo_inspect(mock_run_cmd):
     skopeo_args = mock_run_cmd.call_args[0][0]
     expected = ['skopeo', '--command-timeout', '30s', 'inspect', image]
     assert skopeo_args == expected
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_podman_pull(mock_run_cmd):
+    image = 'some-image:latest'
+    utils.podman_pull(image)
+    mock_run_cmd.assert_called_once_with(['podman', 'pull', image], exc_msg=mock.ANY)
