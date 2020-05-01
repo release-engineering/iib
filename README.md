@@ -216,8 +216,15 @@ The custom configuration options for the Celery workers are listed below:
 In addition to building operator index images, IIB can also be used to regenerate operator bundle
 images. This is useful for applying modifications to the manifests embedded in the bundle image.
 IIB uses the [operator-manifest](https://github.com/containerbuildsystem/operator-manifest) library
-to assist in these modifications. Currently, IIB will pin any container image pull specification
-to its corresponding digest. See the different
+to assist in these modifications.
+
+Currently, IIB will not perform any modifications on a ClusterServiceVersion file if
+[spec.relatedImages](https://access.redhat.com/documentation/en-us/openshift_container_platform/4.3/html-single/operators/index#olm-enabling-operator-for-restricted-network_osdk-generating-csvs)
+is set.
+
+If it's not set, IIB will pin any container image pull specification and set
+[spec.relatedImages](https://access.redhat.com/documentation/en-us/openshift_container_platform/4.3/html-single/operators/index#olm-enabling-operator-for-restricted-network_osdk-generating-csvs).
+See the different
 [pull specifications](https://github.com/containerbuildsystem/operator-manifest#pull-specifications)
 to which this process applies to.
 
