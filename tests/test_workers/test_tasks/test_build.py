@@ -619,18 +619,71 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
             containerImage: quay.io/operator/image{ref}
         """
     )
-    csv1.write(csv_template.format(ref=':v1'))
+    csv_realted_images_template = csv_template + textwrap.dedent(
+        f"""\
+        spec:
+          relatedImages:
+          - name: image-annotation
+            image: quay.io/operator/image{{related_ref}}
+        """
+    )
+    csv1.write(csv_realted_images_template.format(ref=':v1', related_ref='@sha256:749327'))
     csv2.write(csv_template.format(ref=':v2'))
 
     def _get_resolved_image(image):
-        return {
-            'quay.io/operator/image:v1': 'quay.io/operator/image@sha256:123456',
-            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
-        }[image.to_str()]
+        return {'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321'}[image.to_str()]
 
     mock_gri.side_effect = _get_resolved_image
 
     build._adjust_operator_manifests(str(manifests_dir))
 
-    assert csv1.read_text('utf-8') == csv_template.format(ref='@sha256:123456')
-    assert csv2.read_text('utf-8') == csv_template.format(ref='@sha256:654321')
+    # Verify that the relatedImages are not modified if they were already set and that images were
+    # not pinned
+    assert csv1.read_text('utf-8') == csv_realted_images_template.format(
+        ref=':v1', related_ref='@sha256:749327'
+    )
+    assert csv2.read_text('utf-8') == csv_realted_images_template.format(
+        ref='@sha256:654321', related_ref='@sha256:654321'
+    )
+
+
+def test_adjust_operator_manifests_invalid_related_images(tmpdir):
+    manifests_dir = tmpdir.mkdir('manifests')
+    csv = manifests_dir.join('csv.yaml')
+    csv.write(
+        textwrap.dedent(
+            """\
+            apiVersion: operators.example.com/v1
+            kind: ClusterServiceVersion
+            metadata:
+              name: amqstreams.v1.0.0
+              namespace: placeholder
+              annotations:
+                containerImage: quay.io/operator/image:v1
+            spec:
+              install:
+                spec:
+                  deployments:
+                  - spec:
+                      template:
+                        spec:
+                          containers:
+                          - name: image-annotation
+                            image: quay.io/operator/image:v1
+                            env:
+                            - name: RELATED_IMAGE_SOMETHING
+                              value: quay.io/operator/image@sha256:749327
+              relatedImages:
+              - name: image-annotation
+                image: quay.io/operator/image@sha256:749327
+            """
+        )
+    )
+
+    expected = (
+        r'The ClusterServiceVersion file csv.yaml has entries in spec.relatedImages and one or '
+        r'more containers have RELATED_IMAGE_\* environment variables set. This is not allowed for '
+        r'bundles regenerated with IIB.'
+    )
+    with pytest.raises(IIBError, match=expected):
+        build._adjust_operator_manifests(str(manifests_dir))

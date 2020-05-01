@@ -755,25 +755,54 @@ def _adjust_operator_manifests(manifests_path):
     For any container image pull spec found in the Operator CSV files, replace floating
     tags with pinned digests, e.g. `image:latest` becomes `image@sha256:...`.
 
+    If spec.relatedImages is not set, it will be set with the pinned digests. If it is set but
+    there are also RELATED_IMAGE_* environment variables set, an exception will be raised.
+
     This method relies on the OperatorManifest class to properly identify and apply the
     modifications as needed.
 
     :param str manifests_path: the full path to the directory containing the operator manifests.
+    :raises IIBError: if the operator manifest has invalid entries
     """
     operator_manifest = OperatorManifest.from_directory(manifests_path)
     found_pullspecs = set()
+    operator_csvs = []
     for operator_csv in operator_manifest.files:
+        if operator_csv.has_related_images():
+            csv_file_name = os.path.basename(operator_csv.path)
+            if operator_csv.has_related_image_envs():
+                raise IIBError(
+                    f'The ClusterServiceVersion file {csv_file_name} has entries in '
+                    'spec.relatedImages and one or more containers have RELATED_IMAGE_* '
+                    'environment variables set. This is not allowed for bundles regenerated with '
+                    'IIB.'
+                )
+            log.debug(
+                'Skipping pinning since the ClusterServiceVersion file %s has entries in '
+                'spec.relatedImages',
+                csv_file_name,
+            )
+            continue
+
+        operator_csvs.append(operator_csv)
+
         for pullspec in operator_csv.get_pullspecs():
             found_pullspecs.add(pullspec)
 
     # Resolve pull specs to container image digests
-    replacement_pullspecs = {
-        pullspec: ImageName.parse(_get_resolved_image(pullspec)) for pullspec in found_pullspecs
-    }
+    replacement_pullspecs = {}
+    for pullspec in found_pullspecs:
+        # Skip images that are already pinned
+        if ':' not in ImageName.parse(pullspec).tag:
+            replacement_pullspecs[pullspec] = ImageName.parse(_get_resolved_image(pullspec))
 
     # Apply modifications to the operator bundle image metadata
-    for operator_csv in operator_manifest.files:
+    for operator_csv in operator_csvs:
         csv_file_name = os.path.basename(operator_csv.path)
         log.info('Pinning the pull specifications on %s', csv_file_name)
         operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
+
+        log.info('Setting spec.relatedImages on %s', csv_file_name)
+        operator_csv.set_related_images()
+
         operator_csv.dump()
