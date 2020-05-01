@@ -89,7 +89,7 @@ def test_skopeo_inspect(mock_run_cmd):
     rv = utils.skopeo_inspect(image)
     assert rv == {"Name": "some-image"}
     skopeo_args = mock_run_cmd.call_args[0][0]
-    expected = ['skopeo', '--command-timeout', '30s', 'inspect', image]
+    expected = ['skopeo', '--command-timeout', '300s', 'inspect', image]
     assert skopeo_args == expected
 
 
