@@ -773,5 +773,7 @@ def _adjust_operator_manifests(manifests_path):
 
     # Apply modifications to the operator bundle image metadata
     for operator_csv in operator_manifest.files:
+        csv_file_name = os.path.basename(operator_csv.path)
+        log.info('Pinning the pull specifications on %s', csv_file_name)
         operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
         operator_csv.dump()
