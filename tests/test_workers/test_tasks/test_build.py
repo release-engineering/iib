@@ -82,7 +82,9 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.update_request')
-def test_finish_request_post_build(
+@mock.patch('iib.workers.tasks.build.set_request_state')
+def test_update_index_image_pull_spec(
+    mock_srs,
     mock_ur,
     mock_sc,
     mock_gwc,
@@ -101,13 +103,13 @@ def test_finish_request_post_build(
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
-    build._finish_request_post_build(
+    build._update_index_image_pull_spec(
         default, request_id, arches, from_index, overwrite, overwrite_token
     )
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload.keys() == {'arches', 'index_image', 'state', 'state_reason'}
+    assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite_token:
         mock_sc.assert_called_once_with(
@@ -125,8 +127,10 @@ def test_finish_request_post_build(
             dest_token=None,
             exc_msg=mock.ANY,
         )
+        mock_srs.assert_called_once()
     else:
         mock_sc.assert_not_called()
+        mock_srs.assert_not_called()
 
 
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
@@ -421,7 +425,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
-@mock.patch('iib.workers.tasks.build._finish_request_post_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build.export_legacy_packages')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
@@ -437,7 +441,7 @@ def test_handle_add_request(
     mock_capml,
     mock_srs,
     mock_elp,
-    mock_frpb,
+    mock_uiips,
     mock_vii,
     mock_pi,
     mock_bi,
@@ -493,10 +497,10 @@ def test_handle_add_request(
     assert cnr_token in export_args
     assert organization in export_args
 
-    mock_frpb.assert_called_once()
+    mock_uiips.assert_called_once()
     mock_vii.assert_called_once()
     mock_capml.assert_called_once()
-    assert mock_srs.call_count == 2
+    assert mock_srs.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -563,9 +567,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs):
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build._finish_request_post_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 def test_handle_rm_request(
-    mock_frpb, mock_capml, mock_srs, mock_vii, mock_pi, mock_bi, mock_oir, mock_prfb, mock_cleanup
+    mock_uiips, mock_capml, mock_srs, mock_vii, mock_pi, mock_bi, mock_oir, mock_prfb, mock_cleanup
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -581,9 +585,10 @@ def test_handle_rm_request(
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
     mock_vii.assert_called_once()
-    mock_srs.assert_called_once()
+    assert mock_srs.call_count == 2
     mock_capml.assert_called_once()
-    mock_frpb.assert_called_once()
+    mock_uiips.assert_called_once()
+    assert mock_srs.call_args[0][1] == 'complete'
 
 
 @mock.patch('iib.workers.tasks.build._get_resolved_image')

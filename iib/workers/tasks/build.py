@@ -135,7 +135,7 @@ def _create_and_push_manifest_list(request_id, arches):
     return output_pull_spec
 
 
-def _finish_request_post_build(
+def _update_index_image_pull_spec(
     output_pull_spec,
     request_id,
     arches,
@@ -144,7 +144,7 @@ def _finish_request_post_build(
     overwrite_from_index_token=None,
 ):
     """
-    Finish the request after the manifest list has been pushed.
+    Update the request with the modified index image.
 
     This function was created so that code didn't need to be duplicated for the ``add`` and ``rm``
     request types.
@@ -162,10 +162,13 @@ def _finish_request_post_build(
     """
     conf = get_worker_config()
     if from_index and overwrite_from_index:
-        log.info(f'Ovewriting the index image {from_index} with {output_pull_spec}')
+        output_message = f'Ovewriting the index image {from_index} with {output_pull_spec}'
+        log.info(output_message)
         index_image = from_index
         exc_msg = f'Failed to overwrite the input from_index container image of {index_image}'
         args = [f'docker://{output_pull_spec}', f'docker://{index_image}']
+        state_reason = output_message
+        set_request_state(request_id, 'in_progress', state_reason)
         _skopeo_copy(*args, copy_all=True, dest_token=overwrite_from_index_token, exc_msg=exc_msg)
     elif conf['iib_index_image_output_registry']:
         index_image = output_pull_spec.replace(
@@ -182,8 +185,6 @@ def _finish_request_post_build(
     payload = {
         'arches': list(arches),
         'index_image': index_image,
-        'state': 'complete',
-        'state_reason': 'The request completed successfully',
     }
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
@@ -670,19 +671,20 @@ def handle_add_request(
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
-
-    if legacy_support_packages:
-        export_legacy_packages(
-            legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
-        )
-
-    _finish_request_post_build(
+    _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         arches,
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
+    )
+    if legacy_support_packages:
+        export_legacy_packages(
+            legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
+        )
+    set_request_state(
+        request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
     )
 
 
@@ -731,13 +733,16 @@ def handle_rm_request(
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
 
-    _finish_request_post_build(
+    _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         arches,
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
+    )
+    set_request_state(
+        request_id, 'complete', 'The operator(s) were successfully removed from the index image',
     )
 
 
