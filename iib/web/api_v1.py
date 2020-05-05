@@ -338,3 +338,60 @@ def regenerate_bundle():
     messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/regenerate-bundle-batch', methods=['POST'])
+@login_required
+def regenerate_bundle_batch():
+    """
+    Submit a batch of requests to regenerate operator bundle images.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payloads = flask.request.get_json()
+    if not isinstance(payloads, list) or not payloads:
+        raise ValidationError('The input data must be a non-empty JSON array')
+
+    batch = Batch()
+    db.session.add(batch)
+    requests = []
+    # Iterate through all the payloads and verify that the requests are valid before committing them
+    # and scheduling the tasks
+    for payload in payloads:
+        try:
+            request = RequestRegenerateBundle.from_json(payload, batch)
+        except ValidationError as e:
+            # Rollback the transaction if any of the payloads are invalid
+            db.session.rollback()
+            raise ValidationError(
+                f'{str(e).rstrip(".")}. This occurred on the request in '
+                f'index {payloads.index(payload)}.'
+            )
+        db.session.add(request)
+        requests.append(request)
+
+    db.session.commit()
+    messaging.send_messages_for_new_batch_of_requests(requests)
+
+    request_jsons = []
+    # This list will be used for the log message below and avoids the need of having to iterate
+    # through the list of requests another time
+    request_id_strs = []
+    for payload, request in zip(payloads, requests):
+        request_jsons.append(request.to_json())
+        request_id_strs.append(str(request.id))
+
+        error_callback = failed_request_callback.s(request.id)
+        handle_regenerate_bundle_request.apply_async(
+            args=[payload['from_bundle_image'], payload.get('organization'), request.id],
+            link_error=error_callback,
+            queue=_get_user_queue(),
+        )
+
+    flask.current_app.logger.debug(
+        'Successfully scheduled the batch %d with requests: %s',
+        batch.id,
+        ', '.join(request_id_strs),
+    )
+    return flask.jsonify(request_jsons), 201

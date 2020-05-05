@@ -65,6 +65,13 @@ def test_request_type_validation(type_num, is_valid):
             models.Request(type=type_num)
 
 
+def test_batch_user(db, minimal_request_add):
+    minimal_request_add.user = models.User(username='han_solo@SW.COM')
+    db.session.commit()
+
+    assert minimal_request_add.batch.user.username == 'han_solo@SW.COM'
+
+
 @pytest.mark.parametrize('last_request_state', ('in_progress', 'failed', 'complete'))
 def test_batch_state(last_request_state, db):
     binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')

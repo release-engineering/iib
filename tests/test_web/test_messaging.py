@@ -1,10 +1,87 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 from unittest import mock
 
 import proton
 import pytest
 
 from iib.web import messaging
+
+
+@pytest.mark.parametrize(
+    'request_state, new_batch, envelope_expected',
+    (
+        ('in_progress', False, False),
+        ('complete', False, True),
+        ('failed', False, True),
+        ('in_progress', True, True),
+    ),
+)
+def test_get_batch_state_change_envelope(
+    request_state, new_batch, envelope_expected, app, db, minimal_request_add
+):
+    minimal_request_add.add_state(request_state, 'For some reason')
+    db.session.add(minimal_request_add)
+    db.session.commit()
+
+    batch = minimal_request_add.batch
+    envelope = messaging._get_batch_state_change_envelope(batch, new_batch=new_batch)
+
+    if envelope_expected:
+        assert envelope
+        assert envelope.address == 'topic://VirtualTopic.eng.iib.batch.state'
+        # Since there is only a single request in the batch, the request states dictate's the
+        # batch's state
+        assert envelope.message.properties == {
+            'batch': 1,
+            'state': request_state,
+            'user': None,
+        }
+        assert json.loads(envelope.message.body) == {
+            'batch': 1,
+            'request_ids': [1],
+            'state': request_state,
+            'user': None,
+        }
+    else:
+        assert envelope is None
+
+
+def test_get_batch_state_change_envelope_missing_config(app, db, minimal_request_add):
+    minimal_request_add.add_state('complete', 'For some reason')
+    db.session.add(minimal_request_add)
+    db.session.commit()
+    app.config.pop('IIB_MESSAGING_BATCH_STATE_DESTINATION')
+
+    batch = minimal_request_add.batch
+    assert messaging._get_batch_state_change_envelope(batch) is None
+
+
+def test_get_request_state_change_envelope(app, db, minimal_request_add):
+    minimal_request_add.add_state('complete', 'For some reason')
+    db.session.add(minimal_request_add)
+    db.session.commit()
+
+    envelope = messaging._get_request_state_change_envelope(minimal_request_add)
+
+    assert envelope
+    assert envelope.address == 'topic://VirtualTopic.eng.iib.build.state'
+    assert envelope.message.properties == {
+        'batch': 1,
+        'id': 1,
+        'state': 'complete',
+        'user': None,
+    }
+    assert json.loads(envelope.message.body) == minimal_request_add.to_json(verbose=False)
+
+
+def test_get_request_state_change_envelope_missing_config(app, db, minimal_request_add):
+    minimal_request_add.add_state('complete', 'For some reason')
+    db.session.add(minimal_request_add)
+    db.session.commit()
+    app.config.pop('IIB_MESSAGING_BUILD_STATE_DESTINATION')
+
+    assert messaging._get_request_state_change_envelope(minimal_request_add) is None
 
 
 @mock.patch('iib.web.messaging.os.path.exists')
@@ -119,55 +196,79 @@ def test_send_messages(mock_gsd, mock_bc, app):
     mock_connection.close.assert_called_once_with()
 
 
-@pytest.mark.parametrize(
-    'missing_config, request_state, new_batch_msg, request_expected, batch_expected',
-    (
-        (None, 'complete', True, True, True),
-        (None, 'in_progress', True, True, True),
-        (None, 'complete', False, True, True),
-        (None, 'in_progress', False, True, False),
-        ('IIB_MESSAGING_BUILD_STATE_DESTINATION', 'complete', True, False, True),
-        ('IIB_MESSAGING_BUILD_STATE_DESTINATION', 'in_progress', True, False, True),
-        ('IIB_MESSAGING_BUILD_STATE_DESTINATION', 'complete', False, False, True),
-        ('IIB_MESSAGING_BUILD_STATE_DESTINATION', 'in_progress', False, False, False),
-        ('IIB_MESSAGING_BATCH_STATE_DESTINATION', 'complete', True, True, False),
-        ('IIB_MESSAGING_BATCH_STATE_DESTINATION', 'in_progress', True, True, False),
-        ('IIB_MESSAGING_BATCH_STATE_DESTINATION', 'complete', False, True, False),
-        ('IIB_MESSAGING_BATCH_STATE_DESTINATION', 'in_progress', False, True, False),
-    ),
-)
+@pytest.mark.parametrize('request_msg_expected', (True, False))
+@pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._get_request_state_change_envelope')
+@mock.patch('iib.web.messaging._get_batch_state_change_envelope')
 @mock.patch('iib.web.messaging.send_messages')
 def test_send_message_for_state_change(
     mock_sm,
-    missing_config,
-    request_state,
-    new_batch_msg,
-    request_expected,
-    batch_expected,
+    mock_gbsce,
+    mock_grstce,
+    batch_msg_expected,
+    request_msg_expected,
     app,
     db,
     minimal_request_add,
 ):
-    minimal_request_add.add_state(request_state, 'For some reason')
-    db.session.add(minimal_request_add)
-    db.session.commit()
-    if missing_config:
-        app.config.pop(missing_config)
+    expected_msgs = []
+    if request_msg_expected:
+        request_envelope = mock.Mock()
+        expected_msgs.append(request_envelope)
+        mock_grstce.return_value = request_envelope
+    else:
+        mock_grstce.return_value = None
 
-    messaging.send_message_for_state_change(minimal_request_add, new_batch_msg)
+    if batch_msg_expected:
+        batch_envelope = mock.Mock()
+        expected_msgs.append(batch_envelope)
+        mock_gbsce.return_value = batch_envelope
+    else:
+        mock_gbsce.return_value = None
 
-    expected_envelopes = 2
-    if not request_expected:
-        expected_envelopes -= 1
-    if not batch_expected:
-        expected_envelopes -= 1
+    messaging.send_message_for_state_change(minimal_request_add)
 
-    if expected_envelopes:
-        envelopes = mock_sm.call_args[0][0]
-        assert len(envelopes) == expected_envelopes
-        if request_expected:
-            assert any(e.address == 'topic://VirtualTopic.eng.iib.build.state' for e in envelopes)
-        if batch_expected:
-            assert any(e.address == 'topic://VirtualTopic.eng.iib.batch.state' for e in envelopes)
+    if expected_msgs:
+        mock_sm.assert_called_once_with(expected_msgs)
     else:
         mock_sm.assert_not_called()
+
+
+@pytest.mark.parametrize('request_msg_expected', (True, False))
+@pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._get_request_state_change_envelope')
+@mock.patch('iib.web.messaging._get_batch_state_change_envelope')
+@mock.patch('iib.web.messaging.send_messages')
+def test_send_messages_for_new_batch_of_requests(
+    mock_sm, mock_gbsce, mock_grsce, batch_msg_expected, request_msg_expected, minimal_request_add
+):
+    expected_msgs = []
+    if request_msg_expected:
+        request_envelope1 = mock.Mock()
+        request_envelope2 = mock.Mock()
+        expected_msgs.extend([request_envelope1, request_envelope2])
+        mock_grsce.side_effect = [request_envelope1, request_envelope2]
+    else:
+        mock_grsce.return_value = None
+
+    if batch_msg_expected:
+        batch_envelope = mock.Mock()
+        expected_msgs.append(batch_envelope)
+        mock_gbsce.return_value = batch_envelope
+    else:
+        mock_gbsce.return_value = None
+
+    requests = [minimal_request_add, minimal_request_add]
+    messaging.send_messages_for_new_batch_of_requests(requests)
+
+    if expected_msgs:
+        mock_sm.assert_called_once_with(expected_msgs)
+    else:
+        mock_sm.assert_not_called()
+
+
+@mock.patch('iib.web.messaging.send_messages')
+def test_send_messages_for_new_batch_of_requests_no_requests(mock_sm, minimal_request_add):
+    messaging.send_messages_for_new_batch_of_requests([])
+
+    mock_sm.assert_not_called()

@@ -972,3 +972,68 @@ def test_regenerate_bundle_custom_user_queue(
         args=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@pytest.mark.parametrize(
+    'user_to_queue, expected_queue',
+    (({'tbrady@DOMAIN.LOCAL': 'Patriots'}, 'Patriots'), ({'jabba@DOMAIN.LOCAL': 'The Hut'}, None)),
+)
+@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
+def test_regenerate_bundle_batch_success(
+    mock_smfnbor, mock_hrbr, user_to_queue, expected_queue, app, auth_env, client, db
+):
+    app.config['IIB_USER_TO_QUEUE'] = user_to_queue
+
+    data = [
+        {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+        {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
+    ]
+    rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=data, environ_base=auth_env)
+
+    assert rv.status_code == 201, rv.json
+    assert mock_hrbr.apply_async.call_count == 2
+    mock_hrbr.apply_async.assert_has_calls(
+        (
+            mock.call(
+                args=['registry.example.com/bundle-image:latest', None, 1],
+                link_error=mock.ANY,
+                queue=expected_queue,
+            ),
+            mock.call(
+                args=['registry.example.com/bundle-image2:latest', None, 2],
+                link_error=mock.ANY,
+                queue=expected_queue,
+            ),
+        )
+    )
+
+    requests_to_send_msgs_for = mock_smfnbor.call_args[0][0]
+    assert len(requests_to_send_msgs_for) == 2
+    assert requests_to_send_msgs_for[0].id == 1
+    assert requests_to_send_msgs_for[1].id == 2
+
+
+@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+def test_regenerate_bundle_batch_invalid_request_type(mock_hrbr, app, auth_env, client, db):
+    data = [
+        {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+        {'binary_image': 'binary:image', 'from_index': 'some:thing2', 'operators': ['some:thing']},
+    ]
+    rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=data, environ_base=auth_env)
+
+    assert rv.status_code == 400, rv.json
+    assert rv.json == {
+        'error': (
+            'Missing required parameter(s): from_bundle_image. This occurred on the request in '
+            'index 1.'
+        )
+    }
+    mock_hrbr.apply_async.assert_not_called()
+
+
+def test_regenerate_bundle_batch_invalid_json(app, auth_env, client, db):
+    rv = client.post('/api/v1/builds/regenerate-bundle-batch', environ_base=auth_env)
+
+    assert rv.status_code == 400, rv.json
+    assert rv.json == {'error': 'The input data must be a non-empty JSON array'}
