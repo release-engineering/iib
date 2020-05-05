@@ -61,7 +61,7 @@ paths:
                     items:
                       oneOf:
                         - $ref: '#/components/schemas/RequestIndexImage'
-                        - $ref: '#/components/schemas/RequestRegenerateBundle'
+                        - $ref: '#/components/schemas/RequestRegenerateBundleOutput'
                   meta:
                     $ref: '#/components/schemas/Pagination'
         '400':
@@ -270,7 +270,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+              $ref: '#/components/schemas/RequestRegenerateBundle'
       security:
         - Kerberos Authentication: []
       responses:
@@ -491,7 +491,6 @@ components:
         - operators
     RequestRegenerateBundle:
       allOf:
-        - $ref: '#/components/schemas/Request'
         - type: object
           properties:
             from_bundle_image:
@@ -509,6 +508,19 @@ components:
               example: openshift-operators
           required:
             - from_bundle_image
+    RequestRegenerateBundleOutput:
+      allOf:
+        - $ref: '#/components/schemas/Request'
+        - type: object
+          properties:
+            from_bundle_image:
+              type: string
+              description: The pull specification of the original bundle image that was modified.
+              example: 'quay.io/user/openshift-bundle-example-container:v1'
+            organization:
+              type: string
+              description: The name of the organization the bundle was regenerated for.
+              example: openshift-operators
     RequestUpdate:
       type: object
       properties:
@@ -562,7 +574,7 @@ components:
     RequestRegenerateBundleVerbose:
       allOf:
         - $ref: '#/components/schemas/RequestVerbose'
-        - $ref: '#/components/schemas/RequestRegenerateBundle'
+        - $ref: '#/components/schemas/RequestRegenerateBundleOutput'
     StateHistory:
       type: object
       properties:
