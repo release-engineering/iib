@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from collections import namedtuple
 import json
-import logging
 import os
 import uuid
 
@@ -13,8 +12,6 @@ import proton.utils
 from iib.web.models import RequestStateMapping
 
 __all__ = ['Envelope', 'json_to_envelope', 'send_messages', 'send_message_for_state_change']
-
-log = logging.getLogger(__name__)
 
 
 class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
@@ -91,7 +88,7 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
     """
     batch_address = current_app.config.get('IIB_MESSAGING_BATCH_STATE_DESTINATION')
     if not batch_address:
-        log.debug(
+        current_app.logger.debug(
             'No batch state change message will be generated since the configuration '
             '"IIB_MESSAGING_BATCH_STATE_DESTINATION" is not set'
         )
@@ -104,7 +101,7 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
         batch_state = batch.state
 
     if new_batch or batch_state in RequestStateMapping.get_final_states():
-        log.debug('Preparing to send a state change message for batch %d', batch.id)
+        current_app.logger.debug('Preparing to send a state change message for batch %d', batch.id)
         batch_username = getattr(batch.user, 'username', None)
         content = {
             'batch': batch.id,
@@ -132,13 +129,13 @@ def _get_request_state_change_envelope(request):
     """
     request_address = current_app.config.get('IIB_MESSAGING_BUILD_STATE_DESTINATION')
     if not request_address:
-        log.debug(
+        current_app.logger.debug(
             'No request state change message will be generated since the configuration '
             '"IIB_MESSAGING_BUILD_STATE_DESTINATION" is not set'
         )
         return
 
-    log.debug('Preparing to send a state change message for request %d', request.id)
+    current_app.logger.debug('Preparing to send a state change message for request %d', request.id)
     request_json = request.to_json(verbose=False)
     properties = {
         'batch': request_json['batch'],
@@ -161,7 +158,9 @@ def _get_ssl_domain():
         conf.get(key) and os.path.exists(conf[key])
         for key in ('IIB_MESSAGING_CERT', 'IIB_MESSAGING_KEY', 'IIB_MESSAGING_CA')
     ):
-        log.warning('Skipping authentication due to missing certificates and/or a private key')
+        current_app.logger.warning(
+            'Skipping authentication due to missing certificates and/or a private key'
+        )
         return
 
     domain = proton.SSLDomain(proton.SSLDomain.MODE_CLIENT)
@@ -200,7 +199,7 @@ def send_messages(envelopes):
     """
     conf = current_app.config
     if not conf.get('IIB_MESSAGING_URLS'):
-        log.error('The "IIB_MESSAGING_URLS" must be set to send messages')
+        current_app.logger.error('The "IIB_MESSAGING_URLS" must be set to send messages')
         return
 
     address_to_sender = {}
@@ -211,12 +210,14 @@ def send_messages(envelopes):
             timeout=conf['IIB_MESSAGING_TIMEOUT'],
             ssl_domain=_get_ssl_domain(),
         )
-        log.info('Connected to the message broker %s', connection.url)
+        current_app.logger.info('Connected to the message broker %s', connection.url)
         for envelope in envelopes:
             if envelope.address not in address_to_sender:
                 address_to_sender[envelope.address] = connection.create_sender(envelope.address)
 
-            log.info('Sending message %s to %s', envelope.message.id, envelope.address)
+            current_app.logger.info(
+                'Sending message %s to %s', envelope.message.id, envelope.address
+            )
             address_to_sender[envelope.address].send(
                 envelope.message, timeout=conf['IIB_MESSAGING_TIMEOUT']
             )
