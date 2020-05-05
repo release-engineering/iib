@@ -300,6 +300,49 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/regenerate-bundle-batch:
+    post:
+      description: Submit a batch of build requests to regenerate an operator bundle image
+      requestBody:
+        description: The build requests to create
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/RequestRegenerateBundle'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build requests were initiated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"organization" must be a string'
+        '401':
+          description: The user is not allowed to submit a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
 components:
   schemas:
     BundleMapping:

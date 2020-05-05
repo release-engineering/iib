@@ -76,6 +76,79 @@ class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
 Envelope = namedtuple('Envelope', 'address message')
 
 
+def _get_batch_state_change_envelope(batch, new_batch=False):
+    """
+    Generate a batch state change ``Envelope`` object.
+
+    No message will be generated if IIB is not configured to send batch state change messages or
+    no batch state change message is needed .
+
+    :param iib.web.models.Batch batch: the batch that changed states
+    :param bool new_batch: if ``True``, a new batch message will be generated; if ``False``,
+        IIB will generate a batch state change message if the batch is no longer ``in_progress``
+    :return: the ``Envelope`` for the batch state change or ``None``
+    :rtype: Envelope or None
+    """
+    batch_address = current_app.config.get('IIB_MESSAGING_BATCH_STATE_DESTINATION')
+    if not batch_address:
+        log.debug(
+            'No batch state change message will be generated since the configuration '
+            '"IIB_MESSAGING_BATCH_STATE_DESTINATION" is not set'
+        )
+        return
+
+    if new_batch:
+        # Avoid querying the database for the batch state since we know it's a new batch
+        batch_state = 'in_progress'
+    else:
+        batch_state = batch.state
+
+    if new_batch or batch_state in RequestStateMapping.get_final_states():
+        log.debug('Preparing to send a state change message for batch %d', batch.id)
+        batch_username = getattr(batch.user, 'username', None)
+        content = {
+            'batch': batch.id,
+            'request_ids': sorted(batch.request_ids),
+            'state': batch_state,
+            'user': batch_username,
+        }
+        properties = {
+            'batch': batch.id,
+            'state': batch_state,
+            'user': batch_username,
+        }
+        return json_to_envelope(batch_address, content, properties)
+
+
+def _get_request_state_change_envelope(request):
+    """
+    Generate a request state change ``Envelope`` object.
+
+    No message will be generated if IIB is not configured to send request state change messages.
+
+    :param iib.web.models.Request request: the request that changed states
+    :return: the ``Envelope`` for the request state change or ``None``
+    :rtype: Envelope or None
+    """
+    request_address = current_app.config.get('IIB_MESSAGING_BUILD_STATE_DESTINATION')
+    if not request_address:
+        log.debug(
+            'No request state change message will be generated since the configuration '
+            '"IIB_MESSAGING_BUILD_STATE_DESTINATION" is not set'
+        )
+        return
+
+    log.debug('Preparing to send a state change message for request %d', request.id)
+    request_json = request.to_json(verbose=False)
+    properties = {
+        'batch': request_json['batch'],
+        'id': request_json['id'],
+        'state': request_json['state'],
+        'user': request_json['user'],
+    }
+    return json_to_envelope(request_address, request_json, properties)
+
+
 def _get_ssl_domain():
     """
     Create the SSL configuration object for qpid-proton.
@@ -164,53 +237,42 @@ def send_message_for_state_change(request, new_batch_msg=False):
     :param bool new_batch_msg: if ``True``, a new batch message will be sent; if ``False``,
         IIB will send a batch state change message if the batch is no longer ``in_progress``
     """
-    request_address = current_app.config.get('IIB_MESSAGING_BUILD_STATE_DESTINATION')
     envelopes = []
-    request_json = request.to_json(verbose=False)
-    if request_address:
-        log.debug('Preparing to send a state change message for request %d', request.id)
-        properties = {
-            'batch': request_json['batch'],
-            'id': request_json['id'],
-            'state': request_json['state'],
-            'user': request_json['user'],
-        }
-        envelopes.append(json_to_envelope(request_address, request_json, properties))
-    else:
-        log.debug(
-            'No request state change message will be sent since the configuration '
-            '"IIB_MESSAGING_BUILD_STATE_DESTINATION" is not set'
-        )
+    request_envelope = _get_request_state_change_envelope(request)
+    if request_envelope:
+        envelopes.append(request_envelope)
 
-    batch_address = current_app.config.get('IIB_MESSAGING_BATCH_STATE_DESTINATION')
-    if batch_address:
-        if new_batch_msg:
-            # Avoid querying the database for the batch state since we know it's a new batch
-            batch_state = 'in_progress'
-        else:
-            batch_state = request.batch.state
+    batch_envelope = _get_batch_state_change_envelope(request.batch, new_batch_msg)
+    if batch_envelope:
+        envelopes.append(batch_envelope)
 
-        if new_batch_msg or batch_state in RequestStateMapping.get_final_states():
-            log.debug(
-                'Preparing to send a state change message for batch %d', request_json['batch']
-            )
-            content = {
-                'batch': request_json['batch'],
-                'request_ids': sorted(request.batch.request_ids),
-                'state': batch_state,
-                'user': request_json['user'],
-            }
-            properties = {
-                'batch': request.batch.id,
-                'state': batch_state,
-                'user': request_json['user'],
-            }
-            envelopes.append(json_to_envelope(batch_address, content, properties))
-    else:
-        log.debug(
-            'No batch state change message will be sent since the configuration '
-            '"IIB_MESSAGING_BATCH_STATE_DESTINATION" is not set'
-        )
+    if envelopes:
+        send_messages(envelopes)
+
+
+def send_messages_for_new_batch_of_requests(requests):
+    """
+    Send the appropriate message(s) based on a new batch of build requests.
+
+    If IIB is not configured to send messages, this function will do nothing.
+
+    :param list requests: the requests that were created as part of the batch request
+    """
+    if not requests:
+        return
+
+    envelopes = []
+
+    for request in requests:
+        request_envelope = _get_request_state_change_envelope(request)
+        if request_envelope:
+            envelopes.append(request_envelope)
+
+    # Just use the first request's batch since the batch is the same for all of them
+    batch = requests[0].batch
+    batch_envelope = _get_batch_state_change_envelope(batch, new_batch=True)
+    if batch_envelope:
+        envelopes.append(batch_envelope)
 
     if envelopes:
         send_messages(envelopes)

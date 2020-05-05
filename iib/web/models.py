@@ -450,6 +450,21 @@ class Batch(db.Model):
         )
         return [RequestStateMapping(request.state.state).name for request in requests]
 
+    @property
+    def user(self):
+        """
+        Get the ``User`` object associated with the batch.
+
+        :return: the ``User`` object associated with the batch or ``None``
+        :rtype: User or None
+        """
+        return (
+            db.session.query(User)
+            .options(joinedload(User.requests).load_only())
+            .filter(Request.batch == self)
+            .first()
+        )
+
     @staticmethod
     def validate_batch(batch_id):
         """
@@ -871,8 +886,15 @@ class RequestRegenerateBundle(Request):
     }
 
     @classmethod
-    def from_json(cls, kwargs):
-        """Handle JSON requests for the Regenerate Bundle API endpoint."""
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the Regenerate Bundle API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request. If one is not specified, one will
+            be created automatically.
+        """
+        batch = batch or Batch()
         request_kwargs = deepcopy(kwargs)
 
         validate_request_params(
@@ -898,7 +920,6 @@ class RequestRegenerateBundle(Request):
             request_kwargs['user'] = current_user
 
         # Add the request to a new batch
-        batch = Batch()
         db.session.add(batch)
         request_kwargs['batch'] = batch
 
