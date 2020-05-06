@@ -237,7 +237,9 @@ to which this process applies to.
 ## Messaging
 
 IIB has support to send messages to an AMQP 1.0 broker. If configured to do so, IIB will send
-messages when a build request state changes and when a batch state changes.
+messages when a build request state changes and when a batch state changes. Please note that if a
+message can't be sent due to an infrastructure issue, the build request will continue as it is not
+considered a fatal error.
 
 The build request state change message body is the JSON representation of the build request in
 the non-verbose format like in the `/builds` API endpoint. The message has the following keys set in

@@ -195,6 +195,9 @@ def send_messages(envelopes):
     If the IIB configuration ``IIB_MESSAGING_URLS`` is not set, the message will not be sent and
     an error will be logged.
 
+    If the message(s) can't be sent, the exception will be logged but no exception will be raised
+    since this is not considered a fatal error by the application.
+
     :param list envelopes: a list of ``Envelope`` objects representing the messages to send
     """
     conf = current_app.config
@@ -221,6 +224,8 @@ def send_messages(envelopes):
             address_to_sender[envelope.address].send(
                 envelope.message, timeout=conf['IIB_MESSAGING_TIMEOUT']
             )
+    except:  # noqa: E722
+        current_app.logger.exception('Failed to send one or more messages')
     finally:
         if connection:
             connection.close()

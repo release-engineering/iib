@@ -196,6 +196,18 @@ def test_send_messages(mock_gsd, mock_bc, app):
     mock_connection.close.assert_called_once_with()
 
 
+@mock.patch('iib.web.messaging.BlockingConnection')
+@mock.patch('iib.web.messaging._get_ssl_domain')
+def test_send_messages_nonfatal(mock_gsd, mock_bc, app):
+    mock_bc.side_effect = proton.Timeout
+
+    # Verfies that an infrastructure issue is a nonfatal error. If this raises an exception,
+    # the test will fail.
+    messaging.send_messages(
+        [messaging.Envelope('topic://VirtualTopic.eng.star_wars', '{"han": "solo"}')]
+    )
+
+
 @pytest.mark.parametrize('request_msg_expected', (True, False))
 @pytest.mark.parametrize('batch_msg_expected', (True, False))
 @mock.patch('iib.web.messaging._get_request_state_change_envelope')
