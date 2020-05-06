@@ -145,6 +145,7 @@ def add_bundles():
     request = RequestAdd.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     celery_queue = _get_user_queue()
     args = [
@@ -170,7 +171,6 @@ def add_bundles():
         args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
     )
 
-    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
 
@@ -294,6 +294,7 @@ def rm_operators():
     request = RequestRm.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     args = [
         payload['operators'],
@@ -314,7 +315,6 @@ def rm_operators():
         args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
     )
 
-    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
 
@@ -335,6 +335,7 @@ def regenerate_bundle():
     request = RequestRegenerateBundle.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     error_callback = failed_request_callback.s(request.id)
     handle_regenerate_bundle_request.apply_async(
@@ -343,7 +344,6 @@ def regenerate_bundle():
         queue=_get_user_queue(),
     )
 
-    messaging.send_message_for_state_change(request, new_batch_msg=True)
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
 
