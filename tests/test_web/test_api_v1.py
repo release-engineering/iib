@@ -38,6 +38,7 @@ def test_get_build(app, auth_env, client, db):
     expected = {
         'arches': ['amd64', 's390x'],
         'batch': 1,
+        'batch_annotations': None,
         'binary_image': 'quay.io/namespace/binary_image:latest',
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
         'bundle_mapping': {},
@@ -382,6 +383,7 @@ def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth
     response_json = {
         'arches': [],
         'batch': 1,
+        'batch_annotations': None,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
@@ -688,6 +690,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
     response_json = {
         'arches': ['arches'],
         'batch': 1,
+        'batch_annotations': None,
         'binary_image': 'quay.io/add/binary-image:latest',
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
@@ -743,6 +746,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
     response_json = {
         'arches': ['arches'],
         'batch': 1,
+        'batch_annotations': None,
         'binary_image': minimal_request_rm.binary_image.pull_specification,
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': {},
@@ -798,6 +802,7 @@ def test_patch_request_regenerate_bundle_success(
     response_json = {
         'arches': ['arches'],
         'batch': 1,
+        'batch_annotations': None,
         'bundle_image': 'bundle:image',
         'from_bundle_image': minimal_request_regenerate_bundle.from_bundle_image.pull_specification,
         'from_bundle_image_resolved': 'from-bundle-image:resolved',
@@ -847,6 +852,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
     response_json = {
         'arches': [],
         'batch': 1,
+        'batch_annotations': None,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
@@ -975,6 +981,7 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
     response_json = {
         'arches': [],
         'batch': 1,
+        'batch_annotations': None,
         'bundle_image': None,
         'from_bundle_image': 'registry.example.com/bundle-image:latest',
         'from_bundle_image_resolved': None,
@@ -1069,13 +1076,17 @@ def test_regenerate_bundle_custom_user_queue(
 
 
 @pytest.mark.parametrize(
-    'user_to_queue, expected_queue',
-    (({'tbrady@DOMAIN.LOCAL': 'Patriots'}, 'Patriots'), ({'jabba@DOMAIN.LOCAL': 'The Hut'}, None)),
+    'user_to_queue, expected_queue, annotations',
+    (
+        ({'tbrady@DOMAIN.LOCAL': 'Patriots'}, 'Patriots', None),
+        ({'jabba@DOMAIN.LOCAL': 'The Hut'}, None, None),
+        ({}, None, {'Han Solo': 'Don\'t everybody thank me at once.'}),
+    ),
 )
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_regenerate_bundle_batch_success(
-    mock_smfnbor, mock_hrbr, user_to_queue, expected_queue, app, auth_env, client, db
+    mock_smfnbor, mock_hrbr, user_to_queue, expected_queue, annotations, app, auth_env, client, db
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
 
@@ -1085,6 +1096,8 @@ def test_regenerate_bundle_batch_success(
             {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
         ]
     }
+    if annotations:
+        data['annotations'] = annotations
     rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=data, environ_base=auth_env)
 
     assert rv.status_code == 201, rv.json
@@ -1103,6 +1116,8 @@ def test_regenerate_bundle_batch_success(
             ),
         )
     )
+    assert len(rv.json) == 2
+    assert all(r['batch_annotations'] == annotations for r in rv.json)
 
     requests_to_send_msgs_for = mock_smfnbor.call_args[0][0]
     assert len(requests_to_send_msgs_for) == 2
@@ -1134,15 +1149,29 @@ def test_regenerate_bundle_batch_invalid_request_type(mock_hrbr, app, auth_env, 
     mock_hrbr.apply_async.assert_not_called()
 
 
-def test_regenerate_bundle_batch_invalid_input(app, auth_env, client, db):
-    rv = client.post(
-        '/api/v1/builds/regenerate-bundle-batch', json=['bundle:latest'], environ_base=auth_env
-    )
+@pytest.mark.parametrize(
+    'payload, error_msg',
+    (
+        (
+            ['bundle:latest'],
+            (
+                'The input data must be a JSON object and the "build_requests" value must be a '
+                'non-empty array'
+            ),
+        ),
+        (
+            {
+                'build_requests': [
+                    {'from_bundle_image': 'registry.example.com/bundle-image:latest'}
+                ],
+                'annotations': 'Will someone get this big walking carpet out of my way?',
+            },
+            'The value of "annotations" must be a JSON object',
+        ),
+    ),
+)
+def test_regenerate_bundle_batch_invalid_input(payload, error_msg, app, auth_env, client, db):
+    rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=payload, environ_base=auth_env)
 
     assert rv.status_code == 400, rv.json
-    assert rv.json == {
-        'error': (
-            'The input data must be a JSON object with the "build_requests" key\'s value '
-            'as a non-empty array'
-        )
-    }
+    assert rv.json == {'error': error_msg}

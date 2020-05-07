@@ -357,31 +357,24 @@ def regenerate_bundle_batch():
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payloads = flask.request.get_json()
-    if (
-        not isinstance(payloads, dict)
-        or not isinstance(payloads.get('build_requests'), list)
-        or not payloads['build_requests']
-    ):
-        raise ValidationError(
-            'The input data must be a JSON object with the "build_requests" key\'s value as a '
-            'non-empty array'
-        )
+    payload = flask.request.get_json()
+    Batch.validate_batch_request_params(payload)
 
-    batch = Batch()
+    batch = Batch(annotations=payload.get('annotations'))
     db.session.add(batch)
+
     requests = []
-    # Iterate through all the payloads and verify that the requests are valid before committing them
-    # and scheduling the tasks
-    for payload in payloads['build_requests']:
+    # Iterate through all the build requests and verify that the requests are valid before
+    # committing them and scheduling the tasks
+    for build_request in payload['build_requests']:
         try:
-            request = RequestRegenerateBundle.from_json(payload, batch)
+            request = RequestRegenerateBundle.from_json(build_request, batch)
         except ValidationError as e:
-            # Rollback the transaction if any of the payloads are invalid
+            # Rollback the transaction if any of the build requests are invalid
             db.session.rollback()
             raise ValidationError(
                 f'{str(e).rstrip(".")}. This occurred on the build request in '
-                f'index {payloads["build_requests"].index(payload)}.'
+                f'index {payload["build_requests"].index(build_request)}.'
             )
         db.session.add(request)
         requests.append(request)
@@ -393,13 +386,17 @@ def regenerate_bundle_batch():
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
     request_id_strs = []
-    for payload, request in zip(payloads['build_requests'], requests):
+    for build_request, request in zip(payload['build_requests'], requests):
         request_jsons.append(request.to_json())
         request_id_strs.append(str(request.id))
 
         error_callback = failed_request_callback.s(request.id)
         handle_regenerate_bundle_request.apply_async(
-            args=[payload['from_bundle_image'], payload.get('organization'), request.id],
+            args=[
+                build_request['from_bundle_image'],
+                build_request.get('organization'),
+                request.id,
+            ],
             link_error=error_callback,
             queue=_get_user_queue(),
         )
