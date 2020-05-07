@@ -1079,10 +1079,12 @@ def test_regenerate_bundle_batch_success(
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
 
-    data = [
-        {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
-        {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
-    ]
+    data = {
+        'build_requests': [
+            {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+            {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
+        ]
+    }
     rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=data, environ_base=auth_env)
 
     assert rv.status_code == 201, rv.json
@@ -1110,24 +1112,37 @@ def test_regenerate_bundle_batch_success(
 
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
 def test_regenerate_bundle_batch_invalid_request_type(mock_hrbr, app, auth_env, client, db):
-    data = [
-        {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
-        {'binary_image': 'binary:image', 'from_index': 'some:thing2', 'operators': ['some:thing']},
-    ]
+    data = {
+        'build_requests': [
+            {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+            {
+                'binary_image': 'binary:image',
+                'from_index': 'some:thing2',
+                'operators': ['some:thing'],
+            },
+        ]
+    }
     rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=data, environ_base=auth_env)
 
     assert rv.status_code == 400, rv.json
     assert rv.json == {
         'error': (
-            'Missing required parameter(s): from_bundle_image. This occurred on the request in '
-            'index 1.'
+            'Missing required parameter(s): from_bundle_image. This occurred on the build request '
+            'in index 1.'
         )
     }
     mock_hrbr.apply_async.assert_not_called()
 
 
-def test_regenerate_bundle_batch_invalid_json(app, auth_env, client, db):
-    rv = client.post('/api/v1/builds/regenerate-bundle-batch', environ_base=auth_env)
+def test_regenerate_bundle_batch_invalid_input(app, auth_env, client, db):
+    rv = client.post(
+        '/api/v1/builds/regenerate-bundle-batch', json=['bundle:latest'], environ_base=auth_env
+    )
 
     assert rv.status_code == 400, rv.json
-    assert rv.json == {'error': 'The input data must be a non-empty JSON array'}
+    assert rv.json == {
+        'error': (
+            'The input data must be a JSON object with the "build_requests" key\'s value '
+            'as a non-empty array'
+        )
+    }

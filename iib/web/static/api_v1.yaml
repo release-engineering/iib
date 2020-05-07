@@ -309,9 +309,12 @@ paths:
         content:
           application/json:
             schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/RequestRegenerateBundle'
+              type: object
+              properties:
+                build_requests:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/RequestRegenerateBundle'
       security:
         - Kerberos Authentication: []
       responses:
