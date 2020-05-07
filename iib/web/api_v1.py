@@ -358,23 +358,30 @@ def regenerate_bundle_batch():
     :raise ValidationError: if required parameters are not supplied
     """
     payloads = flask.request.get_json()
-    if not isinstance(payloads, list) or not payloads:
-        raise ValidationError('The input data must be a non-empty JSON array')
+    if (
+        not isinstance(payloads, dict)
+        or not isinstance(payloads.get('build_requests'), list)
+        or not payloads['build_requests']
+    ):
+        raise ValidationError(
+            'The input data must be a JSON object with the "build_requests" key\'s value as a '
+            'non-empty array'
+        )
 
     batch = Batch()
     db.session.add(batch)
     requests = []
     # Iterate through all the payloads and verify that the requests are valid before committing them
     # and scheduling the tasks
-    for payload in payloads:
+    for payload in payloads['build_requests']:
         try:
             request = RequestRegenerateBundle.from_json(payload, batch)
         except ValidationError as e:
             # Rollback the transaction if any of the payloads are invalid
             db.session.rollback()
             raise ValidationError(
-                f'{str(e).rstrip(".")}. This occurred on the request in '
-                f'index {payloads.index(payload)}.'
+                f'{str(e).rstrip(".")}. This occurred on the build request in '
+                f'index {payloads["build_requests"].index(payload)}.'
             )
         db.session.add(request)
         requests.append(request)
@@ -386,7 +393,7 @@ def regenerate_bundle_batch():
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
     request_id_strs = []
-    for payload, request in zip(payloads, requests):
+    for payload, request in zip(payloads['build_requests'], requests):
         request_jsons.append(request.to_json())
         request_id_strs.append(str(request.id))
 
