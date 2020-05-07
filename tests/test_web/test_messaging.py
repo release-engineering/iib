@@ -22,9 +22,11 @@ def test_get_batch_state_change_envelope(
 ):
     minimal_request_add.add_state(request_state, 'For some reason')
     db.session.add(minimal_request_add)
+    batch = minimal_request_add.batch
+    annotations = {'Yoda': 'Do or do not. There is no try.'}
+    batch.annotations = annotations
     db.session.commit()
 
-    batch = minimal_request_add.batch
     envelope = messaging._get_batch_state_change_envelope(batch, new_batch=new_batch)
 
     if envelope_expected:
@@ -38,6 +40,7 @@ def test_get_batch_state_change_envelope(
             'user': None,
         }
         assert json.loads(envelope.message.body) == {
+            'annotations': annotations,
             'batch': 1,
             'request_ids': [1],
             'state': request_state,

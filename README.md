@@ -246,8 +246,8 @@ the non-verbose format like in the `/builds` API endpoint. The message has the f
 the application properties: `batch`, `id`, `state`, and `user`.
 
 The batch state change message body is a JSON object with the following keys: `batch`,
-`request_ids`, `state`, and `user`. The message has the following keys set in the application
-properties: `batch`, `state`, and `user`.
+`annotations`, `request_ids`, `state`, and `user`. The message has the following keys set in the
+application properties: `batch`, `state`, and `user`.
 
 ## Gating Bundle Images
 

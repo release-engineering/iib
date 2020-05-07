@@ -311,6 +311,11 @@ paths:
             schema:
               type: object
               properties:
+                annotations:
+                  type: object
+                  description: >
+                    An arbitrary JSON object associated with the batch. This is accessed by the
+                    "batch_annotations" key's value on a build request in the batch.
                 build_requests:
                   type: array
                   items:
@@ -629,6 +634,10 @@ components:
         - $ref: '#/components/schemas/Request'
         - type: object
           properties:
+            batch_annotations:
+              type: object
+              description: >
+                An arbitrary JSON object created by the submitter associated with the batch.
             state_history:
               type: array
               items:

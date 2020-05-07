@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from copy import deepcopy
 from enum import Enum
+import json
 
 from flask import current_app
 from flask_login import UserMixin, current_user
@@ -366,6 +367,7 @@ class Request(db.Model):
 
         latest_state = None
         if verbose:
+            rv['batch_annotations'] = self.batch.annotations
             states = [_state_to_json(state) for state in self.states]
             # Reverse the list since the latest states should be first
             states = list(reversed(states))
@@ -389,8 +391,50 @@ class Batch(db.Model):
     """A batch associated with one or more requests."""
 
     id = db.Column(db.Integer, primary_key=True)
+    _annotations = db.Column('annotations', db.Text, nullable=True)
 
     requests = db.relationship('Request', foreign_keys=[Request.batch_id], back_populates='batch')
+
+    @property
+    def annotations(self):
+        """Return the Python representation of the JSON annotations."""
+        return json.loads(self._annotations) if self._annotations else None
+
+    @annotations.setter
+    def annotations(self, annotations):
+        """
+        Set the annotations column to the input annotations as a JSON string.
+
+        If ``None`` is provided, it will be simply set to ``None`` and not be converted to JSON.
+
+        :param dict annotations: the dictionary of the annotations or ``None``
+        """
+        self._annotations = (
+            json.dumps(annotations, sort_keys=True) if annotations is not None else None
+        )
+
+    @staticmethod
+    def validate_batch_request_params(payload):
+        """
+        Validate batch specific parameters from the input JSON payload.
+
+        The requests in the "build_requests" key's value are not validated. Those should be
+        validated separately.
+
+        :raises ValidationError: if the payload is invalid
+        """
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get('build_requests'), list)
+            or not payload['build_requests']
+        ):
+            raise ValidationError(
+                'The input data must be a JSON object and the "build_requests" value must be a '
+                'non-empty array'
+            )
+
+        if not isinstance(payload.get('annotations', {}), dict):
+            raise ValidationError('The value of "annotations" must be a JSON object')
 
     @property
     def state(self):
