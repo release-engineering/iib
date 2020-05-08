@@ -7,10 +7,9 @@ flask-login
 flask-migrate
 flask-sqlalchemy
 operator-manifest
-pytest
-python-qpid-proton
 psycopg2-binary
 pytest
 pytest-cov
+python-qpid-proton
 requests
 requests-kerberos
