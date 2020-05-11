@@ -5,6 +5,7 @@ import tempfile
 import textwrap
 
 from operator_manifest.operator import ImageName, OperatorManifest
+import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
@@ -21,6 +22,7 @@ from iib.workers.tasks.utils import get_image_labels, podman_pull, retry, run_cm
 
 __all__ = ['handle_add_request', 'handle_regenerate_bundle_request', 'handle_rm_request']
 
+yaml = ruamel.yaml.YAML()
 log = logging.getLogger(__name__)
 
 
@@ -724,7 +726,9 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         manifests_path = os.path.join(temp_dir, 'manifests')
         _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
-        _adjust_operator_manifests(manifests_path)
+        metadata_path = os.path.join(temp_dir, 'metadata')
+        _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
+        labels = _adjust_operator_bundle(manifests_path, metadata_path, organization)
 
         with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
             dockerfile.write(
@@ -732,9 +736,12 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
                     f"""\
                         FROM {from_bundle_image_resolved}
                         COPY ./manifests /manifests
+                        COPY ./metadata /metadata
                     """
                 )
             )
+            for name, value in labels.items():
+                dockerfile.write(f'LABEL {name}={value}\n')
 
         for arch in sorted(arches):
             _build_image(temp_dir, 'Dockerfile', request_id, arch)
@@ -788,7 +795,83 @@ def _copy_files_from_image(image, src_path, dest_path):
             log.exception(e)
 
 
-def _adjust_operator_manifests(manifests_path):
+def _apply_package_name_suffix(metadata_path, organization=None):
+    """
+    Add the package name suffix if configured for this organization.
+
+    This adds the suffix to the value of
+    ``annotations['operators.operatorframework.io.bundle.package.v1']`` in
+    ``metadata/annotations.yaml``.
+
+    The final package name value is returned as part of the tuple.
+
+    :param str metadata_path: the path to the bundle's metadata directory.
+    :param str organization: the organization this customization is for.
+    :raise IIBError: if the ``metadata/annotations.yaml`` file is in an unexpected format.
+    :return: a tuple with the package name and a dictionary of labels to set on the bundle.
+    :rtype: tuple(str, dict)
+    """
+    annotations_yaml_path = os.path.join(metadata_path, 'annotations.yaml')
+    if not os.path.exists(annotations_yaml_path):
+        raise IIBError('metadata/annotations.yaml does not exist in the bundle')
+
+    with open(annotations_yaml_path, 'r') as f:
+        try:
+            annotations_yaml = yaml.load(f)
+        except ruamel.yaml.YAMLError:
+            error = 'metadata/annotations/yaml is not valid YAML'
+            log.exception(error)
+            raise IIBError(error)
+
+    if not isinstance(annotations_yaml.get('annotations', {}), dict):
+        raise IIBError('The value of metadata/annotations.yaml must be a dictionary')
+
+    package_label = 'operators.operatorframework.io.bundle.package.v1'
+    package_annotation = annotations_yaml.get('annotations', {}).get(package_label)
+    if not package_annotation:
+        raise IIBError(f'{package_label} is not set in metadata/annotations.yaml')
+
+    if not isinstance(package_annotation, str):
+        raise IIBError(f'The value of {package_label} in metadata/annotations.yaml is not a string')
+
+    if not organization:
+        log.debug('No organization was provided to add the package name suffix')
+        return package_annotation, {}
+
+    conf = get_worker_config()
+    package_name_suffix = (
+        conf['iib_organization_customizations'].get(organization, {}).get('package_name_suffix')
+    )
+    if not package_name_suffix:
+        log.debug(
+            'The "package_name_suffix" configuration is not set for the organization %s',
+            organization,
+        )
+        return package_annotation, {}
+
+    if package_annotation.endswith(package_name_suffix):
+        log.debug('No modifications are needed on %s in metadata/annotations.yaml', package_label)
+        return package_annotation, {}
+
+    annotations_yaml['annotations'][package_label] = f'{package_annotation}{package_name_suffix}'
+
+    with open(annotations_yaml_path, 'w') as f:
+        yaml.dump(annotations_yaml, f)
+
+    log.info(
+        'Modified %s in metadata/annotations.yaml from %s to %s',
+        package_label,
+        package_annotation,
+        annotations_yaml['annotations'][package_label],
+    )
+
+    return (
+        annotations_yaml['annotations'][package_label],
+        {package_label: annotations_yaml['annotations'][package_label]},
+    )
+
+
+def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     """
     Apply modifications to the operator manifests at the given location.
 
@@ -802,8 +885,15 @@ def _adjust_operator_manifests(manifests_path):
     modifications as needed.
 
     :param str manifests_path: the full path to the directory containing the operator manifests.
+    :param str metadata_path: the full path to the directory containing the bundle metadata files.
+    :param str organization: the organization this bundle is for. If no organization is provided,
+        no custom behavior will be applied.
     :raises IIBError: if the operator manifest has invalid entries
+    :return: a dictionary of labels to set on the bundle
+    :rtype: dict
     """
+    _, labels = _apply_package_name_suffix(metadata_path, organization)
+
     operator_manifest = OperatorManifest.from_directory(manifests_path)
     found_pullspecs = set()
     operator_csvs = []
@@ -846,3 +936,5 @@ def _adjust_operator_manifests(manifests_path):
         operator_csv.set_related_images()
 
         operator_csv.dump()
+
+    return labels

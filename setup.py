@@ -19,6 +19,7 @@ setup(
         'python-qpid-proton',
         'requests',
         'requests-kerberos',
+        'ruamel.yaml',
     ],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',

@@ -249,7 +249,7 @@ ruamel.yaml.clib==0.2.0 \
 ruamel.yaml==0.16.10 \
     --hash=sha256:0962fd7999e064c4865f96fb1e23079075f4a2a14849bcdc5cdba53a24f9759b \
     --hash=sha256:099c644a778bf72ffa00524f78dd0b6476bca94a1da344130f4bf3381ce5b954 \
-    # via operator-manifest
+    # via iib (setup.py), operator-manifest
 six==1.14.0 \
     --hash=sha256:236bdbdce46e6e6a3d61a337c0f8b763ca1e8717c03b369e87a7ec7ce1319c0a \
     --hash=sha256:8f3cd2e254d8f793e7f3d6d9df77b92252b52637291d0f0da013c76ea2724b6c \
