@@ -892,7 +892,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     :return: a dictionary of labels to set on the bundle
     :rtype: dict
     """
-    _, labels = _apply_package_name_suffix(metadata_path, organization)
+    package_name, labels = _apply_package_name_suffix(metadata_path, organization)
 
     operator_manifest = OperatorManifest.from_directory(manifests_path)
     found_pullspecs = set()
@@ -957,4 +957,36 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
 
         operator_csv.dump()
 
+    if organization:
+        _adjust_csv_annotations(operator_manifest.files, package_name, organization)
+
     return labels
+
+
+def _adjust_csv_annotations(operator_csvs, package_name, organization):
+    """
+    Annotate ClusterServiceVersion objects based on an organization configuration.
+
+    :param list operator_csvs: the list of ``OperatorCSV`` objects to examine.
+    :param str package_name: the operator package name.
+    :param str organization: the organization this bundle is for. This determines what annotations
+        to make.
+    """
+    conf = get_worker_config()
+    org_csv_annotations = (
+        conf['iib_organization_customizations'].get(organization, {}).get('csv_annotations')
+    )
+    if not org_csv_annotations:
+        log.debug('The organization %s does not have CSV annotations configured', organization)
+        return
+
+    for operator_csv in operator_csvs:
+        log.debug(
+            'Processing the ClusterServiceVersion file %s', os.path.basename(operator_csv.path)
+        )
+        csv_annotations = operator_csv.data.setdefault('metadata', {}).setdefault('annotations', {})
+        for annotation, value_template in org_csv_annotations.items():
+            value = value_template.format(package_name=package_name)
+            csv_annotations[annotation] = value
+
+        operator_csv.dump()
