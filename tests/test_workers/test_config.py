@@ -37,6 +37,7 @@ def test_validate_celery_config():
     validate_celery_config(
         {
             'iib_api_url': 'http://localhost:8080/api/v1/',
+            'iib_organization_customizations': {},
             'iib_registry': 'registry',
             'iib_required_labels': {},
         }
@@ -61,4 +62,85 @@ def test_validate_celery_config_iib_required_labels_not_dict():
         'iib_required_labels': 123,
     }
     with pytest.raises(ConfigError, match='iib_required_labels must be a dictionary'):
+        validate_celery_config(conf)
+
+
+@pytest.mark.parametrize(
+    'config, error',
+    (
+        ('Do or do not. There is no try.', 'iib_organization_customizations must be a dictionary'),
+        ({123: {}}, 'The keys in iib_organization_customizations must be strings'),
+        (
+            {'company-marketplace': 123},
+            'The values in iib_organization_customizations must be dictionaries',
+        ),
+        (
+            {'company-marketplace': {'Yoda': 'Do or do not. There is no try.'}},
+            'The following keys set on iib_organization_customizations are invalid: Yoda',
+        ),
+        (
+            {
+                'company-marketplace': {
+                    'csv_annotations': {
+                        123: (
+                            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+                        ),
+                    },
+                }
+            },
+            (
+                'The keys in iib_organization_customizations.company-marketplace.csv_annotations '
+                'must be strings'
+            ),
+        ),
+        (
+            {
+                'company-marketplace': {
+                    'registry_replacements': {123: 'registry.marketplace.company.com/cm'},
+                }
+            },
+            (
+                'The keys in iib_organization_customizations.company-marketplace.'
+                'registry_replacements must be strings'
+            ),
+        ),
+        (
+            {
+                'company-marketplace': {
+                    'csv_annotations': {'marketplace.company.io/remote-workflow': 123},
+                }
+            },
+            (
+                'The values in iib_organization_customizations.company-marketplace.'
+                'csv_annotations must be strings'
+            ),
+        ),
+        (
+            {
+                'company-marketplace': {
+                    'registry_replacements': {'registry.access.company.com': 123}
+                }
+            },
+            (
+                'The values in iib_organization_customizations.company-marketplace.'
+                'registry_replacements must be strings'
+            ),
+        ),
+        (
+            {'company-marketplace': {'package_name_suffix': 123}},
+            (
+                'The value of iib_organization_customizations.company-marketplace.'
+                'package_name_suffix must be a string'
+            ),
+        ),
+    ),
+)
+def test_validate_celery_config_invalid_organization_customizations(config, error):
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_organization_customizations': config,
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+    }
+    with pytest.raises(ConfigError, match=error):
         validate_celery_config(conf)

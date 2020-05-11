@@ -121,6 +121,49 @@ def validate_celery_config(conf, **kwargs):
     if not isinstance(conf['iib_required_labels'], dict):
         raise ConfigError('iib_required_labels must be a dictionary')
 
+    if not isinstance(conf['iib_organization_customizations'], dict):
+        raise ConfigError('iib_organization_customizations must be a dictionary')
+
+    for org, org_config in conf['iib_organization_customizations'].items():
+        if not isinstance(org, str):
+            raise ConfigError('The keys in iib_organization_customizations must be strings')
+
+        if not isinstance(org_config, dict):
+            raise ConfigError('The values in iib_organization_customizations must be dictionaries')
+
+        invalid_keys = org_config.keys() - {
+            'csv_annotations',
+            'package_name_suffix',
+            'registry_replacements',
+        }
+        if invalid_keys:
+            raise ConfigError(
+                'The following keys set on iib_organization_customizations are '
+                f'invalid: {", ".join(sorted(invalid_keys))}'
+            )
+
+        for key in ('csv_annotations', 'registry_replacements'):
+            value = org_config.get(key)
+            if not value:
+                continue
+
+            for k, v in value.items():
+                if not isinstance(k, str):
+                    raise ConfigError(
+                        f'The keys in iib_organization_customizations.{org}.{key} must be strings'
+                    )
+
+                if not isinstance(v, str):
+                    raise ConfigError(
+                        f'The values in iib_organization_customizations.{org}.{key} must be strings'
+                    )
+
+        if not isinstance(org_config.get('package_name_suffix', ''), str):
+            raise ConfigError(
+                f'The value of iib_organization_customizations.{org}.package_name_suffix '
+                'must be a string'
+            )
+
 
 def get_worker_config():
     """Return the Celery configuration."""
