@@ -213,14 +213,19 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_organization_customizations` - this is used to customize aspects of the bundle being
   regenerated. The format is a dictionary where each key is an organization that requires
-  customizations. Each value accepts the key `package_name_suffix`. The `package_name_suffix` value
-  is a string of a suffix to add to the package name of the operator. Here is an example that ties
-  this all together:
+  customizations. Each value accepts the keys `package_name_suffix` and `registry_replacements`. The
+  `package_name_suffix` value is a string of a suffix to add to the package name of the operator.
+  The `registry_replacements` value is a dictionary where the keys are the old registries to replace
+  and the values are the registries to replace the old registries with. This replaces the registry
+  in all the ClusterServiceVersion files. Here is an example that ties this all together:
 
   ```python
   iib_organization_customizations = {
       'company-marketplace': {
           'package_name_suffix': '-cmp',
+          'registry_replacements': {
+              'registry.access.company.com': 'registry.marketplace.company.com/cm',
+          },
       }
   }
   ```

@@ -697,8 +697,9 @@ def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
     )
     manifests_dir = tmpdir.mkdir('manifests')
     metadata_dir = tmpdir.mkdir('metadata')
-    csv1 = manifests_dir.join('csv1.yaml')
-    csv2 = manifests_dir.join('csv2.yaml')
+    csv1 = manifests_dir.join('1.clusterserviceversion.yaml')
+    csv2 = manifests_dir.join('2.clusterserviceversion.yaml')
+    csv3 = manifests_dir.join('3.clusterserviceversion.yaml')
 
     # NOTE: The OperatorManifest class is capable of modifying pull specs found in
     # various locations within the CSV file. Since IIB relies on this class to do
@@ -713,25 +714,36 @@ def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
           name: amqstreams.v1.0.0
           namespace: placeholder
           annotations:
-            containerImage: quay.io/operator/image{ref}
+            containerImage: {registry}/operator/image{ref}
         """
     )
     image_digest = '654321'
     csv_related_images_template = csv_template + textwrap.dedent(
-        f"""\
+        """\
         spec:
           relatedImages:
-          - name: image-{image_digest}-annotation
-            image: quay.io/operator/image{{related_ref}}
+          - name: {related_name}
+            image: {registry}/operator/image{related_ref}
         """
     )
-    csv1.write(csv_related_images_template.format(ref=':v1', related_ref='@sha256:749327'))
-    csv2.write(csv_template.format(ref=':v2'))
+    csv1.write(
+        csv_related_images_template.format(
+            registry='quay.io',
+            ref=':v1',
+            related_name=f'image-{image_digest}-annotation',
+            related_ref='@sha256:749327',
+        )
+    )
+    csv2.write(csv_template.format(registry='quay.io', ref='@sha256:654321'))
+    csv3.write(csv_template.format(registry='registry.access.company.com', ref=':v2'))
 
     def _get_resolved_image(image):
-        return {'quay.io/operator/image:v2': f'quay.io/operator/image@sha256:{image_digest}'}[
-            image.to_str()
-        ]
+        return {
+            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+            'registry.access.company.com/operator/image:v2': (
+                'registry.access.company.com/operator/image@sha256:654321'
+            ),
+        }[image.to_str()]
 
     mock_gri.side_effect = _get_resolved_image
 
@@ -743,10 +755,22 @@ def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
     # Verify that the relatedImages are not modified if they were already set and that images were
     # not pinned
     assert csv1.read_text('utf-8') == csv_related_images_template.format(
-        ref=':v1', related_ref='@sha256:749327'
+        registry='quay.io',
+        ref=':v1',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:749327',
     )
     assert csv2.read_text('utf-8') == csv_related_images_template.format(
-        ref=f'@sha256:{image_digest}', related_ref=f'@sha256:{image_digest}'
+        registry='quay.io',
+        ref='@sha256:654321',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
+    )
+    assert csv3.read_text('utf-8') == csv_related_images_template.format(
+        registry='registry.marketplace.company.com/cm',
+        ref='@sha256:654321',
+        related_name=f'operator/image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
     )
 
 

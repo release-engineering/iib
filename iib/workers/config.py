@@ -46,7 +46,14 @@ class DevelopmentConfig(Config):
     broker_url = 'amqp://iib:iib@rabbitmq:5672//'
     iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
-    iib_organization_customizations = {'company-marketplace': {'package_name_suffix': '-cmp'}}
+    iib_organization_customizations = {
+        'company-marketplace': {
+            'package_name_suffix': '-cmp',
+            'registry_replacements': {
+                'registry.access.company.com': 'registry.marketplace.company.com/cm',
+            },
+        }
+    }
     iib_registry = 'registry:8443'
 
 

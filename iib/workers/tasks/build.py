@@ -919,17 +919,37 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
         for pullspec in operator_csv.get_pullspecs():
             found_pullspecs.add(pullspec)
 
+    conf = get_worker_config()
+    registry_replacements = (
+        conf['iib_organization_customizations']
+        .get(organization, {})
+        .get('registry_replacements', {})
+    )
+
     # Resolve pull specs to container image digests
     replacement_pullspecs = {}
     for pullspec in found_pullspecs:
-        # Skip images that are already pinned
-        if ':' not in ImageName.parse(pullspec).tag:
-            replacement_pullspecs[pullspec] = ImageName.parse(_get_resolved_image(pullspec))
+        replacement_needed = False
+        if ':' in ImageName.parse(pullspec).tag:
+            resolved_image = ImageName.parse(pullspec)
+        else:
+            resolved_image = ImageName.parse(_get_resolved_image(pullspec))
+            replacement_needed = True
+
+        if registry_replacements.get(resolved_image.registry):
+            replacement_needed = True
+            resolved_image.registry = registry_replacements[resolved_image.registry]
+
+        if replacement_needed:
+            log.debug(
+                '%s will be replaced with %s', pullspec, resolved_image.to_str(),
+            )
+            replacement_pullspecs[pullspec] = resolved_image
 
     # Apply modifications to the operator bundle image metadata
     for operator_csv in operator_csvs:
         csv_file_name = os.path.basename(operator_csv.path)
-        log.info('Pinning the pull specifications on %s', csv_file_name)
+        log.info('Replacing the pull specifications on %s', csv_file_name)
         operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
 
         log.info('Setting spec.relatedImages on %s', csv_file_name)
