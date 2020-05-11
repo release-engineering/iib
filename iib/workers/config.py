@@ -16,6 +16,7 @@ class Config(object):
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry = None
     iib_log_level = 'INFO'
+    iib_organization_customizations = {}
     iib_required_labels = {}
     iib_skopeo_timeout = '300s'
     iib_total_attempts = 5
@@ -45,6 +46,7 @@ class DevelopmentConfig(Config):
     broker_url = 'amqp://iib:iib@rabbitmq:5672//'
     iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
+    iib_organization_customizations = {'company-marketplace': {'package_name_suffix': '-cmp'}}
     iib_registry = 'registry:8443'
 
 

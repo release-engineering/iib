@@ -5,9 +5,13 @@ import textwrap
 from unittest import mock
 
 import pytest
+import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build
+
+
+yaml = ruamel.yaml.YAML()
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
@@ -540,9 +544,10 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build.podman_pull')
+@mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
-@mock.patch('iib.workers.tasks.build._adjust_operator_manifests')
+@mock.patch('iib.workers.tasks.build._adjust_operator_bundle')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -554,12 +559,14 @@ def test_handle_regenerate_bundle_request(
     mock_srs,
     mock_pi,
     mock_bi,
-    mock_aop,
+    mock_aob,
     mock_cffi,
     mock_gia,
+    mock_temp_dir,
     mock_pp,
     mock_gri,
     mock_cleanup,
+    tmpdir,
 ):
     arches = ['amd64', 's390x']
     from_bundle_image = 'bundle-image:latest'
@@ -568,8 +575,10 @@ def test_handle_regenerate_bundle_request(
     organization = 'acme'
     request_id = 99
 
+    mock_temp_dir.return_value.__enter__.return_value = str(tmpdir)
     mock_gri.return_value = from_bundle_image_resolved
     mock_gia.return_value = list(arches)
+    mock_aob.return_value = {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'}
     mock_capml.return_value = bundle_image
 
     build.handle_regenerate_bundle_request(from_bundle_image, organization, request_id)
@@ -584,9 +593,15 @@ def test_handle_regenerate_bundle_request(
     mock_gia.assert_called_once()
     mock_gia.assert_called_with('bundle-image@sha256:abcdef')
 
-    mock_cffi.assert_called_once_with('bundle-image@sha256:abcdef', '/manifests', mock.ANY)
+    assert mock_cffi.call_count == 2
+    mock_cffi.assert_has_calls(
+        (
+            mock.call('bundle-image@sha256:abcdef', '/manifests', mock.ANY),
+            mock.call('bundle-image@sha256:abcdef', '/metadata', mock.ANY),
+        )
+    )
 
-    mock_aop.assert_called_once()
+    mock_aob.assert_called_once()
 
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
@@ -631,6 +646,20 @@ def test_handle_regenerate_bundle_request(
         ]
     )
 
+    with open(tmpdir.join('Dockerfile'), 'r') as f:
+        dockerfile = f.read()
+
+    expected_dockerfile = textwrap.dedent(
+        '''\
+        FROM bundle-image@sha256:abcdef
+        COPY ./manifests /manifests
+        COPY ./metadata /metadata
+        LABEL operators.operatorframework.io.bundle.package.v1=amqstreams-cmp
+        '''
+    )
+
+    assert dockerfile == expected_dockerfile
+
 
 @pytest.mark.parametrize('fail_rm', (True, False))
 @mock.patch('iib.workers.tasks.build.run_cmd')
@@ -659,9 +688,15 @@ def test_copy_files_from_image(mock_run_cmd, fail_rm):
     )
 
 
+@mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
-def test_adjust_operator_manifests(mock_gri, tmpdir):
+def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
+    mock_apns.return_value = (
+        'amqstreams',
+        {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
+    )
     manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
     csv1 = manifests_dir.join('csv1.yaml')
     csv2 = manifests_dir.join('csv2.yaml')
 
@@ -700,8 +735,11 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
 
     mock_gri.side_effect = _get_resolved_image
 
-    build._adjust_operator_manifests(str(manifests_dir))
+    labels = build._adjust_operator_bundle(
+        str(manifests_dir), str(metadata_dir), 'company-marketplace'
+    )
 
+    assert labels == {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'}
     # Verify that the relatedImages are not modified if they were already set and that images were
     # not pinned
     assert csv1.read_text('utf-8') == csv_related_images_template.format(
@@ -712,8 +750,11 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
     )
 
 
-def test_adjust_operator_manifests_invalid_related_images(tmpdir):
+@mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
+def test_adjust_operator_bundle_invalid_related_images(mock_apns, tmpdir):
+    mock_apns.return_value = ('amqstreams', {})
     manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
     csv = manifests_dir.join('csv.yaml')
     csv.write(
         textwrap.dedent(
@@ -751,4 +792,97 @@ def test_adjust_operator_manifests_invalid_related_images(tmpdir):
         r'bundles regenerated with IIB.'
     )
     with pytest.raises(IIBError, match=expected):
-        build._adjust_operator_manifests(str(manifests_dir))
+        build._adjust_operator_bundle(str(manifests_dir), str(metadata_dir))
+
+
+@pytest.mark.parametrize(
+    'organization, package, expected_package, expected_labels',
+    (
+        (
+            'company-marketplace',
+            'amq-streams',
+            'amq-streams-cmp',
+            {'operators.operatorframework.io.bundle.package.v1': 'amq-streams-cmp'},
+        ),
+        (None, 'amq-streams', 'amq-streams', {}),
+        ('company-marketplace', 'amq-streams-cmp', 'amq-streams-cmp', {}),
+        ('non-existent', 'amq-streams', 'amq-streams', {}),
+    ),
+)
+def test_apply_package_name_suffix(
+    organization, package, expected_package, expected_labels, tmpdir
+):
+    metadata_dir = tmpdir.mkdir('metadata')
+    annotations_yaml = metadata_dir.join('annotations.yaml')
+    annotations_yaml.write(
+        textwrap.dedent(
+            f'''\
+            annotations:
+              operators.operatorframework.io.bundle.channel.default.v1: stable
+              operators.operatorframework.io.bundle.channels.v1: stable
+              operators.operatorframework.io.bundle.manifests.v1: manifests/
+              operators.operatorframework.io.bundle.mediatype.v1: registry+v1
+              operators.operatorframework.io.bundle.metadata.v1: metadata/
+              operators.operatorframework.io.bundle.package.v1: {package}
+            '''
+        )
+    )
+
+    package_name, labels = build._apply_package_name_suffix(str(metadata_dir), organization)
+
+    assert package_name == expected_package
+    assert labels == expected_labels
+    with open(annotations_yaml, 'r') as f:
+        annotations_yaml_content = yaml.load(f)
+    annotation_key = 'operators.operatorframework.io.bundle.package.v1'
+    assert annotations_yaml_content['annotations'][annotation_key] == expected_package
+
+
+def test_apply_package_name_suffix_missing_annotations_yaml(tmpdir):
+    metadata_dir = tmpdir.mkdir('metadata')
+
+    expected = 'metadata/annotations.yaml does not exist in the bundle'
+    with pytest.raises(IIBError, match=expected):
+        build._apply_package_name_suffix(str(metadata_dir))
+
+
+@pytest.mark.parametrize(
+    'annotations, expected_error',
+    (
+        (
+            {'annotations': 'The greatest teacher, failure is.'},
+            'The value of metadata/annotations.yaml must be a dictionary',
+        ),
+        (
+            {'annotations': {'Yoda': 'You must unlearn what you have learned.'}},
+            (
+                'operators.operatorframework.io.bundle.package.v1 is not set in '
+                'metadata/annotations.yaml'
+            ),
+        ),
+        (
+            {'annotations': {'operators.operatorframework.io.bundle.package.v1': 3}},
+            (
+                'The value of operators.operatorframework.io.bundle.package.v1 in '
+                'metadata/annotations.yaml is not a string'
+            ),
+        ),
+    ),
+)
+def test_apply_package_name_suffix_invalid_annotations_yaml(annotations, expected_error, tmpdir):
+    metadata_dir = tmpdir.mkdir('metadata')
+    annotations_yaml = metadata_dir.join('annotations.yaml')
+    with open(str(annotations_yaml), 'w') as f:
+        yaml.dump(annotations, f)
+
+    with pytest.raises(IIBError, match=expected_error):
+        build._apply_package_name_suffix(str(metadata_dir))
+
+
+def test_apply_package_name_suffix_invalid_yaml(tmpdir):
+    metadata_dir = tmpdir.mkdir('metadata')
+    metadata_dir.join('annotations.yaml').write('"This is why you fail." - Yoda')
+
+    expected = 'metadata/annotations/yaml is not valid YAML'
+    with pytest.raises(IIBError, match=expected):
+        build._apply_package_name_suffix(str(metadata_dir))

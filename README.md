@@ -211,6 +211,20 @@ The custom configuration options for the Celery workers are listed below:
   manifest list. The available variables are `registry` and `request_id`. The default value is
   `{registry}/iib-build:{request_id}`.
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
+* `iib_organization_customizations` - this is used to customize aspects of the bundle being
+  regenerated. The format is a dictionary where each key is an organization that requires
+  customizations. Each value accepts the key `package_name_suffix`. The `package_name_suffix` value
+  is a string of a suffix to add to the package name of the operator. Here is an example that ties
+  this all together:
+
+  ```python
+  iib_organization_customizations = {
+      'company-marketplace': {
+          'package_name_suffix': '-cmp',
+      }
+  }
+  ```
+
 * `iib_registry` - the container registry to push images to (e.g. `quay.io`).
 * `iib_skopeo_timeout` - the command timeout for skopeo commands run by IIB. This defaults to
   `30s` (30 seconds).
@@ -232,7 +246,8 @@ If it's not set, IIB will pin any container image pull specification and set
 [spec.relatedImages](https://access.redhat.com/documentation/en-us/openshift_container_platform/4.3/html-single/operators/index#olm-enabling-operator-for-restricted-network_osdk-generating-csvs).
 See the different
 [pull specifications](https://github.com/containerbuildsystem/operator-manifest#pull-specifications)
-to which this process applies to.
+to which this process applies to. There are also a variety of customizations that can be made to
+the bundle. See the `iib_organization_customizations` configuration option for more details.
 
 ## Messaging
 
