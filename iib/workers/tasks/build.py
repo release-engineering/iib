@@ -255,6 +255,50 @@ def get_rebuilt_image_pull_spec(request_id):
     )
 
 
+def _get_resolved_bundles(bundles):
+    """
+    Get the pull specification of the bundle images using their digests.
+
+    Determine if the pull spec refers to a manifest list.
+    If so, simply use the digest of the first item in the manifest list.
+    If not a manifest list, it must be a v2s2 image manifest and should be used as it is.
+
+    :param list bundles: the list of bundle images to be resolved.
+    :return: the list of bundle images resolved to their digests.
+    :rtype: list
+    :raises IIBError: if unable to resolve a bundle image.
+    """
+    log.info('Resolving bundles %s', ', '.join(bundles))
+    resolved_bundles = set()
+    for bundle_pull_spec in bundles:
+        skopeo_raw = skopeo_inspect(f'docker://{bundle_pull_spec}', '--raw')
+        if (
+            skopeo_raw.get('mediaType')
+            == 'application/vnd.docker.distribution.manifest.list.v2+json'
+        ):
+            # Get the digest of the first item in the manifest list
+            digest = skopeo_raw['manifests'][0]['digest']
+            if '@' in bundle_pull_spec:
+                repo = bundle_pull_spec.split('@', 1)[0]
+            else:
+                repo = bundle_pull_spec.rsplit(':', 1)[0]
+            resolved_bundles.add(f'{repo}@{digest}')
+        elif (
+            skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json'
+            and skopeo_raw.get('schemaVersion') == 2
+        ):
+            resolved_bundles.add(_get_resolved_image(bundle_pull_spec))
+        else:
+            error_msg = (
+                f'The pull specification of {bundle_pull_spec} is neither '
+                f'a v2 manifest list nor a v2s2 manifest. Type {skopeo_raw.get("mediaType")}'
+                f' and schema version {skopeo_raw.get("schemaVersion")} is not supported by IIB.'
+            )
+            raise IIBError(error_msg)
+
+    return list(resolved_bundles)
+
+
 def _get_resolved_image(pull_spec):
     """
     Get the pull specification of the container image using its digest.
@@ -373,7 +417,7 @@ def _prepare_request_for_build(
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
     :param list bundles: the list of bundles to create the bundle mapping on the request
-    :return: a dictionary with the keys: arches, binary_image_resolved, and fom_index_resolved.
+    :return: a dictionary with the keys: arches, binary_image_resolved, and from_index_resolved.
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
     """
@@ -587,16 +631,21 @@ def handle_add_request(
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
-    _verify_labels(bundles)
+    # Resolve bundles to their digests
+    resolved_bundles = _get_resolved_bundles(bundles)
+
+    _verify_labels(resolved_bundles)
 
     # Check if Gating passes for all the bundles
     if greenwave_config:
-        gate_bundles(bundles, greenwave_config)
+        gate_bundles(resolved_bundles, greenwave_config)
 
     log.info('Checking if interacting with the legacy app registry is required')
-    legacy_support_packages = get_legacy_support_packages(bundles)
+    legacy_support_packages = get_legacy_support_packages(resolved_bundles)
     if legacy_support_packages:
-        validate_legacy_params_and_config(legacy_support_packages, bundles, cnr_token, organization)
+        validate_legacy_params_and_config(
+            legacy_support_packages, resolved_bundles, cnr_token, organization
+        )
 
     _cleanup()
     prebuild_info = _prepare_request_for_build(
@@ -604,7 +653,9 @@ def handle_add_request(
     )
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        _opm_index_add(temp_dir, bundles, prebuild_info['binary_image_resolved'], from_index)
+        _opm_index_add(
+            temp_dir, resolved_bundles, prebuild_info['binary_image_resolved'], from_index,
+        )
 
         arches = prebuild_info['arches']
         for arch in sorted(arches):
