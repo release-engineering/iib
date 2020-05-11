@@ -180,6 +180,54 @@ def test_get_resolved_image(mock_si):
     assert rv == 'some-image@sha256:abcdefg'
 
 
+@pytest.mark.parametrize(
+    'skopeo_inspect_rv, expected_response',
+    (
+        (
+            {
+                'mediaType': 'application/vnd.docker.distribution.manifest.list.v2+json',
+                'manifests': [
+                    {'platform': {'architecture': 'amd64'}, 'digest': 'arch_digest'},
+                    {'platform': {'architecture': 's390x'}, 'digest': 'different_arch_digest'},
+                ],
+            },
+            ['some_bundle@arch_digest'],
+        ),
+        (
+            {
+                'mediaType': 'application/vnd.docker.distribution.manifest.v2+json',
+                'schemaVersion': 2,
+            },
+            ['some_bundle@manifest_digest'],
+        ),
+    ),
+)
+@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_get_resolved_bundles_success(mock_si, mock_gri, skopeo_inspect_rv, expected_response):
+    mock_si.return_value = skopeo_inspect_rv
+    mock_gri.return_value = 'some_bundle@manifest_digest'
+    response = build._get_resolved_bundles(['some_bundle:1.2'])
+    if skopeo_inspect_rv['mediaType'] == 'application/vnd.docker.distribution.manifest.v2+json':
+        mock_gri.assert_called_once()
+    else:
+        mock_gri.assert_not_called()
+    assert response == expected_response
+
+
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_get_resolved_bundles_failure(mock_si):
+    skopeo_inspect_rv = {
+        'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json',
+        'schemaVersion': 1,
+    }
+    mock_si.return_value = skopeo_inspect_rv
+    with pytest.raises(
+        IIBError, match='.+ and schema version 1 is not supported by IIB.',
+    ):
+        build._get_resolved_bundles(['some_bundle@some_sha'])
+
+
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_opm_index_add(mock_run_cmd, from_index):
@@ -380,7 +428,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
 def test_handle_add_request(
+    mock_grb,
     mock_gb,
     mock_vlpc,
     mock_glsp,
@@ -402,6 +452,7 @@ def test_handle_add_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
     }
+    mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
     mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
@@ -430,7 +481,7 @@ def test_handle_add_request(
     mock_gb.assert_called_once()
 
     add_args = mock_oia.call_args[0]
-    assert bundles in add_args
+    assert ['some-bundle@sha'] in add_args
     mock_oia.assert_called_once()
 
     assert mock_bi.call_count == len(arches)
@@ -450,10 +501,11 @@ def test_handle_add_request(
 
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._verify_labels')
-def test_handle_add_request_gating_failure(mock_vl, mock_gb):
+@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
-
+    mock_grb.return_value = ['some-bundle@sha']
     bundles = ['some-bundle:2.3-1']
     cnr_token = 'token'
     organization = 'org'
@@ -472,7 +524,31 @@ def test_handle_add_request_gating_failure(mock_vl, mock_gb):
             greenwave_config,
         )
     mock_vl.assert_called_once()
-    mock_gb.assert_called_once_with(bundles, greenwave_config)
+    mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
+
+
+@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+def test_handle_add_request_bundle_resolution_failure(mock_grb):
+    error_msg = 'Bundle Resolution failure!'
+    mock_grb.side_effect = IIBError(error_msg)
+    bundles = ['some-bundle:2.3-1']
+    cnr_token = 'token'
+    organization = 'org'
+    greenwave_config = {'some_key': 'other_value'}
+    with pytest.raises(IIBError, match=error_msg):
+        build.handle_add_request(
+            bundles,
+            'binary-image:latest',
+            3,
+            'from-index:latest',
+            ['s390x'],
+            cnr_token,
+            organization,
+            False,
+            None,
+            greenwave_config,
+        )
+    mock_grb.assert_called_once_with(bundles)
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
