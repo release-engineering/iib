@@ -48,6 +48,14 @@ class DevelopmentConfig(Config):
     iib_log_level = 'DEBUG'
     iib_organization_customizations = {
         'company-marketplace': {
+            'csv_annotations': {
+                'marketplace.company.io/remote-workflow': (
+                    'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+                ),
+                'marketplace.company.io/support-workflow': (
+                    'https://marketplace.company.com/en-us/operators/{package_name}/support'
+                ),
+            },
             'package_name_suffix': '-cmp',
             'registry_replacements': {
                 'registry.access.company.com': 'registry.marketplace.company.com/cm',

@@ -4,6 +4,7 @@ import re
 import textwrap
 from unittest import mock
 
+from operator_manifest.operator import OperatorManifest
 import pytest
 import ruamel.yaml
 
@@ -690,7 +691,8 @@ def test_copy_files_from_image(mock_run_cmd, fail_rm):
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
-def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
+@mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
+def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (
         'amqstreams',
         {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
@@ -772,6 +774,7 @@ def test_adjust_operator_bundle(mock_gri, mock_apns, tmpdir):
         related_name=f'operator/image-{image_digest}-annotation',
         related_ref='@sha256:654321',
     )
+    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', 'company-marketplace')
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
@@ -910,3 +913,48 @@ def test_apply_package_name_suffix_invalid_yaml(tmpdir):
     expected = 'metadata/annotations/yaml is not valid YAML'
     with pytest.raises(IIBError, match=expected):
         build._apply_package_name_suffix(str(metadata_dir))
+
+
+def test_adjust_csv_annotations(tmpdir):
+    manifests_dir = tmpdir.mkdir('manifests')
+    manifests_dir.join('backup.crd.yaml').write(
+        'apiVersion: apiextensions.k8s.io/v1beta1\nkind: CustomResourceDefinition'
+    )
+    csv = manifests_dir.join('mig-operator.v1.1.1.clusterserviceversion.yaml')
+    csv.write('apiVersion: operators.coreos.com/v1alpha1\nkind: ClusterServiceVersion')
+
+    operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
+    build._adjust_csv_annotations(operator_manifest.files, 'amqp-streams', 'company-marketplace')
+
+    with open(csv, 'r') as f:
+        csv_content = yaml.load(f)
+
+    assert csv_content == {
+        'apiVersion': 'operators.coreos.com/v1alpha1',
+        'kind': 'ClusterServiceVersion',
+        'metadata': {
+            'annotations': {
+                'marketplace.company.io/remote-workflow': (
+                    'https://marketplace.company.com/en-us/operators/amqp-streams/pricing'
+                ),
+                'marketplace.company.io/support-workflow': (
+                    'https://marketplace.company.com/en-us/operators/amqp-streams/support'
+                ),
+            }
+        },
+    }
+
+
+@mock.patch('iib.workers.tasks.build.yaml.dump')
+def test_adjust_csv_annotations_no_customizations(mock_yaml_dump, tmpdir):
+    manifests_dir = tmpdir.mkdir('manifests')
+    manifests_dir.join('backup.crd.yaml').write(
+        'apiVersion: apiextensions.k8s.io/v1beta1\nkind: CustomResourceDefinition'
+    )
+    csv = manifests_dir.join('mig-operator.v1.1.1.clusterserviceversion.yaml')
+    csv.write('apiVersion: operators.coreos.com/v1alpha1\nkind: ClusterServiceVersion')
+
+    operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
+    build._adjust_csv_annotations(operator_manifest.files, 'amqp-streams', 'mos-eisley')
+
+    mock_yaml_dump.assert_not_called()
