@@ -202,13 +202,6 @@ def _upgrade_data():
     connection = op.get_bind()
 
     connection.execute(
-        request_add_bundle_table.insert().from_select(
-            ['request_add_id', 'image_id'],
-            select([request_bundle_table.c.request_id, request_bundle_table.c.image_id]),
-        )
-    )
-
-    connection.execute(
         request_add_table.insert().from_select(
             [
                 'id',
@@ -235,9 +228,9 @@ def _upgrade_data():
     )
 
     connection.execute(
-        request_rm_operator_table.insert().from_select(
-            ['request_rm_id', 'operator_id'],
-            select([request_operator_table.c.request_id, request_operator_table.c.operator_id]),
+        request_add_bundle_table.insert().from_select(
+            ['request_add_id', 'image_id'],
+            select([request_bundle_table.c.request_id, request_bundle_table.c.image_id]),
         )
     )
 
@@ -262,6 +255,13 @@ def _upgrade_data():
                 ],
                 old_request_table.c.type == REQUEST_TYPE_RM,
             ),
+        )
+    )
+
+    connection.execute(
+        request_rm_operator_table.insert().from_select(
+            ['request_rm_id', 'operator_id'],
+            select([request_operator_table.c.request_id, request_operator_table.c.operator_id]),
         )
     )
 
