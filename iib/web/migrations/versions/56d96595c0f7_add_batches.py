@@ -42,7 +42,9 @@ def upgrade():
 
     connection = op.get_bind()
     # Iterate through all the existing requests
-    for request in connection.execute(request_table.select()).fetchall():
+    for request in connection.execute(
+        request_table.select().order_by(request_table.c.id)
+    ).fetchall():
         # Create a new batch per request
         connection.execute(batch_table.insert())
         # Get the ID of the last created batch
