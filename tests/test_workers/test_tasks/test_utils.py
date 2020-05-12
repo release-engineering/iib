@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
+import textwrap
 from unittest import mock
 
 import pytest
@@ -79,13 +80,38 @@ def test_run_cmd_failed(mock_sub_run, exc_msg):
 def test_run_cmd_failed_opm(mock_sub_run):
     mock_rv = mock.Mock()
     mock_rv.returncode = 1
-    mock_rv.stderr = (
-        'time="2020-03-09T08:58:21-04:00" level=info msg="loading bundle file" '
-        'dir=bundle_tmp922306995/manifests file=volumesnapshotlocation.crd.yaml load=bundle\n'
-        'time="2020-03-09T08:58:21-04:00" level=fatal msg="permissive mode disabled" '
-        'bundles="[quay.io/ns/some_bundle:v1.0]" error="error loading bundle from image: Error '
-        'adding package error loading bundle into db: cam-operator.v1.0.1 specifies replacement '
-        'that couldn\'t be found"'
+    mock_rv.stderr = textwrap.dedent(
+        '''
+        time="2020-05-12T15:42:19Z" level=info msg="loading bundle file" dir=bundle_tmp775962984/manifests file=serverstatusrequest.crd.yaml load=bundle
+        time="2020-05-12T15:42:19Z" level=info msg="loading bundle file" dir=bundle_tmp775962984/manifests file=volumesnapshotlocation.crd.yaml load=bundle
+        time="2020-05-12T15:42:19Z" level=error msg="permissive mode disabled" bundles="[registry/namespace/bundle:v1.0-14]" error="error loading bundle from image: Error adding package error loading bundle into db: cam-operator.v1.0.1 specifies replacement that couldn't be found"
+        Error: error loading bundle from image: Error adding package error loading bundle into db: cam-operator.v1.0.1 specifies replacement that couldn't be found
+        Usage:
+          opm index add [flags]
+
+        Examples:
+          # Create an index image from scratch with a single bundle image
+          opm index add --bundles quay.io/operator-framework/operator-bundle-prometheus@sha256:a3ee653ffa8a0d2bbb2fabb150a94da6e878b6e9eb07defd40dc884effde11a0 --tag quay.io/operator-framework/monitoring:1.0.0
+
+          # Add a single bundle image to an index image
+          opm index add --bundles quay.io/operator-framework/operator-bundle-prometheus:0.15.0 --from-index quay.io/operator-framework/monitoring:1.0.0 --tag quay.io/operator-framework/monitoring:1.0.1
+
+          # Add multiple bundles to an index and generate a Dockerfile instead of an image
+          opm index add --bundles quay.io/operator-framework/operator-bundle-prometheus:0.15.0,quay.io/operator-framework/operator-bundle-prometheus:0.22.2 --generate
+
+        Flags:
+          -i, --binary-image opm        container image for on-image opm command
+          -b, --bundles strings         comma separated list of bundles to add
+          -c, --container-tool string   tool to interact with container images (save, build, etc.). One of: [docker, podman] (default "podman")
+          -f, --from-index string       previous index to add to
+              --generate                if enabled, just creates the dockerfile and saves it to local disk
+          -h, --help                    help for add
+              --mode string             graph update mode that defines how channel graphs are updated. One of: [replaces, semver, semver-skippatch] (default "replaces")
+          -d, --out-dockerfile string   if generating the dockerfile, this flag is used to (optionally) specify a dockerfile name
+              --permissive              allow registry load errors
+              --skip-tls                skip TLS certificate verification for container image registries while pulling bundles
+          -t, --tag string              custom tag for container image being built
+        '''  # noqa: E501
     )
     mock_sub_run.return_value = mock_rv
 

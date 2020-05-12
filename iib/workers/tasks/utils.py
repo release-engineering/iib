@@ -130,9 +130,9 @@ def run_cmd(cmd, params=None, exc_msg=None, cmd_repr=None):
     if response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd_repr), response.stderr)
         if cmd[0] == 'opm':
-            # Capture the fatal error
-            regex = r'^(?:.+level=fatal .*error=")(.+)(?:")$'
-            # Start from the last log message since that is often where the failure occurs
+            # Capture the error message right before the help display
+            regex = r'^(?:Error: )(.+)$'
+            # Start from the last log message since the failure occurs near the bottom
             for msg in reversed(response.stderr.splitlines()):
                 match = re.match(regex, msg)
                 if match:
