@@ -203,21 +203,16 @@ def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
     return pull_spec
 
 
-def _get_local_pull_spec(request_id, arch, include_transport=False):
+def _get_local_pull_spec(request_id, arch):
     """
     Get the local pull specification of the architecture specfic index image for this request.
 
     :param int request_id: the ID of the IIB build request
     :param str arch: the specific architecture of the container image.
-    :param bool include_transport: if true, ``containers-storage:localhost/`` will be prefixed in
-        the returned pull specification
     :return: the pull specification of the index image for this request.
     :rtype: str
     """
-    pull_spec = f'iib-build:{request_id}-{arch}'
-    if include_transport:
-        return f'containers-storage:localhost/{pull_spec}'
-    return pull_spec
+    return f'iib-build:{request_id}-{arch}'
 
 
 def _get_image_arches(pull_spec):
@@ -449,23 +444,24 @@ def _push_image(request_id, arch):
     :param str arch: the architecture of the container image to push
     :raises IIBError: if the push fails
     """
-    source = _get_local_pull_spec(request_id, arch, include_transport=True)
+    source = _get_local_pull_spec(request_id, arch)
     destination = _get_external_arch_pull_spec(request_id, arch, include_transport=True)
     log.info('Pushing the container image %s to %s', source, destination)
-    # Use "skopeo copy" because "podman push" doesn't support setting the format
-    _skopeo_copy(
-        source,
-        destination,
+    run_cmd(
+        ['podman', 'push', '-q', source, destination],
         exc_msg=f'Failed to push the container image to {destination} for the arch {arch}',
     )
 
-    # Skopeo should've copied the image as v2 schema 2. Let's verify that this actually
-    # happened to avoid ambiguous errors later in the process that may be difficult to
-    # debug.
-    log.debug(f'Verifying that {destination} was pushed as a v2 manifest')
+    log.debug(f'Verifying that {destination} was pushed as a v2 manifest due to RHBZ#1810768')
     skopeo_raw = skopeo_inspect(destination, '--raw')
     if skopeo_raw['schemaVersion'] != 2:
-        raise IIBError(f'Manifest at {destination} is not schema version 2')
+        log.warning(
+            'The manifest for %s ended up using schema version 1 due to RHBZ#1810768. Manually '
+            'fixing it with skopeo.',
+            destination,
+        )
+        exc_msg = f'Failed to fix the manifest schema version on {destination}'
+        _skopeo_copy(destination, destination, exc_msg=exc_msg)
 
 
 @retry(wait_on=IIBError, logger=log)
