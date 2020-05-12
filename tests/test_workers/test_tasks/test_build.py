@@ -295,32 +295,27 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
         build._prepare_request_for_build('binary-image:latest', 1, add_arches=['s390x'])
 
 
+@pytest.mark.parametrize('schema_version', (1, 2))
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
+@mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
-def test_push_image(mock_sc, mock_si, mock_glps):
+def test_push_image(mock_sc, mock_si, mock_run_cmd, mock_glps, schema_version):
     mock_glps.return_value = 'source:tag'
-    mock_si.return_value = {'schemaVersion': 2}
+    mock_si.return_value = {'schemaVersion': schema_version}
 
     build._push_image(3, 'amd64')
 
-    mock_sc.assert_called_once_with(
-        'source:tag', 'docker://registry:8443/iib-build:3-amd64', exc_msg=mock.ANY
-    )
-    mock_si.assert_called_once_with('docker://registry:8443/iib-build:3-amd64', '--raw')
+    push_args = mock_run_cmd.mock_calls[0][1][0]
+    assert push_args[0:2] == ['podman', 'push']
+    assert 'source:tag' in push_args
+    destination = 'docker://registry:8443/iib-build:3-amd64'
+    assert destination in push_args
 
-
-@mock.patch('iib.workers.tasks.build._get_local_pull_spec')
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-@mock.patch('iib.workers.tasks.build._skopeo_copy')
-def test_push_image_unexpected_schema_version(mock_sc, mock_si, mock_glps):
-    mock_glps.return_value = 'source:tag'
-    mock_si.return_value = {'schemaVersion': 1}
-
-    with pytest.raises(IIBError, match='not schema version 2'):
-        build._push_image(3, 'amd64')
-
-    mock_glps.assert_called_with(3, 'amd64', include_transport=True)
+    if schema_version == 1:
+        mock_sc.assert_called_once()
+    else:
+        mock_run_cmd.assert_called_once()
 
 
 @pytest.mark.parametrize('copy_all', (False, True))
@@ -354,52 +349,6 @@ def test_skopeo_copy(mock_run_cmd, copy_all):
         ]
     assert skopeo_args == expected
     mock_run_cmd.assert_called_once()
-
-
-@pytest.mark.parametrize('dest_token', ('username:password', None))
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_skopeo_copy_with_token(mock_run_cmd, dest_token):
-    source = 'some_source'
-    destination = 'some_destination'
-    build._skopeo_copy(source, destination, dest_token=dest_token)
-    if dest_token:
-        expected_cmd = [
-            'skopeo',
-            '--command-timeout',
-            '300s',
-            'copy',
-            '--format',
-            'v2s2',
-            '--dest-creds',
-            dest_token,
-            source,
-            destination,
-        ]
-        expected_cmd_repr = [
-            'skopeo',
-            '--command-timeout',
-            '300s',
-            'copy',
-            '--format',
-            'v2s2',
-            '--dest-creds',
-            '*****',
-            source,
-            destination,
-        ]
-    else:
-        expected_cmd = [
-            'skopeo',
-            '--command-timeout',
-            '300s',
-            'copy',
-            '--format',
-            'v2s2',
-            source,
-            destination,
-        ]
-        expected_cmd_repr = expected_cmd
-    mock_run_cmd.assert_called_once_with(expected_cmd, cmd_repr=expected_cmd_repr, exc_msg=mock.ANY)
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
