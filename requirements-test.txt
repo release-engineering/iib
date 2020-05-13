@@ -275,8 +275,8 @@ python-editor==1.0.4 \
     --hash=sha256:51fda6bcc5ddbbb7063b2af7509e43bd84bfc32a4ff71349ec7847713882327b \
     --hash=sha256:5f98b069316ea1c2ed3f67e7f5df6c0d8f10b689964a4a811ff64f0106819ec8 \
     # via alembic
-python-qpid-proton==0.30.0 \
-    --hash=sha256:cec7360e5c20adb8fea60ce24f544c3a27c6d5d34280ebbd70f96d3f491db04d \
+python-qpid-proton==0.31.0 \
+    --hash=sha256:0b40aa8e130841820628e71c6f7e0c0210c763435954a682f78aa460681878e9 \
     # via -r requirements-test.in
 pytz==2019.3 \
     --hash=sha256:1c557d7d0e871de1f5ccd5833f60fb2550652da6be2693c1e02300743d21500d \
