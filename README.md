@@ -213,14 +213,19 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_organization_customizations` - this is used to customize aspects of the bundle being
   regenerated. The format is a dictionary where each key is an organization that requires
-  customizations. Each value accepts the keys `csv_annotations`, `package_name_suffix`,
-  and `registry_replacements`. The `csv_annotations` value is a dictionary where each key is
-  the annotation to set on the ClusterServiceVersion files, and the value is a Python template
-  string of the value to be set. IIB only substitutes `{package_name}` in the template string. The
-  `package_name_suffix` value is a string of a suffix to add to the package name of the operator.
-  The `registry_replacements` value is a dictionary where the keys are the old registries to replace
-  and the values are the registries to replace the old registries with. This replaces the registry
-  in all the ClusterServiceVersion files. Here is an example that ties this all together:
+  customizations. Each value accepts the optional keys `csv_annotations`, `package_name_suffix`,
+  and `registry_replacements`.
+
+  * The `csv_annotations` value is a dictionary where each key is the annotation to set on the
+    ClusterServiceVersion files, and the value is a Python template string of the value to be set.
+    IIB only substitutes `{package_name}` in the template string.
+  * The `package_name_suffix` value is a string of a suffix to add to the package name of the
+    operator.
+  * The `registry_replacements` value is a dictionary where the keys are the old registries to
+    replace and the values are the registries to replace the old registries with. This replaces the
+    registry in all the ClusterServiceVersion files.
+
+  Here is an example that ties this all together:
 
   ```python
   iib_organization_customizations = {
