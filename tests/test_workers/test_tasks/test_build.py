@@ -681,11 +681,12 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
             containerImage: quay.io/operator/image{ref}
         """
     )
+    image_digest = '654321'
     csv_realted_images_template = csv_template + textwrap.dedent(
         f"""\
         spec:
           relatedImages:
-          - name: image-annotation
+          - name: image-{image_digest}-annotation
             image: quay.io/operator/image{{related_ref}}
         """
     )
@@ -693,7 +694,9 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
     csv2.write(csv_template.format(ref=':v2'))
 
     def _get_resolved_image(image):
-        return {'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321'}[image.to_str()]
+        return {'quay.io/operator/image:v2': f'quay.io/operator/image@sha256:{image_digest}'}[
+            image.to_str()
+        ]
 
     mock_gri.side_effect = _get_resolved_image
 
@@ -705,7 +708,7 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
         ref=':v1', related_ref='@sha256:749327'
     )
     assert csv2.read_text('utf-8') == csv_realted_images_template.format(
-        ref='@sha256:654321', related_ref='@sha256:654321'
+        ref=f'@sha256:{image_digest}', related_ref=f'@sha256:{image_digest}'
     )
 
 

@@ -158,8 +158,8 @@ markupsafe==1.1.1 \
     --hash=sha256:e249096428b3ae81b08327a63a485ad0878de3fb939049038579ac0ef61e17e7 \
     --hash=sha256:e8313f01ba26fbbe36c7be1966a7b7424942f670f38e666995b88d012765b9be \
     # via jinja2, mako
-operator-manifest==0.0.1 \
-    --hash=sha256:8e3282d9b84c30bb78fdb695a76d413148c6abedd4d3311864f006c488f5ace5 \
+operator-manifest==0.0.2 \
+    --hash=sha256:ca29411fb857942e717f2410c61fd6e11f92b8dd2a952a25b7628f4c274fd968 \
     # via iib (setup.py)
 psycopg2-binary==2.8.4 \
     --hash=sha256:040234f8a4a8dfd692662a8308d78f63f31a97e1c42d2480e5e6810c48966a29 \
