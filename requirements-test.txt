@@ -199,8 +199,8 @@ more-itertools==8.2.0 \
     --hash=sha256:5dd8bcf33e5f9513ffa06d5ad33d78f31e1931ac9a18f33d37e77a180d393a7c \
     --hash=sha256:b1ddb932186d8a6ac451e1d95844b382f55e12686d51ca0c68b6f61f2ab7a507 \
     # via pytest
-operator-manifest==0.0.1 \
-    --hash=sha256:8e3282d9b84c30bb78fdb695a76d413148c6abedd4d3311864f006c488f5ace5 \
+operator-manifest==0.0.2 \
+    --hash=sha256:ca29411fb857942e717f2410c61fd6e11f92b8dd2a952a25b7628f4c274fd968 \
     # via -r requirements-test.in
 packaging==20.1 \
     --hash=sha256:170748228214b70b672c581a3dd610ee51f733018650740e98c7df862a583f73 \
