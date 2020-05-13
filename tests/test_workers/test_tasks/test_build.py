@@ -682,7 +682,7 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
         """
     )
     image_digest = '654321'
-    csv_realted_images_template = csv_template + textwrap.dedent(
+    csv_related_images_template = csv_template + textwrap.dedent(
         f"""\
         spec:
           relatedImages:
@@ -690,7 +690,7 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
             image: quay.io/operator/image{{related_ref}}
         """
     )
-    csv1.write(csv_realted_images_template.format(ref=':v1', related_ref='@sha256:749327'))
+    csv1.write(csv_related_images_template.format(ref=':v1', related_ref='@sha256:749327'))
     csv2.write(csv_template.format(ref=':v2'))
 
     def _get_resolved_image(image):
@@ -704,10 +704,10 @@ def test_adjust_operator_manifests(mock_gri, tmpdir):
 
     # Verify that the relatedImages are not modified if they were already set and that images were
     # not pinned
-    assert csv1.read_text('utf-8') == csv_realted_images_template.format(
+    assert csv1.read_text('utf-8') == csv_related_images_template.format(
         ref=':v1', related_ref='@sha256:749327'
     )
-    assert csv2.read_text('utf-8') == csv_realted_images_template.format(
+    assert csv2.read_text('utf-8') == csv_related_images_template.format(
         ref=f'@sha256:{image_digest}', related_ref=f'@sha256:{image_digest}'
     )
 
