@@ -742,6 +742,7 @@ def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
     def _get_resolved_image(image):
         return {
             'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+            'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
             'registry.access.company.com/operator/image:v2': (
                 'registry.access.company.com/operator/image@sha256:654321'
             ),

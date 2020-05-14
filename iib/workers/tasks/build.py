@@ -930,11 +930,11 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     replacement_pullspecs = {}
     for pullspec in found_pullspecs:
         replacement_needed = False
-        if ':' in ImageName.parse(pullspec).tag:
-            resolved_image = ImageName.parse(pullspec)
-        else:
-            resolved_image = ImageName.parse(_get_resolved_image(pullspec))
+        if ':' not in ImageName.parse(pullspec).tag:
             replacement_needed = True
+
+        # Always resolve the image to make sure it's valid
+        resolved_image = ImageName.parse(_get_resolved_image(pullspec))
 
         if registry_replacements.get(resolved_image.registry):
             replacement_needed = True
