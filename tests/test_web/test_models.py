@@ -65,11 +65,13 @@ def test_request_type_validation(type_num, is_valid):
             models.Request(type=type_num)
 
 
-def test_batch_user(db, minimal_request_add):
+def test_batch_user(db, minimal_request_add, minimal_request_rm):
     minimal_request_add.user = models.User(username='han_solo@SW.COM')
+    minimal_request_rm.user = models.User(username='yoda@SW.COM')
     db.session.commit()
 
     assert minimal_request_add.batch.user.username == 'han_solo@SW.COM'
+    assert minimal_request_rm.batch.user.username == 'yoda@SW.COM'
 
 
 @pytest.mark.parametrize('last_request_state', ('in_progress', 'failed', 'complete'))

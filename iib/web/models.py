@@ -504,7 +504,8 @@ class Batch(db.Model):
         """
         return (
             db.session.query(User)
-            .options(joinedload(User.requests).load_only())
+            .join(User.requests)
+            .join(Request.batch)
             .filter(Request.batch == self)
             .first()
         )
