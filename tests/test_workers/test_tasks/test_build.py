@@ -542,6 +542,10 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
         build._verify_labels(['some-bundle:v1.0'])
 
 
+@pytest.mark.parametrize(
+    'iib_index_image_output_registry, expected_bundle_image',
+    ((None, 'quay.io/iib:99'), ('dagobah.domain.local', 'dagobah.domain.local/iib:99')),
+)
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build.podman_pull')
@@ -553,9 +557,11 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_handle_regenerate_bundle_request(
     mock_ur,
+    mock_gwc,
     mock_capml,
     mock_srs,
     mock_pi,
@@ -567,12 +573,14 @@ def test_handle_regenerate_bundle_request(
     mock_pp,
     mock_gri,
     mock_cleanup,
+    iib_index_image_output_registry,
+    expected_bundle_image,
     tmpdir,
 ):
     arches = ['amd64', 's390x']
     from_bundle_image = 'bundle-image:latest'
     from_bundle_image_resolved = 'bundle-image@sha256:abcdef'
-    bundle_image = 'regenerated-bundle-image:99'
+    bundle_image = 'quay.io/iib:99'
     organization = 'acme'
     request_id = 99
 
@@ -581,6 +589,10 @@ def test_handle_regenerate_bundle_request(
     mock_gia.return_value = list(arches)
     mock_aob.return_value = {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'}
     mock_capml.return_value = bundle_image
+    mock_gwc.return_value = {
+        'iib_index_image_output_registry': iib_index_image_output_registry,
+        'iib_registry': 'quay.io',
+    }
 
     build.handle_regenerate_bundle_request(from_bundle_image, organization, request_id)
 
@@ -638,7 +650,7 @@ def test_handle_regenerate_bundle_request(
                 request_id,
                 {
                     'arches': list(arches),
-                    'bundle_image': bundle_image,
+                    'bundle_image': expected_bundle_image,
                     'state': 'complete',
                     'state_reason': 'The request completed successfully',
                 },

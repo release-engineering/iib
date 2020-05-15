@@ -750,6 +750,18 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
 
+    conf = get_worker_config()
+    if conf['iib_index_image_output_registry']:
+        old_output_pull_spec = output_pull_spec
+        output_pull_spec = output_pull_spec.replace(
+            conf['iib_registry'], conf['iib_index_image_output_registry'], 1
+        )
+        log.info(
+            'Changed the bundle_image pull specification from %s to %s',
+            old_output_pull_spec,
+            output_pull_spec,
+        )
+
     payload = {
         'arches': list(arches),
         'bundle_image': output_pull_spec,
