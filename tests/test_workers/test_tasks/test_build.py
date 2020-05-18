@@ -496,13 +496,14 @@ def test_handle_add_request(
     mock_frpb.assert_called_once()
     mock_vii.assert_called_once()
     mock_capml.assert_called_once()
-    mock_srs.assert_called_once()
+    assert mock_srs.call_count == 2
 
 
+@mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb):
+def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
     mock_grb.return_value = ['some-bundle@sha']
@@ -523,12 +524,14 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb):
             None,
             greenwave_config,
         )
+    mock_srs.assert_called_once()
     mock_vl.assert_called_once()
     mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
 
 
+@mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-def test_handle_add_request_bundle_resolution_failure(mock_grb):
+def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
     bundles = ['some-bundle:2.3-1']
@@ -548,6 +551,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb):
             None,
             greenwave_config,
         )
+    mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
 
 
