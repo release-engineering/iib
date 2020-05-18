@@ -386,6 +386,16 @@ class Request(db.Model):
         """
         return {'arches', 'state', 'state_reason'}
 
+    @property
+    def type_name(self):
+        """
+        Get the request's type as a string.
+
+        :return: the request's type
+        :rtype: str
+        """
+        return RequestTypeMapping.pretty(self.type)
+
 
 class Batch(db.Model):
     """A batch associated with one or more requests."""
@@ -393,7 +403,9 @@ class Batch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     _annotations = db.Column('annotations', db.Text, nullable=True)
 
-    requests = db.relationship('Request', foreign_keys=[Request.batch_id], back_populates='batch')
+    requests = db.relationship(
+        'Request', foreign_keys=[Request.batch_id], back_populates='batch', order_by='Request.id'
+    )
 
     @property
     def annotations(self):
