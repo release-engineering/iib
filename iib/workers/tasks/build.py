@@ -634,6 +634,7 @@ def handle_add_request(
         ``cnr_token`` or ``organization`` is not specified.
     """
     # Resolve bundles to their digests
+    set_request_state(request_id, 'in_progress', 'Resolving the bundles')
     resolved_bundles = _get_resolved_bundles(bundles)
 
     _verify_labels(resolved_bundles)
