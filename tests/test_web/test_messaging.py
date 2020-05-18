@@ -18,13 +18,27 @@ from iib.web import messaging
     ),
 )
 def test_get_batch_state_change_envelope(
-    request_state, new_batch, envelope_expected, app, db, minimal_request_add
+    request_state,
+    new_batch,
+    envelope_expected,
+    app,
+    db,
+    minimal_request_add,
+    minimal_request_rm,
+    minimal_request_regenerate_bundle,
 ):
     minimal_request_add.add_state(request_state, 'For some reason')
+    minimal_request_rm.add_state('complete', 'For some other reason')
+    minimal_request_regenerate_bundle.add_state('complete', 'For some other reason')
+    minimal_request_add.organization = 'mos-eisley-marketplace'
+    minimal_request_regenerate_bundle.organization = 'dagobah'
     db.session.add(minimal_request_add)
     batch = minimal_request_add.batch
     annotations = {'Yoda': 'Do or do not. There is no try.'}
     batch.annotations = annotations
+    # Put all three requests in the same batch
+    minimal_request_rm.batch = batch
+    minimal_request_regenerate_bundle.batch = batch
     db.session.commit()
 
     envelope = messaging._get_batch_state_change_envelope(batch, new_batch=new_batch)
@@ -42,7 +56,12 @@ def test_get_batch_state_change_envelope(
         assert json.loads(envelope.message.body) == {
             'annotations': annotations,
             'batch': 1,
-            'request_ids': [1],
+            'request_ids': [1, 2, 3],
+            'requests': [
+                {'id': 1, 'organization': 'mos-eisley-marketplace', 'type': 'add'},
+                {'id': 2, 'organization': None, 'type': 'rm'},
+                {'id': 3, 'organization': 'dagobah', 'type': 'regenerate-bundle'},
+            ],
             'state': request_state,
             'user': None,
         }

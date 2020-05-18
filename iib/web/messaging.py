@@ -160,6 +160,14 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
         content = {
             'batch': batch.id,
             'annotations': batch.annotations,
+            'requests': [
+                {
+                    'id': request.id,
+                    'organization': getattr(request, 'organization', None),
+                    'type': request.type_name,
+                }
+                for request in batch.requests
+            ],
             'request_ids': sorted(batch.request_ids),
             'state': batch_state,
             'user': batch_username,
