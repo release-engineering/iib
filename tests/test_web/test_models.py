@@ -93,20 +93,6 @@ def test_batch_state(last_request_state, db):
     assert request.batch.state == last_request_state
 
 
-def test_batch_request_ids(db):
-    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
-    db.session.add(binary_image)
-    batch = models.Batch()
-    db.session.add(batch)
-    for i in range(3):
-        request = models.RequestAdd(batch=batch, binary_image=binary_image)
-        db.session.add(request)
-
-    db.session.commit()
-
-    assert request.batch.request_ids == {1, 2, 3}
-
-
 def test_batch_request_states(db):
     binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest')
     db.session.add(binary_image)

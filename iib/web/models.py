@@ -476,18 +476,6 @@ class Batch(db.Model):
             return 'complete'
 
     @property
-    def request_ids(self):
-        """
-        Get the IDs of the requests in the batch.
-
-        :return: the set of requests IDs
-        :rtype: set
-        """
-        return {
-            result.id for result in db.session.query(Request.id).filter(Request.batch == self).all()
-        }
-
-    @property
     def request_states(self):
         """
         Get the states of all the requests in the batch.
