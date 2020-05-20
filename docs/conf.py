@@ -19,7 +19,7 @@ try:
     version = pkg_resources.get_distribution('iib').version
 except pkg_resources.DistributionNotFound:
     version = 'unknown'
-project = 'Index Image Build (IIB) Service'
+project = 'IIB Image Builder Service'
 copyright = datetime.today().strftime('%Y') + ', Red Hat Inc.'
 author = 'Red Hat - EXD'
 

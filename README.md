@@ -1,6 +1,8 @@
-# Index Image Build (IIB) Service
+# IIB Image Builder (IIB) Service
 
-A REST API to manage operator index container images
+A REST API to manage operator index container images (and some bundle images).
+
+IIB is a recursive acronym.  IIB stands for IIB Image Builder.
 
 ## External Documentation
 
