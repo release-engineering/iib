@@ -56,7 +56,6 @@ def test_get_batch_state_change_envelope(
         assert json.loads(envelope.message.body) == {
             'annotations': annotations,
             'batch': 1,
-            'request_ids': [1, 2, 3],
             'requests': [
                 {'id': 1, 'organization': 'mos-eisley-marketplace', 'type': 'add'},
                 {'id': 2, 'organization': None, 'type': 'rm'},
