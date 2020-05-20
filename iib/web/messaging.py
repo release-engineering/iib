@@ -164,7 +164,7 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
                 {
                     'id': request.id,
                     'organization': getattr(request, 'organization', None),
-                    'type': request.type_name,
+                    'request_type': request.type_name,
                 }
                 for request in batch.requests
             ],

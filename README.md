@@ -279,8 +279,8 @@ the application properties: `batch`, `id`, `state`, and `user`.
 
 The batch state change message body is a JSON object with the following keys: `annotations`,
 `batch`, `requests`, `state`, and `user`. The `requests` value is an array of JSON objects with the
-keys `id`, `organization`, and `type`. The message has the following keys set in the application
-properties: `batch`, `state`, and `user`.
+keys `id`, `organization`, and `request_type`. The message has the following keys set in the
+application properties: `batch`, `state`, and `user`.
 
 ## Gating Bundle Images
 

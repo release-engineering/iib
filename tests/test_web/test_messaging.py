@@ -57,9 +57,9 @@ def test_get_batch_state_change_envelope(
             'annotations': annotations,
             'batch': 1,
             'requests': [
-                {'id': 1, 'organization': 'mos-eisley-marketplace', 'type': 'add'},
-                {'id': 2, 'organization': None, 'type': 'rm'},
-                {'id': 3, 'organization': 'dagobah', 'type': 'regenerate-bundle'},
+                {'id': 1, 'organization': 'mos-eisley-marketplace', 'request_type': 'add'},
+                {'id': 2, 'organization': None, 'request_type': 'rm'},
+                {'id': 3, 'organization': 'dagobah', 'request_type': 'regenerate-bundle'},
             ],
             'state': request_state,
             'user': None,
