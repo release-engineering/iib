@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import functools
+import inspect
 import json
 import logging
+import os
 import re
 import subprocess
 
@@ -146,3 +148,61 @@ def run_cmd(cmd, params=None, exc_msg=None, cmd_repr=None):
         raise IIBError(exc_msg)
 
     return response.stdout
+
+
+def request_logger(func):
+    """
+    Log messages relevant to the current request to a dedicated file.
+
+    If ``iib_request_logs_dir`` is set, a temporary log handler is added before the decorated
+    function is invoked. It's then removed once the decorated function completes execution.
+
+    If ``iib_request_logs_dir`` is not set, the temporary log handler will not be added.
+
+    :param function func: the function to be decorated. The function must take the ``request_id``
+        parameter.
+    :return: the decorated function
+    :rtype: function
+    """
+    worker_config = get_worker_config()
+    log_dir = worker_config.iib_request_logs_dir
+    log_level = worker_config.iib_request_logs_level
+    log_format = worker_config.iib_request_logs_format
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        request_log_handler = None
+        if log_dir:
+            log_formatter = logging.Formatter(log_format)
+            request_id = _get_function_arg_value('request_id', func, args, kwargs)
+            if not request_id:
+                raise IIBError(f'Unable to get "request_id" from {func.__name__}')
+
+            log_file_path = os.path.join(log_dir, f'{request_id}.log')
+            request_log_handler = logging.FileHandler(log_file_path)
+            request_log_handler.setLevel(log_level)
+            request_log_handler.setFormatter(log_formatter)
+            os.chmod(log_file_path, 0o775)
+            logger = logging.getLogger()
+            logger.addHandler(request_log_handler)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            if request_log_handler:
+                logger.removeHandler(request_log_handler)
+
+    return wrapper
+
+
+def _get_function_arg_value(arg_name, func, args, kwargs):
+    """Return the value of the given argument name."""
+    original_func = func
+    while getattr(func, '__wrapped__', None):
+        original_func = func.__wrapped__
+    argspec = inspect.getargspec(original_func).args
+
+    arg_index = argspec.index(arg_name)
+    arg_value = kwargs.get(arg_name, None)
+    if arg_value is None and len(args) > arg_index:
+        arg_value = args[arg_index]
+    return arg_value

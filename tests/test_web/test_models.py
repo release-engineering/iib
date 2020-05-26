@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from datetime import timedelta
+
 import pytest
 
 from iib.exceptions import ValidationError
@@ -43,6 +45,14 @@ def test_request_add_state_already_done(state, db, minimal_request):
         minimal_request.add_state(state, 'Done')
         db.session.commit()
         minimal_request.add_state('in_progress', 'Oops!')
+
+
+def test_request_logs_expiration(app, db, minimal_request):
+    minimal_request.add_state('in_progress', 'Starting things up')
+    db.session.commit()
+    app.config['IIB_REQUEST_LOGS_DAYS_TO_LIVE'] = 99
+    updated = minimal_request.state.updated
+    assert minimal_request.logs_expiration == (updated + timedelta(days=99))
 
 
 def test_get_state_names():

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from unittest.mock import patch
 from io import BytesIO
+import os
 
 import celery
 import pytest
@@ -142,5 +143,43 @@ def test_validate_celery_config_invalid_organization_customizations(config, erro
         'iib_registry': 'registry',
         'iib_required_labels': {},
     }
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(conf)
+
+
+@pytest.mark.parametrize(
+    'file_type, access, error',
+    (
+        ('file', True, 'iib_request_logs_dir, {logs_dir}, must exist and be a directory'),
+        (None, True, 'iib_request_logs_dir, {logs_dir}, must exist and be a directory'),
+        ('dir', False, 'iib_request_logs_dir, {logs_dir}, is not writable!'),
+    ),
+)
+def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type, access, error):
+    iib_request_logs_dir = tmpdir.join('logs')
+
+    if file_type == 'file':
+        iib_request_logs_dir.write('')
+    elif file_type == 'dir':
+        iib_request_logs_dir.mkdir()
+    elif file_type is None:
+        # Skip creating the file or directory altogether
+        pass
+    else:
+        raise ValueError(f'Bad file_type {file_type}')
+
+    if not access:
+        if os.getuid() == 0:
+            pytest.skip('Cannot restrict the root user from writing to any file')
+        iib_request_logs_dir.chmod(mode=0o555)
+
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_organization_customizations': {},
+        'iib_request_logs_dir': iib_request_logs_dir,
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+    }
+    error = error.format(logs_dir=iib_request_logs_dir)
     with pytest.raises(ConfigError, match=error):
         validate_celery_config(conf)

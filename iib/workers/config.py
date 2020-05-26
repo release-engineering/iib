@@ -17,6 +17,11 @@ class Config(object):
     iib_index_image_output_registry = None
     iib_log_level = 'INFO'
     iib_organization_customizations = {}
+    iib_request_logs_dir = None
+    iib_request_logs_format = (
+        '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
+    )
+    iib_request_logs_level = 'DEBUG'
     iib_required_labels = {}
     iib_skopeo_timeout = '300s'
     iib_total_attempts = 5
@@ -63,6 +68,7 @@ class DevelopmentConfig(Config):
         }
     }
     iib_registry = 'registry:8443'
+    iib_request_logs_dir = '/var/log/iib/requests'
 
 
 class TestingConfig(DevelopmentConfig):
@@ -70,6 +76,7 @@ class TestingConfig(DevelopmentConfig):
 
     iib_greenwave_url = 'some_url'
     iib_omps_url = 'some_url'
+    iib_request_logs_dir = None
 
 
 def configure_celery(celery_app):
@@ -163,6 +170,15 @@ def validate_celery_config(conf, **kwargs):
                 f'The value of iib_organization_customizations.{org}.package_name_suffix '
                 'must be a string'
             )
+
+    iib_request_logs_dir = conf.get('iib_request_logs_dir')
+    if iib_request_logs_dir:
+        if not os.path.isdir(iib_request_logs_dir):
+            raise ConfigError(
+                f'iib_request_logs_dir, {iib_request_logs_dir}, must exist and be a directory'
+            )
+        if not os.access(iib_request_logs_dir, os.W_OK):
+            raise ConfigError(f'iib_request_logs_dir, {iib_request_logs_dir}, is not writable!')
 
 
 def get_worker_config():
