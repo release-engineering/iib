@@ -207,6 +207,45 @@ paths:
                   error:
                     type: string
                     example: Database health check failed
+  '/builds/{id}/logs':
+    get:
+      description: Return the logs for a specific build request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve the logs for
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The logs for the build request
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |-
+                Processing build request 1...
+                Building image...
+                Done processing build request 1
+        '404':
+          description: Logs for build requests is not enabled in IIB
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found
+        '410':
+          description: The logs for the build request has been removed due to expiration
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The logs for the build request 1 no longer exist
   /builds/add:
     post:
       description: Submit a build request to add operator bundles to an index image
@@ -666,6 +705,21 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/StateHistory'
+            logs:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL to fetch the logs for the request
+                expiration:
+                  type: string
+                  description: >-
+                    UTC timestamp in ISO format that indicates when the logs for the request are
+                    considered to be expired and will be removed.
+              example:
+                url: https://iib.domain.local/api/v1/builds/1/logs
+                expiration: '2019-09-19T19:35:15.722265Z'
+
     RequestIndexImageVerbose:
       allOf:
         - $ref: '#/components/schemas/RequestVerbose'

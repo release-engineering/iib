@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import copy
+import os
+from datetime import datetime
 
 import flask
 from flask_login import current_user, login_required
 from sqlalchemy.orm import with_polymorphic
 from sqlalchemy.sql import text
-from werkzeug.exceptions import Forbidden
+from werkzeug.exceptions import Forbidden, Gone, NotFound
 
 from iib.exceptions import IIBError, ValidationError
 from iib.web import db, messaging
@@ -46,6 +48,36 @@ def get_build(request_id):
     poly_request = with_polymorphic(Request, '*')
     query = poly_request.query.options(*get_request_query_options(verbose=True))
     return flask.jsonify(query.get_or_404(request_id).to_json())
+
+
+@api_v1.route('/builds/<int:request_id>/logs')
+def get_build_logs(request_id):
+    """
+    Retrieve the logs for the build request.
+
+    :param int request_id: the request ID that was passed in through the URL.
+    :rtype: flask.Response
+    :raise NotFound: if the request is not found or there are no logs for the request
+    :raise Gone: if the logs for the build request have been removed due to expiration
+    """
+    request_log_dir = flask.current_app.config['IIB_REQUEST_LOGS_DIR']
+    if not request_log_dir:
+        raise NotFound()
+
+    request = Request.query.get_or_404(request_id)
+    log_file_path = os.path.join(request_log_dir, f'{request_id}.log')
+    if not os.path.exists(log_file_path):
+        expired = request.logs_expiration < datetime.utcnow()
+        if expired:
+            raise Gone(f'The logs for the build request {request_id} no longer exist')
+        finalized = request.state.state_name in RequestStateMapping.get_final_states()
+        if finalized:
+            raise NotFound()
+        # The request may not have been initiated yet. Return empty logs until it's processed.
+        return flask.Response('', mimetype='text/plain')
+
+    with open(log_file_path) as f:
+        return flask.Response(f.read(), mimetype='text/plain')
 
 
 @api_v1.route('/builds')

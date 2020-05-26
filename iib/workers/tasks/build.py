@@ -18,7 +18,14 @@ from iib.workers.tasks.legacy import (
     get_legacy_support_packages,
     validate_legacy_params_and_config,
 )
-from iib.workers.tasks.utils import get_image_labels, podman_pull, retry, run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import (
+    get_image_labels,
+    podman_pull,
+    request_logger,
+    retry,
+    run_cmd,
+    skopeo_inspect,
+)
 
 
 __all__ = ['handle_add_request', 'handle_regenerate_bundle_request', 'handle_rm_request']
@@ -608,6 +615,7 @@ def get_image_label(pull_spec, label):
 
 
 @app.task
+@request_logger
 def handle_add_request(
     bundles,
     binary_image,
@@ -702,6 +710,7 @@ def handle_add_request(
 
 
 @app.task
+@request_logger
 def handle_rm_request(
     operators,
     binary_image,
@@ -760,6 +769,7 @@ def handle_rm_request(
 
 
 @app.task
+@request_logger
 def handle_regenerate_bundle_request(from_bundle_image, organization, request_id):
     """
     Coordinate the work needed to regenerate the operator bundle image.

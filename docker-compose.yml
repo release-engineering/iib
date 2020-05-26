@@ -57,6 +57,7 @@ services:
     volumes:
       - ./:/src:z
       - ./docker/message_broker/certs:/broker-certs:ro,z
+      - request-logs-volume:/var/log/iib/requests:z
     ports:
       - 8080:8080
     depends_on:
@@ -90,6 +91,7 @@ services:
       - ./iib_data/worker:/var/lib/containers/storage:z
       - ./docker/registry/certs:/registry-certs:ro,z
       - /etc/pki/tls/certs/ca-bundle.crt:/host-ca-bundle.crt:ro
+      - request-logs-volume:/var/log/iib/requests:z
     depends_on:
       - rabbitmq
       - registry
@@ -109,3 +111,4 @@ services:
 
 volumes:
   message-broker-volume:
+  request-logs-volume:

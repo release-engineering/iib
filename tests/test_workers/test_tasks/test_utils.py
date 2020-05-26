@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 from iib.exceptions import IIBError
+from iib.workers.config import get_worker_config
 from iib.workers.tasks import utils
 
 
@@ -145,3 +146,40 @@ def test_podman_pull(mock_run_cmd):
     image = 'some-image:latest'
     utils.podman_pull(image)
     mock_run_cmd.assert_called_once_with(['podman', 'pull', image], exc_msg=mock.ANY)
+
+
+def test_request_logger(tmpdir):
+    logs_dir = tmpdir.join('logs')
+    logs_dir.mkdir()
+    get_worker_config().iib_request_logs_dir = str(logs_dir)
+
+    original_handlers_count = len(logging.getLogger().handlers)
+
+    @utils.request_logger
+    def mock_handler(spam, eggs, request_id, bacon):
+        logging.getLogger('iib.workers.tasks.utils').info('this is a test')
+
+    expected_message = ' iib.workers.tasks.utils INFO test_utils.mock_handler this is a test\n'
+
+    mock_handler('spam', 'eggs', 123, 'bacon')
+    assert logs_dir.join('123.log').read().endswith(expected_message)
+    assert original_handlers_count == len(logging.getLogger().handlers)
+
+    mock_handler('spam', 'eggs', bacon='bacon', request_id=321)
+    assert logs_dir.join('321.log').read().endswith(expected_message)
+    assert original_handlers_count == len(logging.getLogger().handlers)
+
+
+def test_request_logger_no_request_id(tmpdir):
+    logs_dir = tmpdir.join('logs')
+    logs_dir.mkdir()
+    get_worker_config().iib_request_logs_dir = str(logs_dir)
+
+    @utils.request_logger
+    def mock_handler(spam, eggs, request_id, bacon):
+        raise ValueError('Handler executed unexpectedly')
+
+    with pytest.raises(IIBError, match='Unable to get "request_id" from'):
+        mock_handler('spam', 'eggs', None, 'bacon')
+
+    assert not logs_dir.listdir()

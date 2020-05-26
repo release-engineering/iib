@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from copy import deepcopy
+from datetime import timedelta
 from enum import Enum
 import json
 
-from flask import current_app
+from flask import current_app, url_for
 from flask_login import UserMixin, current_user
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
@@ -373,6 +374,11 @@ class Request(db.Model):
             states = list(reversed(states))
             rv['state_history'] = states
             latest_state = states[0]
+            if current_app.config['IIB_REQUEST_LOGS_DIR']:
+                rv['logs'] = {
+                    'expiration': self.logs_expiration.isoformat() + 'Z',
+                    'url': url_for('.get_build_logs', request_id=self.id, _external=True),
+                }
         rv.update(latest_state or _state_to_json(self.state))
 
         return rv
@@ -395,6 +401,17 @@ class Request(db.Model):
         :rtype: str
         """
         return RequestTypeMapping.pretty(self.type)
+
+    @property
+    def logs_expiration(self):
+        """
+        Return the timestamp of when logs are considered expired.
+
+        :return: logs expiration timestamp
+        :rtype: str
+        """
+        logs_lifetime = timedelta(days=current_app.config['IIB_REQUEST_LOGS_DAYS_TO_LIVE'])
+        return self.state.updated + logs_lifetime
 
 
 class Batch(db.Model):

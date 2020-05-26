@@ -35,6 +35,7 @@ def test_get_build(app, auth_env, client, db):
         # Set this to a stable timestamp so the tests are dependent on it
         state['updated'] = '2020-02-12T17:03:00Z'
     rv['updated'] = '2020-02-12T17:03:00Z'
+    rv['logs']['expiration'] = '2020-02-15T17:03:00Z'
 
     expected = {
         'arches': ['amd64', 's390x'],
@@ -48,6 +49,10 @@ def test_get_build(app, auth_env, client, db):
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'removed_operators': [],
         'request_type': 'add',
@@ -147,6 +152,68 @@ def test_get_healthcheck_ok(app, client, db):
     rv = client.get('/api/v1/healthcheck')
     assert rv.status_code == 200
     assert rv.json == {'status': 'Health check OK'}
+
+
+@pytest.mark.parametrize(
+    ('logs_content', 'expired', 'finalized', 'expected'),
+    (
+        ('foobar', False, False, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
+        ('foobar', True, False, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
+        ('', False, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
+        ('', True, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
+        (None, False, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
+        (
+            None,
+            True,
+            False,
+            {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            True,
+            {'status': 404, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+    ),
+)
+def test_get_build_logs(
+    client, db, minimal_request_add, tmpdir, logs_content, expired, finalized, expected
+):
+    minimal_request_add.add_state('in_progress', 'Starting things up!')
+    db.session.commit()
+
+    client.application.config['IIB_REQUEST_LOGS_DIR'] = str(tmpdir)
+    if expired:
+        client.application.config['IIB_REQUEST_LOGS_DAYS_TO_LIVE'] = -1
+    if finalized:
+        minimal_request_add.add_state('complete', 'The request is complete')
+        db.session.commit()
+    request_id = minimal_request_add.id
+    if logs_content is not None:
+        tmpdir.join(f'{request_id}.log').write(logs_content)
+    rv = client.get(f'/api/v1/builds/{request_id}/logs')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    if 'data' in expected:
+        assert rv.data.decode('utf-8') == expected['data']
+    if 'json' in expected:
+        assert rv.json == expected['json']
+
+
+def test_get_build_logs_not_configured(client, db, minimal_request_add):
+    minimal_request_add.add_state('in_progress', 'Starting things up!')
+    db.session.commit()
+
+    client.application.config['IIB_REQUEST_LOGS_DIR'] = None
+    request_id = minimal_request_add.id
+    rv = client.get(f'/api/v1/builds/{request_id}/logs')
+    assert rv.status_code == 404
+    assert rv.mimetype == 'application/json'
+    assert rv.json == {'error': mock.ANY}
+
+    rv = client.get(f'/api/v1/builds/{request_id}')
+    assert rv.status_code == 200
+    assert 'logs' not in rv.json
 
 
 @pytest.mark.parametrize(
@@ -410,6 +477,10 @@ def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth
         'removed_operators': [],
         'request_type': 'add',
         'state': 'in_progress',
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': 'org',
         'state_history': [
             {
@@ -427,6 +498,7 @@ def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth
     rv_json = rv.json
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert rv.status_code == 201
     assert response_json == rv_json
     assert 'cnr_token' not in rv_json
@@ -714,6 +786,10 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
         'from_index_resolved': None,
         'id': minimal_request_add.id,
         'index_image': 'index:image',
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'removed_operators': [],
         'request_type': 'add',
@@ -744,6 +820,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert rv_json == response_json
     mock_smfsc.assert_called_once_with(mock.ANY)
 
@@ -770,6 +847,10 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'from_index_resolved': None,
         'id': minimal_request_rm.id,
         'index_image': 'index:image',
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'removed_operators': ['operator'],
         'request_type': 'rm',
@@ -798,6 +879,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert rv_json == response_json
     mock_smfsc.assert_called_once_with(mock.ANY)
 
@@ -822,6 +904,10 @@ def test_patch_request_regenerate_bundle_success(
         'from_bundle_image': minimal_request_regenerate_bundle.from_bundle_image.pull_specification,
         'from_bundle_image_resolved': 'from-bundle-image:resolved',
         'id': minimal_request_regenerate_bundle.id,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'request_type': 'regenerate-bundle',
         'state': 'complete',
@@ -851,6 +937,7 @@ def test_patch_request_regenerate_bundle_success(
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert rv_json == response_json
     mock_smfsc.assert_called_once_with(mock.ANY)
 
@@ -876,6 +963,10 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'removed_operators': ['some:thing'],
         'request_type': 'rm',
@@ -896,6 +987,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
     rv_json = rv.json
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     mock_rm.apply_async.assert_called_once()
     assert rv.status_code == 201
     assert response_json == rv_json
@@ -1000,6 +1092,10 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
         'bundle_image': None,
         'from_bundle_image': 'registry.example.com/bundle-image:latest',
         'from_bundle_image_resolved': None,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
         'organization': None,
         'id': 1,
         'request_type': 'regenerate-bundle',
@@ -1021,6 +1117,7 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
     rv_json = rv.json
     rv_json['state_history'][0]['updated'] = _timestamp
     rv_json['updated'] = _timestamp
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert response_json == rv_json
     mock_hrbr.apply_async.assert_called_once()
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)

@@ -153,6 +153,10 @@ The custom configuration options for the REST API are listed below:
   This defaults to `20`.
 * `IIB_PRIVILEGED_USERNAMES` - the list of users that can perform privileged actions such
   as overwriting the input index image with the built index image. This defaults to `[]`.
+* `IIB_REQUEST_LOGS_DIR` - the directory to load the request specific log files. If `None`, per
+  request log files information will not appear in the API response. This defaults to `None`.
+* `IIB_REQUEST_LOGS_DAYS_TO_LIVE` - the amount of days after which per request logs are considered
+  to be expired and may be removed. This defaults to `3`.
 * `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
   This is useful in isolating the workload from certain users. The default queue is used for tasks
   from users not found in the mapping. This defaults to `{}`.
@@ -247,6 +251,12 @@ The custom configuration options for the Celery workers are listed below:
   }
   ```
 
+* `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per
+  request log files are not created. This defaults to `None`.
+* `iib_request_logs_format` - the format for the log messages of the request specific log files.
+  This defaults to `%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s`.
+* `iib_request_logs_level` - the log level for the request specific log files. This defaults to
+  `DEBUG`.
 * `iib_registry` - the container registry to push images to (e.g. `quay.io`).
 * `iib_skopeo_timeout` - the command timeout for skopeo commands run by IIB. This defaults to
   `30s` (30 seconds).
