@@ -9,7 +9,7 @@ from flask_migrate import Migrate
 import kombu.exceptions
 from werkzeug.exceptions import default_exceptions
 
-from iib.exceptions import ConfigError, ValidationError
+from iib.exceptions import ConfigError, IIBError, ValidationError
 from iib.web import db
 from iib.web.api_v1 import api_v1
 from iib.web.auth import user_loader, load_user_from_request
@@ -128,6 +128,7 @@ def create_app(config_obj=None):  # pragma: no cover
     app.register_blueprint(api_v1, url_prefix='/api/v1')
     for code in default_exceptions.keys():
         app.register_error_handler(code, json_error)
+    app.register_error_handler(IIBError, json_error)
     app.register_error_handler(ValidationError, json_error)
     app.register_error_handler(kombu.exceptions.KombuError, json_error)
 

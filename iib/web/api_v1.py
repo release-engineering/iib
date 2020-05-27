@@ -4,9 +4,10 @@ import copy
 import flask
 from flask_login import current_user, login_required
 from sqlalchemy.orm import with_polymorphic
+from sqlalchemy.sql import text
 from werkzeug.exceptions import Forbidden
 
-from iib.exceptions import ValidationError
+from iib.exceptions import IIBError, ValidationError
 from iib.web import db, messaging
 from iib.web.models import (
     Architecture,
@@ -88,6 +89,25 @@ def get_builds():
         'meta': pagination_metadata(pagination_query, **query_params),
     }
     return flask.jsonify(response)
+
+
+@api_v1.route('/healthcheck')
+def get_healthcheck():
+    """
+    Respond to a health check.
+
+    :rtype: flask.Response
+    :return: json object representing the health of IIB
+    :raises IIBError: if the database connection fails
+    """
+    # Test DB connection
+    try:
+        db.engine.execute(text('SELECT 1'))
+    except Exception:
+        flask.current_app.logger.exception('DB test failed.')
+        raise IIBError('Database health check failed.')
+
+    return flask.jsonify({'status': 'Health check OK'})
 
 
 def _should_force_overwrite():

@@ -3,6 +3,7 @@ import json
 from unittest import mock
 
 import pytest
+from sqlalchemy.exc import DisconnectionError
 
 from iib.web.models import Image, RequestAdd
 
@@ -132,6 +133,20 @@ def test_get_builds_invalid_batch(batch, app, client, db):
     rv = client.get(f'/api/v1/builds?batch={batch}')
     assert rv.status_code == 400
     assert rv.json == {'error': 'The batch must be a positive integer'}
+
+
+@mock.patch('sqlalchemy.engine.base.Engine.execute')
+def test_get_healthcheck_db_fail(mock_db_execute, app, client, db):
+    mock_db_execute.side_effect = DisconnectionError('DB failed')
+    rv = client.get('/api/v1/healthcheck')
+    assert rv.status_code == 500
+    assert rv.json == {'error': 'Database health check failed.'}
+
+
+def test_get_healthcheck_ok(app, client, db):
+    rv = client.get('/api/v1/healthcheck')
+    assert rv.status_code == 200
+    assert rv.json == {'status': 'Health check OK'}
 
 
 @pytest.mark.parametrize(
