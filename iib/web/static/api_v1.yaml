@@ -183,6 +183,30 @@ paths:
               $ref: '#/components/schemas/RequestUpdate'
       security:
         - Kerberos Authentication: []
+  /healthcheck:
+    get:
+      description: Perform a health check of the service
+      responses:
+        '200':
+          description: The health check OK message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: Health check OK
+        '500':
+          description: Health check failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Database health check failed
   /builds/add:
     post:
       description: Submit a build request to add operator bundles to an index image
