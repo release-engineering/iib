@@ -17,7 +17,7 @@ RUN dnf -y install \
     python3-pip \
     skopeo \
     && dnf clean all
-ADD https://github.com/operator-framework/operator-registry/releases/download/v1.12.3/linux-amd64-opm /usr/bin/opm
+ADD https://github.com/operator-framework/operator-registry/releases/download/v1.12.5/linux-amd64-opm /usr/bin/opm
 RUN chmod +x /usr/bin/opm
 ADD https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 /usr/bin/manifest-tool
 RUN chmod +x /usr/bin/manifest-tool
