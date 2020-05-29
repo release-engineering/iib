@@ -24,7 +24,7 @@ def get_image_labels(pull_spec):
     else:
         full_pull_spec = f'docker://{pull_spec}'
     log.debug('Getting the labels from %s', full_pull_spec)
-    return skopeo_inspect(full_pull_spec).get('Labels', {})
+    return skopeo_inspect(full_pull_spec, '--config').get('config', {}).get('Labels', {})
 
 
 def retry(

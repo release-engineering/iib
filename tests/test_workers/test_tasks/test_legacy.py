@@ -11,9 +11,11 @@ from iib.workers.tasks import legacy
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_legacy_support_packages(mock_skopeo_inspect):
     mock_skopeo_inspect.return_value = {
-        'Labels': {
-            'com.redhat.delivery.backport': True,
-            'operators.operatorframework.io.bundle.package.v1': 'prometheus',
+        'config': {
+            'Labels': {
+                'com.redhat.delivery.backport': True,
+                'operators.operatorframework.io.bundle.package.v1': 'prometheus',
+            }
         }
     }
 

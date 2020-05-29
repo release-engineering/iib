@@ -233,8 +233,8 @@ def _get_image_arches(pull_spec):
         for manifest in skopeo_raw['manifests']:
             arches.add(manifest['platform']['architecture'])
     elif skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json':
-        skopeo_out = skopeo_inspect(f'docker://{pull_spec}')
-        arches.add(skopeo_out['Architecture'])
+        skopeo_out = skopeo_inspect(f'docker://{pull_spec}', '--config')
+        arches.add(skopeo_out['architecture'])
     else:
         raise IIBError(
             f'The pull specification of {pull_spec} is neither a v2 manifest list nor a v2 manifest'
