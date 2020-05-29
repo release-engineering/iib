@@ -67,11 +67,12 @@ def retry(
 
 
 @retry(wait_on=IIBError, logger=log)
-def skopeo_inspect(*args):
+def skopeo_inspect(*args, return_json=True):
     """
     Wrap the ``skopeo inspect`` command.
 
     :param args: any arguments to pass to ``skopeo inspect``
+    :param bool return_json: if ``True``, the output will be parsed as JSON and returned
     :return: a dictionary of the JSON output from the skopeo inspect command
     :rtype: dict
     :raises IIBError: if the command fails
@@ -84,7 +85,11 @@ def skopeo_inspect(*args):
 
     skopeo_timeout = get_worker_config().iib_skopeo_timeout
     cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'inspect'] + list(args)
-    return json.loads(run_cmd(cmd, exc_msg=exc_msg))
+    output = run_cmd(cmd, exc_msg=exc_msg)
+    if return_json:
+        return json.loads(output)
+
+    return output
 
 
 @retry(wait_on=IIBError, logger=log)

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import hashlib
 import logging
 import os
 import tempfile
@@ -320,8 +321,10 @@ def _get_resolved_image(pull_spec):
     :rtype: str
     """
     log.debug('Resolving %s', pull_spec)
-    skopeo_output = skopeo_inspect(f'docker://{pull_spec}')
-    pull_spec_resolved = f'{skopeo_output["Name"]}@{skopeo_output["Digest"]}'
+    name = _get_container_image_name(pull_spec)
+    skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
+    digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
+    pull_spec_resolved = f'{name}@sha256:{digest}'
     log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
     return pull_spec_resolved
 
