@@ -11,9 +11,9 @@ from iib.workers.tasks import utils
 
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_labels(mock_si):
-    skopeo_rv = {'Labels': {'some_label': 'value'}}
+    skopeo_rv = {'config': {'Labels': {'some_label': 'value'}}}
     mock_si.return_value = skopeo_rv
-    assert utils.get_image_labels('some-image:latest') == skopeo_rv['Labels']
+    assert utils.get_image_labels('some-image:latest') == skopeo_rv['config']['Labels']
 
 
 def test_retry():

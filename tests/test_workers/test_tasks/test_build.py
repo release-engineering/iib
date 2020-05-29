@@ -153,7 +153,7 @@ def test_get_image_arches(mock_si):
 def test_get_image_arches_manifest(mock_si):
     mock_si.side_effect = [
         {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
-        {'Architecture': 'amd64'},
+        {'architecture': 'amd64'},
     ]
     rv = build._get_image_arches('image:latest')
     assert rv == {'amd64'}
@@ -169,7 +169,7 @@ def test_get_image_arches_not_manifest_list(mock_si):
 @pytest.mark.parametrize('label, expected', (('some_label', 'value'), ('not_there', None)))
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_label(mock_si, label, expected):
-    mock_si.return_value = {'Labels': {'some_label': 'value'}}
+    mock_si.return_value = {'config': {'Labels': {'some_label': 'value'}}}
     assert build.get_image_label('some-image:latest', label) == expected
 
 
