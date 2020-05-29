@@ -129,7 +129,7 @@ def run_cmd(cmd, params=None, exc_msg=None, cmd_repr=None):
     params.setdefault('stderr', subprocess.PIPE)
     params.setdefault('stdout', subprocess.PIPE)
 
-    log.debug('Running the command "%s"', cmd_repr)
+    log.debug('Running the command "%s"', ' '.join(cmd_repr))
     response = subprocess.run(cmd, **params)
 
     if response.returncode != 0:
