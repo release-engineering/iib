@@ -129,6 +129,17 @@ def test_finish_request_post_build(
         mock_sc.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    'pull_spec, expected',
+    (
+        ('quay.io/ns/repo:latest', 'quay.io/ns/repo'),
+        ('quay.io/ns/repo@sha256:123456', 'quay.io/ns/repo'),
+    ),
+)
+def test_get_container_image_name(pull_spec, expected):
+    assert build._get_container_image_name(pull_spec) == expected
+
+
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
 def test_get_local_pull_spec(request_id, arch):
     rv = build._get_local_pull_spec(request_id, arch)
