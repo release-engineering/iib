@@ -188,6 +188,19 @@ def _finish_request_post_build(
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
 
+def _get_container_image_name(pull_spec):
+    """
+    Get the container image name from a pull specification.
+
+    :param str pull_spec: the pull spec to analyze
+    :return: the container image name
+    """
+    if '@' in pull_spec:
+        return pull_spec.split('@', 1)[0]
+    else:
+        return pull_spec.rsplit(':', 1)[0]
+
+
 def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
     """
     Get the pull specification of the single arch image in the external registry.
@@ -280,11 +293,8 @@ def _get_resolved_bundles(bundles):
         ):
             # Get the digest of the first item in the manifest list
             digest = skopeo_raw['manifests'][0]['digest']
-            if '@' in bundle_pull_spec:
-                repo = bundle_pull_spec.split('@', 1)[0]
-            else:
-                repo = bundle_pull_spec.rsplit(':', 1)[0]
-            resolved_bundles.add(f'{repo}@{digest}')
+            name = _get_container_image_name(bundle_pull_spec)
+            resolved_bundles.add(f'{name}@{digest}')
         elif (
             skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json'
             and skopeo_raw.get('schemaVersion') == 2
