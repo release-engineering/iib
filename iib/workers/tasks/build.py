@@ -163,7 +163,7 @@ def _update_index_image_pull_spec(
     """
     conf = get_worker_config()
     if from_index and overwrite_from_index:
-        output_message = f'Ovewriting the index image {from_index} with {output_pull_spec}'
+        output_message = f'Overwriting the index image {from_index} with {output_pull_spec}'
         log.info(output_message)
         index_image = from_index
         exc_msg = f'Failed to overwrite the input from_index container image of {index_image}'
