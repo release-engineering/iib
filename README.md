@@ -4,6 +4,9 @@ A REST API to manage operator index container images (and some bundle images).
 
 IIB is a recursive acronym.  IIB stands for IIB Image Builder.
 
+Note: IIB was originally called "Index Image Build Service" but the name has been changed since
+  its scope widened.
+
 ## External Documentation
 
 * [API Documentation](http://release-engineering.github.io/iib)
