@@ -577,9 +577,10 @@ components:
         overwrite_from_index_token:
           type: string
           description: >
-            The token used for overwriting the input from_index image. This is required for
-            non-privileged users to use overwrite_from_index. The format of the token is in the
-            format "user:password".
+            The token used for reading and overwriting the input from_index image. This is required
+            for non-privileged users to use overwrite_from_index. It's also useful for dealing with
+            index images that IIB does not have access to. The format of the token is in the format
+            "user:password".
           example: token
       required:
         - binary_image

@@ -22,8 +22,10 @@ from iib.workers.tasks.utils import (
     get_image_labels,
     podman_pull,
     request_logger,
+    reset_docker_config,
     retry,
     run_cmd,
+    set_registry_token,
     skopeo_inspect,
 )
 
@@ -78,6 +80,9 @@ def _cleanup():
     This will ensure that the host will not run out of disk space due to stale data, and that
     all images referenced using floating tags will be up to date on the host.
 
+    Additionally, this function will reset the Docker ``config.json`` to
+    ``iib_docker_config_template``.
+
     :raises IIBError: if the command to remove the container images fails
     """
     log.info('Removing all existing container images')
@@ -85,6 +90,7 @@ def _cleanup():
         ['podman', 'rmi', '--all', '--force'],
         exc_msg='Failed to remove the existing container images',
     )
+    reset_docker_config()
 
 
 @retry(attempts=3, wait_on=IIBError, logger=log)
@@ -177,7 +183,8 @@ def _update_index_image_pull_spec(
         args = [f'docker://{output_pull_spec}', f'docker://{index_image}']
         state_reason = output_message
         set_request_state(request_id, 'in_progress', state_reason)
-        _skopeo_copy(*args, copy_all=True, dest_token=overwrite_from_index_token, exc_msg=exc_msg)
+        with set_registry_token(overwrite_from_index_token, from_index):
+            _skopeo_copy(*args, copy_all=True, exc_msg=exc_msg)
     elif conf['iib_index_image_output_registry']:
         index_image = output_pull_spec.replace(
             conf['iib_registry'], conf['iib_index_image_output_registry'], 1
@@ -338,7 +345,9 @@ def _get_resolved_image(pull_spec):
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
-def _opm_index_add(base_dir, bundles, binary_image, from_index=None):
+def _opm_index_add(
+    base_dir, bundles, binary_image, from_index=None, overwrite_from_index_token=None
+):
     """
     Add the input bundles to an operator index.
 
@@ -351,6 +360,9 @@ def _opm_index_add(base_dir, bundles, binary_image, from_index=None):
         gets copied from. This should point to a digest or stable tag.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :raises IIBError: if the ``opm index add`` command fails.
     """
     # The bundles are not resolved since these are stable tags, and references
@@ -373,13 +385,14 @@ def _opm_index_add(base_dir, bundles, binary_image, from_index=None):
         # https://github.com/containers/libpod/issues/5234 is filed for it
         cmd.extend(['--from-index', from_index])
 
-    run_cmd(
-        cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image',
-    )
+    with set_registry_token(overwrite_from_index_token, from_index):
+        run_cmd(
+            cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image',
+        )
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
-def _opm_index_rm(base_dir, operators, binary_image, from_index):
+def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_index_token=None):
     """
     Remove the input operators from the operator index.
 
@@ -392,6 +405,9 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index):
         gets copied from.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :raises IIBError: if the ``opm index rm`` command fails.
     """
     cmd = [
@@ -414,13 +430,19 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index):
         ', '.join(operators),
     )
 
-    run_cmd(
-        cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image',
-    )
+    with set_registry_token(overwrite_from_index_token, from_index):
+        run_cmd(
+            cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image',
+        )
 
 
 def _prepare_request_for_build(
-    binary_image, request_id, from_index=None, add_arches=None, bundles=None
+    binary_image,
+    request_id,
+    from_index=None,
+    overwrite_from_index_token=None,
+    add_arches=None,
+    bundles=None,
 ):
     """
     Prepare the request for the index image build.
@@ -436,6 +458,9 @@ def _prepare_request_for_build(
     :param int request_id: the ID of the IIB build request
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
@@ -458,8 +483,9 @@ def _prepare_request_for_build(
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
     if from_index:
-        from_index_resolved = _get_resolved_image(from_index)
-        from_index_arches = _get_image_arches(from_index_resolved)
+        with set_registry_token(overwrite_from_index_token, from_index):
+            from_index_resolved = _get_resolved_image(from_index)
+            from_index_arches = _get_image_arches(from_index_resolved)
         arches = arches | from_index_arches
     else:
         from_index_resolved = None
@@ -532,15 +558,13 @@ def _push_image(request_id, arch):
 
 
 @retry(wait_on=IIBError, logger=log)
-def _skopeo_copy(source, destination, copy_all=False, dest_token=None, exc_msg=None):
+def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
     """
     Wrap the ``skopeo copy`` command.
 
     :param str source: the source to copy
     :param str destination: the destination to copy the source to
     :param bool copy_all: if True, it passes ``--all`` to the command
-    :param str dest_token: the token to pass to the ``--dest-token` parameter of the command.
-        If not provided, ``--dest-token`` parameter is also not provided.
     :param str exc_msg: a custom exception message to provide
     :raises IIBError: if the copy fails
     """
@@ -556,26 +580,27 @@ def _skopeo_copy(source, destination, copy_all=False, dest_token=None, exc_msg=N
     ]
     if copy_all:
         cmd.append('--all')
-    if dest_token:
-        log.debug('Using user-provided token to copy the container image')
-        cmd.append('--dest-creds')
-        cmd.append(dest_token)
-
     cmd.extend([source, destination])
-    cmd_repr = ['*****' if part == dest_token else part for part in cmd]
 
-    run_cmd(cmd, exc_msg=exc_msg or f'Failed to copy {source} to {destination}', cmd_repr=cmd_repr)
+    run_cmd(cmd, exc_msg=exc_msg or f'Failed to copy {source} to {destination}')
 
 
-def _verify_index_image(resolved_prebuild_from_index, unresolved_from_index):
+def _verify_index_image(
+    resolved_prebuild_from_index, unresolved_from_index, overwrite_from_index_token=None
+):
     """
     Verify if the index image has changed since the IIB build request started.
 
     :param str resolved_prebuild_from_index: resolved index image before starting the build
     :param str unresolved_from_index: unresolved index image provided as API input
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :raises IIBError: if the index image has changed since IIB build started.
     """
-    resolved_post_build_from_index = _get_resolved_image(unresolved_from_index)
+    with set_registry_token(overwrite_from_index_token, unresolved_from_index):
+        resolved_post_build_from_index = _get_resolved_image(unresolved_from_index)
+
     if resolved_post_build_from_index != resolved_prebuild_from_index:
         raise IIBError(
             'The supplied from_index image changed during the IIB request.'
@@ -649,12 +674,12 @@ def handle_add_request(
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``.
-        The format of the token must be in the format "user:password".
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
+    _cleanup()
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
     resolved_bundles = _get_resolved_bundles(bundles)
@@ -672,14 +697,17 @@ def handle_add_request(
             legacy_support_packages, resolved_bundles, cnr_token, organization
         )
 
-    _cleanup()
     prebuild_info = _prepare_request_for_build(
-        binary_image, request_id, from_index, add_arches, bundles
+        binary_image, request_id, from_index, overwrite_from_index_token, add_arches, bundles
     )
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_add(
-            temp_dir, resolved_bundles, prebuild_info['binary_image_resolved'], from_index,
+            temp_dir,
+            resolved_bundles,
+            prebuild_info['binary_image_resolved'],
+            from_index,
+            overwrite_from_index_token,
         )
 
         arches = prebuild_info['arches']
@@ -688,7 +716,9 @@ def handle_add_request(
             _push_image(request_id, arch)
 
     if from_index:
-        _verify_index_image(prebuild_info['from_index_resolved'], from_index)
+        _verify_index_image(
+            prebuild_info['from_index_resolved'], from_index, overwrite_from_index_token
+        )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
@@ -740,17 +770,21 @@ def handle_rm_request(
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
-    prebuild_info = _prepare_request_for_build(binary_image, request_id, from_index, add_arches)
+    prebuild_info = _prepare_request_for_build(
+        binary_image, request_id, from_index, overwrite_from_index_token, add_arches
+    )
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        _opm_index_rm(temp_dir, operators, binary_image, from_index)
+        _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
 
         arches = prebuild_info['arches']
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
-    _verify_index_image(prebuild_info['from_index_resolved'], from_index)
+    _verify_index_image(
+        prebuild_info['from_index_resolved'], from_index, overwrite_from_index_token
+    )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
