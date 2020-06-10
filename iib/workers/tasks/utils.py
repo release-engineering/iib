@@ -180,22 +180,18 @@ def podman_pull(*args):
     )
 
 
-def run_cmd(cmd, params=None, exc_msg=None, cmd_repr=None):
+def run_cmd(cmd, params=None, exc_msg=None):
     """
     Run the given command with the provided parameters.
 
     :param iter cmd: iterable representing the command to be executed
     :param dict params: keyword parameters for command execution
     :param str exc_msg: an optional exception message when the command fails
-    :param iter cmd_repr: an optional representation of the command to be executed. If not
-        provided, this is derived from the ``cmd`` parameter. This is useful when the command
-        contains sensitive information that must not be logged.
     :return: the command output
     :rtype: str
     :raises IIBError: if the command fails
     """
     exc_msg = exc_msg or 'An unexpected error occurred'
-    cmd_repr = cmd_repr or cmd
     if not params:
         params = {}
     params.setdefault('universal_newlines', True)
@@ -203,11 +199,11 @@ def run_cmd(cmd, params=None, exc_msg=None, cmd_repr=None):
     params.setdefault('stderr', subprocess.PIPE)
     params.setdefault('stdout', subprocess.PIPE)
 
-    log.debug('Running the command "%s"', ' '.join(cmd_repr))
+    log.debug('Running the command "%s"', ' '.join(cmd))
     response = subprocess.run(cmd, **params)
 
     if response.returncode != 0:
-        log.error('The command "%s" failed with: %s', ' '.join(cmd_repr), response.stderr)
+        log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         if cmd[0] == 'opm':
             # Capture the error message right before the help display
             regex = r'^(?:Error: )(.+)$'
