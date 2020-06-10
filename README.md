@@ -122,13 +122,13 @@ To ensure the pinned dependencies are not vulnerable, this project uses
 ## Registry Authentication
 
 IIB does not handle authentication with container registries directly. If authentication is needed,
-configure the `~/.docker/config.json` for the user running the IIB worker.
+configure the `~/.docker/config.json.template` file for the user running the IIB worker. This path
+can be customized with the `iib_docker_config_template` configuration.
 
-During development, you may choose to add a volume entry of `- /root/.docker:/root/.docker:z` on the
-workers in `docker-compose.yml` so that your host's root user's Docker configuration with
-authentication is used by the workers. This is only needed if you are working with private images.
-Please note that the containers will modify this configuration since they authenticate with the
-registry created by docker-compose on startup.
+During development, you may choose to add a volume entry of
+`- /root/.docker/config.json:/root/.docker/config.json.template:ro,z` on the workers in
+`docker-compose.yml` so that your host's root user's Docker configuration with authentication is
+used by the workers. This is only needed if you are working with private images.
 
 ## Configuring the REST API
 
@@ -211,6 +211,11 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
   `30` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
+* `iib_docker_config_template` - the path to the Docker config.json file for IIB to use as a
+  template. IIB will symlink this file to `~/.docker/config.json` at the beginning of every request.
+  Additionally, it will use this file as a base and set the `overwrite_from_index_token` for the
+  registry of the `from_index` container image when applicable. IIB will never directly modify this
+  file though. This defaults to `~/.docker/config.json.template`.
 * `iib_greenwave_url` - the URL to the Greenwave REST API if gating is desired
   (e.g. `https://greenwave.domain.local/api/v1.0/`). This defaults to `None`.
 * `iib_index_image_output_registry` - if set, that value will replace the value from `iib_registry`

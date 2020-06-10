@@ -12,6 +12,9 @@ class Config(object):
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
     iib_api_timeout = 30
+    iib_docker_config_template = os.path.join(
+        os.path.expanduser('~'), '.docker', 'config.json.template'
+    )
     iib_greenwave_url = None
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry = None
@@ -74,6 +77,7 @@ class DevelopmentConfig(Config):
 class TestingConfig(DevelopmentConfig):
     """The testing IIB Celery configuration."""
 
+    iib_docker_config_template = '/home/iib-worker/.docker/config.json.template'
     iib_greenwave_url = 'some_url'
     iib_omps_url = 'some_url'
     iib_request_logs_dir = None

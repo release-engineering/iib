@@ -26,12 +26,14 @@ def test_build_image(mock_run_cmd):
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_cleanup(mock_run_cmd):
+@mock.patch('iib.workers.tasks.build.reset_docker_config')
+def test_cleanup(mock_rdc, mock_run_cmd):
     build._cleanup()
 
     mock_run_cmd.assert_called_once()
     rmi_args = mock_run_cmd.call_args[0][0]
     assert rmi_args[0:2] == ['podman', 'rmi']
+    mock_rdc.assert_called_once_with()
 
 
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
@@ -80,6 +82,7 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.update_request')
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -87,6 +90,7 @@ def test_update_index_image_pull_spec(
     mock_srs,
     mock_ur,
     mock_sc,
+    mock_srt,
     mock_gwc,
     iib_index_image_output_registry,
     from_index,
@@ -116,21 +120,22 @@ def test_update_index_image_pull_spec(
             f'docker://{default}',
             f'docker://{expected_pull_spec}',
             copy_all=True,
-            dest_token='username:password',
             exc_msg=mock.ANY,
         )
+        mock_srt.assert_called_once_with(overwrite_token, from_index)
     elif overwrite:
         mock_sc.assert_called_once_with(
             f'docker://{default}',
             f'docker://{expected_pull_spec}',
             copy_all=True,
-            dest_token=None,
             exc_msg=mock.ANY,
         )
         mock_srs.assert_called_once()
+        mock_srt.assert_called_once_with(None, from_index)
     else:
         mock_sc.assert_not_called()
         mock_srs.assert_not_called()
+        mock_srt.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -332,10 +337,11 @@ def test_get_resolved_bundles_failure(mock_si):
 
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, from_index):
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index):
     bundles = ['bundle:1.2', 'bundle:1.3']
-    build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index=from_index)
+    build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass')
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
@@ -346,18 +352,23 @@ def test_opm_index_add(mock_run_cmd, from_index):
         assert from_index in opm_args
     else:
         assert '--from-index' not in opm_args
+    mock_srt.assert_called_once_with('user:pass', from_index)
 
 
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_rm(mock_run_cmd):
+def test_opm_index_rm(mock_run_cmd, mock_srt):
     operators = ['operator_1', 'operator_2']
-    build._opm_index_rm('/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest')
+    build._opm_index_rm(
+        '/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest', 'user:pass'
+    )
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[0:3] == ['opm', 'index', 'rm']
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
+    mock_srt.assert_called_once_with('user:pass', 'some_index:latest')
 
 
 @pytest.mark.parametrize(
@@ -414,7 +425,9 @@ def test_prepare_request_for_build(
     if bundles:
         mock_gil.side_effect = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
 
-    rv = build._prepare_request_for_build('binary-image:latest', 1, from_index, add_arches, bundles)
+    rv = build._prepare_request_for_build(
+        'binary-image:latest', 1, from_index, None, add_arches, bundles
+    )
     assert rv == {
         'arches': expected_arches,
         'binary_image_resolved': binary_image_resolved,
@@ -602,11 +615,12 @@ def test_handle_add_request(
     assert mock_srs.call_count == 3
 
 
+@mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs):
+def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs, mock_cleanup):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
     mock_grb.return_value = ['some-bundle@sha']
@@ -627,14 +641,16 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs)
             None,
             greenwave_config,
         )
+    mock_cleanup.assert_called_once_with()
     mock_srs.assert_called_once()
     mock_vl.assert_called_once()
     mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
 
 
+@mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs):
+def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
     bundles = ['some-bundle:2.3-1']
@@ -654,6 +670,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs):
             None,
             greenwave_config,
         )
+    mock_cleanup.assert_called_once_with()
     mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
 
@@ -690,15 +707,18 @@ def test_handle_rm_request(
     assert mock_srs.call_args[0][1] == 'complete'
 
 
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
-def test_verify_index_image_failure(mock_ri):
-    mock_ri.return_value = 'image:works'
+def test_verify_index_image_failure(mock_gri, mock_srt):
+    mock_gri.return_value = 'image:works'
     match_str = (
         'The supplied from_index image changed during the IIB request.'
         ' Please resubmit the request.'
     )
     with pytest.raises(IIBError, match=match_str):
-        build._verify_index_image('image:doesnt_work', 'unresolved_image')
+        build._verify_index_image('image:doesnt_work', 'unresolved_image', 'user:pass')
+
+    mock_srt.assert_called_once_with('user:pass', 'unresolved_image')
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import base64
+from contextlib import contextmanager
 import functools
 import inspect
 import json
@@ -6,6 +8,8 @@ import logging
 import os
 import re
 import subprocess
+
+from operator_manifest.operator import ImageName
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
@@ -66,6 +70,74 @@ def retry(
         return inner
 
     return wrapper
+
+
+def reset_docker_config():
+    """Create a symlink from ``iib_docker_config_template`` to ``~/.docker/config.json``."""
+    conf = get_worker_config()
+    docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
+
+    try:
+        log.debug('Removing the Docker config at %s', docker_config_path)
+        os.remove(docker_config_path)
+    except FileNotFoundError:
+        pass
+
+    if os.path.exists(conf.iib_docker_config_template):
+        log.debug(
+            'Creating a symlink from %s to %s', conf.iib_docker_config_template, docker_config_path
+        )
+        os.symlink(conf.iib_docker_config_template, docker_config_path)
+
+
+@contextmanager
+def set_registry_token(token, container_image):
+    """
+    Configure authentication to the registry that ``container_image`` is from.
+
+    This context manager will reset the authentication to the way it was after it exits. If
+    ``token`` is falsy, this context manager will do nothing.
+
+    :param str token: the token in the format of ``username:password``
+    :param str container_image: the pull specification of the container image to parse to determine
+        the registry this token is for.
+    :return: None
+    :rtype: None
+    """
+    if not token:
+        log.debug(
+            'Not changing the Docker configuration since no overwrite_from_index_token was provided'
+        )
+        yield
+
+        return
+
+    docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
+    try:
+        log.debug('Removing the Docker config symlink at %s', docker_config_path)
+        try:
+            os.remove(docker_config_path)
+        except FileNotFoundError:
+            log.debug('The Docker config symlink at %s does not exist', docker_config_path)
+
+        conf = get_worker_config()
+        if os.path.exists(conf.iib_docker_config_template):
+            with open(conf.iib_docker_config_template, 'r') as f:
+                docker_config = json.load(f)
+        else:
+            docker_config = {}
+
+        registry = ImageName.parse(container_image).registry
+        log.debug('Setting the override token for the registry %s in the Docker config', registry)
+        docker_config.setdefault('auths', {})
+        encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
+        docker_config['auths'][registry] = {'auth': encoded_token}
+        with open(docker_config_path, 'w') as f:
+            json.dump(docker_config, f)
+
+        yield
+    finally:
+        reset_docker_config()
 
 
 @retry(wait_on=IIBError, logger=log)
