@@ -267,7 +267,7 @@ def _get_function_arg_value(arg_name, func, args, kwargs):
     original_func = func
     while getattr(func, '__wrapped__', None):
         original_func = func.__wrapped__
-    argspec = inspect.getargspec(original_func).args
+    argspec = inspect.getfullargspec(original_func).args
 
     arg_index = argspec.index(arg_name)
     arg_value = kwargs.get(arg_name, None)
