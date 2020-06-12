@@ -1060,7 +1060,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
             replacement_needed = True
 
         # Always resolve the image to make sure it's valid
-        resolved_image = ImageName.parse(_get_resolved_image(pullspec))
+        resolved_image = ImageName.parse(_get_resolved_image(pullspec.to_str()))
 
         if registry_replacements.get(resolved_image.registry):
             replacement_needed = True

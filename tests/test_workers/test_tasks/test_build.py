@@ -962,7 +962,7 @@ def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
             'registry.access.company.com/operator/image:v2': (
                 'registry.access.company.com/operator/image@sha256:654321'
             ),
-        }[image.to_str()]
+        }[image]
 
     mock_gri.side_effect = _get_resolved_image
 
