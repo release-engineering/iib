@@ -176,15 +176,8 @@ def _update_index_image_pull_spec(
     """
     conf = get_worker_config()
     if from_index and overwrite_from_index:
-        output_message = f'Overwriting the index image {from_index} with {output_pull_spec}'
-        log.info(output_message)
+        _overwrite_from_index(request_id, output_pull_spec, from_index, overwrite_from_index_token)
         index_image = from_index
-        exc_msg = f'Failed to overwrite the input from_index container image of {index_image}'
-        args = [f'docker://{output_pull_spec}', f'docker://{index_image}']
-        state_reason = output_message
-        set_request_state(request_id, 'in_progress', state_reason)
-        with set_registry_token(overwrite_from_index_token, from_index):
-            _skopeo_copy(*args, copy_all=True, exc_msg=exc_msg)
     elif conf['iib_index_image_output_registry']:
         index_image = output_pull_spec.replace(
             conf['iib_registry'], conf['iib_index_image_output_registry'], 1
@@ -434,6 +427,62 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
         run_cmd(
             cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image',
         )
+
+
+def _overwrite_from_index(
+    request_id, output_pull_spec, from_index, overwrite_from_index_token=None
+):
+    """
+    Overwrite the ``from_index`` image.
+
+    :param int request_id: the ID of the request this index image is for.
+    :param str output_pull_spec: the pull specification of the manifest list for the index image
+        that IIB built.
+    :param str from_index: the pull specification of the image to overwrite.
+    :param str overwrite_from_index_token: the user supplied token to use when overwriting the
+        ``from_index`` image. If this is not set, IIB's configured credentials will be used.
+    :raises IIBError: if one of the skopeo commands fails.
+    """
+    state_reason = f'Overwriting the index image {from_index} with {output_pull_spec}'
+    log.info(state_reason)
+    set_request_state(request_id, 'in_progress', state_reason)
+
+    new_index_src = f'docker://{output_pull_spec}'
+    temp_dir = None
+    try:
+        if overwrite_from_index_token:
+            output_pull_spec_registry = ImageName.parse(output_pull_spec).registry
+            from_index_registry = ImageName.parse(from_index).registry
+            # If the registries are the same and `overwrite_from_index_token` was supplied, that
+            # means that IIB's token will likely not have access to read the `from_index` image.
+            # This means IIB must first export the manifest list and all the manifests locally and
+            # then overwrite the `from_index` image with the exported version using the user
+            # supplied token.
+            #
+            # When a newer version of buildah is available in RHEL 8, then that can be used instead
+            # of the manifest-tool to create the manifest list locally which means this workaround
+            # can be removed.
+            if output_pull_spec_registry == from_index_registry:
+                temp_dir = tempfile.TemporaryDirectory(prefix='iib-')
+                new_index_src = f'oci:{temp_dir.name}'
+                log.info(
+                    'The registry used by IIB (%s) is also the registry where from_index (%s) will '
+                    'be overwritten using the user supplied token. Will perform a workaround which '
+                    'will cause the manifest digests to change but the content is the same.',
+                    output_pull_spec_registry,
+                    from_index_registry,
+                )
+                exc_msg = f'Failed to export {output_pull_spec} to the OCI format'
+                _skopeo_copy(
+                    f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
+                )
+
+        exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
+        with set_registry_token(overwrite_from_index_token, from_index):
+            _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+    finally:
+        if temp_dir:
+            temp_dir.cleanup()
 
 
 def _prepare_request_for_build(
