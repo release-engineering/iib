@@ -67,42 +67,31 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
 
 @pytest.mark.parametrize(
-    'iib_index_image_output_registry, from_index, overwrite, overwrite_token, expected',
+    'iib_index_image_output_registry, from_index, overwrite, expected',
     (
-        (None, None, False, None, '{default}'),
+        (None, None, False, '{default}'),
         (
             'registry-proxy.domain.local',
             None,
             False,
-            None,
             'registry-proxy.domain.local/{default_no_registry}',
         ),
-        (None, 'quay.io/ns/iib:v4.5', True, None, 'quay.io/ns/iib:v4.5'),
-        (None, 'quay.io/ns/iib:v5.4', True, 'username:password', 'quay.io/ns/iib:v5.4'),
+        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5'),
+        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4'),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build._skopeo_copy')
+@mock.patch('iib.workers.tasks.build._overwrite_from_index')
 @mock.patch('iib.workers.tasks.build.update_request')
-@mock.patch('iib.workers.tasks.build.set_request_state')
 def test_update_index_image_pull_spec(
-    mock_srs,
-    mock_ur,
-    mock_sc,
-    mock_srt,
-    mock_gwc,
-    iib_index_image_output_registry,
-    from_index,
-    overwrite,
-    overwrite_token,
-    expected,
+    mock_ur, mock_ofi, mock_gwc, iib_index_image_output_registry, from_index, overwrite, expected
 ):
     default_no_registry = 'namespace/some-image:3'
     default = f'quay.io/{default_no_registry}'
     expected_pull_spec = expected.format(default=default, default_no_registry=default_no_registry)
     request_id = 2
     arches = {'amd64'}
+    overwrite_token = 'username:password'
     mock_gwc.return_value = {
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
@@ -115,27 +104,10 @@ def test_update_index_image_pull_spec(
     update_request_payload = mock_ur.call_args[0][1]
     assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
-    if overwrite_token:
-        mock_sc.assert_called_once_with(
-            f'docker://{default}',
-            f'docker://{expected_pull_spec}',
-            copy_all=True,
-            exc_msg=mock.ANY,
-        )
-        mock_srt.assert_called_once_with(overwrite_token, from_index)
-    elif overwrite:
-        mock_sc.assert_called_once_with(
-            f'docker://{default}',
-            f'docker://{expected_pull_spec}',
-            copy_all=True,
-            exc_msg=mock.ANY,
-        )
-        mock_srs.assert_called_once()
-        mock_srt.assert_called_once_with(None, from_index)
+    if overwrite:
+        mock_ofi.assert_called_once_with(request_id, default, from_index, overwrite_token)
     else:
-        mock_sc.assert_not_called()
-        mock_srs.assert_not_called()
-        mock_srt.assert_not_called()
+        mock_ofi.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -369,6 +341,54 @@ def test_opm_index_rm(mock_run_cmd, mock_srt):
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
     mock_srt.assert_called_once_with('user:pass', 'some_index:latest')
+
+
+@pytest.mark.parametrize(
+    'output_pull_spec, from_index, overwrite_from_index_token, oci_export_expected',
+    (
+        ('quay.io/ns/repo:1', 'quay.io/user_ns/repo:v1', 'user:pass', True),
+        ('quay.io/ns/repo:1', 'docker.io/user_ns/repo:v1', 'user:pass', False),
+        ('quay.io/ns/repo:1', 'quay.io/user_ns/repo:v1', None, False),
+    ),
+)
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build._skopeo_copy')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+def test_overwrite_from_index(
+    mock_srt,
+    mock_sc,
+    mock_td,
+    mock_srs,
+    output_pull_spec,
+    from_index,
+    overwrite_from_index_token,
+    oci_export_expected,
+):
+    mock_td.return_value.name = '/tmp/iib-12345'
+    build._overwrite_from_index(1, output_pull_spec, from_index, overwrite_from_index_token)
+
+    if oci_export_expected:
+        oci_pull_spec = f'oci:{mock_td.return_value.name}'
+        mock_sc.assert_has_calls(
+            (
+                mock.call(
+                    f'docker://{output_pull_spec}', oci_pull_spec, copy_all=True, exc_msg=mock.ANY,
+                ),
+                mock.call(oci_pull_spec, f'docker://{from_index}', copy_all=True, exc_msg=mock.ANY),
+            )
+        )
+        mock_td.return_value.cleanup.assert_called_once_with()
+    else:
+        mock_sc.assert_called_once_with(
+            f'docker://{output_pull_spec}',
+            f'docker://{from_index}',
+            copy_all=True,
+            exc_msg=mock.ANY,
+        )
+        mock_td.return_value.cleanup.assert_not_called()
+
+    mock_srt.assert_called_once()
 
 
 @pytest.mark.parametrize(
