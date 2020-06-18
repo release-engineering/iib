@@ -230,6 +230,7 @@ paths:
                 Done processing build request 1
         '404':
           description: Logs for build requests is not enabled in IIB
+          content:
             application/json:
               schema:
                 type: object
@@ -239,6 +240,7 @@ paths:
                     example: The requested resource was not found
         '410':
           description: The logs for the build request has been removed due to expiration
+          content:
             application/json:
               schema:
                 type: object
