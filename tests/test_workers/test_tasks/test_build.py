@@ -550,6 +550,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
         assert mock_run_cmd.call_count == 5
 
 
+@pytest.mark.parametrize('force_backport', (True, False))
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
@@ -581,6 +582,7 @@ def test_handle_add_request(
     mock_prfb,
     mock_vl,
     mock_cleanup,
+    force_backport,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -606,6 +608,7 @@ def test_handle_add_request(
         ['s390x'],
         cnr_token,
         organization,
+        force_backport,
         False,
         None,
         greenwave_config,
@@ -615,6 +618,7 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
     mock_gb.assert_called_once()
+    mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, force_backport=force_backport)
 
     add_args = mock_oia.call_args[0]
     assert ['some-bundle@sha'] in add_args
@@ -657,6 +661,7 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs,
             ['s390x'],
             cnr_token,
             organization,
+            None,
             False,
             None,
             greenwave_config,

@@ -51,19 +51,23 @@ def _get_base_dir_and_pkg_name(package_dir):
     return os.path.dirname(package_dir), os.path.basename(package_dir)
 
 
-def get_legacy_support_packages(bundles):
+def get_legacy_support_packages(bundles, request_id, force_backport=False):
     """
     Get the packages that must be pushed to the legacy application registry.
 
     :param list<str> bundles: a list of strings representing the pull specifications of the bundles
         to add to the index image being built.
+    :param int request_id: the ID of the IIB build request.
+    :param bool force_backport: if True, backport legacy support is forced for every package
     :return: a set of packages that require legacy support
     :rtype: set
     """
+    if force_backport:
+        set_request_state(request_id, 'in_progress', 'Backport legacy support will be forced')
     packages = set()
     for bundle in bundles:
         labels = get_image_labels(bundle)
-        if labels.get('com.redhat.delivery.backport', False):
+        if force_backport or labels.get('com.redhat.delivery.backport', False):
             packages.add(labels['operators.operatorframework.io.bundle.package.v1'])
 
     return packages

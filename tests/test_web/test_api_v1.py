@@ -274,6 +274,18 @@ def test_get_build_logs_not_configured(client, db, minimal_request_add):
             },
             'The "overwrite_from_index_token" parameter must be a string',
         ),
+        (
+            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'cnr_token': True},
+            '"cnr_token" must be a string',
+        ),
+        (
+            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'organization': True},
+            '"organization" must be a string',
+        ),
+        (
+            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'force_backport': 'spam'},
+            '"force_backport" must be a boolean',
+        ),
     ),
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
@@ -528,6 +540,23 @@ def test_add_bundle_forced_overwrite(
     # Third to last element in args is the overwrite_from_index parameter
     assert mock_har.apply_async.call_args[1]['args'][-3] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@pytest.mark.parametrize('force_backport', (False, True))
+@mock.patch('iib.web.api_v1.handle_add_request')
+def test_add_bundle_force_backport(mock_har, force_backport, db, auth_env, client):
+    data = {
+        'bundles': ['some:thing'],
+        'binary_image': 'binary:image',
+        'from_index': 'index:image',
+        'force_backport': force_backport,
+    }
+
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    mock_har.apply_async.assert_called_once()
+    # Eigth element in args is the force_backport parameter
+    assert mock_har.apply_async.call_args[1]['args'][7] == force_backport
 
 
 @mock.patch('iib.web.api_v1.handle_add_request')

@@ -698,6 +698,7 @@ def handle_add_request(
     add_arches=None,
     cnr_token=None,
     organization=None,
+    force_backport=False,
     overwrite_from_index=False,
     overwrite_from_index_token=None,
     greenwave_config=None,
@@ -719,6 +720,7 @@ def handle_add_request(
         app registry via OMPS.
     :param str organization: organization name in the legacy app registry to which the backported
         packages should be pushed to.
+    :param bool force_backport: if True, always export packages to the legacy app registry via OMPS.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
@@ -740,7 +742,9 @@ def handle_add_request(
         gate_bundles(resolved_bundles, greenwave_config)
 
     log.info('Checking if interacting with the legacy app registry is required')
-    legacy_support_packages = get_legacy_support_packages(resolved_bundles)
+    legacy_support_packages = get_legacy_support_packages(
+        resolved_bundles, request_id, force_backport=force_backport
+    )
     if legacy_support_packages:
         validate_legacy_params_and_config(
             legacy_support_packages, resolved_bundles, cnr_token, organization
