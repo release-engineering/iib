@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 
 import flask
+import kombu
 from flask_login import current_user, login_required
 from sqlalchemy.orm import with_polymorphic
 from sqlalchemy.sql import text
@@ -11,6 +12,7 @@ from werkzeug.exceptions import Forbidden, Gone, NotFound
 
 from iib.exceptions import IIBError, ValidationError
 from iib.web import db, messaging
+from iib.web.errors import handle_broker_error, handle_broker_batch_error
 from iib.web.models import (
     Architecture,
     Batch,
@@ -220,9 +222,13 @@ def add_bundles():
         safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
 
     error_callback = failed_request_callback.s(request.id)
-    handle_add_request.apply_async(
-        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
-    )
+
+    try:
+        handle_add_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
@@ -364,9 +370,12 @@ def rm_operators():
         safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
 
     error_callback = failed_request_callback.s(request.id)
-    handle_rm_request.apply_async(
-        args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
-    )
+    try:
+        handle_rm_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
@@ -391,11 +400,14 @@ def regenerate_bundle():
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     error_callback = failed_request_callback.s(request.id)
-    handle_regenerate_bundle_request.apply_async(
-        args=[payload['from_bundle_image'], payload.get('organization'), request.id],
-        link_error=error_callback,
-        queue=_get_user_queue(),
-    )
+    try:
+        handle_regenerate_bundle_request.apply_async(
+            args=[payload['from_bundle_image'], payload.get('organization'), request.id],
+            link_error=error_callback,
+            queue=_get_user_queue(),
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
@@ -438,26 +450,31 @@ def regenerate_bundle_batch():
     request_jsons = []
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
-    request_id_strs = []
-    for build_request, request in zip(payload['build_requests'], requests):
-        request_jsons.append(request.to_json())
-        request_id_strs.append(str(request.id))
+    processed_request_ids = []
+    build_and_requests = zip(payload['build_requests'], requests)
+    try:
+        for build_request, request in build_and_requests:
+            error_callback = failed_request_callback.s(request.id)
+            handle_regenerate_bundle_request.apply_async(
+                args=[
+                    build_request['from_bundle_image'],
+                    build_request.get('organization'),
+                    request.id,
+                ],
+                link_error=error_callback,
+                queue=_get_user_queue(),
+            )
 
-        error_callback = failed_request_callback.s(request.id)
-        handle_regenerate_bundle_request.apply_async(
-            args=[
-                build_request['from_bundle_image'],
-                build_request.get('organization'),
-                request.id,
-            ],
-            link_error=error_callback,
-            queue=_get_user_queue(),
-        )
+            request_jsons.append(request.to_json())
+            processed_request_ids.append(str(request.id))
+    except kombu.exceptions.OperationalError:
+        unprocessed_requests = [r for r in requests if str(r.id) not in processed_request_ids]
+        handle_broker_batch_error(unprocessed_requests)
 
     flask.current_app.logger.debug(
         'Successfully scheduled the batch %d with requests: %s',
         batch.id,
-        ', '.join(request_id_strs),
+        ', '.join(processed_request_ids),
     )
     return flask.jsonify(request_jsons), 201
 
@@ -504,11 +521,10 @@ def add_rm_batch():
     request_jsons = []
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
-    request_id_strs = []
+    processed_request_ids = []
     celery_queue = _get_user_queue()
     for build_request, request in zip(payload['build_requests'], requests):
         request_jsons.append(request.to_json())
-        request_id_strs.append(str(request.id))
 
         if isinstance(request, RequestAdd):
             args = [
@@ -542,18 +558,30 @@ def add_rm_batch():
             safe_args[safe_args.index(build_request['overwrite_from_index_token'])] = '*****'
 
         error_callback = failed_request_callback.s(request.id)
-        if isinstance(request, RequestAdd):
-            handle_add_request.apply_async(
-                args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue,
-            )
-        else:
-            handle_rm_request.apply_async(
-                args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue,
-            )
+        try:
+            if isinstance(request, RequestAdd):
+                handle_add_request.apply_async(
+                    args=args,
+                    link_error=error_callback,
+                    argsrepr=repr(safe_args),
+                    queue=celery_queue,
+                )
+            else:
+                handle_rm_request.apply_async(
+                    args=args,
+                    link_error=error_callback,
+                    argsrepr=repr(safe_args),
+                    queue=celery_queue,
+                )
+        except kombu.exceptions.OperationalError:
+            unprocessed_requests = [r for r in requests if str(r.id) not in processed_request_ids]
+            handle_broker_batch_error(unprocessed_requests)
+
+        processed_request_ids.append(str(request.id))
 
     flask.current_app.logger.debug(
         'Successfully scheduled the batch %d with requests: %s',
         batch.id,
-        ', '.join(request_id_strs),
+        ', '.join(processed_request_ids),
     )
     return flask.jsonify(request_jsons), 201
