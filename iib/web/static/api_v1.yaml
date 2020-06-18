@@ -559,6 +559,12 @@ components:
             This token is required only if support for legacy app registry is
             required.
           example: token
+        force_backport:
+          type: boolean
+          description: >
+            If True, always backport packages to the legacy app registry via OMPS. Requires
+            cnr_token and organization to be set if True.
+          default: false
         from_index:
           type: string
           description: >

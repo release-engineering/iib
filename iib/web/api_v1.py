@@ -208,6 +208,7 @@ def add_bundles():
         payload.get('add_arches'),
         payload.get('cnr_token'),
         payload.get('organization'),
+        payload.get('force_backport'),
         _should_force_overwrite() or payload.get('overwrite_from_index'),
         payload.get('overwrite_from_index_token'),
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
