@@ -701,6 +701,73 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build._verify_labels')
+@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build.export_legacy_packages')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
+@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
+@mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+def test_handle_add_request_backport_failure_no_overwrite(
+    mock_grb,
+    mock_gb,
+    mock_vlpc,
+    mock_glsp,
+    mock_capml,
+    mock_srs,
+    mock_elp,
+    mock_uiips,
+    mock_vii,
+    mock_pi,
+    mock_bi,
+    mock_oia,
+    mock_prfb,
+    mock_vl,
+    mock_cleanup,
+):
+    error_msg = 'Backport failure!'
+    mock_elp.side_effect = IIBError(error_msg)
+    arches = {'amd64', 's390x'}
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': 'from-index@sha256:bcdefg',
+    }
+    mock_grb.return_value = ['some-bundle@sha']
+    legacy_packages = {'some_package'}
+    mock_glsp.return_value = legacy_packages
+    output_pull_spec = 'quay.io/namespace/some-image:3'
+    mock_capml.return_value = output_pull_spec
+
+    bundles = ['some-bundle:2.3-1']
+    cnr_token = 'token'
+    organization = 'org'
+    greenwave_config = {'some_key': 'other_value'}
+    with pytest.raises(IIBError, match=error_msg):
+        build.handle_add_request(
+            bundles,
+            'binary-image:latest',
+            3,
+            'from-index:latest',
+            ['s390x'],
+            cnr_token,
+            organization,
+            False,
+            None,
+            greenwave_config,
+        )
+    mock_elp.assert_called_once()
+    mock_uiips.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._opm_index_rm')
 @mock.patch('iib.workers.tasks.build._build_image')
