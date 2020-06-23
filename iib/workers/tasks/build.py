@@ -775,6 +775,11 @@ def handle_add_request(
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
+    if legacy_support_packages:
+        export_legacy_packages(
+            legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
+        )
+
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
@@ -783,10 +788,6 @@ def handle_add_request(
         overwrite_from_index,
         overwrite_from_index_token,
     )
-    if legacy_support_packages:
-        export_legacy_packages(
-            legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
-        )
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
     )
