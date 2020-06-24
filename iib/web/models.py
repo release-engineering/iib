@@ -810,9 +810,8 @@ class RequestAdd(Request, RequestIndexImageMixin):
             if not isinstance(request_kwargs[param], str):
                 raise ValidationError(f'"{param}" must be a string')
 
-        if 'force_backport' in request_kwargs:
-            if not isinstance(request_kwargs['force_backport'], bool):
-                raise ValidationError('"force_backport" must be a boolean')
+        if not isinstance(request_kwargs.get('force_backport', False), bool):
+            raise ValidationError('"force_backport" must be a boolean')
 
         # Remove attributes that are not stored in the database
         request_kwargs.pop('cnr_token', None)
