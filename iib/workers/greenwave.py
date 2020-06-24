@@ -29,6 +29,7 @@ def gate_bundles(bundles, greenwave_config):
 
     log.info('Gating on bundles: %s', ', '.join(bundles))
     gating_unsatisfied_bundles = []
+    testcases = []
     for bundle in bundles:
         koji_build_nvr = _get_koji_build_nvr(bundle)
         log.debug('Querying Greenwave for decision on %s', koji_build_nvr)
@@ -60,6 +61,8 @@ def gate_bundles(bundles, greenwave_config):
             if not data['policies_satisfied']:
                 log.info('Gating decision for %s: %s', bundle, data)
                 gating_unsatisfied_bundles.append(bundle)
+                testcases = [item['testcase'] for item in data.get('unsatisfied_requirements', [])]
+
         except KeyError:
             log.error('Missing key "policies_satisfied" for %s: %s', bundle, data)
             raise IIBError(f'Key "policies_satisfied" missing in Greenwave response for {bundle}')
@@ -69,7 +72,8 @@ def gate_bundles(bundles, greenwave_config):
             f'Unsatisfied Greenwave policy for {", ".join(gating_unsatisfied_bundles)} '
             f'with decision_context: {greenwave_config["decision_context"]}, '
             f'product_version: {greenwave_config["product_version"]}, '
-            f'and subject_type: {greenwave_config["subject_type"]}'
+            f'subject_type: {greenwave_config["subject_type"]} '
+            f'and test cases: {", ".join(testcases)}'
         )
         raise IIBError(error_msg)
 
