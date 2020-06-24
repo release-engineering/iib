@@ -40,11 +40,31 @@ def test_gate_bundles_success(mock_requests, mock_gkbn):
         ),
         (
             True,
-            {'policies_satisfied': False},
+            {
+                'policies_satisfied': False,
+                'unsatisfied_requirements': [
+                    {
+                        'result_id': 123,
+                        'subject_identifier': 'some-bundle-container-1.5.0-4',
+                        'subject_type': 'koji_build',
+                        'testcase': 'test-case-operator-metadata-fetch',
+                        'type': 'test-result-passed',
+                    },
+                    {
+                        'result_id': 1234,
+                        'subject_identifier': 'some-bundle-container-1.5.0-4',
+                        'subject_type': 'koji_build',
+                        'testcase': 'test-case-operator-metadata-preparation',
+                        'type': 'test-result-passed',
+                    },
+                ],
+            },
             (
                 'Unsatisfied Greenwave policy for some-bundle '
                 'with decision_context: iib_cvp_redhat_operator, '
-                'product_version: cvp, and subject_type: koji_build'
+                'product_version: cvp, subject_type: koji_build '
+                'and test cases: test-case-operator-metadata-fetch, '
+                'test-case-operator-metadata-preparation'
             ),
         ),
     ),
