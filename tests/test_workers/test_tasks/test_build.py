@@ -407,6 +407,16 @@ def test_overwrite_from_index(
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
         ),
+        (
+            ['amd64'],
+            'some-index:latest',
+            set(),
+            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            {
+                'some-bundle': ['quay.io/some-bundle:v1'],
+                'some-bundle2': ['quay.io/some-bundle2:v1'],
+            },
+        ),
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -430,6 +440,8 @@ def test_prepare_request_for_build(
     from_index_resolved = None
     expected_arches = set(add_arches) | from_index_arches
     expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
+    gil_side_effect = []
+    ocp_version = 'v4.5'
     if expected_bundle_mapping:
         expected_payload_keys.add('bundle_mapping')
     if from_index:
@@ -438,21 +450,29 @@ def test_prepare_request_for_build(
         mock_gri.side_effect = [binary_image_resolved, from_index_resolved]
         mock_gia.side_effect = [expected_arches, from_index_arches]
         expected_payload_keys.add('from_index_resolved')
+        gil_side_effect = ['v4.6']
+        ocp_version = 'v4.6'
     else:
         mock_gri.side_effect = [binary_image_resolved]
         mock_gia.side_effect = [expected_arches]
+        gil_side_effect = []
 
     if bundles:
-        mock_gil.side_effect = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
+        bundle_side_effects = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
+        gil_side_effect.extend(bundle_side_effects)
 
+    mock_gil.side_effect = gil_side_effect
     rv = build._prepare_request_for_build(
         'binary-image:latest', 1, from_index, None, add_arches, bundles
     )
+
     assert rv == {
         'arches': expected_arches,
         'binary_image_resolved': binary_image_resolved,
         'from_index_resolved': from_index_resolved,
+        'ocp_version': ocp_version,
     }
+
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     if expected_bundle_mapping:
@@ -566,7 +586,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
 def test_handle_add_request(
+    mock_aolti,
     mock_grb,
     mock_gb,
     mock_vlpc,
@@ -589,6 +611,7 @@ def test_handle_add_request(
         'arches': arches,
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
+        'ocp_version': 'v4.5',
     }
     mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
@@ -618,6 +641,7 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
     mock_gb.assert_called_once()
+    mock_aolti.assert_called_once()
     mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, force_backport=force_backport)
 
     add_args = mock_oia.call_args[0]
@@ -715,7 +739,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
 def test_handle_add_request_backport_failure_no_overwrite(
+    mock_aolti,
     mock_grb,
     mock_gb,
     mock_vlpc,
@@ -739,6 +765,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
         'arches': arches,
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
+        'ocp_version': 'v4.6',
     }
     mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
@@ -776,20 +803,32 @@ def test_handle_add_request_backport_failure_no_overwrite(
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
 def test_handle_rm_request(
-    mock_uiips, mock_capml, mock_srs, mock_vii, mock_pi, mock_bi, mock_oir, mock_prfb, mock_cleanup
+    mock_aolti,
+    mock_uiips,
+    mock_capml,
+    mock_srs,
+    mock_vii,
+    mock_pi,
+    mock_bi,
+    mock_oir,
+    mock_prfb,
+    mock_cleanup,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
+        'ocp_version': 'v4.6',
     }
     build.handle_rm_request(['some-operator'], 'binary-image:latest', 3, 'from-index:latest')
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once()
     mock_oir.assert_called_once()
+    mock_aolti.assert_called_once()
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
     mock_vii.assert_called_once()
@@ -1267,3 +1306,39 @@ def test_adjust_csv_annotations_no_customizations(mock_yaml_dump, tmpdir):
     build._adjust_csv_annotations(operator_manifest.files, 'amqp-streams', 'mos-eisley')
 
     mock_yaml_dump.assert_not_called()
+
+
+def test_add_ocp_label_to_index(tmpdir):
+    operator_dir = tmpdir.mkdir('operator')
+    dockerfile_txt = textwrap.dedent(
+        '''\
+        FROM scratch
+
+        COPY manifests /manifests/
+        COPY metadata/annotations.yaml /metadata/annotations.yaml
+
+        LABEL operators.operatorframework.io.bundle.mediatype.v1=registry+v1
+        LABEL operators.operatorframework.io.bundle.manifests.v1=manifests/
+        LABEL operators.operatorframework.io.bundle.metadata.v1=metadata/
+        LABEL operators.operatorframework.io.bundle.package.v1=my-operator
+        LABEL operators.operatorframework.io.bundle.channels.v1=release-v1.1
+        LABEL operators.operatorframework.io.bundle.channel.default.v1=release-v1.1
+
+        # This last block are standard Red Hat container labels
+        LABEL \
+        com.redhat.component="my-operator-bundle-container" \
+        version="v1.1" \
+        name="my-operator-bundle" \
+        License="ASL 2.0" \
+        io.k8s.display-name="my-operator bundle" \
+        io.k8s.description="demo of bundle" \
+        summary="demo of bundle" \
+        maintainer="John Doe <jdoe@redhat.com>"
+        '''
+    )
+    operator_dir.join('Dockerfile').write(dockerfile_txt)
+
+    build._add_ocp_label_to_index('v4.5', operator_dir, 'Dockerfile')
+
+    expected = dockerfile_txt + '\nLABEL com.redhat.index.delivery.version="v4.5"\n'
+    assert operator_dir.join('Dockerfile').read_text('utf-8') == expected

@@ -514,7 +514,8 @@ def _prepare_request_for_build(
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
     :param list bundles: the list of bundles to create the bundle mapping on the request
-    :return: a dictionary with the keys: arches, binary_image_resolved, and from_index_resolved.
+    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
+        ocp_version.
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
     """
@@ -535,9 +536,13 @@ def _prepare_request_for_build(
         with set_registry_token(overwrite_from_index_token, from_index):
             from_index_resolved = _get_resolved_image(from_index)
             from_index_arches = _get_image_arches(from_index_resolved)
+            ocp_version = (
+                get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
+            )
         arches = arches | from_index_arches
     else:
         from_index_resolved = None
+        ocp_version = 'v4.5'
 
     if not arches:
         raise IIBError('No arches were provided to build the index image')
@@ -574,6 +579,7 @@ def _prepare_request_for_build(
         'arches': arches,
         'binary_image_resolved': binary_image_resolved,
         'from_index_resolved': from_index_resolved,
+        'ocp_version': ocp_version,
     }
 
 
@@ -763,6 +769,10 @@ def handle_add_request(
             overwrite_from_index_token,
         )
 
+        _add_ocp_label_to_index(
+            prebuild_info['ocp_version'], temp_dir, 'index.Dockerfile',
+        )
+
         arches = prebuild_info['arches']
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
@@ -830,6 +840,10 @@ def handle_rm_request(
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
+
+        _add_ocp_label_to_index(
+            prebuild_info['ocp_version'], temp_dir, 'index.Dockerfile',
+        )
 
         arches = prebuild_info['arches']
         for arch in sorted(arches):
@@ -1170,3 +1184,19 @@ def _adjust_csv_annotations(operator_csvs, package_name, organization):
             csv_annotations[annotation] = value
 
         operator_csv.dump()
+
+
+def _add_ocp_label_to_index(ocp_version, temp_dir, dockerfile_name):
+    """
+    Add the OCP delivery label to the provided dockerfile.
+
+    :param str ocp_version: the OCP version that the index is delivery content for.
+    :param str temp_dir: the temp directory to look for the dockerfile.
+    :param str dockerfile_name: the dockerfile name.
+    """
+    with open(os.path.join(temp_dir, dockerfile_name), 'a') as dockerfile:
+        label = f'LABEL com.redhat.index.delivery.version="{ocp_version}"'
+        dockerfile.write(f'\n{label}\n')
+        log.debug(
+            'Added the following line to %s: %s', dockerfile_name, label,
+        )
