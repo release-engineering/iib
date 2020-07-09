@@ -460,3 +460,100 @@ def regenerate_bundle_batch():
         ', '.join(request_id_strs),
     )
     return flask.jsonify(request_jsons), 201
+
+
+@api_v1.route('/builds/add-rm-batch', methods=['POST'])
+@login_required
+def add_rm_batch():
+    """
+    Submit a batch of requests to add or remove operators from an index image.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    Batch.validate_batch_request_params(payload)
+
+    batch = Batch(annotations=payload.get('annotations'))
+    db.session.add(batch)
+
+    requests = []
+    # Iterate through all the build requests and verify that the requests are valid before
+    # committing them and scheduling the tasks
+    for build_request in payload['build_requests']:
+        try:
+            if build_request.get('operators'):
+                # Check for the validity of a RM request
+                request = RequestRm.from_json(build_request, batch)
+            elif build_request.get('bundles'):
+                # Check for the validity of an Add request
+                request = RequestAdd.from_json(build_request, batch)
+            else:
+                raise ValidationError('Build request is not a valid Add/Rm request.')
+        except ValidationError as e:
+            raise ValidationError(
+                f'{str(e).rstrip(".")}. This occurred on the build request in '
+                f'index {payload["build_requests"].index(build_request)}.'
+            )
+        db.session.add(request)
+        requests.append(request)
+
+    db.session.commit()
+    messaging.send_messages_for_new_batch_of_requests(requests)
+
+    request_jsons = []
+    # This list will be used for the log message below and avoids the need of having to iterate
+    # through the list of requests another time
+    request_id_strs = []
+    celery_queue = _get_user_queue()
+    for build_request, request in zip(payload['build_requests'], requests):
+        request_jsons.append(request.to_json())
+        request_id_strs.append(str(request.id))
+
+        if isinstance(request, RequestAdd):
+            args = [
+                build_request['bundles'],
+                build_request['binary_image'],
+                request.id,
+                build_request.get('from_index'),
+                build_request.get('add_arches'),
+                build_request.get('cnr_token'),
+                build_request.get('organization'),
+                build_request.get('force_backport'),
+                _should_force_overwrite() or build_request.get('overwrite_from_index'),
+                build_request.get('overwrite_from_index_token'),
+                flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
+            ]
+        elif isinstance(request, RequestRm):
+            args = [
+                build_request['operators'],
+                build_request['binary_image'],
+                request.id,
+                build_request['from_index'],
+                build_request.get('add_arches'),
+                _should_force_overwrite() or build_request.get('overwrite_from_index'),
+                build_request.get('overwrite_from_index_token'),
+            ]
+
+        safe_args = copy.copy(args)
+        if build_request.get('cnr_token'):
+            safe_args[safe_args.index(build_request['cnr_token'])] = '*****'
+        if build_request.get('overwrite_from_index_token'):
+            safe_args[safe_args.index(build_request['overwrite_from_index_token'])] = '*****'
+
+        error_callback = failed_request_callback.s(request.id)
+        if isinstance(request, RequestAdd):
+            handle_add_request.apply_async(
+                args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue,
+            )
+        else:
+            handle_rm_request.apply_async(
+                args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue,
+            )
+
+    flask.current_app.logger.debug(
+        'Successfully scheduled the batch %d with requests: %s',
+        batch.id,
+        ', '.join(request_id_strs),
+    )
+    return flask.jsonify(request_jsons), 201

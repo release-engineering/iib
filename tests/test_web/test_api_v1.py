@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 from sqlalchemy.exc import DisconnectionError
 
-from iib.web.models import Image, RequestAdd
+from iib.web.models import Image, RequestAdd, RequestRm
 
 
 def test_get_build(app, auth_env, client, db):
@@ -1313,6 +1313,152 @@ def test_regenerate_bundle_batch_invalid_request_type(mock_hrbr, app, auth_env, 
 )
 def test_regenerate_bundle_batch_invalid_input(payload, error_msg, app, auth_env, client, db):
     rv = client.post('/api/v1/builds/regenerate-bundle-batch', json=payload, environ_base=auth_env)
+
+    assert rv.status_code == 400, rv.json
+    assert rv.json == {'error': error_msg}
+
+
+@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
+def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
+    annotations = {'msdhoni': 'The best captain ever!'}
+    data = {
+        'annotations': annotations,
+        'build_requests': [
+            {
+                'bundles': ['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'],
+                'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
+                'from_index': 'registry-proxy/rh-osbs-stage/iib:v4.5',
+                'add_arches': ['amd64'],
+                'cnr_token': 'no_tom_brady_anymore',
+                'organization': 'hello-operator',
+                'overwrite_from_index': True,
+                'overwrite_from_index_token': 'some_token',
+            },
+            {
+                'operators': ['kiali-ossm'],
+                'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
+                'from_index': 'registry:8443/iib-build:11',
+            },
+        ],
+    }
+    rv = client.post('/api/v1/builds/add-rm-batch', json=data, environ_base=auth_env)
+
+    assert rv.status_code == 201, rv.json
+    assert mock_hrr.apply_async.call_count == 1
+    assert mock_har.apply_async.call_count == 1
+    mock_har.apply_async.assert_has_calls(
+        (
+            mock.call(
+                args=[
+                    ['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'],
+                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
+                    1,
+                    'registry-proxy/rh-osbs-stage/iib:v4.5',
+                    ['amd64'],
+                    'no_tom_brady_anymore',
+                    'hello-operator',
+                    None,
+                    True,
+                    'some_token',
+                    None,
+                ],
+                argsrepr=(
+                    "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
+                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', 1, "
+                    "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
+                    "'hello-operator', None, True, '*****', None]"
+                ),
+                link_error=mock.ANY,
+                queue=None,
+            ),
+        )
+    )
+    mock_hrr.apply_async.assert_has_calls(
+        (
+            mock.call(
+                args=[
+                    ['kiali-ossm'],
+                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
+                    2,
+                    'registry:8443/iib-build:11',
+                    None,
+                    None,
+                    None,
+                ],
+                argsrepr=(
+                    "[['kiali-ossm'], 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
+                    ", 2, 'registry:8443/iib-build:11', None, None, None]"
+                ),
+                link_error=mock.ANY,
+                queue=None,
+            ),
+        )
+    )
+
+    assert db.session.query(RequestAdd).filter_by(id=1).scalar()
+    assert db.session.query(RequestRm).filter_by(id=2).scalar()
+    assert len(rv.json) == 2
+    assert all(r['batch_annotations'] == annotations for r in rv.json)
+
+    requests_to_send_msgs_for = mock_smfnbor.call_args[0][0]
+    assert len(requests_to_send_msgs_for) == 2
+    assert requests_to_send_msgs_for[0].id == 1
+    assert requests_to_send_msgs_for[1].id == 2
+
+
+@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+def test_add_rm_batch_invalid_request_type(mock_hrbr, app, auth_env, client, db):
+    data = {
+        'build_requests': [
+            {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+            {
+                'operators': ['kiali-ossm'],
+                'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
+                'from_index': 'registry:8443/iib-build:11',
+            },
+        ]
+    }
+    rv = client.post('/api/v1/builds/add-rm-batch', json=data, environ_base=auth_env)
+
+    assert rv.status_code == 400, rv.json
+    assert rv.json == {
+        'error': (
+            'Build request is not a valid Add/Rm request. This occurred on the build request '
+            'in index 0.'
+        )
+    }
+    mock_hrbr.apply_async.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'payload, error_msg',
+    (
+        (
+            ['bundle:latest'],
+            (
+                'The input data must be a JSON object and the "build_requests" value must be a '
+                'non-empty array'
+            ),
+        ),
+        (
+            {
+                'build_requests': [
+                    {
+                        'operators': ['kiali-ossm'],
+                        'binary_image': 'registry-proxy/openshift-ose-operator-registry:v4.5',
+                        'from_index': 'registry:8443/iib-build:11',
+                    }
+                ],
+                'annotations': 'Country music is good.',
+            },
+            'The value of "annotations" must be a JSON object',
+        ),
+    ),
+)
+def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env, client, db):
+    rv = client.post('/api/v1/builds/add-rm-batch', json=payload, environ_base=auth_env)
 
     assert rv.status_code == 400, rv.json
     assert rv.json == {'error': error_msg}

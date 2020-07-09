@@ -654,7 +654,7 @@ class RequestIndexImageMixin:
 
     @staticmethod
     def _from_json(
-        request_kwargs, additional_required_params=None, additional_optional_params=None
+        request_kwargs, additional_required_params=None, additional_optional_params=None, batch=None
     ):
         """
         Validate and process request agnostic parameters.
@@ -663,6 +663,8 @@ class RequestIndexImageMixin:
         is updated to reference database objects where appropriate.
 
         :param dict request_kwargs: copy of args provided in API request
+        :param Batch batch: the batch to specify with the request. If one is not specified, one will
+            be created automatically.
         """
         # Validate all required parameters are present
         required_params = {'binary_image'} | set(additional_required_params or [])
@@ -729,7 +731,7 @@ class RequestIndexImageMixin:
             request_kwargs['user'] = current_user
 
         # Add the request to a new batch
-        batch = Batch()
+        batch = batch or Batch()
         db.session.add(batch)
         request_kwargs['batch'] = batch
 
@@ -791,8 +793,13 @@ class RequestAdd(Request, RequestIndexImageMixin):
     }
 
     @classmethod
-    def from_json(cls, kwargs):
-        """Handle JSON requests for the Add API endpoint."""
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the Add API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
         request_kwargs = deepcopy(kwargs)
 
         bundles = request_kwargs.get('bundles', [])
@@ -821,6 +828,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
             request_kwargs,
             additional_required_params=['bundles'],
             additional_optional_params=['from_index', 'organization'],
+            batch=batch,
         )
 
         request_kwargs['bundles'] = [
@@ -881,8 +889,13 @@ class RequestRm(Request, RequestIndexImageMixin):
     }
 
     @classmethod
-    def from_json(cls, kwargs):
-        """Handle JSON requests for the Remove API endpoint."""
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the Remove API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
         request_kwargs = deepcopy(kwargs)
 
         operators = request_kwargs.get('operators', [])
@@ -893,7 +906,9 @@ class RequestRm(Request, RequestIndexImageMixin):
         ):
             raise ValidationError(f'"operators" should be a non-empty array of strings')
 
-        cls._from_json(request_kwargs, additional_required_params=['operators', 'from_index'])
+        cls._from_json(
+            request_kwargs, additional_required_params=['operators', 'from_index'], batch=batch
+        )
 
         request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
 
