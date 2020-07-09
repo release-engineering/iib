@@ -416,6 +416,62 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/add-rm-batch:
+    post:
+      description: Submit a batch of build requests to add or remove operators
+        to/from an index image.
+      requestBody:
+        description: The build requests to create
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                annotations:
+                  type: object
+                  description: >
+                    An arbitrary JSON object associated with the batch. This is accessed by the
+                    "batch_annotations" key's value on a build request in the batch.
+                build_requests:
+                  type: array
+                  description: Request objects of type Add or Rm
+                  items:
+                    anyOf:
+                      - $ref: '#/components/schemas/RequestAdd'
+                      - $ref: '#/components/schemas/RequestRemove'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build requests were initiated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RequestIndexImageVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"organization" must be a string. This occurred on the build request '
+                      'in index 0.'
+        '401':
+          description: The user is not allowed to submit a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
 components:
   schemas:
     BundleMapping:
