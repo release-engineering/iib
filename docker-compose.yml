@@ -90,7 +90,7 @@ services:
     privileged: true
     volumes:
       - ./:/src:z
-      - ./iib_data/worker:/var/lib/containers/storage:z
+      - worker_container_storage:/var/lib/containers:z
       - ./docker/registry/certs:/registry-certs:ro,z
       - ./ca-bundle.crt:/host-ca-bundle.crt:ro
       - request-logs-volume:/var/log/iib/requests:z
@@ -114,3 +114,4 @@ services:
 volumes:
   message-broker-volume:
   request-logs-volume:
+  worker_container_storage:
