@@ -9,13 +9,21 @@ from iib.workers.tasks import legacy
 
 
 @pytest.mark.parametrize(
-    'backport_label, force_backport, expect_backport',
-    ((True, True, True), (True, False, True), (False, True, True), (False, False, False),),
+    'backport_label, ocp_version, force_backport, expect_backport',
+    (
+        (True, 'v4.5', True, True),
+        (True, 'v4.5', False, True),
+        (False, 'v4.5', True, True),
+        (False, 'v4.5', False, False),
+        (True, 'v4.6', True, False),
+        (True, 'v4.6', False, False),
+        (False, 'v4.6', True, False),
+    ),
 )
 @mock.patch('iib.workers.tasks.legacy.set_request_state')
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_legacy_support_packages(
-    mock_skopeo_inspect, mock_srs, backport_label, force_backport, expect_backport
+    mock_skopeo_inspect, mock_srs, backport_label, ocp_version, force_backport, expect_backport
 ):
     mock_skopeo_inspect.return_value = {
         'config': {
@@ -26,14 +34,19 @@ def test_get_legacy_support_packages(
         }
     }
 
-    packages = legacy.get_legacy_support_packages(['some_bundle'], 1, force_backport=force_backport)
-    mock_skopeo_inspect.assert_called_once()
+    packages = legacy.get_legacy_support_packages(
+        ['some_bundle'], 1, ocp_version, force_backport=force_backport
+    )
+    if ocp_version == 'v4.5':
+        mock_skopeo_inspect.assert_called_once()
+    else:
+        mock_skopeo_inspect.assert_not_called()
     if expect_backport:
         assert packages == {'prometheus'}
     else:
         assert packages == set()
 
-    if force_backport:
+    if force_backport and expect_backport:
         mock_srs.assert_called_once_with(1, 'in_progress', 'Backport legacy support will be forced')
     else:
         mock_srs.assert_not_called()

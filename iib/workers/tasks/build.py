@@ -563,24 +563,45 @@ def _prepare_request_for_build(
         if operator:
             bundle_mapping.setdefault(operator, []).append(bundle)
 
-    payload = {
-        'binary_image_resolved': binary_image_resolved,
-        'state': 'in_progress',
-        'state_reason': f'Building the index image for the following arches: {arches_str}',
-    }
-    if bundle_mapping:
-        payload['bundle_mapping'] = bundle_mapping
-    if from_index_resolved:
-        payload['from_index_resolved'] = from_index_resolved
-    exc_msg = 'Failed setting the resolved images on the request'
-    update_request(request_id, payload, exc_msg)
-
     return {
         'arches': arches,
         'binary_image_resolved': binary_image_resolved,
+        'bundle_mapping': bundle_mapping,
         'from_index_resolved': from_index_resolved,
         'ocp_version': ocp_version,
     }
+
+
+def _update_index_image_build_state(request_id, prebuild_info):
+    """
+    Update the build request state with pre-determined build information.
+
+    :param int request_id: the ID of the IIB build request
+    :param dict prebuild_info: the information relevant to the build operation. The key ``arches``
+        is required and must be set to the list of arches to build for. The key
+        ``binary_image_resolved`` is required and must be set to the image digest pull spec of the
+        binary image. The key ``bundle_mapping`` is optional. When provided, its value must be a
+        dict mapping an operator to a list of bundle images. The key ``from_index_resolved`` is
+        optional. When provided it must be set to the image digest pull spec of the from index
+        image.
+    """
+    arches_str = ', '.join(sorted(prebuild_info['arches']))
+    payload = {
+        'binary_image_resolved': prebuild_info['binary_image_resolved'],
+        'state': 'in_progress',
+        'state_reason': f'Building the index image for the following arches: {arches_str}',
+    }
+
+    bundle_mapping = prebuild_info.get('bundle_mapping')
+    if bundle_mapping:
+        payload['bundle_mapping'] = bundle_mapping
+
+    from_index_resolved = prebuild_info.get('from_index_resolved')
+    if from_index_resolved:
+        payload['from_index_resolved'] = from_index_resolved
+
+    exc_msg = 'Failed setting the resolved images on the request'
+    update_request(request_id, payload, exc_msg)
 
 
 @retry(wait_on=IIBError, logger=log)
@@ -747,18 +768,20 @@ def handle_add_request(
     if greenwave_config:
         gate_bundles(resolved_bundles, greenwave_config)
 
+    prebuild_info = _prepare_request_for_build(
+        binary_image, request_id, from_index, overwrite_from_index_token, add_arches, bundles
+    )
+
     log.info('Checking if interacting with the legacy app registry is required')
     legacy_support_packages = get_legacy_support_packages(
-        resolved_bundles, request_id, force_backport=force_backport
+        resolved_bundles, request_id, prebuild_info['ocp_version'], force_backport=force_backport
     )
     if legacy_support_packages:
         validate_legacy_params_and_config(
             legacy_support_packages, resolved_bundles, cnr_token, organization
         )
 
-    prebuild_info = _prepare_request_for_build(
-        binary_image, request_id, from_index, overwrite_from_index_token, add_arches, bundles
-    )
+    _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_add(
@@ -837,6 +860,7 @@ def handle_rm_request(
     prebuild_info = _prepare_request_for_build(
         binary_image, request_id, from_index, overwrite_from_index_token, add_arches
     )
+    _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
