@@ -51,20 +51,24 @@ def _get_base_dir_and_pkg_name(package_dir):
     return os.path.dirname(package_dir), os.path.basename(package_dir)
 
 
-def get_legacy_support_packages(bundles, request_id, force_backport=False):
+def get_legacy_support_packages(bundles, request_id, ocp_version, force_backport=False):
     """
     Get the packages that must be pushed to the legacy application registry.
 
     :param list<str> bundles: a list of strings representing the pull specifications of the bundles
         to add to the index image being built.
     :param int request_id: the ID of the IIB build request.
+    :param str ocp_version: the OCP version that the index is intended for.
     :param bool force_backport: if True, backport legacy support is forced for every package
     :return: a set of packages that require legacy support
     :rtype: set
     """
+    packages = set()
+    if ocp_version != 'v4.5':
+        log.info('Backport legacy support is disabled for %s', ocp_version)
+        return packages
     if force_backport:
         set_request_state(request_id, 'in_progress', 'Backport legacy support will be forced')
-    packages = set()
     for bundle in bundles:
         labels = get_image_labels(bundle)
         if force_backport or labels.get('com.redhat.delivery.backport', False):

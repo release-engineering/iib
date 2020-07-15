@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import copy
 import os
 import re
 import textwrap
@@ -469,18 +470,42 @@ def test_prepare_request_for_build(
     assert rv == {
         'arches': expected_arches,
         'binary_image_resolved': binary_image_resolved,
+        'bundle_mapping': expected_bundle_mapping,
         'from_index_resolved': from_index_resolved,
         'ocp_version': ocp_version,
     }
 
-    mock_ur.assert_called_once()
-    update_request_payload = mock_ur.call_args[0][1]
-    if expected_bundle_mapping:
-        assert update_request_payload['bundle_mapping'] == expected_bundle_mapping
-    else:
-        assert 'bundle_mapping' not in update_request_payload
 
-    assert update_request_payload.keys() == expected_payload_keys
+@pytest.mark.parametrize('bundle_mapping', (True, False))
+@pytest.mark.parametrize('from_index_resolved', (True, False))
+@mock.patch('iib.workers.tasks.build.update_request')
+def test_update_index_image_build_state(
+    mock_ur, bundle_mapping, from_index_resolved,
+):
+    prebuild_info = {
+        'arches': ['amd64', 's390x'],
+        'binary_image_resolved': 'binary-image@sha256:12345',
+        'extra': 'ignored',
+    }
+
+    if bundle_mapping:
+        prebuild_info['bundle_mapping'] = {
+            'some-bundle': ['quay.io/some-bundle:v1'],
+            'some-bundle2': ['quay.io/some-bundle2:v1'],
+        }
+
+    if from_index_resolved:
+        prebuild_info['from_index_resolved'] = 'from-index-image@sha256:abcde'
+
+    expected_payload = copy.deepcopy(prebuild_info)
+    del expected_payload['arches']
+    del expected_payload['extra']
+    expected_payload['state'] = 'in_progress'
+    expected_payload['state_reason'] = mock.ANY
+
+    request_id = 1
+    build._update_index_image_build_state(request_id, prebuild_info)
+    mock_ur.assert_called_once_with(request_id, expected_payload, mock.ANY)
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -574,6 +599,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
@@ -601,6 +627,7 @@ def test_handle_add_request(
     mock_pi,
     mock_bi,
     mock_oia,
+    mock_uiibs,
     mock_prfb,
     mock_vl,
     mock_cleanup,
@@ -642,7 +669,7 @@ def test_handle_add_request(
     mock_prfb.assert_called_once()
     mock_gb.assert_called_once()
     mock_aolti.assert_called_once()
-    mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, force_backport=force_backport)
+    mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, 'v4.5', force_backport=force_backport)
 
     add_args = mock_oia.call_args[0]
     assert ['some-bundle@sha'] in add_args
@@ -727,6 +754,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
@@ -754,6 +782,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
     mock_pi,
     mock_bi,
     mock_oia,
+    mock_uiibs,
     mock_prfb,
     mock_vl,
     mock_cleanup,
@@ -796,6 +825,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_rm')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
@@ -812,6 +842,7 @@ def test_handle_rm_request(
     mock_vii,
     mock_pi,
     mock_bi,
+    mock_uiibs,
     mock_oir,
     mock_prfb,
     mock_cleanup,
