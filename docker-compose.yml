@@ -1,3 +1,4 @@
+---
 version: '3'
 services:
   registry:
@@ -19,7 +20,7 @@ services:
   db:
     image: postgres:9.6
     environment:
-      POSTGRES_USER:  iib
+      POSTGRES_USER: iib
       POSTGRES_PASSWORD: iib
       POSTGRES_DB: iib
       POSTGRES_INITDB_ARGS: "--auth='ident' --auth='trust'"
@@ -38,18 +39,18 @@ services:
       context: .
       dockerfile: ./docker/Dockerfile-api
     command:
-    - /bin/sh
-    - -c
-    - >-
-      mkdir -p /etc/iib &&
-      cp /broker-certs/client.crt /etc/iib/messaging.crt &&
-      cp /broker-certs/client.key /etc/iib/messaging.key &&
-      cp /broker-certs/ca.crt /etc/iib/messaging-ca.crt &&
-      pip3 uninstall -y iib &&
-      python3 setup.py develop --no-deps &&
-      iib wait-for-db &&
-      iib db upgrade &&
-      flask run --reload --host 0.0.0.0 --port 8080
+      - /bin/sh
+      - -c
+      - >-
+        mkdir -p /etc/iib &&
+        cp /broker-certs/client.crt /etc/iib/messaging.crt &&
+        cp /broker-certs/client.key /etc/iib/messaging.key &&
+        cp /broker-certs/ca.crt /etc/iib/messaging-ca.crt &&
+        pip3 uninstall -y iib &&
+        python3 setup.py develop --no-deps &&
+        iib wait-for-db &&
+        iib db upgrade &&
+        flask run --reload --host 0.0.0.0 --port 8080
     environment:
       FLASK_ENV: development
       FLASK_APP: iib/web/wsgi.py
@@ -72,15 +73,16 @@ services:
     # This also adds the self-signed CA that was used to sign the Docker registry's certificate
     # to the trusted CA bundle. This will make podman trust the local Docker registry's certificate.
     command:
-    - /bin/bash
-    - -c
-    - >-
-      cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
-      cat /registry-certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
-      podman login --authfile ~/.docker/config.json.template -u iib -p iibpassword registry:8443 &&
-      pip3 install watchdog[watchmedo] &&
-      watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
-        -- celery -A iib.workers.tasks worker --loglevel=info
+      - /bin/bash
+      - -c
+      - >-
+        cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
+        cat /registry-certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+        podman login --authfile ~/.docker/config.json.template -u iib \
+        -p iibpassword registry:8443 &&
+        pip3 install watchdog[watchmedo] &&
+        watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
+          -- celery -A iib.workers.tasks worker --loglevel=info
     environment:
       IIB_DEV: 'true'
       REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
