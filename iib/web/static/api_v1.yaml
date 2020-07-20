@@ -460,8 +460,9 @@ paths:
                 properties:
                   error:
                     type: string
-                    example: '"organization" must be a string. This occurred on the build request '
-                      'in index 0.'
+                    example: >-
+                      "organization" must be a string. This occurred on the build request
+                      in index 0.
         '401':
           description: The user is not allowed to submit a build request with this input
           content:
