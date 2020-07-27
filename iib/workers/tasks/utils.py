@@ -112,6 +112,12 @@ def set_registry_token(token, container_image):
 
         return
 
+    if not container_image:
+        log.debug('Not changing the Docker configuration since no from_index was provided')
+        yield
+
+        return
+
     docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
     try:
         log.debug('Removing the Docker config symlink at %s', docker_config_path)
