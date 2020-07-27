@@ -112,6 +112,14 @@ def test_set_registry_token_null_token(mock_remove):
     mock_remove.assert_not_called()
 
 
+@mock.patch('os.remove')
+def test_set_container_image_null(mock_remove):
+    with utils.set_registry_token('token_username:token_pass', None):
+        pass
+
+    mock_remove.assert_not_called()
+
+
 def test_retry():
     mock_func = mock.Mock()
 
