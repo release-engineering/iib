@@ -141,10 +141,9 @@ idna==2.8 \
     --hash=sha256:c357b3f628cf53ae2c4c05627ecc484553142ca23264e593d327bcde5e9c3407 \
     --hash=sha256:ea8b7f6188e6fa117537c3df7da9fc686d485087abf6ac197f9c46432f7e4a3c \
     # via requests
-importlib-metadata==1.6.0 \
-    --hash=sha256:2a688cbaa90e0cc587f1df48bdc97a6eadccdcd9c35fb3f976a09e3b5016d90f \
-    --hash=sha256:34513a8a0c4962bc66d35b359558fd8a5e10cd472d37aec5f66858addef32c1e \
-    # via kombu, pluggy, pytest
+iniconfig==1.0.0 \
+    --hash=sha256:aa0b40f50a00e72323cb5d41302f9c6165728fd764ac8822aa3fff00a40d56b4 \
+    # via pytest
 itsdangerous==1.1.0 \
     --hash=sha256:321b033d07f2a4136d3ec762eac9f16a10ccd60f53c0c91af90217ace7ba1f19 \
     --hash=sha256:b12271b2047cb23eeb98c8b5622e2e5c5e9abd9784a153e9d8ef9cb4dd09d749 \
@@ -244,9 +243,9 @@ psycopg2-binary==2.8.4 \
     --hash=sha256:eac8a3499754790187bb00574ab980df13e754777d346f85e0ff6df929bcd964 \
     --hash=sha256:eaed1c65f461a959284649e37b5051224f4db6ebdc84e40b5e65f2986f101a08 \
     # via -r requirements-test.in
-py==1.8.1 \
-    --hash=sha256:5e27081401262157467ad6e7f851b7aa402c5852dbcb3dae06768434de5752aa \
-    --hash=sha256:c20fdd83a5dbc0af9efd622bee9a5564e278f6380fffcacc43ba6f43db2813b0 \
+py==1.9.0 \
+    --hash=sha256:366389d1db726cd2fcfc79732e75410e5fe4d31db13692115529d34069a043c2 \
+    --hash=sha256:9ca6883ce56b4e8da7e79ac18787889fa5206c79dcc67fb065376cd2fe03f342 \
     # via pytest
 pycparser==2.19 \
     --hash=sha256:a988718abfad80b6b157acce7bf130a30876d27603738ac39f140993246b25b3 \
@@ -262,9 +261,9 @@ pytest-cov==2.9.0 \
     --hash=sha256:b6a814b8ed6247bd81ff47f038511b57fe1ce7f4cc25b9106f1a4b106f1d9322 \
     --hash=sha256:c87dfd8465d865655a8213859f1b4749b43448b5fae465cb981e16d52a811424 \
     # via -r requirements-test.in
-pytest==5.4.2 \
-    --hash=sha256:95c710d0a72d91c13fae35dce195633c929c3792f54125919847fdcdf7caa0d3 \
-    --hash=sha256:eb2b5e935f6a019317e455b6da83dd8650ac9ffd2ee73a7b657a30873d67a698 \
+pytest==6.0.0 \
+    --hash=sha256:869ec27f9b89964ccfe4fbdd5ccb8d3f285aaa3e9aa16a8491b9c8829148c230 \
+    --hash=sha256:a64d8fb4c15cdc70dae047352e980a197d855747cc885eb332cb73ddcc769168 \
     # via -r requirements-test.in, pytest-cov
 python-dateutil==2.8.1 \
     --hash=sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c \
@@ -322,6 +321,10 @@ six==1.14.0 \
 sqlalchemy==1.3.13 \
     --hash=sha256:64a7b71846db6423807e96820993fa12a03b89127d278290ca25c0b11ed7b4fb \
     # via alembic, flask-sqlalchemy
+toml==0.10.1 \
+    --hash=sha256:926b612be1e5ce0634a2ca03470f95169cf16f939018233a670519cb4ac58b0f \
+    --hash=sha256:bda89d5935c2eac546d648028b9901107a595863cb36bae0c73ac804a9b4ce88 \
+    # via pytest
 urllib3==1.25.8 \
     --hash=sha256:2f3db8b19923a873b3e5256dc9c2dedfa883e33d87c690d9c7913e1f40673cdc \
     --hash=sha256:87716c2d2a7121198ebcb7ce7cccf6ce5e9ba539041cfbaeecfb641dc0bf6acc \
@@ -330,15 +333,7 @@ vine==1.3.0 \
     --hash=sha256:133ee6d7a9016f177ddeaf191c1f58421a1dcc6ee9a42c58b34bed40e1d2cd87 \
     --hash=sha256:ea4947cc56d1fd6f2095c8d543ee25dad966f78692528e68b4fada11ba3f98af \
     # via amqp, celery
-wcwidth==0.1.8 \
-    --hash=sha256:8fd29383f539be45b20bd4df0dc29c20ba48654a41e661925e612311e9f3c603 \
-    --hash=sha256:f28b3e8a6483e5d49e7f8949ac1a78314e740333ae305b4ba5defd3e74fb37a8 \
-    # via pytest
 werkzeug==1.0.0 \
     --hash=sha256:169ba8a33788476292d04186ab33b01d6add475033dfc07215e6d219cc077096 \
     --hash=sha256:6dc65cf9091cf750012f56f2cad759fa9e879f511b5ff8685e456b4e3bf90d16 \
     # via flask
-zipp==3.1.0 \
-    --hash=sha256:aa36550ff0c0b7ef7fa639055d797116ee891440eac1a56f378e2d3179e0320b \
-    --hash=sha256:c599e4d75c98f6798c509911d08a22e6c021d074469042177c8c86fb92eefd96 \
-    # via importlib-metadata
