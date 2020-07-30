@@ -265,8 +265,8 @@ def request_logger(func):
 def _get_function_arg_value(arg_name, func, args, kwargs):
     """Return the value of the given argument name."""
     original_func = func
-    while getattr(func, '__wrapped__', None):
-        original_func = func.__wrapped__
+    while getattr(original_func, '__wrapped__', None):
+        original_func = original_func.__wrapped__
     argspec = inspect.getfullargspec(original_func).args
 
     arg_index = argspec.index(arg_name)
