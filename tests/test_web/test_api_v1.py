@@ -586,16 +586,30 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
 
 
 @pytest.mark.parametrize(
-    'user_to_queue, expected_queue',
+    'user_to_queue, overwrite_from_index, expected_queue',
     (
-        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, 'Buccaneers'),
-        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, None),
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        ({'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            False,
+            'Buccaneers',
+        ),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            True,
+            'Buccaneers',
+        ),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, False, None),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_custom_user_queue(
-    mock_smfsc, mock_har, app, auth_env, client, user_to_queue, expected_queue
+    mock_smfsc, mock_har, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
@@ -603,9 +617,12 @@ def test_add_bundle_custom_user_queue(
         'binary_image': 'binary:image',
         'add_arches': ['s390x'],
     }
+    if overwrite_from_index:
+        data['from_index'] = 'index:image'
+        data['overwrite_from_index'] = True
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
-    assert rv.status_code == 201
+    assert rv.status_code == 201, rv.json
     mock_har.apply_async.assert_called_once()
     mock_har.apply_async.assert_called_with(
         args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
@@ -1071,16 +1088,30 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
 
 
 @pytest.mark.parametrize(
-    'user_to_queue, expected_queue',
+    'user_to_queue, overwrite_from_index, expected_queue',
     (
-        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, 'Buccaneers'),
-        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, None),
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        ({'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            False,
+            'Buccaneers',
+        ),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            True,
+            'Buccaneers',
+        ),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, False, None),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_remove_operator_custom_user_queue(
-    mock_smfsc, mock_hrr, app, auth_env, client, user_to_queue, expected_queue
+    mock_smfsc, mock_hrr, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
@@ -1088,9 +1119,12 @@ def test_remove_operator_custom_user_queue(
         'from_index': 'some:thing2',
         'operators': ['some:thing'],
     }
+    if overwrite_from_index:
+        data['from_index'] = 'index:image'
+        data['overwrite_from_index'] = True
 
     rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
-    assert rv.status_code == 201
+    assert rv.status_code == 201, rv.json
     mock_hrr.apply_async.assert_called_once()
     mock_hrr.apply_async.assert_called_with(
         args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
