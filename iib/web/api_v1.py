@@ -169,10 +169,11 @@ def _should_force_overwrite():
     return should_force
 
 
-def _get_user_queue():
+def _get_user_queue(serial=False):
     """
     Return the name of the celery task queue mapped to the current user.
 
+    :param bool serial: whether or not the task must run serially
     :return: queue name to be used or None if the default queue should be used
     :rtype: str or None
     """
@@ -180,7 +181,16 @@ def _get_user_queue():
     if not current_user.is_authenticated:
         return
 
-    return flask.current_app.config['IIB_USER_TO_QUEUE'].get(current_user.username)
+    username = current_user.username
+    if serial:
+        labeled_username = f'SERIAL:{username}'
+    else:
+        labeled_username = f'PARALLEL:{username}'
+
+    queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(labeled_username)
+    if not queue:
+        queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(username)
+    return queue
 
 
 @api_v1.route('/builds/add', methods=['POST'])
@@ -201,7 +211,8 @@ def add_bundles():
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    celery_queue = _get_user_queue()
+    overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
+    celery_queue = _get_user_queue(serial=overwrite_from_index)
     args = [
         payload['bundles'],
         payload['binary_image'],
@@ -211,7 +222,7 @@ def add_bundles():
         payload.get('cnr_token'),
         payload.get('organization'),
         payload.get('force_backport'),
-        _should_force_overwrite() or payload.get('overwrite_from_index'),
+        overwrite_from_index,
         payload.get('overwrite_from_index_token'),
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
     ]
@@ -355,13 +366,14 @@ def rm_operators():
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
+    overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
     args = [
         payload['operators'],
         payload['binary_image'],
         request.id,
         payload['from_index'],
         payload.get('add_arches'),
-        _should_force_overwrite() or payload.get('overwrite_from_index'),
+        overwrite_from_index,
         payload.get('overwrite_from_index_token'),
     ]
 
@@ -372,7 +384,10 @@ def rm_operators():
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_rm_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
+            args=args,
+            link_error=error_callback,
+            argsrepr=repr(safe_args),
+            queue=_get_user_queue(serial=overwrite_from_index),
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
@@ -522,10 +537,13 @@ def add_rm_batch():
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
     processed_request_ids = []
-    celery_queue = _get_user_queue()
     for build_request, request in zip(payload['build_requests'], requests):
         request_jsons.append(request.to_json())
 
+        overwrite_from_index = _should_force_overwrite() or build_request.get(
+            'overwrite_from_index'
+        )
+        celery_queue = _get_user_queue(serial=overwrite_from_index)
         if isinstance(request, RequestAdd):
             args = [
                 build_request['bundles'],
@@ -536,7 +554,7 @@ def add_rm_batch():
                 build_request.get('cnr_token'),
                 build_request.get('organization'),
                 build_request.get('force_backport'),
-                _should_force_overwrite() or build_request.get('overwrite_from_index'),
+                overwrite_from_index,
                 build_request.get('overwrite_from_index_token'),
                 flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
             ]
@@ -547,7 +565,7 @@ def add_rm_batch():
                 request.id,
                 build_request['from_index'],
                 build_request.get('add_arches'),
-                _should_force_overwrite() or build_request.get('overwrite_from_index'),
+                overwrite_from_index,
                 build_request.get('overwrite_from_index_token'),
             ]
 
