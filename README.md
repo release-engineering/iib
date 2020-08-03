@@ -158,8 +158,10 @@ The custom configuration options for the REST API are listed below:
 * `IIB_REQUEST_LOGS_DAYS_TO_LIVE` - the amount of days after which per request logs are considered
   to be expired and may be removed. This defaults to `3`.
 * `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
-  This is useful in isolating the workload from certain users. The default queue is used for tasks
-  from users not found in the mapping. This defaults to `{}`.
+  This is useful in isolating the workload from certain users. Some celery tasks must execute
+  serially, while others can execute in parallel. Add the prefix `SERIAL:` or `PARALLEL:` to the
+  **username** key in this mapping to create queues based on serial vs parallel tasks. The default
+  queue is used for tasks from users not found in the mapping. This defaults to `{}`.
 * `IIB_WORKER_USERNAMES` - the list of case-sensitve Kerberos principals that are allowed to update
   build requests using the PATCH API endpoint. This defaults to `[]`.
 * `LOGIN_DISABLED` - determines if authentication is required. This defaults to `False`
