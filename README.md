@@ -220,6 +220,14 @@ The custom configuration options for the Celery workers are listed below:
   file though. This defaults to `~/.docker/config.json.template`.
 * `iib_greenwave_url` - the URL to the Greenwave REST API if gating is desired
   (e.g. `https://greenwave.domain.local/api/v1.0/`). This defaults to `None`.
+* `iib_grpc_init_wait_time` - time to wait for the index image service to be initialized. This
+  defaults to `3` seconds.
+* `iib_grpc_max_port_tries` - maximum ports to try when initializing the index image service.
+  This defaults to `100` tries.
+* `iib_grpc_start_port` - first port to try when starting the service (subsequent are increments).
+  This defaults to `50051`.
+* `iib_grpc_max_tries` - maximum number of times to try to start the index image service
+  before giving up. This defaults to `5` attempts.
 * `iib_index_image_output_registry` - if set, that value will replace the value from `iib_registry`
   in the output `index_image` pull specification. This is useful if you'd like users of IIB to
   pull from a proxy to a registry instead of the registry directly.

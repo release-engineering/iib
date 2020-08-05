@@ -16,6 +16,10 @@ class Config(object):
         os.path.expanduser('~'), '.docker', 'config.json.template'
     )
     iib_greenwave_url = None
+    iib_grpc_init_wait_time = 3
+    iib_grpc_max_port_tries = 100
+    iib_grpc_max_tries = 5
+    iib_grpc_start_port = 50051
     iib_image_push_template = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry = None
     iib_log_level = 'INFO'
