@@ -15,3 +15,7 @@ class IIBError(BaseException):
 
 class ValidationError(BaseException):
     """Denote invalid input."""
+
+
+class AddressAlreadyInUse(BaseException):
+    """Adress is already used by other service."""

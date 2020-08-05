@@ -3,13 +3,16 @@ import hashlib
 import json
 import logging
 import os
+import re
+import subprocess
+import time
 import tempfile
 import textwrap
 
 from operator_manifest.operator import ImageName, OperatorManifest
 import ruamel.yaml
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
@@ -345,6 +348,153 @@ def _get_resolved_image(pull_spec):
     pull_spec_resolved = f'{name}@{digest}'
     log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
     return pull_spec_resolved
+
+
+def _get_index_database(from_index, base_dir):
+    """
+    Get database file from the specified index image and save it locally.
+
+    :param str from_index: index image to get database file from.
+    :param str base_dir: base directory to which the database file should be saved.
+    :return: path to the copied database file.
+    :rtype: str
+    :raises IIBError: if any podman command fails.
+    """
+    data = skopeo_inspect(f'docker://{from_index}')
+    try:
+        db_path = data['Labels']['operators.operatorframework.io.index.database.v1']
+    except KeyError:
+        raise IIBError('Index image doesn\'t have the label specifying its database location.')
+    _copy_files_from_image(from_index, db_path, base_dir)
+    local_path = os.path.join(base_dir, os.path.basename(db_path))
+    return local_path
+
+
+def _serve_index_registry(db_path):
+    """
+    Locally start OPM registry service, which can be communicated with using gRPC queries.
+
+    Due to IIB's paralellism, the service can run multiple times, which could lead to port
+    binding conflicts. Resolution of port conflicts is handled in this function as well.
+
+    :param str db_path: path to index database containing the registry data.
+    :return: tuple containing port number of the running service and the running Popen object.
+    :rtype: (int, Popen)
+    :raises IIBError: if all tried ports are in use, or the command failed for another reason.
+    """
+    conf = get_worker_config()
+    port_start = conf['iib_grpc_start_port']
+    port_end = port_start + conf['iib_grpc_max_port_tries']
+
+    for port in range(port_start, port_end):
+        try:
+            return (
+                port,
+                _serve_index_registry_at_port(
+                    db_path, port, conf['iib_grpc_max_tries'], conf['iib_grpc_init_wait_time']
+                ),
+            )
+        except AddressAlreadyInUse:
+            log.info('Port %d is in use, trying another.', port)
+
+    err_msg = f'No free port has been found after {conf.get("iib_grpc_max_port_tries")} attempts.'
+    log.error(err_msg)
+    raise IIBError(err_msg)
+
+
+@retry(attempts=2, wait_on=IIBError, logger=log)
+def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
+    """
+    Start an image registry service at a specified port.
+
+    :param str db_path: path to index database containing the registry data.
+    :param str int port: port to start the service on.
+    :param max_tries: how many times to try to start the service before giving up.
+    :param wait_time: time to wait before checking if the service is initialized.
+    :return: object of the running Popen process.
+    :rtype: Popen
+    :raises IIBError: if the process has failed to initialize too many times, or an unexpected
+        error occured.
+    :raises AddressAlreadyInUse: if the specified port is already being used by another service.
+    """
+    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path]
+    for attempt in range(max_tries):
+        rpc_proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+        )
+        start_time = time.time()
+        while time.time() - start_time < wait_time:
+            time.sleep(1)
+            ret = rpc_proc.poll()
+            # process has terminated
+            if ret is not None:
+                stderr = rpc_proc.stderr.read()
+                if 'address already in use' in stderr:
+                    raise AddressAlreadyInUse(f'Port {port} is already used by a different service')
+                raise IIBError(f'Command "{" ".join(cmd)}" has failed with error "{stderr}"')
+
+            # query the service to see if it has started
+            try:
+                output = run_cmd(
+                    ['grpcurl', '-plaintext', f'localhost:{port}', 'list', 'api.Registry']
+                )
+            except IIBError:
+                output = ''
+
+            if 'api.Registry.ListBundles' in output:
+                log.debug('Started the command "%s"', ' '.join(cmd))
+                log.info('Index registry service has been initialized.')
+                return rpc_proc
+
+        rpc_proc.kill()
+
+    raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
+
+
+def _get_present_bundles(from_index, base_dir):
+    """
+    Get a list of bundles already present in the index image.
+
+    :param str from_index: index image to inspect.
+    :param str base_dir: base directory to create temporary files in.
+    :return: list of present bundles as provided by the grpc query.
+    :rtype: list
+    :raises IIBError: if any of the commands fail.
+    """
+    db_path = _get_index_database(from_index, base_dir)
+    port, rpc_proc = _serve_index_registry(db_path)
+
+    bundles = run_cmd(
+        ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+        exc_msg='Failed to get bundle data from index image',
+    )
+    rpc_proc.kill()
+
+    # Transform returned data to parsable json
+    present_bundles = [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
+    return present_bundles
+
+
+def _get_missing_bundles(present_bundles, bundles):
+    """
+    Filter out bundles to only those not present in the index image.
+
+    :param list present_bundles: list of bundles present in the index image, as provided by opm.
+    :param list bundles: resolved bundles requested to be added to the index image.
+    :return: list of bundles not present in the index image.
+    :rtype: list
+    """
+    present_bundle_hashes = []
+    filtered_bundles = []
+    for bundle in present_bundles:
+        if '@sha256:' in bundle['bundlePath']:
+            present_bundle_hashes.append(bundle['bundlePath'].split('@sha256:')[-1])
+
+    for bundle in bundles:
+        if bundle.split('@sha256:')[-1] not in present_bundle_hashes:
+            filtered_bundles.append(bundle)
+
+    return filtered_bundles
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
@@ -795,6 +945,30 @@ def handle_add_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        if from_index:
+            msg = 'Checking if bundles are already present in index image'
+            log.info(msg)
+            set_request_state(request_id, 'in_progress', msg)
+            present_bundles = _get_present_bundles(from_index, temp_dir)
+            filtered_bundles = _get_missing_bundles(present_bundles, resolved_bundles)
+            excluded_bundles = [
+                bundle for bundle in resolved_bundles if bundle not in filtered_bundles
+            ]
+            resolved_bundles = filtered_bundles
+            if not resolved_bundles:
+                log.info(
+                    'All bundles are already present in the index image.'
+                    ' No additional operations are necessary'
+                )
+                set_request_state(
+                    request_id, 'complete', 'All bundles are already present in the index image'
+                )
+                return
+            log.info(
+                'Following bundles are already present in the index image: %s',
+                ' '.join(excluded_bundles),
+            )
+
         _opm_index_add(
             temp_dir,
             resolved_bundles,
