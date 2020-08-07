@@ -59,7 +59,7 @@ class ProductionConfig(Config):
 class DevelopmentConfig(Config):
     """The development IIB Celery configuration."""
 
-    broker_url = 'amqp://iib:iib@rabbitmq:5672//'
+    broker_url = 'amqp://iib:iib@rabbitmq:5673//'
     iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
     iib_organization_customizations = {

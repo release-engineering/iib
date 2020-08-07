@@ -30,6 +30,10 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: iib
       RABBITMQ_DEFAULT_PASS: iib
+      # Avoid port conflict with ActiveMQ broker when using podman-compose.
+      # Even though the port is not exposed, podman-compose's use of a pod
+      # requires the ports to be unique across all containers within the pod.
+      RABBITMQ_NODE_PORT: 5673
     ports:
       # The RabbitMQ management console
       - 8081:15672
