@@ -230,15 +230,6 @@ def test_get_build_logs_not_configured(client, db, minimal_request_add):
         ),
         (
             {
-                'bundles': [],
-                'from_index': 'pull:spec',
-                'binary_image': 'binary:img',
-                'add_arches': ['s390x'],
-            },
-            '"bundles" should be a non-empty array of strings',
-        ),
-        (
-            {
                 'bundles': ['some:thing'],
                 'from_index': 32,
                 'binary_image': 'binary:image',
@@ -371,12 +362,20 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
     'data, error_msg',
     (
         (
-            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x']},
-            '"bundles" should be a non-empty array of strings',
-        ),
-        (
             {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
             'Missing required parameter(s): binary_image',
+        ),
+        (
+            {'from_index': 'pull:spec', 'add_arches': ['s390x']},
+            '"from_index" and "binary_image" must be specified if no bundles are specified',
+        ),
+        (
+            {'add_arches': ['s390x'], 'binary_image': 'binary:image'},
+            '"from_index" and "binary_image" must be specified if no bundles are specified',
+        ),
+        (
+            {'add_arches': ['s390x']},
+            '"from_index" and "binary_image" must be specified if no bundles are specified',
         ),
         (
             {
@@ -461,18 +460,30 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
     mock_smfsc.assert_not_called()
 
 
-@pytest.mark.parametrize('overwrite_from_index', (False, True))
+@pytest.mark.parametrize(
+    ('overwrite_from_index', 'bundles', 'from_index'),
+    (
+        (False, ['some:thing'], None),
+        (False, [], 'some:thing'),
+        (True, ['some:thing'], 'some:thing'),
+        (True, [], 'some:thing'),
+    ),
+)
 @mock.patch('iib.web.api_v1.handle_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth_env, client):
+def test_add_bundle_success(
+    mock_smfsc, mock_har, overwrite_from_index, db, auth_env, client, bundles, from_index,
+):
     data = {
-        'bundles': ['some:thing'],
         'binary_image': 'binary:image',
         'add_arches': ['s390x'],
         'organization': 'org',
         'cnr_token': 'token',
         'overwrite_from_index': overwrite_from_index,
+        'from_index': from_index,
     }
+    if bundles:
+        data['bundles'] = bundles
 
     response_json = {
         'arches': [],
@@ -481,8 +492,8 @@ def test_add_bundle_success(mock_smfsc, mock_har, overwrite_from_index, db, auth
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
-        'bundles': ['some:thing'],
-        'from_index': None,
+        'bundles': bundles,
+        'from_index': from_index,
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
