@@ -214,7 +214,7 @@ def add_bundles():
     overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
     celery_queue = _get_user_queue(serial=overwrite_from_index)
     args = [
-        payload['bundles'],
+        payload.get('bundles', []),
         payload['binary_image'],
         request.id,
         payload.get('from_index'),
