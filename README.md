@@ -232,6 +232,10 @@ The custom configuration options for the Celery workers are listed below:
   Additionally, it will use this file as a base and set the `overwrite_from_index_token` for the
   registry of the `from_index` container image when applicable. IIB will never directly modify this
   file though. This defaults to `~/.docker/config.json.template`.
+*  `iib_dogpile_backend` - the configuration for the dogpile.cache backend. The default value is
+   `'dogpile.cache.null'`. In case you want to enable caching, set this to `'dogpile.cache.memcached'`.
+*  `iib_dogpile_expiration_time` - the number of seconds after which the cached item is expired.
+*   `iib_dogpile_arguments` - additional arguments for the dogpile backend.
 * `iib_greenwave_url` - the URL to the Greenwave REST API if gating is desired
   (e.g. `https://greenwave.domain.local/api/v1.0/`). This defaults to `None`.
 * `iib_grpc_init_wait_time` - time to wait for the index image service to be initialized. This

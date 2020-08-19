@@ -1,10 +1,12 @@
 celery
+dogpile.cache
 flask
 flask-login
 flask-migrate
 flask-sqlalchemy
 operator-manifest
 python-qpid-proton
+python-memcached
 psycopg2-binary
 recommonmark
 requests

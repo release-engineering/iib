@@ -9,12 +9,18 @@ import os
 import re
 import subprocess
 
+from iib.workers.dogpile_cache import (
+    create_dogpile_region,
+    dogpile_cache,
+    skopeo_inspect_should_use_cache,
+)
 from operator_manifest.operator import ImageName
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 
 log = logging.getLogger(__name__)
+dogpile_cache_region = create_dogpile_region()
 
 
 def get_image_labels(pull_spec):
@@ -147,6 +153,9 @@ def set_registry_token(token, container_image):
 
 
 @retry(wait_on=IIBError, logger=log)
+@dogpile_cache(
+    dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache
+)
 def skopeo_inspect(*args, return_json=True):
     """
     Wrap the ``skopeo inspect`` command.
