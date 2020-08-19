@@ -11,13 +11,16 @@ from iib.workers.tasks import legacy
 @pytest.mark.parametrize(
     'backport_label, ocp_version, force_backport, expect_backport',
     (
-        (True, 'v4.5', True, True),
-        (True, 'v4.5', False, True),
-        (False, 'v4.5', True, True),
-        (False, 'v4.5', False, False),
-        (True, 'v4.6', True, False),
-        (True, 'v4.6', False, False),
-        (False, 'v4.6', True, False),
+        ('true', 'v4.5', True, True),
+        ('true', 'v4.5', False, True),
+        ('True', 'v4.5', False, True),
+        ('false', 'v4.5', True, True),
+        ('false', 'v4.5', False, False),
+        ('False', 'v4.5', False, False),
+        ('', 'v4.5', False, False),
+        ('true', 'v4.6', True, False),
+        ('true', 'v4.6', False, False),
+        ('false', 'v4.6', True, False),
     ),
 )
 @mock.patch('iib.workers.tasks.legacy.set_request_state')

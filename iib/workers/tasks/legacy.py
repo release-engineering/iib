@@ -7,6 +7,7 @@ import shutil
 import tempfile
 
 import requests
+import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
@@ -71,7 +72,9 @@ def get_legacy_support_packages(bundles, request_id, ocp_version, force_backport
         set_request_state(request_id, 'in_progress', 'Backport legacy support will be forced')
     for bundle in bundles:
         labels = get_image_labels(bundle)
-        if force_backport or labels.get('com.redhat.delivery.backport', False):
+        if force_backport or ruamel.yaml.safe_load(
+            labels.get('com.redhat.delivery.backport', 'false')
+        ):
             packages.add(labels['operators.operatorframework.io.bundle.package.v1'])
 
     return packages
