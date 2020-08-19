@@ -30,6 +30,12 @@ class Config(object):
     )
     iib_request_logs_level = 'DEBUG'
     iib_required_labels = {}
+    # Configuration for dogpile.cache
+    # Disabled by default (by using 'dogpile.cache.null').
+    # To enable caching set 'dogpile.cache.memcached' as backend.
+    iib_dogpile_backend = 'dogpile.cache.null'
+    iib_dogpile_expiration_time = 600
+    iib_dogpile_arguments = {'url': ['127.0.0.1']}
     iib_skopeo_timeout = '300s'
     iib_total_attempts = 5
     include = [
@@ -80,6 +86,7 @@ class DevelopmentConfig(Config):
     }
     iib_registry = 'registry:8443'
     iib_request_logs_dir = '/var/log/iib/requests'
+    iib_dogpile_backend = 'dogpile.cache.memcached'
 
 
 class TestingConfig(DevelopmentConfig):
@@ -89,6 +96,8 @@ class TestingConfig(DevelopmentConfig):
     iib_greenwave_url = 'some_url'
     iib_omps_url = 'some_url'
     iib_request_logs_dir = None
+    # disable dogpile cache for tests
+    iib_dogpile_backend = 'dogpile.cache.null'
 
 
 def configure_celery(celery_app):

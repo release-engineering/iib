@@ -25,6 +25,11 @@ services:
       POSTGRES_DB: iib
       POSTGRES_INITDB_ARGS: "--auth='ident' --auth='trust'"
 
+  memcached:
+    image: memcached
+    ports:
+      - 11211:11211
+
   rabbitmq:
     image: rabbitmq:3.7-management
     environment:
@@ -101,6 +106,7 @@ services:
     depends_on:
       - rabbitmq
       - registry
+      - memcached
 
   # This is an external message broker used to publish messages about state changes
   message-broker:
