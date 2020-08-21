@@ -79,7 +79,7 @@ services:
         cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
         cat /registry-certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
         podman login --authfile ~/.docker/config.json.template -u iib \
-        -p iibpassword registry:8443 &&
+          -p iibpassword registry:8443 &&
         pip3 install watchdog[watchmedo] &&
         watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
           -- celery -A iib.workers.tasks worker --loglevel=info
