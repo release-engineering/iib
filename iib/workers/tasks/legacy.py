@@ -10,7 +10,7 @@ import requests
 import ruamel.yaml
 
 from iib.exceptions import IIBError
-from iib.workers.api_utils import set_request_state
+from iib.workers.api_utils import set_request_state, set_omps_operator_version
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import get_image_labels, retry, run_cmd
 
@@ -30,14 +30,17 @@ def export_legacy_packages(packages, request_id, rebuilt_index_image, cnr_token,
         backported packages should be pushed to.
     :raises IIBError: if the export of packages fails.
     """
+    operator_versions = dict()
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         for package in packages:
             _opm_index_export(rebuilt_index_image, package, temp_dir)
             package_dir = os.path.join(temp_dir, package)
             _verify_package_info(package_dir, rebuilt_index_image)
             _zip_package(package_dir)
-            _push_package_manifest(package_dir, cnr_token, organization)
+            omps_response = _push_package_manifest(package_dir, cnr_token, organization)
+            operator_versions[package] = omps_response.get('version')
 
+    set_omps_operator_version(request_id, operator_versions)
     set_request_state(request_id, 'in_progress', 'Back ported packages successfully pushed to OMPS')
 
 
@@ -120,7 +123,9 @@ def _push_package_manifest(package_dir, cnr_token, organization):
         app registry via OMPS.
     :param str organization: the organization name in the legacy app registry to which
          the backported packages should be pushed to.
-    :raises IIBError: if the push is unsucessful
+    :return: Response from OMPS in JSON format
+    :rtype: dict|None
+    :raises IIBError: if the push fails
     """
     conf = get_worker_config()
     base_dir, _ = _get_base_dir_and_pkg_name(package_dir)
@@ -141,6 +146,9 @@ def _push_package_manifest(package_dir, cnr_token, organization):
             raise IIBError(
                 f'Push to {organization} in the legacy app registry was unsucessful: {error_msg}'
             )
+
+        log.info('OMPS response: %s', resp.text)
+        return resp.json()
 
 
 def validate_legacy_params_and_config(packages, bundles, cnr_token, organization):

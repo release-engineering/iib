@@ -127,10 +127,38 @@ def test_opm_index_export(mock_run_cmd):
 @mock.patch('iib.workers.tasks.legacy._verify_package_info')
 @mock.patch('iib.workers.tasks.legacy._zip_package')
 @mock.patch('iib.workers.tasks.legacy._push_package_manifest')
+@mock.patch('iib.workers.tasks.legacy.set_omps_operator_version')
 @mock.patch('iib.workers.tasks.legacy.set_request_state')
 @mock.patch('iib.workers.tasks.legacy._opm_index_export')
-def test_export_legacy_packages(mock_oie, mock_srs, mock_ppm, mock_zp, mock_vpi):
-    packages = ['prometheus']
+def test_export_legacy_packages(mock_oie, mock_srs, mock_soov, mock_ppm, mock_zp, mock_vpi):
+
+    mock_ppm.return_value = {
+        'extracted_files': [
+            '1.1.1/backup.crd.yaml',
+            '1.1.1/backupstoragelocation.crd.yaml',
+            '1.1.1/deletebackuprequest.crd.yaml',
+            '1.1.1/downloadrequest.crd.yaml',
+            '1.1.1/mig-operator.v1.1.1.clusterserviceversion.yaml',
+            '1.1.1/migcluster.crd.yaml',
+            '1.1.1/migmigration.crd.yaml',
+            '1.1.1/migplan.crd.yaml',
+            '1.1.1/migrationcontroller.crd.yaml',
+            '1.1.1/migstorage.crd.yaml',
+            '1.1.1/podvolumebackup.crd.yaml',
+            '1.1.1/podvolumerestore.crd.yaml',
+            '1.1.1/resticrepository.crd.yaml',
+            '1.1.1/restore.crd.yaml',
+            '1.1.1/schedule.crd.yaml',
+            '1.1.1/serverstatusrequest.crd.yaml',
+            '1.1.1/volumesnapshotlocation.crd.yaml',
+            'package.yaml',
+        ],
+        'organization': 'redhat-operators-devtest',
+        'repo': 'lgallett-bundle',
+        'version': '37.0.0',
+    }
+
+    packages = {'lgallett-bundle'}
     legacy.export_legacy_packages(packages, 3, 'from:index', 'token', 'org')
 
     mock_oie.assert_called_once()
@@ -138,6 +166,7 @@ def test_export_legacy_packages(mock_oie, mock_srs, mock_ppm, mock_zp, mock_vpi)
     mock_zp.assert_called_once()
     mock_ppm.assert_called_once()
     mock_srs.assert_called_once()
+    mock_soov.assert_called_once_with(3, {'lgallett-bundle': '37.0.0'})
 
 
 @pytest.mark.parametrize(

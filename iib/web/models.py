@@ -788,6 +788,8 @@ class RequestAdd(Request, RequestIndexImageMixin):
     bundles = db.relationship('Image', secondary=RequestAddBundle.__table__)
     organization = db.Column(db.String, nullable=True)
 
+    omps_operator_version = db.Column(db.String, nullable=True)
+
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['add'].value,
     }
@@ -860,6 +862,9 @@ class RequestAdd(Request, RequestIndexImageMixin):
         rv = super().to_json(verbose=verbose)
         rv.update(self.get_common_index_image_json())
         rv['organization'] = self.organization
+        rv['omps_operator_version'] = {}
+        if self.omps_operator_version:
+            rv['omps_operator_version'] = json.loads(self.omps_operator_version)
 
         for bundle in self.bundles:
             if bundle.operator:
@@ -879,7 +884,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         """
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
-        rv.update({'bundles', 'bundle_mapping'})
+        rv.update({'bundles', 'bundle_mapping', 'omps_operator_version'})
         return rv
 
 
