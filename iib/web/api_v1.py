@@ -25,6 +25,7 @@ from iib.web.models import (
     RequestState,
     RequestStateMapping,
     get_request_query_options,
+    RequestTypeMapping,
 )
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
@@ -351,6 +352,17 @@ def patch_request(request_id):
         else:
             request.add_state(new_state, new_state_reason)
             state_updated = True
+
+    if 'omps_operator_version' in payload:
+        # `omps_operator_version` is defined in RequestAdd only
+        if request.type == RequestTypeMapping.add.value:
+            request_add = RequestAdd.query.get(request_id)
+            request_add.omps_operator_version = payload.get('omps_operator_version')
+        else:
+            raise ValidationError(
+                f'Request {request_id} is type of "{RequestTypeMapping.pretty(request.type)}" '
+                f'request and does not support setting "omps_operator_version"'
+            )
 
     image_keys = (
         'binary_image_resolved',

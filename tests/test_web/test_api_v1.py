@@ -53,6 +53,7 @@ def test_get_build(app, auth_env, client, db):
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
         },
+        'omps_operator_version': {},
         'organization': None,
         'removed_operators': [],
         'request_type': 'add',
@@ -504,6 +505,7 @@ def test_add_bundle_success(
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
         },
+        'omps_operator_version': {},
         'organization': 'org',
         'state_history': [
             {
@@ -847,6 +849,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
         },
+        'omps_operator_version': {},
         'organization': None,
         'removed_operators': [],
         'request_type': 'add',

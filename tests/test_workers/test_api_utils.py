@@ -41,7 +41,19 @@ def test_set_request_state(mock_update_request):
     api_utils.set_request_state(3, state, state_reason)
 
     mock_update_request.assert_called_once()
-    mock_update_request.call_args[0][1] == {'state': state, 'state_reason': state_reason}
+    assert mock_update_request.call_args[0][1] == {'state': state, 'state_reason': state_reason}
+
+
+@mock.patch('iib.workers.api_utils.requests_auth_session')
+def test_set_omps_operator_version(mock_session):
+    omps_operator_version = {'operator': '1.0.0'}
+    api_utils.set_omps_operator_version(3, omps_operator_version)
+
+    mock_session.patch.assert_called_once_with(
+        'http://iib-api:8080/api/v1/builds/3',
+        json={'omps_operator_version': '{"operator": "1.0.0"}'},
+        timeout=30,
+    )
 
 
 @mock.patch('iib.workers.api_utils.requests_auth_session')

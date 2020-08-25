@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 import logging
 
 import requests
@@ -86,6 +87,28 @@ def set_request_state(request_id, state, state_reason):
     )
     payload = {'state': state, 'state_reason': state_reason}
     exc_msg = 'Setting the state to "{state}" on request {request_id} failed'
+    return update_request(request_id, payload, exc_msg=exc_msg)
+
+
+def set_omps_operator_version(request_id, omps_operator_version):
+    """
+    Set the set_omps_operator_version of the request using the IIB API.
+
+    :param int request_id: the ID of the IIB request
+    :param dict omps_operator_version: the state to set the IIB request to
+    :return: the updated request
+    :rtype: dict
+    :raise IIBError: if the request to the IIB API fails
+    """
+    omps_operator_version_json = json.dumps(omps_operator_version)
+    log.info(
+        'Setting the omps_operator_version of request %d to "%s"',
+        request_id,
+        omps_operator_version_json,
+    )
+    payload = {'omps_operator_version': omps_operator_version_json}
+    exc_msg = 'Setting the omps_operator_version to "{omps_operator_version}" failed'
+
     return update_request(request_id, payload, exc_msg=exc_msg)
 
 
