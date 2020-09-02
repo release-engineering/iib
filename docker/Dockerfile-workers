@@ -9,12 +9,18 @@ RUN dnf -y install \
     make \
     && dnf clean all
 
-ENV OPM_SRC="/src"
-ENV OPM_TAG="v1.12.8"
+ENV OPM_SRC_4_6="/src/4.6"
+ENV OPM_TAG_4_6="v1.13.8"
+ENV OPM_SRC_4_5="/src/4.5"
+ENV OPM_TAG_4_5="v1.12.8"
 
-RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC && \
-    (cd $OPM_SRC && git checkout $OPM_TAG && make build) && \
-    cp $OPM_SRC/bin/opm /usr/bin/opm
+RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC_4_6 && \
+    (cd $OPM_SRC_4_6 && git checkout $OPM_TAG_4_6 && make build) && \
+    cp $OPM_SRC_4_6/bin/opm /usr/bin/opmv4.6
+
+RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC_4_5 && \
+    (cd $OPM_SRC_4_5 && git checkout $OPM_TAG_4_5 && make build) && \
+    cp $OPM_SRC_4_5/bin/opm /usr/bin/opmv4.5
 
 FROM centos:8
 LABEL maintainer="Red Hat - EXD"
@@ -36,7 +42,8 @@ RUN dnf -y install \
     skopeo \
     && dnf clean all
 
-COPY --from=builder /usr/bin/opm /usr/bin/opm
+COPY --from=builder /usr/bin/opmv4.5 /usr/bin/opmv4.5
+COPY --from=builder /usr/bin/opmv4.6 /usr/bin/opmv4.6
 ADD https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 /usr/bin/manifest-tool
 RUN chmod +x /usr/bin/manifest-tool
 COPY . .

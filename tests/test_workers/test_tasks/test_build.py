@@ -310,15 +310,18 @@ def test_get_resolved_bundles_failure(mock_si):
 
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@pytest.mark.parametrize('ocp_version', ('v4.5', 'v4.6'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index):
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index, ocp_version):
     bundles = ['bundle:1.2', 'bundle:1.3']
-    build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass')
+    build._opm_index_add(
+        '/tmp/somedir', bundles, 'binary-image:latest', ocp_version, from_index, 'user:pass'
+    )
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'add']
+    assert opm_args[0:3] == [f'opm{ocp_version}', 'index', 'add']
     assert ','.join(bundles) in opm_args
     if from_index:
         assert '--from-index' in opm_args
@@ -328,17 +331,24 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index):
     mock_srt.assert_called_once_with('user:pass', from_index)
 
 
+@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@pytest.mark.parametrize('ocp_version', ('v4.5', 'v4.6'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_rm(mock_run_cmd, mock_srt):
+def test_opm_index_rm(mock_run_cmd, mock_srt, from_index, ocp_version):
     operators = ['operator_1', 'operator_2']
     build._opm_index_rm(
-        '/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest', 'user:pass'
+        '/tmp/somedir',
+        operators,
+        'binary-image:latest',
+        'some_index:latest',
+        ocp_version,
+        'user:pass',
     )
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'rm']
+    assert opm_args[0:3] == [f'opm{ocp_version}', 'index', 'rm']
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
     mock_srt.assert_called_once_with('user:pass', 'some_index:latest')

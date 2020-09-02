@@ -339,7 +339,7 @@ def _get_resolved_image(pull_spec):
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
 def _opm_index_add(
-    base_dir, bundles, binary_image, from_index=None, overwrite_from_index_token=None
+    base_dir, bundles, binary_image, ocp_version, from_index=None, overwrite_from_index_token=None
 ):
     """
     Add the input bundles to an operator index.
@@ -351,6 +351,8 @@ def _opm_index_add(
         add to the index image being built.
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from. This should point to a digest or stable tag.
+    :param str ocp_version: the version that is specified on the from index. Will choose which
+        version of OPM to run.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
     :param str overwrite_from_index_token: the token used for overwriting the input
@@ -362,7 +364,7 @@ def _opm_index_add(
     # to a bundle image using a digest fails when using the opm command.
     bundle_str = ','.join(bundles) or "''"
     cmd = [
-        'opm',
+        f'opm{ocp_version}',
         'index',
         'add',
         '--generate',
@@ -386,7 +388,9 @@ def _opm_index_add(
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
-def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_index_token=None):
+def _opm_index_rm(
+    base_dir, operators, binary_image, from_index, ocp_version, overwrite_from_index_token=None
+):
     """
     Remove the input operators from the operator index.
 
@@ -399,13 +403,15 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
         gets copied from.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str ocp_version: the version that is specified on the from index. Will choose which
+        version of OPM to run.
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :raises IIBError: if the ``opm index rm`` command fails.
     """
     cmd = [
-        'opm',
+        f'opm{ocp_version}',
         'index',
         'rm',
         '--generate',
@@ -789,6 +795,7 @@ def handle_add_request(
             temp_dir,
             resolved_bundles,
             prebuild_info['binary_image_resolved'],
+            prebuild_info['ocp_version'],
             from_index,
             overwrite_from_index_token,
         )
@@ -864,7 +871,14 @@ def handle_rm_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
+        _opm_index_rm(
+            temp_dir,
+            operators,
+            binary_image,
+            from_index,
+            prebuild_info['ocp_version'],
+            overwrite_from_index_token,
+        )
 
         _add_ocp_label_to_index(
             prebuild_info['ocp_version'], temp_dir, 'index.Dockerfile',
