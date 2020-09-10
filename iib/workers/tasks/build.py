@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import hashlib
+import json
 import logging
 import os
 import tempfile
@@ -331,8 +332,17 @@ def _get_resolved_image(pull_spec):
     log.debug('Resolving %s', pull_spec)
     name = _get_container_image_name(pull_spec)
     skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
-    digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
-    pull_spec_resolved = f'{name}@sha256:{digest}'
+    if json.loads(skopeo_output).get('schemaVersion') == 2:
+        raw_digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
+        digest = f'sha256:{raw_digest}'
+    else:
+        # Schema 1 is not a stable format. The contents of the manifest may change slightly
+        # between requests causing a different digest to be computed. Instead, let's leverage
+        # skopeo's own logic for determining the digest in this case. In the future, we
+        # may want to use skopeo in all cases, but this will have significant performance
+        # issues until https://github.com/containers/skopeo/issues/785
+        digest = skopeo_inspect(f'docker://{pull_spec}')['Digest']
+    pull_spec_resolved = f'{name}@{digest}'
     log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
     return pull_spec_resolved
 
