@@ -259,6 +259,62 @@ def test_get_resolved_image_manifest_list(mock_si):
         'docker.io/library/centos@sha256:fe8d824220415eed5477b63addf40fb06c3b049404242b31982106ac'
         '204f6700'
     )
+    mock_si.assert_called_once_with(
+        'docker://docker.io/library/centos:8', '--raw', return_json=False
+    )
+
+
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+def test_get_resolved_image_schema_1(mock_si):
+    image_manifest_schema_1 = textwrap.dedent(
+        """\
+        {
+           "schemaVersion": 1,
+           "name": "repository/name",
+           "tag": "1.0.0",
+           "architecture": "amd64",
+           "fsLayers": [],
+           "history": [],
+           "signatures": [
+              {
+                 "header": {},
+                 "signature": "text-that-changes-per-request",
+                 "protected": "spam"
+              }
+           ]
+        }
+        """
+    )
+
+    skopeo_output = {
+        "Name": "registry.example.com/repository/name",
+        "Tag": "1.0.0",
+        "Digest": "sha256:aa6680b35f45cf0fd6fb5f417159257ba410a47b8fa20d37b4c7fcd4a564b3fb",
+        "RepoTags": ["1.0.0", "latest"],
+        "Created": "2019-12-04T06:41:46.3149046Z",
+        "DockerVersion": "19.03.2",
+        "Labels": {},
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Layers": [],
+        "Env": [],
+    }
+
+    mock_si.side_effect = [image_manifest_schema_1, skopeo_output]
+    rv = build._get_resolved_image('registry.example.com/repository/name:1.0.0')
+    assert rv == (
+        'registry.example.com/repository/name@sha256:aa6680b35f45cf0fd6fb5f417159257ba410a47b8fa2'
+        '0d37b4c7fcd4a564b3fb'
+    )
+
+    mock_si.assert_has_calls(
+        [
+            mock.call(
+                'docker://registry.example.com/repository/name:1.0.0', '--raw', return_json=False
+            ),
+            mock.call('docker://registry.example.com/repository/name:1.0.0'),
+        ]
+    )
 
 
 @pytest.mark.parametrize(
