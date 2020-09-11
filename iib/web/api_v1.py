@@ -66,7 +66,7 @@ def _get_add_args(payload, request_id, overwrite_from_index, celery_queue):
     :param str celery_queue: name of celery queue
     """
     return [
-        payload.get('bundles', []),
+        payload['bundles'],
         payload['binary_image'],
         request_id,
         payload.get('from_index'),

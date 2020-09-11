@@ -803,23 +803,12 @@ class RequestAdd(Request, RequestIndexImageMixin):
         request_kwargs = deepcopy(kwargs)
 
         bundles = request_kwargs.get('bundles', [])
-        if not isinstance(bundles, list) or any(
-            not item or not isinstance(item, str) for item in bundles
+        if (
+            not isinstance(bundles, list)
+            or len(bundles) == 0
+            or any(not item or not isinstance(item, str) for item in bundles)
         ):
-            raise ValidationError(
-                '"bundles" should be either an empty array or an array of non-empty strings'
-            )
-
-        # Check if no bundles `from_index and `binary_image` are specified
-        # if no bundles and and no from index then a empty index will be created
-        # if no binary image and just a from_index then we are not updating anything and it would
-        # be a no-op
-        if not request_kwargs.get('bundles') and (
-            not request_kwargs.get('from_index') or not request_kwargs.get('binary_image')
-        ):
-            raise ValidationError(
-                '"from_index" and "binary_image" must be specified if no bundles are specified'
-            )
+            raise ValidationError(f'"bundles" should be a non-empty array of strings')
 
         for param in ('cnr_token', 'organization'):
             if param not in request_kwargs:
@@ -837,7 +826,8 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
         cls._from_json(
             request_kwargs,
-            additional_optional_params=['from_index', 'organization', 'bundles'],
+            additional_required_params=['bundles'],
+            additional_optional_params=['from_index', 'organization'],
             batch=batch,
         )
 
