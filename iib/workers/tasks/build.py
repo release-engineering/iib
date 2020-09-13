@@ -370,7 +370,7 @@ def _opm_index_add(
     """
     # The bundles are not resolved since these are stable tags, and references
     # to a bundle image using a digest fails when using the opm command.
-    bundle_str = ','.join(bundles) or "''"
+    bundle_str = ','.join(bundles) or '""'
     cmd = [
         'opm',
         'index',
