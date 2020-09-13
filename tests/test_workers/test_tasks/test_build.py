@@ -366,16 +366,19 @@ def test_get_resolved_bundles_failure(mock_si):
 
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index):
-    bundles = ['bundle:1.2', 'bundle:1.3']
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles):
     build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass')
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[0:3] == ['opm', 'index', 'add']
-    assert ','.join(bundles) in opm_args
+    if bundles:
+        assert ','.join(bundles) in opm_args
+    else:
+        assert '""' in opm_args
     if from_index:
         assert '--from-index' in opm_args
         assert from_index in opm_args
