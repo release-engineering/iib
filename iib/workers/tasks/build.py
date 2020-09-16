@@ -1100,6 +1100,10 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
             f'No arches were found in the resolved from_bundle_image {from_bundle_image_resolved}'
         )
 
+    pinned_by_iib = yaml.load(
+        get_image_label(from_bundle_image_resolved, 'com.redhat.iib.pinned') or 'false'
+    )
+
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
 
@@ -1119,7 +1123,9 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
         _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
         metadata_path = os.path.join(temp_dir, 'metadata')
         _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
-        labels = _adjust_operator_bundle(manifests_path, metadata_path, organization)
+        new_labels = _adjust_operator_bundle(
+            manifests_path, metadata_path, organization, pinned_by_iib
+        )
 
         with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
             dockerfile.write(
@@ -1131,7 +1137,7 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
                     """
                 )
             )
-            for name, value in labels.items():
+            for name, value in new_labels.items():
                 dockerfile.write(f'LABEL {name}={value}\n')
 
         for arch in sorted(arches):
@@ -1274,7 +1280,7 @@ def _apply_package_name_suffix(metadata_path, organization=None):
     )
 
 
-def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
+def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pinned_by_iib=False):
     """
     Apply modifications to the operator manifests at the given location.
 
@@ -1291,6 +1297,8 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     :param str metadata_path: the full path to the directory containing the bundle metadata files.
     :param str organization: the organization this bundle is for. If no organization is provided,
         no custom behavior will be applied.
+    :param bool pinned_by_iib: whether or not the bundle image has already been processed by
+        IIB to perform image pinning of related images.
     :raises IIBError: if the operator manifest has invalid entries
     :return: a dictionary of labels to set on the bundle
     :rtype: dict
@@ -1301,7 +1309,13 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     found_pullspecs = set()
     operator_csvs = []
     for operator_csv in operator_manifest.files:
-        if operator_csv.has_related_images():
+        if pinned_by_iib:
+            # If the bundle image has already been previously pinned by IIB, the relatedImages
+            # section will be populated and there may be related image environment variables.
+            # However, we still want to process the image to apply any of the other possible
+            # changes.
+            log.info('Skipping pinning because related images have already been pinned by IIB')
+        elif operator_csv.has_related_images():
             csv_file_name = os.path.basename(operator_csv.path)
             if operator_csv.has_related_image_envs():
                 raise IIBError(
@@ -1333,21 +1347,34 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None):
     replacement_pullspecs = {}
     for pullspec in found_pullspecs:
         replacement_needed = False
-        if ':' not in ImageName.parse(pullspec).tag:
-            replacement_needed = True
+        new_pullspec = ImageName.parse(pullspec.to_str())
 
-        # Always resolve the image to make sure it's valid
-        resolved_image = ImageName.parse(_get_resolved_image(pullspec.to_str()))
+        if not pinned_by_iib:
+            # Resolve the image only if it has not already been processed by IIB. This
+            # helps making sure the pullspec is valid
+            resolved_image = ImageName.parse(_get_resolved_image(pullspec.to_str()))
 
-        if registry_replacements.get(resolved_image.registry):
+            # If the tag is in the format "<algorithm>:<checksum>", the image is already pinned.
+            # Otherwise, always pin it to a digest.
+            if ':' not in ImageName.parse(pullspec).tag:
+                log.debug(
+                    '%s will be pinned to %s', pullspec, resolved_image.to_str(),
+                )
+                new_pullspec = resolved_image
+                replacement_needed = True
+                labels['com.redhat.iib.pinned'] = 'true'
+
+        # Apply registry modifications
+        new_registry = registry_replacements.get(new_pullspec.registry)
+        if new_registry:
             replacement_needed = True
-            resolved_image.registry = registry_replacements[resolved_image.registry]
+            new_pullspec.registry = new_registry
 
         if replacement_needed:
             log.debug(
-                '%s will be replaced with %s', pullspec, resolved_image.to_str(),
+                '%s will be replaced with %s', pullspec, new_pullspec.to_str(),
             )
-            replacement_pullspecs[pullspec] = resolved_image
+            replacement_pullspecs[pullspec] = new_pullspec
 
     # Apply modifications to the operator bundle image metadata
     for operator_csv in operator_csvs:
