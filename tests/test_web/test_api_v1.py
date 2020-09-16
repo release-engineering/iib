@@ -5,6 +5,7 @@ from unittest import mock
 import pytest
 from sqlalchemy.exc import DisconnectionError
 
+from iib.web.api_v1 import _get_unique_bundles
 from iib.web.models import Image, RequestAdd, RequestRm
 
 
@@ -157,6 +158,15 @@ def test_get_healthcheck_ok(app, client, db):
 
 
 @pytest.mark.parametrize(
+    ("bundles", "exp_bundles"),
+    (([1, 2, 3, 4], [1, 2, 3, 4]), ([], []), ([1, 2, 1, 3, 1, 4, 3], [1, 2, 3, 4]),),
+)
+def test_get_unique_bundles(bundles, exp_bundles, app):
+    tmp_uniq = _get_unique_bundles(bundles)
+    assert tmp_uniq == exp_bundles
+
+
+@pytest.mark.parametrize(
     ('logs_content', 'expired', 'finalized', 'expected'),
     (
         ('foobar', False, False, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
@@ -305,6 +315,28 @@ def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
     )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
+
+
+@mock.patch('iib.web.api_v1.db.session')
+@mock.patch('iib.web.api_v1.flask.jsonify')
+@mock.patch('iib.web.api_v1.RequestAdd')
+@mock.patch('iib.web.api_v1.handle_add_request.apply_async')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundles_unique_bundles(mock_smfsc, mock_har, mock_radd, mock_fj, mock_dbs, client):
+    data = {
+        'binary_image': 'binary:image',
+        'bundles': ['same:thing', 'same:thing'],
+        'from_index': 'pull:spec',
+        'overwrite_from_index': True,
+    }
+    mock_fj.return_value = '{"random": "json"}'
+
+    client.post(
+        '/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tbrady@DOMAIN.LOCAL'}
+    )
+
+    # check if duplicate bundles were removed from payload
+    assert mock_har.call_args[1]['args'][0] == ['same:thing']
 
 
 @pytest.mark.parametrize(
