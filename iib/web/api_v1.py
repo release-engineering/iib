@@ -106,6 +106,35 @@ def _get_safe_args(args, payload):
     return safe_args
 
 
+def _get_unique_bundles(bundles):
+    """
+    Return list with unique bundles.
+
+    :param list|None bundles: bundles given in payload from original request
+    :return: list of unique bundles preserving order (python 3.6+) or None
+    :rtype: list|None
+    """
+    if not bundles:
+        return bundles
+
+    # `dict` is preserving order of inserted keys since Python 3.6.
+    # Keys in dictionary are behaving as a set() therefore can not have same key twice.
+    # This will create dictionary where keys are taken from `bundles` using `dict.fromkeys()`
+    # After that we have dictionary with unique keys with same order as it is in `bundles`.
+    # Last step is to convert the keys from this dictionary to list using `list()`
+    unique_bundles = list(dict.fromkeys(bundles).keys())
+
+    if len(unique_bundles) != len(bundles):
+        duplicate_bundles = copy.copy(bundles)
+        for bundle in unique_bundles:
+            duplicate_bundles.remove(bundle)
+
+        flask.current_app.logger.info(
+            f'Removed duplicate bundles from request: {duplicate_bundles}'
+        )
+    return unique_bundles
+
+
 @api_v1.route('/builds/<int:request_id>')
 def get_build(request_id):
     """
@@ -268,12 +297,17 @@ def add_bundles():
     """
     Submit a request to add operator bundles to an index image.
 
+    Note: Any duplicate bundle will be removed from payload.
+
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
     payload = flask.request.get_json()
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
+
+    if 'bundles' in payload and payload['bundles']:
+        payload['bundles'] = _get_unique_bundles(payload['bundles'])
 
     request = RequestAdd.from_json(payload)
     db.session.add(request)
@@ -556,6 +590,8 @@ def add_rm_batch():
     """
     Submit a batch of requests to add or remove operators from an index image.
 
+    Note: Any duplicate bundle will be removed from payload when adding operators.
+
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
@@ -574,8 +610,10 @@ def add_rm_batch():
                 # Check for the validity of a RM request
                 request = RequestRm.from_json(build_request, batch)
             elif build_request.get('bundles'):
+                build_request_uniq = copy.deepcopy(build_request)
+                build_request_uniq['bundles'] = _get_unique_bundles(build_request_uniq['bundles'])
                 # Check for the validity of an Add request
-                request = RequestAdd.from_json(build_request, batch)
+                request = RequestAdd.from_json(build_request_uniq, batch)
             else:
                 raise ValidationError('Build request is not a valid Add/Rm request.')
         except ValidationError as e:

@@ -652,6 +652,8 @@ components:
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
         bundles:
           type: array
+          description: >
+            List of bundles. Note: Any duplicate bundle will be removed.
           items:
             type: string
           example:
