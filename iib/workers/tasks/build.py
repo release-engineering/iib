@@ -955,19 +955,12 @@ def handle_add_request(
                 bundle for bundle in resolved_bundles if bundle not in filtered_bundles
             ]
             resolved_bundles = filtered_bundles
-            if not resolved_bundles:
+
+            if excluded_bundles:
                 log.info(
-                    'All bundles are already present in the index image.'
-                    ' No additional operations are necessary'
+                    'Following bundles are already present in the index image: %s',
+                    ' '.join(excluded_bundles),
                 )
-                set_request_state(
-                    request_id, 'complete', 'All bundles are already present in the index image'
-                )
-                return
-            log.info(
-                'Following bundles are already present in the index image: %s',
-                ' '.join(excluded_bundles),
-            )
 
         _opm_index_add(
             temp_dir,
