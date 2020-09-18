@@ -1510,3 +1510,162 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
 
     assert rv.status_code == 400, rv.json
     assert rv.json == {'error': error_msg}
+
+
+@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_merge_index_image_success(mock_smfsc, mock_merge, db, auth_env, client):
+    data = {
+        'deprecation_list': ['some@sha256:bundle'],
+        'binary_image': 'binary:image',
+        'source_from_index': 'source_index:image',
+        'target_index': 'target_index:image',
+    }
+
+    response_json = {
+        "arches": [],
+        "batch": 1,
+        "batch_annotations": None,
+        "binary_image": "binary:image",
+        "binary_image_resolved": None,
+        "bundle_mapping": {},
+        "bundles": [],
+        "deprecation_list": ["some@sha256:bundle"],
+        "from_index": None,
+        "from_index_resolved": None,
+        "id": 1,
+        "index_image": None,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
+        "organization": None,
+        "removed_operators": [],
+        "request_type": "merge-index-image",
+        "source_from_index": "source_index:image",
+        "state": "in_progress",
+        "state_history": [
+            {
+                "state": "in_progress",
+                "state_reason": "The request was initiated",
+                "updated": "2020-02-12T17:03:00Z",
+            }
+        ],
+        "state_reason": "The request was initiated",
+        "target_index": "target_index:image",
+        "updated": "2020-02-12T17:03:00Z",
+        "user": 'tbrady@DOMAIN.LOCAL',
+    }
+
+    rv = client.post('/api/v1/builds/merge-index-image', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
+    mock_merge.apply_async.assert_called_once()
+    assert rv.status_code == 201
+    assert response_json == rv_json
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@pytest.mark.parametrize('force_overwrite', (False, True))
+@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_merge_index_image_forced_overwrite(
+    mock_smfsc, mock_merge, force_overwrite, app, auth_env, client, db
+):
+    app.config['IIB_FORCE_OVERWRITE_FROM_INDEX'] = force_overwrite
+    data = {
+        'deprecation_list': ['some@sha256:bundle'],
+        'binary_image': 'binary:image',
+        'source_from_index': 'source_index:image',
+        'target_index': 'target_index:image',
+        'overwrite_from_index': False,
+    }
+
+    rv = client.post('/api/v1/builds/merge-index-image', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    mock_merge.apply_async.assert_called_once()
+    # Second to last element in args is the overwrite_from_index parameter
+    assert mock_merge.apply_async.call_args[1]['args'][-2] == force_overwrite
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_merge_index_image_overwrite_token_redacted(
+    mock_smfsc, mock_merge, app, auth_env, client, db
+):
+    token = 'username:password'
+    data = {
+        'deprecation_list': ['some@sha256:bundle'],
+        'binary_image': 'binary:image',
+        'source_from_index': 'source_index:image',
+        'target_index': 'target_index:image',
+        'overwrite_from_index': True,
+        'overwrite_from_index_token': token,
+    }
+
+    rv = client.post('/api/v1/builds/merge-index-image', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    assert rv.status_code == 201
+    mock_merge.apply_async.assert_called_once()
+    # Second to last element in args is the overwrite_from_index parameter
+    assert mock_merge.apply_async.call_args[1]['args'][-2] is True
+    assert mock_merge.apply_async.call_args[1]['args'][-1] == token
+    assert 'overwrite_from_index_token' not in rv_json
+    assert token not in json.dumps(rv_json)
+    assert token not in mock_merge.apply_async.call_args[1]['argsrepr']
+    assert '*****' in mock_merge.apply_async.call_args[1]['argsrepr']
+
+
+@pytest.mark.parametrize(
+    'user_to_queue, overwrite_from_index, expected_queue',
+    (
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        ({'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, False, 'Buccaneers'),
+        ({'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'}, True, 'Buccaneers'),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'PARALLEL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            False,
+            'Buccaneers',
+        ),
+        (
+            {'tbrady@DOMAIN.LOCAL': 'Patriots', 'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
+            True,
+            'Buccaneers',
+        ),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, False, None),
+        ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
+    ),
+)
+@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_merge_index_image_custom_user_queue(
+    mock_smfsc,
+    mock_merge,
+    app,
+    auth_env,
+    client,
+    user_to_queue,
+    overwrite_from_index,
+    expected_queue,
+):
+    app.config['IIB_USER_TO_QUEUE'] = user_to_queue
+    data = {
+        'deprecation_list': ['some@sha256:bundle'],
+        'binary_image': 'binary:image',
+        'source_from_index': 'source_index:image',
+        'target_index': 'target_index:image',
+    }
+    if overwrite_from_index:
+        data['overwrite_from_index'] = True
+
+    rv = client.post('/api/v1/builds/merge-index-image', json=data, environ_base=auth_env)
+    assert rv.status_code == 201, rv.json
+    mock_merge.apply_async.assert_called_once()
+    mock_merge.apply_async.assert_called_with(
+        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
+    )
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)

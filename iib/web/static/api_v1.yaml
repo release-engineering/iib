@@ -474,6 +474,45 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/merge-index-image:
+    post:
+      description: Submit a build request to merge two index images
+      requestBody:
+        description: The build request to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestMergeIndexImage'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestIndexImageVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"source_from_index" must be a string'
+        '401':
+          description: The user is not allowed to create a request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
 components:
   schemas:
     BundleMapping:
@@ -709,6 +748,49 @@ components:
               example: openshift-operators
           required:
             - from_bundle_image
+    RequestMergeIndexImage:
+      type: object
+      properties:
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+        deprecation_list:
+          type: array
+          items:
+            type: string
+          description: >
+            List of bundles (specified by hash) to be deprecated from the new index image.
+          example:
+            - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
+        source_from_index:
+          type: string
+          description: >
+            Index image that will be used as a base for the new index image.
+          example: 'quay.io/iib-stage/iib:4.5'
+        target_index:
+          type: string
+          description: >
+            Pull specification of the index image whose contents are to be cleaned and updated.
+          example: 'quay.io/iib-stage/iib:4.6'
+        overwrite_from_index:
+          type: boolean
+          description: >
+            Overwrites the input target_index image with the built index image. This can only
+            be performed by privileged users unless overwrite_from_index_token is also provided.
+          default: false
+        overwrite_from_index_token:
+          type: string
+          description: >
+            The token used for reading and overwriting the input from_index image. This is required
+            for non-privileged users to use overwrite_from_index. It's also useful for dealing with
+            index images that IIB does not have access to. The format of the token is in the format
+            "user:password". If token is required for accessing the index images, then both of them
+            have to be in the same repository.
+          example: token
+      required:
+        - binary_image
+        - source_from_index
+        - target_index
     RequestRegenerateBundleOutput:
       allOf:
         - $ref: '#/components/schemas/Request'

@@ -69,6 +69,7 @@ class RequestTypeMapping(BaseEnum):
     add = 1
     rm = 2
     regenerate_bundle = 3
+    merge_index_image = 4
 
     @classmethod
     def pretty(cls, num):
@@ -80,6 +81,25 @@ class RequestTypeMapping(BaseEnum):
         :rtype: str
         """
         return cls(num).name.replace('_', '-')
+
+
+class BundleDeprecation(db.Model):
+    """An association table between index merge requests and bundle images which they deprecate."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    merge_index_image_id = db.Column(
+        db.Integer,
+        db.ForeignKey('request_merge_index_image.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    bundle_id = db.Column(
+        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True,
+    )
+
+    __table_args__ = (db.UniqueConstraint('merge_index_image_id', 'bundle_id'),)
 
 
 class Architecture(db.Model):
@@ -678,9 +698,11 @@ class RequestIndexImageMixin:
             request_kwargs, required_params=required_params, optional_params=optional_params,
         )
 
-        # Check if both `from_index` and `add_arches` are not specified
-        if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
-            raise ValidationError('One of "from_index" or "add_arches" must be specified')
+        # following condition does not apply to merge endpoint
+        if not request_kwargs.get('source_from_index'):
+            # Check if both `from_index` and `add_arches` are not specified
+            if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
+                raise ValidationError('One of "from_index" or "add_arches" must be specified')
 
         # Verify that `overwrite_from_index` is the correct type
         overwrite = request_kwargs.pop('overwrite_from_index', False)
@@ -1051,6 +1073,97 @@ class RequestRegenerateBundle(Request):
         rv = super().get_mutable_keys()
         rv.add('bundle_image')
         rv.add('from_bundle_image_resolved')
+        return rv
+
+
+class RequestMergeIndexImage(Request, RequestIndexImageMixin):
+    """A "merge-index-image" build request."""
+
+    __tablename__ = 'request_merge_index_image'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    source_from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    source_from_index = db.relationship('Image', foreign_keys=[source_from_index_id], uselist=False)
+    target_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    target_index = db.relationship('Image', foreign_keys=[target_index_id], uselist=False)
+    deprecation_list = db.relationship('Image', secondary=BundleDeprecation.__table__)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value,
+    }
+
+    @classmethod
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the merge-index-image API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
+        request_kwargs = deepcopy(kwargs)
+
+        deprecation_list = request_kwargs.pop('deprecation_list', [])
+        if not isinstance(deprecation_list, list) or any(
+            not item or not isinstance(item, str) or '@' not in item for item in deprecation_list
+        ):
+            raise ValidationError(
+                '"deprecation_list" should be an array of strings. '
+                'Each pull specification has to be defined via digest.'
+            )
+
+        request_kwargs['deprecation_list'] = [
+            Image.get_or_create(pull_specification=item) for item in deprecation_list
+        ]
+
+        source_from_index = request_kwargs.pop('source_from_index')
+        if not isinstance(source_from_index, str):
+            raise ValidationError('"source_from_index" must be a string')
+        request_kwargs['source_from_index'] = Image.get_or_create(
+            pull_specification=source_from_index
+        )
+
+        target_index = request_kwargs.pop('target_index')
+        if not isinstance(target_index, str):
+            raise ValidationError('"target_index" must be a string')
+        request_kwargs['target_index'] = Image.get_or_create(pull_specification=target_index)
+
+        cls._from_json(
+            request_kwargs,
+            additional_required_params=['source_from_index', 'target_index'],
+            additional_optional_params=['deprecation_list'],
+            batch=batch,
+        )
+
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of an "add" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv.update(self.get_common_index_image_json())
+        rv['source_from_index'] = self.source_from_index.pull_specification
+        rv['target_index'] = self.target_index.pull_specification
+        rv['deprecation_list'] = [bundle.pull_specification for bundle in self.deprecation_list]
+
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
+        rv.update({'source_from_index_resolved', 'target_index_resolved'})
         return rv
 
 

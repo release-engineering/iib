@@ -32,7 +32,11 @@ class Config(object):
     iib_required_labels = {}
     iib_skopeo_timeout = '300s'
     iib_total_attempts = 5
-    include = ['iib.workers.tasks.build', 'iib.workers.tasks.general']
+    include = [
+        'iib.workers.tasks.build',
+        'iib.workers.tasks.build_merge_index_image',
+        'iib.workers.tasks.general',
+    ]
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
