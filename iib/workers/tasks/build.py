@@ -417,7 +417,7 @@ def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
         error occured.
     :raises AddressAlreadyInUse: if the specified port is already being used by another service.
     """
-    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path]
+    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
     for attempt in range(max_tries):
         rpc_proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
