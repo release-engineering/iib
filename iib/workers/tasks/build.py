@@ -360,10 +360,8 @@ def _get_index_database(from_index, base_dir):
     :rtype: str
     :raises IIBError: if any podman command fails.
     """
-    data = skopeo_inspect(f'docker://{from_index}')
-    try:
-        db_path = data['Labels']['operators.operatorframework.io.index.database.v1']
-    except KeyError:
+    db_path = get_image_label(from_index, 'operators.operatorframework.io.index.database.v1')
+    if not db_path:
         raise IIBError('Index image doesn\'t have the label specifying its database location.')
     _copy_files_from_image(from_index, db_path, base_dir)
     local_path = os.path.join(base_dir, os.path.basename(db_path))

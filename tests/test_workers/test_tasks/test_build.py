@@ -1577,13 +1577,11 @@ def test_get_missing_bundles_match_hash():
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_get_present_bundles(mock_si, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
-    mock_si.return_value = {
-        'Labels': {'operators.operatorframework.io.index.database.v1': 'some-path'}
-    }
+    mock_gil.return_value = 'some-path'
     mock_run_cmd.side_effect = [
         'api.Registry.ListBundles',
         '{"packageName": "package1", "version": "v1.0"\n}'
@@ -1606,17 +1604,15 @@ def test_get_present_bundles(mock_si, mock_copy, mock_run_cmd, mock_popen, mock_
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_not_initialize(
-    mock_si, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
+    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_run_cmd.side_effect = ['', '', '', '', ''] * 4
     mock_time.side_effect = list(range(1, 80))
-    mock_si.return_value = {
-        'Labels': {'operators.operatorframework.io.index.database.v1': 'some-path'}
-    }
+    mock_gil.return_value = 'some-path'
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.poll.return_value = None
@@ -1631,16 +1627,14 @@ def test_get_present_bundles_grpc_not_initialize(
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_delayed_initialize(
-    mock_si, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
+    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_time.side_effect = [i * 0.5 for i in range(1, 80)]
-    mock_si.return_value = {
-        'Labels': {'operators.operatorframework.io.index.database.v1': 'some-path'}
-    }
+    mock_gil.return_value = 'some-path'
     mock_run_cmd.side_effect = [
         '',
         '',
