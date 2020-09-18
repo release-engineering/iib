@@ -652,6 +652,42 @@ def _overwrite_from_index(
             temp_dir.cleanup()
 
 
+def get_index_image_info(overwrite_from_index_token, from_index=None, default_ocp_version='v4.5'):
+    """
+    Get arches, resolved pull specification and ocp_version for the index image.
+
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+    :param str from_index: the pull specification of the index image to be resolved.
+    :param str default_ocp_version: default ocp_version to use if index image pull_spec is absent.
+    :return: dictionary of resolved index image pull spec, set of arches, default ocp_version and
+        resolved_distribution_scope
+    :rtype: dict
+    """
+    result = {
+        'resolved_from_index': None,
+        'ocp_version': default_ocp_version,
+        'arches': set(),
+        'resolved_distribution_scope': 'prod',
+    }
+    if not from_index:
+        return result
+
+    with set_registry_token(overwrite_from_index_token, from_index):
+        from_index_resolved = _get_resolved_image(from_index)
+        result['arches'] = _get_image_arches(from_index_resolved)
+        result['ocp_version'] = (
+            get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
+        )
+        result['resolved_distribution_scope'] = (
+            get_image_label(from_index_resolved, 'com.redhat.index.delivery.distribution_scope')
+            or 'prod'
+        )
+        result['resolved_from_index'] = from_index_resolved
+    return result
+
+
 def _prepare_request_for_build(
     binary_image,
     request_id,
@@ -660,6 +696,8 @@ def _prepare_request_for_build(
     add_arches=None,
     bundles=None,
     distribution_scope=None,
+    source_from_index=None,
+    target_index=None,
 ):
     """
     Prepare the request for the index image build.
@@ -684,8 +722,12 @@ def _prepare_request_for_build(
     :param list bundles: the list of bundles to create the bundle mapping on the request
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
-    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved,
-        bundle_mapping, ocp_version, and distribution_scope.
+    :param str source_from_index: the pull specification of the container image containing the index
+        that will be used as a base of the merged index image.
+    :param str target_index: the pull specification of the container image containing the index
+        whose new data will be added to the merged index image.
+    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
+        ocp_version.
     :rtype: dict
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
@@ -703,22 +745,20 @@ def _prepare_request_for_build(
     binary_image_resolved = _get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
-    if from_index:
-        with set_registry_token(overwrite_from_index_token, from_index):
-            from_index_resolved = _get_resolved_image(from_index)
-            from_index_arches = _get_image_arches(from_index_resolved)
-            ocp_version = (
-                get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
-            )
-            resolved_distribution_scope = (
-                get_image_label(from_index_resolved, 'com.redhat.index.delivery.distribution_scope')
-                or 'prod'
-            )
-        arches = arches | from_index_arches
-    else:
-        from_index_resolved = None
-        ocp_version = 'v4.5'
-        resolved_distribution_scope = 'prod'
+    from_index_info = get_index_image_info(
+        overwrite_from_index_token, from_index=from_index, default_ocp_version='v4.5'
+    )
+    arches = arches | from_index_info['arches']
+
+    source_from_index_info = get_index_image_info(
+        overwrite_from_index_token, from_index=source_from_index, default_ocp_version='v4.5'
+    )
+    arches = arches | source_from_index_info['arches']
+
+    target_index_info = get_index_image_info(
+        overwrite_from_index_token, from_index=target_index, default_ocp_version='v4.6'
+    )
+    arches = arches | target_index_info['arches']
 
     if not arches:
         raise IIBError('No arches were provided to build the index image')
@@ -727,7 +767,7 @@ def _prepare_request_for_build(
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     distribution_scope = _validate_distribution_scope(
-        resolved_distribution_scope, distribution_scope
+        from_index_info['resolved_distribution_scope'], distribution_scope
     )
 
     if not arches.issubset(binary_image_arches):
@@ -747,9 +787,13 @@ def _prepare_request_for_build(
         'arches': arches,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
-        'from_index_resolved': from_index_resolved,
-        'ocp_version': ocp_version,
+        'from_index_resolved': from_index_info['resolved_from_index'],
+        'ocp_version': from_index_info['ocp_version'],
         'distribution_scope': distribution_scope,
+        'source_from_index_resolved': source_from_index_info['resolved_from_index'],
+        'source_ocp_version': source_from_index_info['ocp_version'],
+        'target_index_resolved': target_index_info['resolved_from_index'],
+        'target_ocp_version': target_index_info['ocp_version'],
     }
 
 
@@ -780,6 +824,14 @@ def _update_index_image_build_state(request_id, prebuild_info):
     from_index_resolved = prebuild_info.get('from_index_resolved')
     if from_index_resolved:
         payload['from_index_resolved'] = from_index_resolved
+
+    source_from_index_resolved = prebuild_info.get('source_from_index_resolved')
+    if source_from_index_resolved:
+        payload['source_from_index_resolved'] = source_from_index_resolved
+
+    target_index_resolved = prebuild_info.get('target_index_resolved')
+    if target_index_resolved:
+        payload['target_index_resolved'] = target_index_resolved
 
     exc_msg = 'Failed setting the resolved images on the request'
     update_request(request_id, payload, exc_msg)

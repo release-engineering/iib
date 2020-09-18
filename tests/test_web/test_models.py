@@ -60,7 +60,13 @@ def test_get_state_names():
 
 
 def test_get_type_names():
-    assert models.RequestTypeMapping.get_names() == ['add', 'generic', 'regenerate_bundle', 'rm']
+    assert models.RequestTypeMapping.get_names() == [
+        'add',
+        'generic',
+        'merge_index_image',
+        'regenerate_bundle',
+        'rm',
+    ]
 
 
 @pytest.mark.parametrize(

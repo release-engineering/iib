@@ -20,6 +20,7 @@ from iib.web.models import (
     Operator,
     Request,
     RequestAdd,
+    RequestMergeIndexImage,
     RequestRegenerateBundle,
     RequestRm,
     RequestState,
@@ -33,6 +34,7 @@ from iib.workers.tasks.build import (
     handle_regenerate_bundle_request,
     handle_rm_request,
 )
+from iib.workers.tasks.build_merge_index_image import handle_merge_request
 from iib.workers.tasks.general import failed_request_callback
 
 api_v1 = flask.Blueprint('api_v1', __name__)
@@ -96,6 +98,8 @@ def _get_safe_args(args, payload):
         safe_args[safe_args.index(payload['cnr_token'])] = '*****'
     if payload.get('overwrite_from_index_token'):
         safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
+    if payload.get('overwrite_target_index_token'):
+        safe_args[safe_args.index(payload['overwrite_target_index_token'])] = '*****'
 
     return safe_args
 
@@ -372,6 +376,8 @@ def patch_request(request_id):
         'from_bundle_image_resolved',
         'from_index_resolved',
         'index_image',
+        'source_from_index_resolved',
+        'target_index_resolved',
     )
     for key in image_keys:
         if key not in payload:
@@ -626,3 +632,45 @@ def add_rm_batch():
         ', '.join(processed_request_ids),
     )
     return flask.jsonify(request_jsons), 201
+
+
+@api_v1.route('/builds/merge-index-image', methods=['POST'])
+@login_required
+def merge_index_image():
+    """
+    Submit a request to merge two index images.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+    request = RequestMergeIndexImage.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
+
+    overwrite_target_index = payload.get('overwrite_target_index', False)
+    celery_queue = _get_user_queue(serial=overwrite_target_index)
+    args = [
+        payload['binary_image'],
+        payload['source_from_index'],
+        payload.get('deprecation_list', []),
+        request.id,
+        payload.get('target_index'),
+        overwrite_target_index,
+        payload.get('overwrite_target_index_token'),
+    ]
+    safe_args = _get_safe_args(args, payload)
+
+    error_callback = failed_request_callback.s(request.id)
+    try:
+        handle_merge_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201

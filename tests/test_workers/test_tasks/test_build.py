@@ -553,6 +553,10 @@ def test_prepare_request_for_build(
         'ocp_version': ocp_version,
         # want to verify that the output is always lower cased.
         'distribution_scope': resolved_distribution_scope.lower(),
+        'source_from_index_resolved': None,
+        'source_ocp_version': 'v4.5',
+        'target_index_resolved': None,
+        'target_ocp_version': 'v4.6',
     }
 
 
