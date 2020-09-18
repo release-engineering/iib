@@ -420,7 +420,11 @@ def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
     cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
     for attempt in range(max_tries):
         rpc_proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+            cmd,
+            cwd=os.path.dirname(db_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
         )
         start_time = time.time()
         while time.time() - start_time < wait_time:
