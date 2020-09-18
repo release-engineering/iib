@@ -69,6 +69,7 @@ class RequestTypeMapping(BaseEnum):
     add = 1
     rm = 2
     regenerate_bundle = 3
+    merge_index_image = 4
 
     @classmethod
     def pretty(cls, num):
@@ -80,6 +81,29 @@ class RequestTypeMapping(BaseEnum):
         :rtype: str
         """
         return cls(num).name.replace('_', '-')
+
+
+class BundleDeprecation(db.Model):
+    """An association table between index merge requests and bundle images which they deprecate."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    merge_index_image_id = db.Column(
+        db.Integer,
+        db.ForeignKey('request_merge_index_image.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    bundle_id = db.Column(
+        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'merge_index_image_id', 'bundle_id', name='merge_index_bundle_constraint'
+        ),
+    )
 
 
 class Architecture(db.Model):
@@ -1072,6 +1096,163 @@ class RequestRegenerateBundle(Request):
         rv = super().get_mutable_keys()
         rv.add('bundle_image')
         rv.add('from_bundle_image_resolved')
+        return rv
+
+
+class RequestMergeIndexImage(Request):
+    """A "merge-index-image" build request."""
+
+    __tablename__ = 'request_merge_index_image'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    binary_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    binary_image = db.relationship('Image', foreign_keys=[binary_image_id], uselist=False)
+    binary_image_resolved = db.relationship(
+        'Image', foreign_keys=[binary_image_resolved_id], uselist=False
+    )
+
+    deprecation_list = db.relationship('Image', secondary=BundleDeprecation.__table__)
+
+    index_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
+
+    source_from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    source_from_index_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    source_from_index = db.relationship('Image', foreign_keys=[source_from_index_id], uselist=False)
+    source_from_index_resolved = db.relationship(
+        'Image', foreign_keys=[source_from_index_resolved_id], uselist=False
+    )
+
+    target_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    target_index_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    target_index = db.relationship('Image', foreign_keys=[target_index_id], uselist=False)
+    target_index_resolved = db.relationship(
+        'Image', foreign_keys=[target_index_resolved_id], uselist=False
+    )
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value,
+    }
+
+    @classmethod
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the merge-index-image API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
+        request_kwargs = deepcopy(kwargs)
+
+        deprecation_list = request_kwargs.pop('deprecation_list', [])
+        if not isinstance(deprecation_list, list) or any(
+            not item or not isinstance(item, str) for item in deprecation_list
+        ):
+            raise ValidationError(
+                'The "deprecation_list" value should be an empty array or an array of strings'
+            )
+
+        request_kwargs['deprecation_list'] = [
+            Image.get_or_create(pull_specification=item) for item in deprecation_list
+        ]
+
+        source_from_index = request_kwargs.pop('source_from_index', None)
+        if not (isinstance(source_from_index, str) and source_from_index):
+            raise ValidationError('The "source_from_index" value must be a string')
+        request_kwargs['source_from_index'] = Image.get_or_create(
+            pull_specification=source_from_index
+        )
+
+        target_index = request_kwargs.pop('target_index', None)
+        if target_index:
+            if not isinstance(target_index, str):
+                raise ValidationError('The "target_index" value must be a string')
+            request_kwargs['target_index'] = Image.get_or_create(pull_specification=target_index)
+
+        # Verify that `overwrite_target_index` is the correct type
+        overwrite = request_kwargs.pop('overwrite_target_index', False)
+        if not isinstance(overwrite, bool):
+            raise ValidationError('The "overwrite_target_index" value must be a boolean')
+
+        # Verify that `overwrite_target_index_token` is the correct type
+        overwrite_token = request_kwargs.pop('overwrite_target_index_token', None)
+        if overwrite_token:
+            if not isinstance(overwrite_token, str):
+                raise ValidationError('The "overwrite_target_index_token" value must be a string')
+            if overwrite_token and not overwrite:
+                raise ValidationError(
+                    'The "overwrite_target_index" value is required when'
+                    ' the "overwrite_target_index_token" value is used'
+                )
+        elif overwrite:
+            raise ValidationError(
+                'The "overwrite_target_index_token" value is required when'
+                ' the "overwrite_target_index" value is set'
+            )
+
+        # Validate binary_image is correctly provided
+        binary_image = request_kwargs.pop('binary_image', None)
+        if not isinstance(binary_image, str):
+            raise ValidationError('The "binary_image" value must be a string')
+
+        request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
+
+        # current_user.is_authenticated is only ever False when auth is disabled
+        if current_user.is_authenticated:
+            request_kwargs['user'] = current_user
+
+        # Add the request to a new batch
+        batch = batch or Batch()
+        db.session.add(batch)
+        request_kwargs['batch'] = batch
+
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of an "merge-index-image" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv['binary_image'] = self.binary_image.pull_specification
+        rv['binary_image_resolved'] = getattr(
+            self.binary_image_resolved, 'pull_specification', None
+        )
+        rv['deprecation_list'] = [bundle.pull_specification for bundle in self.deprecation_list]
+        rv['index_image'] = getattr(self.index_image, 'pull_specification', None)
+        rv['source_from_index'] = self.source_from_index.pull_specification
+        rv['source_from_index_resolved'] = getattr(
+            self.source_from_index_resolved, 'pull_specification', None
+        )
+        rv['target_index'] = getattr(self.target_index, 'pull_specification', None)
+        rv['target_index_resolved'] = getattr(
+            self.target_index_resolved, 'pull_specification', None
+        )
+
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(
+            {
+                'binary_image_resolved',
+                'index_image',
+                'source_from_index_resolved',
+                'target_index_resolved',
+            }
+        )
         return rv
 
 
