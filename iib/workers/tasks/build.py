@@ -655,6 +655,7 @@ def _prepare_request_for_build(
     overwrite_from_index_token=None,
     add_arches=None,
     bundles=None,
+    distribution_scope=None,
 ):
     """
     Prepare the request for the index image build.
@@ -677,8 +678,11 @@ def _prepare_request_for_build(
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
     :param list bundles: the list of bundles to create the bundle mapping on the request
-    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
-        ocp_version.
+    :param str distribution_scope: the scope for distribution of the index image, defaults to
+        ``None``.
+    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved,
+        bundle_mapping, ocp_version, and distribution_scope.
+    :rtype: dict
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
     """
@@ -702,16 +706,25 @@ def _prepare_request_for_build(
             ocp_version = (
                 get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
             )
+            resolved_distribution_scope = (
+                get_image_label(from_index_resolved, 'com.redhat.index.delivery.distribution_scope')
+                or 'prod'
+            )
         arches = arches | from_index_arches
     else:
         from_index_resolved = None
         ocp_version = 'v4.5'
+        resolved_distribution_scope = 'prod'
 
     if not arches:
         raise IIBError('No arches were provided to build the index image')
 
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
+
+    distribution_scope = _validate_distribution_scope(
+        resolved_distribution_scope, distribution_scope
+    )
 
     if not arches.issubset(binary_image_arches):
         raise IIBError(
@@ -732,6 +745,7 @@ def _prepare_request_for_build(
         'bundle_mapping': bundle_mapping,
         'from_index_resolved': from_index_resolved,
         'ocp_version': ocp_version,
+        'distribution_scope': distribution_scope,
     }
 
 
@@ -891,6 +905,7 @@ def handle_add_request(
     force_backport=False,
     overwrite_from_index=False,
     overwrite_from_index_token=None,
+    distribution_scope=None,
     greenwave_config=None,
 ):
     """
@@ -916,6 +931,8 @@ def handle_add_request(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
+    :param str distribution_scope: the scope for distribution of the index image, defaults to
+        ``None``.
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
@@ -932,7 +949,13 @@ def handle_add_request(
         gate_bundles(resolved_bundles, greenwave_config)
 
     prebuild_info = _prepare_request_for_build(
-        binary_image, request_id, from_index, overwrite_from_index_token, add_arches, bundles
+        binary_image,
+        request_id,
+        from_index,
+        overwrite_from_index_token,
+        add_arches,
+        bundles,
+        distribution_scope,
     )
 
     log.info('Checking if interacting with the legacy app registry is required')
@@ -972,8 +995,18 @@ def handle_add_request(
             overwrite_from_index_token,
         )
 
-        _add_ocp_label_to_index(
-            prebuild_info['ocp_version'], temp_dir, 'index.Dockerfile',
+        _add_label_to_index(
+            'com.redhat.index.delivery.version',
+            prebuild_info['ocp_version'],
+            temp_dir,
+            'index.Dockerfile',
+        )
+
+        _add_label_to_index(
+            'com.redhat.index.delivery.distribution_scope',
+            prebuild_info['distribution_scope'],
+            temp_dir,
+            'index.Dockerfile',
         )
 
         arches = prebuild_info['arches']
@@ -1016,6 +1049,7 @@ def handle_rm_request(
     add_arches=None,
     overwrite_from_index=False,
     overwrite_from_index_token=None,
+    distribution_scope=None,
 ):
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -1034,19 +1068,36 @@ def handle_rm_request(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
+    :param str distribution_scope: the scope for distribution of the index image, defaults to
+        ``None``.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
     prebuild_info = _prepare_request_for_build(
-        binary_image, request_id, from_index, overwrite_from_index_token, add_arches
+        binary_image,
+        request_id,
+        from_index,
+        overwrite_from_index_token,
+        add_arches,
+        distribution_scope=distribution_scope,
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
 
-        _add_ocp_label_to_index(
-            prebuild_info['ocp_version'], temp_dir, 'index.Dockerfile',
+        _add_label_to_index(
+            'com.redhat.index.delivery.version',
+            prebuild_info['ocp_version'],
+            temp_dir,
+            'index.Dockerfile',
+        )
+
+        _add_label_to_index(
+            'com.redhat.index.delivery.distribution_scope',
+            prebuild_info['distribution_scope'],
+            temp_dir,
+            'index.Dockerfile',
         )
 
         arches = prebuild_info['arches']
@@ -1417,17 +1468,43 @@ def _adjust_csv_annotations(operator_csvs, package_name, organization):
         operator_csv.dump()
 
 
-def _add_ocp_label_to_index(ocp_version, temp_dir, dockerfile_name):
+def _add_label_to_index(label_key, label_value, temp_dir, dockerfile_name):
     """
     Add the OCP delivery label to the provided dockerfile.
 
-    :param str ocp_version: the OCP version that the index is delivery content for.
+    :param str label_key: the key for the label to add to the dockerfile.
+    :param str label_value: the value that the index should contain for the key.
     :param str temp_dir: the temp directory to look for the dockerfile.
     :param str dockerfile_name: the dockerfile name.
     """
     with open(os.path.join(temp_dir, dockerfile_name), 'a') as dockerfile:
-        label = f'LABEL com.redhat.index.delivery.version="{ocp_version}"'
+        label = f'LABEL {label_key}="{label_value}"'
         dockerfile.write(f'\n{label}\n')
         log.debug(
             'Added the following line to %s: %s', dockerfile_name, label,
         )
+
+
+def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):
+    """
+    Validate distribution scope is allowed to be updated.
+
+    :param str resolved_distribution_scope: the distribution_scope that the index is for.
+    :param str distribution_scope: the distribution scope that has been requested for
+        the index image.
+    :return: the valid distribution scope
+    :rtype: str
+    :raises IIBError: if the ``resolved_distribution_scope`` is of lesser scope than
+        ``distribution_scope``
+    """
+    if not distribution_scope:
+        return resolved_distribution_scope
+
+    scopes = ["dev", "stage", "prod"]
+    # Make sure the request isn't regressing the distribution scope
+    if scopes.index(distribution_scope) > scopes.index(resolved_distribution_scope):
+        raise IIBError(
+            f'Cannot set "distribution_scope" to {distribution_scope} because from index is'
+            f' already set to {resolved_distribution_scope}'
+        )
+    return distribution_scope

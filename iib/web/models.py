@@ -652,6 +652,11 @@ class RequestIndexImageMixin:
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
+    @declared_attr
+    def distribution_scope(cls):
+        """Return the distribution_scope for the request."""
+        return db.Column(db.String, nullable=True)
+
     @staticmethod
     def _from_json(
         request_kwargs, additional_required_params=None, additional_optional_params=None, batch=None
@@ -672,6 +677,7 @@ class RequestIndexImageMixin:
             'add_arches',
             'overwrite_from_index',
             'overwrite_from_index_token',
+            'distribution_scope',
         } | set(additional_optional_params or [])
 
         validate_request_params(
@@ -697,6 +703,15 @@ class RequestIndexImageMixin:
                     'The "overwrite_from_index" parameter is required when'
                     ' the "overwrite_from_index_token" parameter is used'
                 )
+
+        distribution_scope = request_kwargs.pop('distribution_scope', None)
+        if distribution_scope:
+            distribution_scope = distribution_scope.lower()
+            if distribution_scope not in ['prod', 'stage', 'dev']:
+                raise ValidationError(
+                    'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
+                )
+            request_kwargs['distribution_scope'] = distribution_scope
 
         # Verify the user is authorized to use overwrite_from_index
         # current_user.is_authenticated is only ever False when auth is disabled
@@ -762,6 +777,7 @@ class RequestIndexImageMixin:
             'index_image': getattr(self.index_image, 'pull_specification', None),
             'organization': None,
             'removed_operators': [],
+            'distribution_scope': getattr(self, 'distribution_scope', None),
         }
 
     def get_index_image_mutable_keys(self):
@@ -839,7 +855,12 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
         cls._from_json(
             request_kwargs,
-            additional_optional_params=['from_index', 'organization', 'bundles'],
+            additional_optional_params=[
+                'from_index',
+                'organization',
+                'bundles',
+                'distribution_scope',
+            ],
             batch=batch,
         )
 

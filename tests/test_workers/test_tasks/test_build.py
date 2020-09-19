@@ -452,11 +452,12 @@ def test_overwrite_from_index(
 
 
 @pytest.mark.parametrize(
-    'add_arches, from_index, from_index_arches, bundles, expected_bundle_mapping',
+    'add_arches, from_index, from_index_arches, bundles,'
+    'expected_bundle_mapping, distribution_scope, resolved_distribution_scope',
     (
-        ([], 'some-index:latest', {'amd64'}, None, {}),
-        (['amd64', 's390x'], None, set(), None, {}),
-        (['amd64'], 'some-index:latest', {'amd64'}, None, {}),
+        ([], 'some-index:latest', {'amd64'}, None, {}, None, 'prod'),
+        (['amd64', 's390x'], None, set(), None, {}, None, 'prod'),
+        (['amd64'], 'some-index:latest', {'amd64'}, None, {}, None, 'prod'),
         (
             ['amd64'],
             None,
@@ -466,6 +467,8 @@ def test_overwrite_from_index(
                 'some-bundle': ['quay.io/some-bundle:v1'],
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
+            None,
+            'prod',
         ),
         (
             ['amd64'],
@@ -476,6 +479,20 @@ def test_overwrite_from_index(
                 'some-bundle': ['quay.io/some-bundle:v1'],
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
+            None,
+            'prod',
+        ),
+        (
+            ['amd64'],
+            'some-index:latest',
+            set(),
+            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            {
+                'some-bundle': ['quay.io/some-bundle:v1'],
+                'some-bundle2': ['quay.io/some-bundle2:v1'],
+            },
+            None,
+            'prod',
         ),
     ),
 )
@@ -495,6 +512,8 @@ def test_prepare_request_for_build(
     from_index_arches,
     bundles,
     expected_bundle_mapping,
+    distribution_scope,
+    resolved_distribution_scope,
 ):
     binary_image_resolved = 'binary-image@sha256:abcdef'
     from_index_resolved = None
@@ -510,7 +529,7 @@ def test_prepare_request_for_build(
         mock_gri.side_effect = [binary_image_resolved, from_index_resolved]
         mock_gia.side_effect = [expected_arches, from_index_arches]
         expected_payload_keys.add('from_index_resolved')
-        gil_side_effect = ['v4.6']
+        gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
         mock_gri.side_effect = [binary_image_resolved]
@@ -523,7 +542,7 @@ def test_prepare_request_for_build(
 
     mock_gil.side_effect = gil_side_effect
     rv = build._prepare_request_for_build(
-        'binary-image:latest', 1, from_index, None, add_arches, bundles
+        'binary-image:latest', 1, from_index, None, add_arches, bundles, distribution_scope,
     )
 
     assert rv == {
@@ -532,6 +551,8 @@ def test_prepare_request_for_build(
         'bundle_mapping': expected_bundle_mapping,
         'from_index_resolved': from_index_resolved,
         'ocp_version': ocp_version,
+        # want to verify that the output is always lower cased.
+        'distribution_scope': resolved_distribution_scope.lower(),
     }
 
 
@@ -671,13 +692,13 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
 def test_handle_add_request(
     mock_gmb,
     mock_gpb,
-    mock_aolti,
+    mock_alti,
     mock_grb,
     mock_gb,
     mock_vlpc,
@@ -702,6 +723,7 @@ def test_handle_add_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.5',
+        'distribution_scope': 'prod',
     }
     mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
@@ -724,6 +746,7 @@ def test_handle_add_request(
         force_backport,
         False,
         None,
+        None,
         greenwave_config,
     )
 
@@ -731,7 +754,7 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once()
     mock_gb.assert_called_once()
-    mock_aolti.assert_called_once()
+    assert 2 == mock_alti.call_count
     mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, 'v4.5', force_backport=force_backport)
 
     filter_args = mock_gmb.call_args[0]
@@ -777,6 +800,7 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs,
             organization,
             None,
             False,
+            None,
             None,
             greenwave_config,
         )
@@ -830,7 +854,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._get_resolved_bundles')
-@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
 def test_handle_add_request_backport_failure_no_overwrite(
@@ -862,6 +886,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.6',
+        'distribution_scope': 'prod',
     }
     mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
@@ -900,9 +925,9 @@ def test_handle_add_request_backport_failure_no_overwrite(
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
 def test_handle_rm_request(
-    mock_aolti,
+    mock_alti,
     mock_uiips,
     mock_capml,
     mock_srs,
@@ -920,13 +945,14 @@ def test_handle_rm_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.6',
+        'distribution_scope': 'PROD',
     }
     build.handle_rm_request(['some-operator'], 'binary-image:latest', 3, 'from-index:latest')
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once()
     mock_oir.assert_called_once()
-    mock_aolti.assert_called_once()
+    assert mock_alti.call_count == 2
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
     mock_vii.assert_called_once()
@@ -1498,7 +1524,7 @@ def test_adjust_csv_annotations_no_customizations(mock_yaml_dump, tmpdir):
     mock_yaml_dump.assert_not_called()
 
 
-def test_add_ocp_label_to_index(tmpdir):
+def test_add_label_to_index(tmpdir):
     operator_dir = tmpdir.mkdir('operator')
     dockerfile_txt = textwrap.dedent(
         '''\
@@ -1528,10 +1554,41 @@ def test_add_ocp_label_to_index(tmpdir):
     )
     operator_dir.join('Dockerfile').write(dockerfile_txt)
 
-    build._add_ocp_label_to_index('v4.5', operator_dir, 'Dockerfile')
+    build._add_label_to_index(
+        'com.redhat.index.delivery.version', 'v4.5', operator_dir, 'Dockerfile'
+    )
 
     expected = dockerfile_txt + '\nLABEL com.redhat.index.delivery.version="v4.5"\n'
     assert operator_dir.join('Dockerfile').read_text('utf-8') == expected
+
+
+@pytest.mark.parametrize(
+    'resolved_distribution_scope, distribution_scope, output, raise_exception',
+    (
+        ('prod', 'prod', 'prod', False),
+        ('prod', 'stage', 'stage', False),
+        ('prod', 'dev', 'dev', False),
+        ('stage', 'stage', 'stage', False),
+        ('stage', 'dev', 'dev', False),
+        ('stage', None, 'stage', False),
+        ('stage', 'prod', 'prod', True),
+        ('dev', 'stage', 'prod', True),
+        ('dev', 'prod', 'prod', True),
+    ),
+)
+def test_validate_distribution_scope(
+    resolved_distribution_scope, distribution_scope, output, raise_exception
+):
+    if raise_exception:
+        expected = f'Cannot set "distribution_scope" to {distribution_scope.lower()} because from'
+        f'index is already set to {resolved_distribution_scope.lower()}'
+        with pytest.raises(IIBError, match=expected):
+            build._validate_distribution_scope(resolved_distribution_scope, distribution_scope)
+    else:
+        assert (
+            build._validate_distribution_scope(resolved_distribution_scope, distribution_scope)
+            == output
+        )
 
 
 def test_get_missing_bundles_no_match():

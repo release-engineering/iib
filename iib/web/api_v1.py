@@ -38,38 +38,39 @@ from iib.workers.tasks.general import failed_request_callback
 api_v1 = flask.Blueprint('api_v1', __name__)
 
 
-def _get_rm_args(payload, request_id, overwrite_from_index):
+def _get_rm_args(payload, request, overwrite_from_index):
     """
     Generate arguments for remove request.
 
     :param dict payload: Payload from the remove request
-    :param int request_id: ID of request
+    :param Request request: request saved in the database
     :param bool overwrite_from_index: determines if the overwrite should be forced
     """
     return [
         payload['operators'],
         payload['binary_image'],
-        request_id,
+        request.id,
         payload['from_index'],
         payload.get('add_arches'),
         overwrite_from_index,
         payload.get('overwrite_from_index_token'),
+        request.distribution_scope,
     ]
 
 
-def _get_add_args(payload, request_id, overwrite_from_index, celery_queue):
+def _get_add_args(payload, request, overwrite_from_index, celery_queue):
     """
     Generate arguments for add request.
 
     :param dict payload: Payload from the remove request
-    :param int request_id: ID of request
+    :param Request request: request saved in the database
     :param bool overwrite_from_index: determines if the overwrite should be forced
     :param str celery_queue: name of celery queue
     """
     return [
         payload.get('bundles', []),
         payload['binary_image'],
-        request_id,
+        request.id,
         payload.get('from_index'),
         payload.get('add_arches'),
         payload.get('cnr_token'),
@@ -77,6 +78,7 @@ def _get_add_args(payload, request_id, overwrite_from_index, celery_queue):
         payload.get('force_backport'),
         overwrite_from_index,
         payload.get('overwrite_from_index_token'),
+        request.distribution_scope,
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
     ]
 
@@ -274,7 +276,7 @@ def add_bundles():
 
     overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
     celery_queue = _get_user_queue(serial=overwrite_from_index)
-    args = _get_add_args(payload, request.id, overwrite_from_index, celery_queue)
+    args = _get_add_args(payload, request, overwrite_from_index, celery_queue)
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
 
@@ -423,7 +425,7 @@ def rm_operators():
 
     overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
 
-    args = _get_rm_args(payload, request.id, overwrite_from_index)
+    args = _get_rm_args(payload, request, overwrite_from_index)
     safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
@@ -590,9 +592,9 @@ def add_rm_batch():
         )
         celery_queue = _get_user_queue(serial=overwrite_from_index)
         if isinstance(request, RequestAdd):
-            args = _get_add_args(build_request, request.id, overwrite_from_index, celery_queue)
+            args = _get_add_args(build_request, request, overwrite_from_index, celery_queue)
         elif isinstance(request, RequestRm):
-            args = _get_rm_args(build_request, request.id, overwrite_from_index)
+            args = _get_rm_args(build_request, request, overwrite_from_index)
 
         safe_args = _get_safe_args(args, build_request)
 
