@@ -581,6 +581,12 @@ components:
             index_image:
               type: string
               example: 'quay.io/iib-stage/iib:5'
+            distribution_scope:
+              description: >
+                The scope of distribution for the index created by the request.
+                This determined what level of protection the addition or removal had.
+              type: string
+              example: 'prod'
             organization:
               type: string
               example: openshift-operators
@@ -648,6 +654,12 @@ components:
             index images that IIB does not have access to. The format of the token is in the format
             "user:password".
           example: token
+          distribution_scope:
+            description: >
+                The scope of distribution for the index created by the request.
+                This will determine what level of protection the addition will have.
+            type: string
+            example: 'prod'
       required:
         - binary_image
         - bundles
@@ -686,6 +698,12 @@ components:
             non-privileged users to use overwrite_from_index. The format of the token must be in
             the format "user:password".
           example: token
+        distribution_scope:
+          description: >
+                The scope of distribution for the index created by the request.
+                This will determine what level of protection the removal will have.
+          type: string
+          example: 'prod'
       required:
         - binary_image
         - from_index

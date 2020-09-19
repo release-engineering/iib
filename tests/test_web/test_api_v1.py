@@ -45,6 +45,7 @@ def test_get_build(app, auth_env, client, db):
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
         'bundle_mapping': {},
         'bundles': ['quay.io/namespace/bundle:1.0-3'],
+        'distribution_scope': None,
         'from_index': 'quay.io/namespace/repo:latest',
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
@@ -452,6 +453,42 @@ def test_add_bundle_invalid_param(mock_smfsc, db, auth_env, client):
 
 
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundle_from_invalid_distribution_scope(mock_smfsc, db, auth_env, client):
+    data = {
+        'binary_image': 'binary:image',
+        'add_arches': ['s390x'],
+        'organization': 'org',
+        'from_index': 'some:thing',
+        'distribution_scope': 'badvalue',
+    }
+
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert rv.json['error'] == (
+        'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
+    )
+    mock_smfsc.assert_not_called()
+
+
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_rm_bundle_from_invalid_distribution_scope(mock_smfsc, db, auth_env, client):
+    data = {
+        'binary_image': 'binary:image',
+        'add_arches': ['s390x'],
+        'from_index': 'some:thing',
+        'distribution_scope': 'badvalue',
+        'operators': ['some:thing'],
+    }
+
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert rv.json['error'] == (
+        'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
+    )
+    mock_smfsc.assert_not_called()
+
+
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, client):
     data = {'bundles': ['some:thing'], 'binary_image': 'binary:image'}
 
@@ -462,18 +499,26 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
 
 
 @pytest.mark.parametrize(
-    ('overwrite_from_index', 'bundles', 'from_index'),
+    ('overwrite_from_index', 'bundles', 'from_index', 'distribution_scope'),
     (
-        (False, ['some:thing'], None),
-        (False, [], 'some:thing'),
-        (True, ['some:thing'], 'some:thing'),
-        (True, [], 'some:thing'),
+        (False, ['some:thing'], None, None),
+        (False, [], 'some:thing', 'Prod'),
+        (True, ['some:thing'], 'some:thing', 'StagE'),
+        (True, [], 'some:thing', 'DeV'),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_success(
-    mock_smfsc, mock_har, overwrite_from_index, db, auth_env, client, bundles, from_index,
+    mock_smfsc,
+    mock_har,
+    overwrite_from_index,
+    db,
+    auth_env,
+    client,
+    bundles,
+    from_index,
+    distribution_scope,
 ):
     data = {
         'binary_image': 'binary:image',
@@ -483,6 +528,13 @@ def test_add_bundle_success(
         'overwrite_from_index': overwrite_from_index,
         'from_index': from_index,
     }
+
+    expected_distribution_scope = None
+
+    if distribution_scope:
+        data['distribution_scope'] = distribution_scope
+        expected_distribution_scope = distribution_scope.lower()
+
     if bundles:
         data['bundles'] = bundles
 
@@ -494,6 +546,7 @@ def test_add_bundle_success(
         'binary_image_resolved': None,
         'bundle_mapping': {},
         'bundles': bundles,
+        'distribution_scope': expected_distribution_scope,
         'from_index': from_index,
         'from_index_resolved': None,
         'id': 1,
@@ -550,8 +603,8 @@ def test_add_bundle_forced_overwrite(
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    # Third to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-3] == force_overwrite
+    # Fourth to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-4] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
@@ -588,10 +641,10 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     rv_json = rv.json
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    # Third to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-3] is True
-    # Second to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-2] == token
+    # Fourth to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-4] is True
+    # Third to last element in args is the overwrite_from_index_token parameter
+    assert mock_har.apply_async.call_args[1]['args'][-3] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -841,6 +894,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
+        'distribution_scope': None,
         'from_index': None,
         'from_index_resolved': None,
         'id': minimal_request_add.id,
@@ -903,6 +957,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': {},
         'bundles': [],
+        'distribution_scope': None,
         'from_index': 'quay.io/rm/index-image:latest',
         'from_index_resolved': None,
         'id': minimal_request_rm.id,
@@ -1018,6 +1073,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'bundle_mapping': {},
+        'distribution_scope': None,
         'bundles': [],
         'from_index': 'index:image',
         'from_index_resolved': None,
@@ -1066,13 +1122,14 @@ def test_remove_operator_forced_overwrite(
         'from_index': 'some:thing2',
         'operators': ['some:thing'],
         'overwrite_from_index': False,
+        'distribution_scope': 'Stage',
     }
 
     rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
-    # Second to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-2] == force_overwrite
+    # Third to last element in args is the overwrite_from_index parameter
+    assert mock_hrr.apply_async.call_args[1]['args'][-3] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
@@ -1092,9 +1149,9 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
     rv_json = rv.json
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
-    # Second to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-2] is True
-    assert mock_hrr.apply_async.call_args[1]['args'][-1] == token
+    # Third to last element in args is the overwrite_from_index parameter
+    assert mock_hrr.apply_async.call_args[1]['args'][-3] is True
+    assert mock_hrr.apply_async.call_args[1]['args'][-2] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_hrr.apply_async.call_args[1]['argsrepr']
@@ -1411,12 +1468,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     True,
                     'some_token',
                     None,
+                    None,
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
                     "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', 1, "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None]"
+                    "'hello-operator', None, True, '*****', None, None]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1434,10 +1492,11 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     None,
                     None,
+                    None,
                 ],
                 argsrepr=(
                     "[['kiali-ossm'], 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
-                    ", 2, 'registry:8443/iib-build:11', None, None, None]"
+                    ", 2, 'registry:8443/iib-build:11', None, None, None, None]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
