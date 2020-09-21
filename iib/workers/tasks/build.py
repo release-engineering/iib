@@ -951,7 +951,10 @@ def handle_add_request(
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
-            present_bundles = _get_present_bundles(from_index, temp_dir)
+
+            with set_registry_token(overwrite_from_index_token, from_index):
+                present_bundles = _get_present_bundles(from_index, temp_dir)
+
             filtered_bundles = _get_missing_bundles(present_bundles, resolved_bundles)
             excluded_bundles = [
                 bundle for bundle in resolved_bundles if bundle not in filtered_bundles
