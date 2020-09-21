@@ -674,7 +674,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_handle_add_request(
+    mock_srt,
     mock_gmb,
     mock_gpb,
     mock_aolti,
@@ -737,6 +739,7 @@ def test_handle_add_request(
     filter_args = mock_gmb.call_args[0]
     assert ['some-bundle@sha'] in filter_args
     mock_oia.assert_called_once()
+    mock_srt.assert_called_once()
 
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
@@ -833,7 +836,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._add_ocp_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_handle_add_request_backport_failure_no_overwrite(
+    mock_srt,
     mock_gmb,
     mock_gpb,
     mock_aolti,
