@@ -472,6 +472,10 @@ def _get_present_bundles(from_index, base_dir):
     )
     rpc_proc.kill()
 
+    # If no data is returned there are not bundles present
+    if not bundles:
+        return []
+
     # Transform returned data to parsable json
     present_bundles = [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
     return present_bundles

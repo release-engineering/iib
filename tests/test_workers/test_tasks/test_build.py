@@ -1603,6 +1603,27 @@ def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock
     assert mock_run_cmd.call_count == 2
 
 
+@mock.patch('time.sleep')
+@mock.patch('subprocess.Popen')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
+    with open(tmpdir.join('cidfile.txt'), 'w+') as f:
+        f.write('container_id')
+    mock_gil.return_value = 'some-path'
+    mock_run_cmd.side_effect = [
+        'api.Registry.ListBundles',
+        '',
+    ]
+    my_mock = mock.MagicMock()
+    mock_popen.return_value = my_mock
+    my_mock.stderr.read.return_value = 'address already in use'
+    my_mock.poll.side_effect = [1, None]
+    assert build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir)) == []
+    assert mock_run_cmd.call_count == 2
+
+
 @mock.patch('time.time')
 @mock.patch('os.remove')
 @mock.patch('time.sleep')
