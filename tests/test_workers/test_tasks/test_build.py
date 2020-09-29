@@ -367,10 +367,13 @@ def test_get_resolved_bundles_failure(mock_si):
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
+@pytest.mark.parametrize('overwrite_csv', (True, False))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles):
-    build._opm_index_add('/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass')
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv):
+    build._opm_index_add(
+        '/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass', overwrite_csv
+    )
 
     mock_run_cmd.assert_called_once()
     opm_args = mock_run_cmd.call_args[0][0]
@@ -384,6 +387,11 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles):
         assert from_index in opm_args
     else:
         assert '--from-index' not in opm_args
+    if overwrite_csv:
+        assert '--overwrite-latest' in opm_args
+    else:
+        assert '--overwrite-latest' not in opm_args
+
     mock_srt.assert_called_once_with('user:pass', from_index)
 
 
@@ -680,6 +688,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 
 
 @pytest.mark.parametrize('force_backport', (True, False))
+@pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
@@ -722,6 +731,7 @@ def test_handle_add_request(
     mock_vl,
     mock_cleanup,
     force_backport,
+    distribution_scope,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
@@ -729,7 +739,7 @@ def test_handle_add_request(
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.5',
-        'distribution_scope': 'prod',
+        'distribution_scope': distribution_scope,
     }
     mock_grb.return_value = ['some-bundle@sha']
     legacy_packages = {'some_package'}
@@ -766,6 +776,12 @@ def test_handle_add_request(
     filter_args = mock_gmb.call_args[0]
     assert ['some-bundle@sha'] in filter_args
     mock_oia.assert_called_once()
+
+    if distribution_scope in ['dev', 'stage']:
+        assert mock_oia.call_args[0][5]
+    else:
+        assert not mock_oia.call_args[0][5]
+
     mock_srt.assert_called_once()
 
     assert mock_bi.call_count == len(arches)
