@@ -505,7 +505,12 @@ def _get_missing_bundles(present_bundles, bundles):
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
 def _opm_index_add(
-    base_dir, bundles, binary_image, from_index=None, overwrite_from_index_token=None
+    base_dir,
+    bundles,
+    binary_image,
+    from_index=None,
+    overwrite_from_index_token=None,
+    overwrite_csv=False,
 ):
     """
     Add the input bundles to an operator index.
@@ -522,6 +527,8 @@ def _opm_index_add(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
+    :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
+        already exists.
     :raises IIBError: if the ``opm index add`` command fails.
     """
     # The bundles are not resolved since these are stable tags, and references
@@ -544,6 +551,10 @@ def _opm_index_add(
         # from_index is not resolved because podman does not support digest references
         # https://github.com/containers/libpod/issues/5234 is filed for it
         cmd.extend(['--from-index', from_index])
+
+    if overwrite_csv:
+        log.info('Using force to add bundle(s) to index')
+        cmd.extend(['--overwrite-latest'])
 
     with set_registry_token(overwrite_from_index_token, from_index):
         run_cmd(
@@ -1052,6 +1063,7 @@ def handle_add_request(
             prebuild_info['binary_image_resolved'],
             from_index,
             overwrite_from_index_token,
+            (prebuild_info['distribution_scope'] in ['dev', 'stage']),
         )
 
         _add_label_to_index(
