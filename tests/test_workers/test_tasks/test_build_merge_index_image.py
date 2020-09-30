@@ -15,7 +15,7 @@ from iib.workers.tasks import build_merge_index_image
     ),
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build_merge_index_image._verify_index_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -84,10 +84,9 @@ def test_handle_merge_request(
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     if target_index:
         assert mock_gpb.call_count == 2
-        assert mock_vii.call_count == 2
     else:
         assert mock_gpb.call_count == 1
-        assert mock_vii.call_count == 1
+    mock_vii.assert_not_called()
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
     mock_geaps.assert_called_once()
@@ -99,7 +98,7 @@ def test_handle_merge_request(
 
 
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build_merge_index_image._verify_index_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -168,7 +167,7 @@ def test_handle_merge_request_no_deprecate(
     assert mock_dep_b.call_count == 0
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
-    assert mock_vii.call_count == 2
+    mock_vii.assert_not_called()
     mock_capml.assert_called_once()
     mock_uiips.assert_called_once()
 

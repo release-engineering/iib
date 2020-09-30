@@ -68,24 +68,32 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
 
 @pytest.mark.parametrize(
-    'iib_index_image_output_registry, from_index, overwrite, expected',
+    'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index',
     (
-        (None, None, False, '{default}'),
+        (None, None, False, '{default}', None),
         (
             'registry-proxy.domain.local',
             None,
             False,
             'registry-proxy.domain.local/{default_no_registry}',
+            None,
         ),
-        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5'),
-        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4'),
+        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef'),
+        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba'),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build._overwrite_from_index')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_update_index_image_pull_spec(
-    mock_ur, mock_ofi, mock_gwc, iib_index_image_output_registry, from_index, overwrite, expected
+    mock_ur,
+    mock_ofi,
+    mock_gwc,
+    iib_index_image_output_registry,
+    from_index,
+    overwrite,
+    expected,
+    resolved_from_index,
 ):
     default_no_registry = 'namespace/some-image:3'
     default = f'quay.io/{default_no_registry}'
@@ -98,7 +106,13 @@ def test_update_index_image_pull_spec(
         'iib_registry': 'quay.io',
     }
     build._update_index_image_pull_spec(
-        default, request_id, arches, from_index, overwrite, overwrite_token
+        default,
+        request_id,
+        arches,
+        from_index,
+        overwrite,
+        overwrite_token,
+        resolved_prebuild_from_index=resolved_from_index,
     )
 
     mock_ur.assert_called_once()
@@ -106,7 +120,9 @@ def test_update_index_image_pull_spec(
     assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:
-        mock_ofi.assert_called_once_with(request_id, default, from_index, overwrite_token)
+        mock_ofi.assert_called_once_with(
+            request_id, default, from_index, resolved_from_index, overwrite_token
+        )
     else:
         mock_ofi.assert_not_called()
 
@@ -412,29 +428,53 @@ def test_opm_index_rm(mock_run_cmd, mock_srt):
 
 
 @pytest.mark.parametrize(
-    'output_pull_spec, from_index, overwrite_from_index_token, oci_export_expected',
+    'output_pull_spec, from_index, resolved_from_index,'
+    'overwrite_from_index_token, oci_export_expected',
     (
-        ('quay.io/ns/repo:1', 'quay.io/user_ns/repo:v1', 'user:pass', True),
-        ('quay.io/ns/repo:1', 'docker.io/user_ns/repo:v1', 'user:pass', False),
-        ('quay.io/ns/repo:1', 'quay.io/user_ns/repo:v1', None, False),
+        (
+            'quay.io/ns/repo:1',
+            'quay.io/user_ns/repo:v1',
+            'quay.io/user_ns/repo:abcdef',
+            'user:pass',
+            True,
+        ),
+        (
+            'quay.io/ns/repo:1',
+            'docker.io/user_ns/repo:v1',
+            'quay.io/user_ns/repo:abcdef',
+            'user:pass',
+            False,
+        ),
+        (
+            'quay.io/ns/repo:1',
+            'quay.io/user_ns/repo:v1',
+            'quay.io/user_ns/repo:abcdef',
+            None,
+            False,
+        ),
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
 def test_overwrite_from_index(
+    mock_vii,
     mock_srt,
     mock_sc,
     mock_td,
     mock_srs,
     output_pull_spec,
     from_index,
+    resolved_from_index,
     overwrite_from_index_token,
     oci_export_expected,
 ):
     mock_td.return_value.name = '/tmp/iib-12345'
-    build._overwrite_from_index(1, output_pull_spec, from_index, overwrite_from_index_token)
+    build._overwrite_from_index(
+        1, output_pull_spec, from_index, resolved_from_index, overwrite_from_index_token
+    )
 
     if oci_export_expected:
         oci_pull_spec = f'oci:{mock_td.return_value.name}'
@@ -457,6 +497,7 @@ def test_overwrite_from_index(
         mock_td.return_value.cleanup.assert_not_called()
 
     mock_srt.assert_called_once()
+    mock_vii.assert_called_once_with(resolved_from_index, from_index, overwrite_from_index_token)
 
 
 @pytest.mark.parametrize(
@@ -844,7 +885,7 @@ def test_handle_add_request(
     assert organization in export_args
 
     mock_uiips.assert_called_once()
-    mock_vii.assert_called_once()
+    mock_vii.assert_not_called()
     mock_capml.assert_called_once()
     assert mock_srs.call_count == 4
 
@@ -1048,7 +1089,7 @@ def test_handle_rm_request(
     assert mock_alti.call_count == 2
     assert mock_bi.call_count == len(arches)
     assert mock_pi.call_count == len(arches)
-    mock_vii.assert_called_once()
+    mock_vii.assert_not_called()
     assert mock_srs.call_count == 2
     mock_capml.assert_called_once()
     mock_uiips.assert_called_once()

@@ -17,7 +17,6 @@ from iib.workers.tasks.build import (
     _push_image,
     _update_index_image_build_state,
     _update_index_image_pull_spec,
-    _verify_index_image,
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import request_logger, run_cmd, set_registry_token
@@ -266,15 +265,6 @@ def handle_merge_request(
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
-    _verify_index_image(
-        prebuild_info['source_from_index_resolved'], source_from_index, overwrite_target_index_token
-    )
-
-    if target_index:
-        _verify_index_image(
-            prebuild_info['target_index_resolved'], target_index, overwrite_target_index_token
-        )
-
     output_pull_spec = _create_and_push_manifest_list(request_id, prebuild_info['arches'])
     _update_index_image_pull_spec(
         output_pull_spec,
@@ -283,6 +273,7 @@ def handle_merge_request(
         target_index,
         overwrite_target_index,
         overwrite_target_index_token,
+        prebuild_info['target_index_resolved'],
     )
     set_request_state(
         request_id, 'complete', 'The index image was successfully cleaned and updated.'
