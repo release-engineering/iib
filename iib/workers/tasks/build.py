@@ -165,6 +165,7 @@ def _update_index_image_pull_spec(
     from_index=None,
     overwrite_from_index=False,
     overwrite_from_index_token=None,
+    resolved_prebuild_from_index=None,
 ):
     """
     Update the request with the modified index image.
@@ -181,11 +182,18 @@ def _update_index_image_pull_spec(
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image.
+    :param str resolved_prebuild_from_index: resolved index image before starting the build.
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
     if from_index and overwrite_from_index:
-        _overwrite_from_index(request_id, output_pull_spec, from_index, overwrite_from_index_token)
+        _overwrite_from_index(
+            request_id,
+            output_pull_spec,
+            from_index,
+            resolved_prebuild_from_index,
+            overwrite_from_index_token,
+        )
         index_image = from_index
     elif conf['iib_index_image_output_registry']:
         index_image = output_pull_spec.replace(
@@ -613,7 +621,11 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
 
 
 def _overwrite_from_index(
-    request_id, output_pull_spec, from_index, overwrite_from_index_token=None
+    request_id,
+    output_pull_spec,
+    from_index,
+    resolved_prebuild_from_index,
+    overwrite_from_index_token=None,
 ):
     """
     Overwrite the ``from_index`` image.
@@ -622,10 +634,14 @@ def _overwrite_from_index(
     :param str output_pull_spec: the pull specification of the manifest list for the index image
         that IIB built.
     :param str from_index: the pull specification of the image to overwrite.
+    :param str resolved_prebuild_from_index: resolved index image before starting the build.
     :param str overwrite_from_index_token: the user supplied token to use when overwriting the
         ``from_index`` image. If this is not set, IIB's configured credentials will be used.
-    :raises IIBError: if one of the skopeo commands fails.
+    :raises IIBError: if one of the skopeo commands fails or if the index image has changed
+        since IIB build started.
     """
+    _verify_index_image(resolved_prebuild_from_index, from_index, overwrite_from_index_token)
+
     state_reason = f'Overwriting the index image {from_index} with {output_pull_spec}'
     log.info(state_reason)
     set_request_state(request_id, 'in_progress', state_reason)
@@ -1131,11 +1147,6 @@ def handle_add_request(
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
-    if from_index:
-        _verify_index_image(
-            prebuild_info['from_index_resolved'], from_index, overwrite_from_index_token
-        )
-
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
     if legacy_support_packages:
@@ -1150,6 +1161,7 @@ def handle_add_request(
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
+        prebuild_info['from_index_resolved'],
     )
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
@@ -1232,10 +1244,6 @@ def handle_rm_request(
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
-    _verify_index_image(
-        prebuild_info['from_index_resolved'], from_index, overwrite_from_index_token
-    )
-
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
 
@@ -1246,6 +1254,7 @@ def handle_rm_request(
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
+        prebuild_info['from_index_resolved'],
     )
     set_request_state(
         request_id, 'complete', 'The operator(s) were successfully removed from the index image',
