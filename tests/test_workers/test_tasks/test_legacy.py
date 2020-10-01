@@ -61,28 +61,32 @@ def test_verify_package_info_missing_pkg(mock_listdir):
     with pytest.raises(
         IIBError, match='package download-pkg is missing in index image index:image'
     ):
-        legacy._verify_package_info('/some/dir/download-pkg', 'index:image')
+        legacy._verify_package_info('/some/dir/download-pkg/download-pkg', 'index:image')
 
 
 @mock.patch('shutil.make_archive')
 def test_zip_package_success(mock_shutil):
-    legacy._zip_package('something/download-pkg')
-    mock_shutil.assert_called_once_with('something/manifests', 'zip', 'something/download-pkg')
+    legacy._zip_package('something/download-pkg/download-pkg')
+    mock_shutil.assert_called_once_with(
+        'something/download-pkg/manifests', 'zip', 'something/download-pkg/download-pkg'
+    )
 
 
 @mock.patch('shutil.make_archive')
 def test_zip_package_failure(mock_shutil):
     mock_shutil.side_effect = AttributeError('Nothing works!')
     with pytest.raises(IIBError, match='Unable to zip exported package for download-pkg'):
-        legacy._zip_package('something/download-pkg')
+        legacy._zip_package('something/download-pkg/download-pkg')
 
 
 @mock.patch('iib.workers.tasks.legacy.open')
 @mock.patch('iib.workers.tasks.legacy.requests.post')
 def test_push_package_manifest_success(mock_requests, mock_open):
     mock_requests.return_value.ok = True
-    legacy._push_package_manifest('something/download-pkg', 'cnr_token', 'organization')
-    mock_open.assert_called_once_with('something/manifests.zip', 'rb')
+    legacy._push_package_manifest(
+        'something/download-pkg/download-pkg', 'cnr_token', 'organization'
+    )
+    mock_open.assert_called_once_with('something/download-pkg/manifests.zip', 'rb')
     mock_requests.assert_called_once()
 
 
@@ -93,8 +97,10 @@ def test_push_package_manifest_failure(mock_requests, mock_open):
     mock_requests.return_value.json.return_value = {"message": "Unauthorized"}
     expected = 'Push to organization in the legacy app registry was unsucessful: Unauthorized'
     with pytest.raises(IIBError, match=expected):
-        legacy._push_package_manifest('something/download-pkg', 'cnr_token', 'organization')
-    mock_open.assert_called_once_with('something/manifests.zip', 'rb')
+        legacy._push_package_manifest(
+            'something/download-pkg/download-pkg', 'cnr_token', 'organization'
+        )
+    mock_open.assert_called_once_with('something/download-pkg/manifests.zip', 'rb')
     mock_requests.assert_called_once()
 
 
@@ -108,8 +114,10 @@ def test_push_package_manifest_failure_invalid_json(mock_requests, mock_open):
         'Push to organization in the legacy app registry was unsucessful: Something went wrong'
     )
     with pytest.raises(IIBError, match=expected):
-        legacy._push_package_manifest('something/download-pkg', 'cnr_token', 'organization')
-    mock_open.assert_called_once_with('something/manifests.zip', 'rb')
+        legacy._push_package_manifest(
+            'something/download-pkg/download-pkg', 'cnr_token', 'organization'
+        )
+    mock_open.assert_called_once_with('something/download-pkg/manifests.zip', 'rb')
     mock_requests.assert_called_once()
 
 
