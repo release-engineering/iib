@@ -34,7 +34,7 @@ def export_legacy_packages(packages, request_id, rebuilt_index_image, cnr_token,
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         for package in packages:
             _opm_index_export(rebuilt_index_image, package, temp_dir)
-            package_dir = os.path.join(temp_dir, package)
+            package_dir = os.path.join(temp_dir, package, package)
             _verify_package_info(package_dir, rebuilt_index_image)
             _zip_package(package_dir)
             omps_response = _push_package_manifest(package_dir, cnr_token, organization)
