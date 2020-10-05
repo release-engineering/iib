@@ -128,5 +128,6 @@ dmypy.json
 # IDE
 .vscode/
 
-# docker-compose volumes
-iib_data/
+# docker-compose volumes and files
+/iib_data/
+/ca-bundle.crt
