@@ -77,6 +77,9 @@ development environment. This will automatically run the following containers:
   IIB to publish AMQP 1.0 messages to the Apache ActiveMQ instance at the destinations
   `topic://VirtualTopic.eng.iib.batch.state` and `topic://VirtualTopic.eng.iib.build.state`.
 
+It's recommended to use the wrapper targets in the `Makefile` for pre-requisites. Simply run `make`
+to view available targets.
+
 The Flask application will automatically reload if there is a change in the codebase. If invalid
 syntax is added in the code, the `iib-api` container may shutdown. The Celery worker will
 automatically restart if there is a change under the `iib/workers` directory.
@@ -97,6 +100,11 @@ sudo docker run localhost:8443/iib-build:1
 
 If your development environment requires accessing a private container registry, please read
 the section titled Registry Authentication.
+
+You may also run the development environment with
+[podman-compose](https://github.com/containers/podman-compose). Use the script from the `devel`
+branch as it has various fixes and new features required to run IIB. Set the environment variable
+`IIB_COMPOSE_ENGINE` to the path of the `podman-compose` script before running the `make` commands.
 
 ## Dependency Management
 
