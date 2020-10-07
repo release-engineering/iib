@@ -678,11 +678,7 @@ def test_add_bundle_custom_user_queue(
     mock_smfsc, mock_har, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
 ):
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
-    data = {
-        'bundles': ['some:thing'],
-        'binary_image': 'binary:image',
-        'add_arches': ['s390x'],
-    }
+    data = {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'add_arches': ['s390x']}
     if overwrite_from_index:
         data['from_index'] = 'index:image'
         data['overwrite_from_index'] = True
@@ -872,10 +868,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
         'quay.io/some-operator2:v2.1.0',
     ]
 
-    bundle_mapping = {
-        'some-operator': bundles[0:2],
-        'some-operator2': bundles[2:],
-    }
+    bundle_mapping = {'some-operator': bundles[0:2], 'some-operator2': bundles[2:]}
 
     data = {
         'arches': ['arches'],
@@ -927,7 +920,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
     db.session.commit()
 
     rv = client.patch(
-        f'/api/v1/builds/{minimal_request_add.id}', json=data, environ_base=worker_auth_env,
+        f'/api/v1/builds/{minimal_request_add.id}', json=data, environ_base=worker_auth_env
     )
     rv_json = rv.json
     assert rv.status_code == 200, rv_json
@@ -987,7 +980,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
     db.session.commit()
 
     rv = client.patch(
-        f'/api/v1/builds/{minimal_request_rm.id}', json=data, environ_base=worker_auth_env,
+        f'/api/v1/builds/{minimal_request_rm.id}', json=data, environ_base=worker_auth_env
     )
     rv_json = rv.json
     assert rv.status_code == 200, rv_json
@@ -1092,7 +1085,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
                 'state': 'in_progress',
                 'state_reason': 'The request was initiated',
                 'updated': '2020-02-12T17:03:00Z',
-            },
+            }
         ],
         'state_reason': 'The request was initiated',
         'updated': '2020-02-12T17:03:00Z',
@@ -1212,9 +1205,7 @@ def test_not_found(client):
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
-    data = {
-        'from_bundle_image': 'registry.example.com/bundle-image:latest',
-    }
+    data = {'from_bundle_image': 'registry.example.com/bundle-image:latest'}
 
     # Assume a timestamp to simplify tests
     _timestamp = '2020-02-12T17:03:00Z'
@@ -1588,6 +1579,7 @@ def test_merge_index_image_success(mock_smfsc, mock_merge, db, auth_env, client)
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'deprecation_list': ['some@sha256:bundle'],
+        'distribution_scope': None,
         'id': 1,
         'index_image': None,
         'logs': {
@@ -1642,8 +1634,8 @@ def test_merge_index_image_overwrite_token_redacted(
     assert rv.status_code == 201
     mock_merge.apply_async.assert_called_once()
     # Second to last element in args is the overwrite_from_index parameter
-    assert mock_merge.apply_async.call_args[1]['args'][-2] is True
-    assert mock_merge.apply_async.call_args[1]['args'][-1] == token
+    assert mock_merge.apply_async.call_args[1]['args'][5] is True
+    assert mock_merge.apply_async.call_args[1]['args'][6] == token
     assert 'overwrite_target_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_merge.apply_async.call_args[1]['argsrepr']
@@ -1707,7 +1699,7 @@ def test_merge_index_image_custom_user_queue(
 @mock.patch('iib.web.api_v1.handle_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_fail_on_missing_overwrite_params(
-    mock_smfsc, mock_merge, app, auth_env, client, overwrite_from_index,
+    mock_smfsc, mock_merge, app, auth_env, client, overwrite_from_index
 ):
     data = {
         'deprecation_list': ['some@sha256:bundle'],

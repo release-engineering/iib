@@ -25,7 +25,9 @@ from iib.workers.tasks import build_merge_index_image
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
+@mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 def test_handle_merge_request(
+    mock_add_label_to_index,
     mock_cleanup,
     mock_prfb,
     mock_uiibs,
@@ -48,12 +50,18 @@ def test_handle_merge_request(
         'target_ocp_version': '4.6',
         'source_from_index_resolved': 'source-index@sha256:resolved',
         'target_index_resolved': target_index_resolved,
+        'distribution_scope': 'stage',
     }
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
 
     build_merge_index_image.handle_merge_request(
-        'binary-image:1.0', 'source-from-index:1.0', ['some-bundle:1.0'], 1, target_index,
+        'binary-image:1.0',
+        'source-from-index:1.0',
+        ['some-bundle:1.0'],
+        1,
+        target_index,
+        distribution_scope='stage',
     )
 
     mock_cleanup.assert_called_once()
@@ -63,6 +71,7 @@ def test_handle_merge_request(
         overwrite_from_index_token=None,
         source_from_index='source-from-index:1.0',
         target_index=target_index,
+        distribution_scope='stage',
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     if target_index:
@@ -95,7 +104,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
+@mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 def test_handle_merge_request_no_deprecate(
+    mock_add_label_to_index,
     mock_cleanup,
     mock_prfb,
     mock_uiibs,
@@ -116,6 +127,7 @@ def test_handle_merge_request_no_deprecate(
         'target_ocp_version': '4.6',
         'source_from_index_resolved': 'source-index@sha256:resolved',
         'target_index_resolved': 'target-index@sha256:resolved',
+        'distribution_scope': 'stage',
     }
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = []
@@ -126,6 +138,7 @@ def test_handle_merge_request_no_deprecate(
         ['some-bundle:1.0'],
         1,
         'target-from-index:1.0',
+        distribution_scope='stage',
     )
 
     mock_cleanup.assert_called_once()
@@ -135,6 +148,7 @@ def test_handle_merge_request_no_deprecate(
         overwrite_from_index_token=None,
         source_from_index='source-from-index:1.0',
         target_index='target-from-index:1.0',
+        distribution_scope='stage',
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     assert mock_gpb.call_count == 2
@@ -189,7 +203,7 @@ def test_add_bundles_missing_in_source(
         'index-image:4.6',
         None,
     )
-    mock_aolti.assert_called_once()
+    assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
     mock_capml.assert_called_once()
@@ -326,7 +340,7 @@ def test_add_bundles_missing_in_source_none_missing(
     assert missing_bundles == []
     mock_srs.assert_called_once()
     mock_oia.assert_called_once()
-    mock_aolti.assert_called_once()
+    assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
     mock_capml.assert_called_once()
@@ -374,9 +388,7 @@ def test_deprecate_bundles(mock_srt, mock_run_cmd):
         '--bundles',
         ','.join(bundles),
     ]
-    build_merge_index_image._deprecate_bundles(
-        bundles, 'some_dir', binary_image, from_index, '4.6',
-    )
+    build_merge_index_image._deprecate_bundles(bundles, 'some_dir', binary_image, from_index, '4.6')
     mock_run_cmd.assert_called_once_with(
         cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
     )
