@@ -661,6 +661,7 @@ def merge_index_image():
         payload.get('target_index'),
         overwrite_target_index,
         payload.get('overwrite_target_index_token'),
+        payload.get('distribution_scope'),
     ]
     safe_args = _get_safe_args(args, payload)
 

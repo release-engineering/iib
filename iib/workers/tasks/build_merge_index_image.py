@@ -38,6 +38,7 @@ def _add_bundles_missing_in_source(
     arch,
     ocp_version,
     overwrite_target_index_token=None,
+    distribution_scope=None,
 ):
     """
     Rebuild index image with bundles missing from source image but present in target image.
@@ -101,7 +102,13 @@ def _add_bundles_missing_in_source(
         overwrite_target_index_token,
     )
     _add_label_to_index(
-        'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile',
+        'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
+    )
+    _add_label_to_index(
+        'com.redhat.index.delivery.distribution_scope',
+        distribution_scope,
+        base_dir,
+        'index.Dockerfile',
     )
     _build_image(base_dir, 'index.Dockerfile', request_id, arch)
     _push_image(request_id, arch)
@@ -134,7 +141,7 @@ def _get_bundles_from_deprecation_list(bundles, deprecation_list):
 
 
 def _deprecate_bundles(
-    bundles, base_dir, binary_image, from_index, overwrite_target_index_token=None,
+    bundles, base_dir, binary_image, from_index, overwrite_target_index_token=None
 ):
     """
     Deprecate the specified bundles from the index image.
@@ -162,9 +169,7 @@ def _deprecate_bundles(
         ','.join(bundles),
     ]
     with set_registry_token(overwrite_target_index_token, from_index):
-        run_cmd(
-            cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles',
-        )
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
 
 
 @app.task
@@ -177,6 +182,7 @@ def handle_merge_request(
     target_index=None,
     overwrite_target_index=False,
     overwrite_target_index_token=None,
+    distribution_scope=None,
 ):
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
@@ -194,6 +200,8 @@ def handle_merge_request(
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``target_index`` image. This is required for non-privileged users to use
         ``overwrite_target_index``. The format of the token must be in the format "user:password".
+    :param str distribution_scope: the scope for distribution of the index image, defaults to
+        ``None``.
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
@@ -203,6 +211,7 @@ def handle_merge_request(
         overwrite_from_index_token=overwrite_target_index_token,
         source_from_index=source_from_index,
         target_index=target_index,
+        distribution_scope=distribution_scope,
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
@@ -229,13 +238,14 @@ def handle_merge_request(
             arch,
             prebuild_info['target_ocp_version'],
             overwrite_target_index_token,
+            distribution_scope=prebuild_info['distribution_scope'],
         )
 
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = source_index_bundles + missing_bundles
         deprecate_bundles = _get_bundles_from_deprecation_list(
-            intermediate_bundles, deprecation_list,
+            intermediate_bundles, deprecation_list
         )
         intermediate_image_name = _get_external_arch_pull_spec(
             request_id, arch, include_transport=False
@@ -273,5 +283,5 @@ def handle_merge_request(
         overwrite_target_index_token,
     )
     set_request_state(
-        request_id, 'complete', 'The index image was successfully cleaned and updated.',
+        request_id, 'complete', 'The index image was successfully cleaned and updated.'
     )

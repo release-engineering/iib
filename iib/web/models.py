@@ -96,7 +96,7 @@ class BundleDeprecation(db.Model):
         primary_key=True,
     )
     bundle_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True,
+        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
     )
 
     __table_args__ = (
@@ -705,7 +705,7 @@ class RequestIndexImageMixin:
         } | set(additional_optional_params or [])
 
         validate_request_params(
-            request_kwargs, required_params=required_params, optional_params=optional_params,
+            request_kwargs, required_params=required_params, optional_params=optional_params
         )
 
         # Check if both `from_index` and `add_arches` are not specified
@@ -830,9 +830,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
     omps_operator_version = db.Column(db.String, nullable=True)
 
-    __mapper_args__ = {
-        'polymorphic_identity': RequestTypeMapping.__members__['add'].value,
-    }
+    __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['add'].value}
 
     @classmethod
     def from_json(cls, kwargs, batch=None):
@@ -944,9 +942,7 @@ class RequestRm(Request, RequestIndexImageMixin):
     from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
     operators = db.relationship('Operator', secondary=RequestRmOperator.__table__)
 
-    __mapper_args__ = {
-        'polymorphic_identity': RequestTypeMapping.__members__['rm'].value,
-    }
+    __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['rm'].value}
 
     @classmethod
     def from_json(cls, kwargs, batch=None):
@@ -1023,7 +1019,7 @@ class RequestRegenerateBundle(Request):
     organization = db.Column(db.String, nullable=True)
 
     __mapper_args__ = {
-        'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value,
+        'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value
     }
 
     @classmethod
@@ -1039,7 +1035,7 @@ class RequestRegenerateBundle(Request):
         request_kwargs = deepcopy(kwargs)
 
         validate_request_params(
-            request_kwargs, required_params={'from_bundle_image'}, optional_params={'organization'},
+            request_kwargs, required_params={'from_bundle_image'}, optional_params={'organization'}
         )
 
         # Validate organization is correctly provided
@@ -1130,9 +1126,10 @@ class RequestMergeIndexImage(Request):
     target_index_resolved = db.relationship(
         'Image', foreign_keys=[target_index_resolved_id], uselist=False
     )
+    distribution_scope = db.Column(db.String, nullable=True)
 
     __mapper_args__ = {
-        'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value,
+        'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value
     }
 
     @classmethod
@@ -1198,6 +1195,15 @@ class RequestMergeIndexImage(Request):
 
         request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
+        distribution_scope = request_kwargs.pop('distribution_scope', None)
+        if distribution_scope:
+            distribution_scope = distribution_scope.lower()
+            if distribution_scope not in ['prod', 'stage', 'dev']:
+                raise ValidationError(
+                    'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
+                )
+            request_kwargs['distribution_scope'] = distribution_scope
+
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
@@ -1234,6 +1240,7 @@ class RequestMergeIndexImage(Request):
         rv['target_index_resolved'] = getattr(
             self.target_index_resolved, 'pull_specification', None
         )
+        rv['distribution_scope'] = getattr(self.distribution_scope, 'distribution_scope', None)
 
         return rv
 

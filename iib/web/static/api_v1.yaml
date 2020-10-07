@@ -807,6 +807,12 @@ components:
             in the format "user:password". If token is required for accessing the index images,
             then both of them have to be in the same repository.
           example: token
+        distribution_scope:
+          description: >
+              The scope of distribution for the index created by the request.
+              This will determine what level of protection the addition will have.
+          type: string
+          example: 'prod'
       required:
         - binary_image
         - source_from_index
@@ -851,6 +857,12 @@ components:
             index_image:
               type: string
               example: 'quay.io/iib-stage/iib:5'
+            distribution_scope:
+              description: >
+                The scope of distribution for the index created by the request.
+                This determined what level of protection the addition or removal had.
+              type: string
+              example: 'prod'
 
     RequestRegenerateBundleOutput:
       allOf:
