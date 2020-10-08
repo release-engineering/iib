@@ -700,7 +700,6 @@ components:
             type: string
             example: 'prod'
       required:
-        - binary_image
         - bundles
     RequestRemove:
       type: object
@@ -744,7 +743,6 @@ components:
           type: string
           example: 'prod'
       required:
-        - binary_image
         - from_index
         - operators
     RequestRegenerateBundle:
@@ -814,7 +812,6 @@ components:
           type: string
           example: 'prod'
       required:
-        - binary_image
         - source_from_index
     RequestMergeIndexImageOutput:
       allOf:

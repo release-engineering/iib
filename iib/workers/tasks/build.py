@@ -704,9 +704,32 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
     return result
 
 
+def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_config={}):
+    """
+    Determine the binary image to be used to build the index image.
+
+    :param str ocp_version: the ocp_version label value of the index image.
+    :param str distribution_scope: the distribution_scope label value of the index image.
+    :param dict binary_image_config: the dict of config required to identify the appropriate
+        ``binary_image`` to use.
+    :return: pull specification of the binary_image to be used for this build.
+    :rtype: str
+    :raises IIBError: when the config value for the ocp_version and distribution_scope is missing.
+    """
+    binary_image = binary_image_config.get(distribution_scope, {}).get(ocp_version, None)
+    if not binary_image:
+        raise IIBError(
+            'IIB does not have a configured binary_image for'
+            f' distribution_scope : {distribution_scope} and ocp_version: {ocp_version}.'
+            ' Please specify a binary_image value in the request.'
+        )
+
+    return binary_image
+
+
 def _prepare_request_for_build(
-    binary_image,
     request_id,
+    binary_image=None,
     from_index=None,
     overwrite_from_index_token=None,
     add_arches=None,
@@ -714,6 +737,7 @@ def _prepare_request_for_build(
     distribution_scope=None,
     source_from_index=None,
     target_index=None,
+    binary_image_config=None,
 ):
     """
     Prepare the request for the index image build.
@@ -742,6 +766,8 @@ def _prepare_request_for_build(
         that will be used as a base of the merged index image.
     :param str target_index: the pull specification of the container image containing the index
         whose new data will be added to the merged index image.
+    :param dict binary_image_config: the dict of config required to identify the appropriate
+        ``binary_image`` to use.
     :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
         ocp_version.
     :rtype: dict
@@ -757,9 +783,6 @@ def _prepare_request_for_build(
         arches = set(add_arches)
     else:
         arches = set()
-
-    binary_image_resolved = _get_resolved_image(binary_image)
-    binary_image_arches = _get_image_arches(binary_image_resolved)
 
     from_index_info = get_index_image_info(
         overwrite_from_index_token, from_index=from_index, default_ocp_version='v4.5'
@@ -786,6 +809,18 @@ def _prepare_request_for_build(
         from_index_info['resolved_distribution_scope'], distribution_scope
     )
 
+    if not binary_image:
+        binary_image_ocp_version = from_index_info['ocp_version']
+        if source_from_index:
+            binary_image_ocp_version = target_index_info['ocp_version']
+
+        binary_image = get_binary_image_from_config(
+            binary_image_ocp_version, distribution_scope, binary_image_config
+        )
+
+    binary_image_resolved = _get_resolved_image(binary_image)
+    binary_image_arches = _get_image_arches(binary_image_resolved)
+
     if not arches.issubset(binary_image_arches):
         raise IIBError(
             'The binary image is not available for the following arches: {}'.format(
@@ -801,6 +836,7 @@ def _prepare_request_for_build(
 
     return {
         'arches': arches,
+        'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
         'from_index_resolved': from_index_info['resolved_from_index'],
@@ -828,6 +864,7 @@ def _update_index_image_build_state(request_id, prebuild_info):
     """
     arches_str = ', '.join(sorted(prebuild_info['arches']))
     payload = {
+        'binary_image': prebuild_info['binary_image'],
         'binary_image_resolved': prebuild_info['binary_image_resolved'],
         'state': 'in_progress',
         'state_reason': f'Building the index image for the following arches: {arches_str}',
@@ -968,8 +1005,8 @@ def get_image_label(pull_spec, label):
 @request_logger
 def handle_add_request(
     bundles,
-    binary_image,
     request_id,
+    binary_image=None,
     from_index=None,
     add_arches=None,
     cnr_token=None,
@@ -979,15 +1016,16 @@ def handle_add_request(
     overwrite_from_index_token=None,
     distribution_scope=None,
     greenwave_config=None,
+    binary_image_config=None,
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
 
     :param list bundles: a list of strings representing the pull specifications of the bundles to
         add to the index image being built.
+    :param int request_id: the ID of the IIB build request
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from.
-    :param int request_id: the ID of the IIB build request
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
     :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
@@ -1006,6 +1044,8 @@ def handle_add_request(
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
+    :param dict binary_image_config: the dict of config required to identify the appropriate
+        ``binary_image`` to use.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
@@ -1021,13 +1061,14 @@ def handle_add_request(
         gate_bundles(resolved_bundles, greenwave_config)
 
     prebuild_info = _prepare_request_for_build(
-        binary_image,
         request_id,
+        binary_image,
         from_index,
         overwrite_from_index_token,
         add_arches,
         bundles,
         distribution_scope,
+        binary_image_config=binary_image_config,
     )
 
     log.info('Checking if interacting with the legacy app registry is required')
@@ -1119,24 +1160,25 @@ def handle_add_request(
 @request_logger
 def handle_rm_request(
     operators,
-    binary_image,
     request_id,
     from_index,
+    binary_image=None,
     add_arches=None,
     overwrite_from_index=False,
     overwrite_from_index_token=None,
     distribution_scope=None,
+    binary_image_config=None,
 ):
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
 
     :param list operators: a list of strings representing the name of the operators to
         remove from the index image.
-    :param str binary_image: the pull specification of the container image where the opm binary
-        gets copied from.
     :param int request_id: the ID of the IIB build request
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from.
     :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
         currently built for.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
@@ -1146,21 +1188,30 @@ def handle_rm_request(
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
+    :param dict binary_image_config: the dict of config required to identify the appropriate
+        ``binary_image`` to use.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
     prebuild_info = _prepare_request_for_build(
-        binary_image,
         request_id,
+        binary_image,
         from_index,
         overwrite_from_index_token,
         add_arches,
         distribution_scope=distribution_scope,
+        binary_image_config=binary_image_config,
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        _opm_index_rm(temp_dir, operators, binary_image, from_index, overwrite_from_index_token)
+        _opm_index_rm(
+            temp_dir,
+            operators,
+            prebuild_info['binary_image'],
+            from_index,
+            overwrite_from_index_token,
+        )
 
         _add_label_to_index(
             'com.redhat.index.delivery.version',

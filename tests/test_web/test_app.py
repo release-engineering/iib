@@ -92,3 +92,38 @@ def test_load_config_prod(mock_isfile, mock_getenv):
 def test_validate_api_config_failure_greenwave_params(config, error_msg):
     with pytest.raises(ConfigError, match=error_msg):
         validate_api_config(config)
+
+
+@pytest.mark.parametrize(
+    'config, error_msg',
+    (
+        (
+            {'IIB_BINARY_IMAGE_CONFIG': {'tom-brady': {}}, 'IIB_GREENWAVE_CONFIG': {}},
+            (
+                'distribution_scope values must be one of the following'
+                ' "prod", "stage" or "dev" strings.'
+            ),
+        ),
+        (
+            {'IIB_BINARY_IMAGE_CONFIG': {'prod': []}, 'IIB_GREENWAVE_CONFIG': {}},
+            (
+                'Value for distribution_scope keys must be a dict mapping'
+                ' ocp_version to binary_image'
+            ),
+        ),
+        (
+            {'IIB_BINARY_IMAGE_CONFIG': {'prod': {'v4.5': 2}}, 'IIB_GREENWAVE_CONFIG': {}},
+            'All ocp_version and binary_image values must be strings.',
+        ),
+        (
+            {'IIB_BINARY_IMAGE_CONFIG': ['something'], 'IIB_GREENWAVE_CONFIG': {}},
+            (
+                'IIB_BINARY_IMAGE_CONFIG must be a dict mapping distribution_scope to '
+                'another dict mapping ocp_version to binary_image'
+            ),
+        ),
+    ),
+)
+def test_validate_api_config_failure_binary_image_params(config, error_msg):
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)

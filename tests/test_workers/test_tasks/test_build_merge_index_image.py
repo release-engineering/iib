@@ -8,8 +8,11 @@ from iib.workers.tasks import build_merge_index_image
 
 
 @pytest.mark.parametrize(
-    'target_index, target_index_resolved',
-    (('target-from-index:1.0', 'target-index@sha256:resolved'), (None, None)),
+    'target_index, target_index_resolved, binary_image',
+    (
+        ('target-from-index:1.0', 'target-index@sha256:resolved', 'binary-image:1.0'),
+        (None, None, None),
+    ),
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image._verify_index_image')
@@ -44,9 +47,11 @@ def test_handle_merge_request(
     mock_uiips,
     target_index,
     target_index_resolved,
+    binary_image,
 ):
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
+        'binary_image': binary_image,
         'target_ocp_version': '4.6',
         'source_from_index_resolved': 'source-index@sha256:resolved',
         'target_index_resolved': target_index_resolved,
@@ -54,24 +59,27 @@ def test_handle_merge_request(
     }
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
+    binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
 
     build_merge_index_image.handle_merge_request(
-        'binary-image:1.0',
         'source-from-index:1.0',
         ['some-bundle:1.0'],
         1,
+        binary_image,
         target_index,
         distribution_scope='stage',
+        binary_image_config=binary_image_config,
     )
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
-        'binary-image:1.0',
         1,
+        binary_image,
         overwrite_from_index_token=None,
         source_from_index='source-from-index:1.0',
         target_index=target_index,
         distribution_scope='stage',
+        binary_image_config=binary_image_config,
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     if target_index:
@@ -124,6 +132,7 @@ def test_handle_merge_request_no_deprecate(
 ):
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
+        'binary_image': 'binary-image:1.0',
         'target_ocp_version': '4.6',
         'source_from_index_resolved': 'source-index@sha256:resolved',
         'target_index_resolved': 'target-index@sha256:resolved',
@@ -133,18 +142,19 @@ def test_handle_merge_request_no_deprecate(
     mock_gbfdl.return_value = []
 
     build_merge_index_image.handle_merge_request(
-        'binary-image:1.0',
         'source-from-index:1.0',
         ['some-bundle:1.0'],
         1,
+        'binary-image:1.0',
         'target-from-index:1.0',
         distribution_scope='stage',
     )
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
-        'binary-image:1.0',
         1,
+        'binary-image:1.0',
+        binary_image_config=None,
         overwrite_from_index_token=None,
         source_from_index='source-from-index:1.0',
         target_index='target-from-index:1.0',

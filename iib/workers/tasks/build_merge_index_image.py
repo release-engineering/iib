@@ -175,26 +175,27 @@ def _deprecate_bundles(
 @app.task
 @request_logger
 def handle_merge_request(
-    binary_image,
     source_from_index,
     deprecation_list,
     request_id,
+    binary_image=None,
     target_index=None,
     overwrite_target_index=False,
     overwrite_target_index_token=None,
     distribution_scope=None,
+    binary_image_config=None,
 ):
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
 
-    :param str binary_image: the pull specification of the container image where the opm binary
-        gets copied from.
     :param str source_from_index: pull specification to be used as the base for building the new
         index image.
     :param str target_index: pull specification of content stage index image for the
         corresponding target index image.
     :param list deprecation_list: list of deprecated bundles for the target index image.
     :param int request_id: the ID of the IIB build request.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from.
     :param bool overwrite_target_index: if True, overwrite the input ``target_index`` with
         the built index image.
     :param str overwrite_target_index_token: the token used for overwriting the input
@@ -206,12 +207,13 @@ def handle_merge_request(
     """
     _cleanup()
     prebuild_info = _prepare_request_for_build(
-        binary_image,
         request_id,
+        binary_image,
         overwrite_from_index_token=overwrite_target_index_token,
         source_from_index=source_from_index,
         target_index=target_index,
         distribution_scope=distribution_scope,
+        binary_image_config=binary_image_config,
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
@@ -232,7 +234,7 @@ def handle_merge_request(
             source_index_bundles,
             target_index_bundles,
             temp_dir,
-            binary_image,
+            prebuild_info['binary_image'],
             source_from_index,
             request_id,
             arch,
@@ -255,7 +257,7 @@ def handle_merge_request(
             _deprecate_bundles(
                 deprecate_bundles,
                 temp_dir,
-                binary_image,
+                prebuild_info['binary_image'],
                 intermediate_image_name,
                 overwrite_target_index_token,
             )

@@ -228,7 +228,7 @@ def test_get_build_logs_not_configured(client, db, minimal_request_add):
                 'binary_image': '',
                 'add_arches': ['s390x'],
             },
-            '"binary_image" must be set',
+            'The "binary_image" value must be a non-empty string',
         ),
         (
             {
@@ -365,20 +365,13 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
     (
         (
             {'bundles': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
-            'Missing required parameter(s): binary_image',
-        ),
-        (
-            {'from_index': 'pull:spec', 'add_arches': ['s390x']},
-            '"from_index" and "binary_image" must be specified if no bundles are specified',
+            'The "binary_image" value must be a non-empty string',
         ),
         (
             {'add_arches': ['s390x'], 'binary_image': 'binary:image'},
-            '"from_index" and "binary_image" must be specified if no bundles are specified',
+            '"from_index" must be specified if no bundles are specified',
         ),
-        (
-            {'add_arches': ['s390x']},
-            '"from_index" and "binary_image" must be specified if no bundles are specified',
-        ),
+        ({'add_arches': ['s390x']}, '"from_index" must be specified if no bundles are specified',),
         (
             {
                 'bundles': ['some:thing'],
@@ -406,7 +399,7 @@ def test_add_bundle_missing_required_param(mock_smfsc, data, error_msg, db, auth
     (
         (
             {'operators': ['some:thing'], 'from_index': 'pull:spec', 'add_arches': ['s390x']},
-            'Missing required parameter(s): binary_image',
+            'The "binary_image" value must be a non-empty string',
         ),
         (
             {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['s390x']},
@@ -604,7 +597,7 @@ def test_add_bundle_forced_overwrite(
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-4] == force_overwrite
+    assert mock_har.apply_async.call_args[1]['args'][-5] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
@@ -642,9 +635,9 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-4] is True
+    assert mock_har.apply_async.call_args[1]['args'][-5] is True
     # Third to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-3] == token
+    assert mock_har.apply_async.call_args[1]['args'][-4] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -1122,7 +1115,7 @@ def test_remove_operator_forced_overwrite(
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
     # Third to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-3] == force_overwrite
+    assert mock_hrr.apply_async.call_args[1]['args'][-4] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
@@ -1143,8 +1136,8 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
     # Third to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-3] is True
-    assert mock_hrr.apply_async.call_args[1]['args'][-2] == token
+    assert mock_hrr.apply_async.call_args[1]['args'][-4] is True
+    assert mock_hrr.apply_async.call_args[1]['args'][-3] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_hrr.apply_async.call_args[1]['argsrepr']
@@ -1449,8 +1442,8 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
             mock.call(
                 args=[
                     ['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'],
-                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     1,
+                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     'registry-proxy/rh-osbs-stage/iib:v4.5',
                     ['amd64'],
                     'no_tom_brady_anymore',
@@ -1460,12 +1453,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     'some_token',
                     None,
                     None,
+                    {},
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
-                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', 1, "
+                    "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None]"
+                    "'hello-operator', None, True, '*****', None, None, {}]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1477,17 +1471,19 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
             mock.call(
                 args=[
                     ['kiali-ossm'],
-                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     2,
                     'registry:8443/iib-build:11',
+                    'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     None,
                     None,
                     None,
                     None,
+                    {},
                 ],
                 argsrepr=(
-                    "[['kiali-ossm'], 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
-                    ", 2, 'registry:8443/iib-build:11', None, None, None, None]"
+                    "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "
+                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
+                    ", None, None, None, None, {}]"
                 ),
                 link_error=mock.ANY,
                 queue=None,

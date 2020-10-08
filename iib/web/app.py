@@ -81,6 +81,31 @@ def validate_api_config(config):
                     f'{queue_name} in "IIB_GREENWAVE_CONFIG"'
                 )
 
+    if config['IIB_BINARY_IMAGE_CONFIG']:
+        if not isinstance(config['IIB_BINARY_IMAGE_CONFIG'], dict):
+            raise ConfigError(
+                'IIB_BINARY_IMAGE_CONFIG must be a dict mapping distribution_scope to '
+                'another dict mapping ocp_version to binary_image'
+            )
+        for distribution_scope, value_dict in config['IIB_BINARY_IMAGE_CONFIG'].items():
+            if not isinstance(distribution_scope, str) or distribution_scope not in (
+                'dev',
+                'stage',
+                'prod',
+            ):
+                raise ConfigError(
+                    'distribution_scope values must be one of the following'
+                    ' "prod", "stage" or "dev" strings.'
+                )
+            if not isinstance(value_dict, dict):
+                raise ConfigError(
+                    'Value for distribution_scope keys must be a dict mapping'
+                    ' ocp_version to binary_image'
+                )
+            for ocp_version, binary_image_value in value_dict.items():
+                if not isinstance(ocp_version, str) or not isinstance(binary_image_value, str):
+                    raise ConfigError('All ocp_version and binary_image values must be strings.')
+
 
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/
