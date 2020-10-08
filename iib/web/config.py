@@ -10,6 +10,7 @@ class Config(object):
 
     # Additional loggers to set to the level defined in IIB_LOG_LEVEL
     IIB_ADDITIONAL_LOGGERS = []
+    IIB_BINARY_IMAGE_CONFIG = {}
     IIB_FORCE_OVERWRITE_FROM_INDEX = False
     IIB_GREENWAVE_CONFIG = {}
     IIB_LOG_FORMAT = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'

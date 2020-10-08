@@ -629,7 +629,7 @@ class RequestIndexImageMixin:
     @declared_attr
     def binary_image_id(cls):
         """Return the ID of the image that the opm binary comes from."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
     def binary_image_resolved_id(cls):
@@ -696,9 +696,10 @@ class RequestIndexImageMixin:
             be created automatically.
         """
         # Validate all required parameters are present
-        required_params = {'binary_image'} | set(additional_required_params or [])
+        required_params = set(additional_required_params or [])
         optional_params = {
             'add_arches',
+            'binary_image',
             'overwrite_from_index',
             'overwrite_from_index_token',
             'distribution_scope',
@@ -752,11 +753,14 @@ class RequestIndexImageMixin:
         Architecture.validate_architecture_json(add_arches)
 
         # Validate binary_image is correctly provided
-        binary_image = request_kwargs.pop('binary_image')
-        if not isinstance(binary_image, str):
+        binary_image = request_kwargs.pop('binary_image', None)
+        if binary_image is not None and not isinstance(binary_image, str):
             raise ValidationError('"binary_image" must be a string')
+        elif not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
+            raise ValidationError('The "binary_image" value must be a non-empty string')
 
-        request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
+        if binary_image:
+            request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
         if 'from_index' in request_kwargs:
             if not isinstance(request_kwargs['from_index'], str):
@@ -790,7 +794,7 @@ class RequestIndexImageMixin:
         :rtype: dict
         """
         return {
-            'binary_image': self.binary_image.pull_specification,
+            'binary_image': getattr(self.binary_image, 'pull_specification', None),
             'binary_image_resolved': getattr(
                 self.binary_image_resolved, 'pull_specification', None
             ),
@@ -812,6 +816,7 @@ class RequestIndexImageMixin:
         :rtype: set
         """
         return {
+            'binary_image',
             'binary_image_resolved',
             'from_bundle_image_resolved',
             'from_index_resolved',
@@ -850,16 +855,10 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 '"bundles" should be either an empty array or an array of non-empty strings'
             )
 
-        # Check if no bundles `from_index and `binary_image` are specified
-        # if no bundles and and no from index then a empty index will be created
-        # if no binary image and just a from_index then we are not updating anything and it would
-        # be a no-op
-        if not request_kwargs.get('bundles') and (
-            not request_kwargs.get('from_index') or not request_kwargs.get('binary_image')
-        ):
-            raise ValidationError(
-                '"from_index" and "binary_image" must be specified if no bundles are specified'
-            )
+        # Check if no bundles and `from_index is specified
+        # if no bundles and no from index then an empty index will be created which is a no-op
+        if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
+            raise ValidationError('"from_index" must be specified if no bundles are specified')
 
         for param in ('cnr_token', 'organization'):
             if param not in request_kwargs:
@@ -1101,7 +1100,7 @@ class RequestMergeIndexImage(Request):
     __tablename__ = 'request_merge_index_image'
 
     id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
-    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
+    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
     binary_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
     binary_image = db.relationship('Image', foreign_keys=[binary_image_id], uselist=False)
     binary_image_resolved = db.relationship(
@@ -1190,10 +1189,13 @@ class RequestMergeIndexImage(Request):
 
         # Validate binary_image is correctly provided
         binary_image = request_kwargs.pop('binary_image', None)
-        if not isinstance(binary_image, str):
+        if binary_image is not None and not isinstance(binary_image, str):
             raise ValidationError('The "binary_image" value must be a string')
+        elif not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
+            raise ValidationError('The "binary_image" value must be a non-empty string')
 
-        request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
+        if binary_image:
+            request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
 
         distribution_scope = request_kwargs.pop('distribution_scope', None)
         if distribution_scope:
@@ -1226,7 +1228,7 @@ class RequestMergeIndexImage(Request):
         :rtype: dict
         """
         rv = super().to_json(verbose=verbose)
-        rv['binary_image'] = self.binary_image.pull_specification
+        rv['binary_image'] = getattr(self.binary_image, 'pull_specification', None)
         rv['binary_image_resolved'] = getattr(
             self.binary_image_resolved, 'pull_specification', None
         )
@@ -1254,6 +1256,7 @@ class RequestMergeIndexImage(Request):
         rv = super().get_mutable_keys()
         rv.update(
             {
+                'binary_image',
                 'binary_image_resolved',
                 'index_image',
                 'source_from_index_resolved',

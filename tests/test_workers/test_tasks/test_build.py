@@ -460,47 +460,63 @@ def test_overwrite_from_index(
 
 
 @pytest.mark.parametrize(
-    'add_arches, from_index, from_index_arches, bundles,'
-    'expected_bundle_mapping, distribution_scope, resolved_distribution_scope',
+    'add_arches, from_index, from_index_arches, bundles, binary_image,'
+    'expected_bundle_mapping, distribution_scope, resolved_distribution_scope, binary_image_config',
     (
-        ([], 'some-index:latest', {'amd64'}, None, {}, None, 'prod'),
-        (['amd64', 's390x'], None, set(), None, {}, None, 'prod'),
-        (['amd64'], 'some-index:latest', {'amd64'}, None, {}, None, 'prod'),
+        ([], 'some-index:latest', {'amd64'}, None, 'binary-image:latest', {}, None, 'prod', {}),
+        (['amd64', 's390x'], None, set(), None, 'binary-image:latest', {}, None, 'prod', {}),
+        (
+            ['amd64'],
+            'some-index:latest',
+            {'amd64'},
+            None,
+            'binary-image:latest',
+            {},
+            None,
+            'prod',
+            {},
+        ),
         (
             ['amd64'],
             None,
             set(),
             ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            None,
             {
                 'some-bundle': ['quay.io/some-bundle:v1'],
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
             None,
             'prod',
+            {'prod': {'v4.5': 'binary-image:prod'}},
         ),
         (
             ['amd64'],
             'some-index:latest',
             set(),
             ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            'binary-image:latest',
             {
                 'some-bundle': ['quay.io/some-bundle:v1'],
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
             None,
             'prod',
+            {},
         ),
         (
             ['amd64'],
             'some-index:latest',
             set(),
             ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            'binary-image:latest',
             {
                 'some-bundle': ['quay.io/some-bundle:v1'],
                 'some-bundle2': ['quay.io/some-bundle2:v1'],
             },
             None,
             'prod',
+            {},
         ),
     ),
 )
@@ -519,9 +535,11 @@ def test_prepare_request_for_build(
     from_index,
     from_index_arches,
     bundles,
+    binary_image,
     expected_bundle_mapping,
     distribution_scope,
     resolved_distribution_scope,
+    binary_image_config,
 ):
     binary_image_resolved = 'binary-image@sha256:abcdef'
     from_index_resolved = None
@@ -534,8 +552,8 @@ def test_prepare_request_for_build(
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
-        mock_gri.side_effect = [binary_image_resolved, from_index_resolved]
-        mock_gia.side_effect = [expected_arches, from_index_arches]
+        mock_gri.side_effect = [from_index_resolved, binary_image_resolved]
+        mock_gia.side_effect = [from_index_arches, expected_arches]
         expected_payload_keys.add('from_index_resolved')
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
@@ -550,11 +568,22 @@ def test_prepare_request_for_build(
 
     mock_gil.side_effect = gil_side_effect
     rv = build._prepare_request_for_build(
-        'binary-image:latest', 1, from_index, None, add_arches, bundles, distribution_scope,
+        1,
+        binary_image,
+        from_index,
+        None,
+        add_arches,
+        bundles,
+        distribution_scope,
+        binary_image_config=binary_image_config,
     )
+
+    if not binary_image:
+        binary_image = 'binary-image:prod'
 
     assert rv == {
         'arches': expected_arches,
+        'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': expected_bundle_mapping,
         'from_index_resolved': from_index_resolved,
@@ -576,6 +605,7 @@ def test_update_index_image_build_state(
 ):
     prebuild_info = {
         'arches': ['amd64', 's390x'],
+        'binary_image': 'binary-image:1',
         'binary_image_resolved': 'binary-image@sha256:12345',
         'extra': 'ignored',
     }
@@ -607,7 +637,12 @@ def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
 
     with pytest.raises(IIBError, match='No arches.+'):
-        build._prepare_request_for_build('binary-image:latest', 1)
+        build._prepare_request_for_build(1, 'binary-image:latest')
+
+
+def test_get_binary_image_config_no_config_val():
+    with pytest.raises(IIBError, match='IIB does not have a configured binary_image.+'):
+        build.get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -618,7 +653,7 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 
     expected = 'The binary image is not available for the following arches.+'
     with pytest.raises(IIBError, match=expected):
-        build._prepare_request_for_build('binary-image:latest', 1, add_arches=['s390x'])
+        build._prepare_request_for_build(1, 'binary-image:latest', add_arches=['s390x'])
 
 
 @pytest.mark.parametrize('schema_version', (1, 2))
@@ -687,7 +722,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
         assert mock_run_cmd.call_count == 5
 
 
-@pytest.mark.parametrize('force_backport', (True, False))
+@pytest.mark.parametrize(
+    'force_backport, binary_image', ((True, 'binary-image:latest'), (False, None))
+)
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
@@ -731,11 +768,14 @@ def test_handle_add_request(
     mock_vl,
     mock_cleanup,
     force_backport,
+    binary_image,
     distribution_scope,
 ):
     arches = {'amd64', 's390x'}
+    binary_image_config = {'prod': {'v4.5': 'some_image'}}
     mock_prfb.return_value = {
         'arches': arches,
+        'binary_image': binary_image or 'some_image',
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.5',
@@ -753,8 +793,8 @@ def test_handle_add_request(
     greenwave_config = {'some_key': 'other_value'}
     build.handle_add_request(
         bundles,
-        'binary-image:latest',
         3,
+        binary_image,
         'from-index:latest',
         ['s390x'],
         cnr_token,
@@ -764,11 +804,21 @@ def test_handle_add_request(
         None,
         None,
         greenwave_config,
+        binary_image_config=binary_image_config,
     )
 
     mock_cleanup.assert_called_once()
     mock_vl.assert_called_once()
-    mock_prfb.assert_called_once()
+    mock_prfb.assert_called_once_with(
+        3,
+        binary_image,
+        'from-index:latest',
+        None,
+        ['s390x'],
+        ['some-bundle:2.3-1'],
+        None,
+        binary_image_config=binary_image_config,
+    )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count
     mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, 'v4.5', force_backport=force_backport)
@@ -940,6 +990,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
     mock_uiips.assert_not_called()
 
 
+@pytest.mark.parametrize('binary_image', ('binary-image:latest', None))
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
@@ -963,19 +1014,36 @@ def test_handle_rm_request(
     mock_oir,
     mock_prfb,
     mock_cleanup,
+    binary_image,
 ):
     arches = {'amd64', 's390x'}
     mock_prfb.return_value = {
         'arches': arches,
+        'binary_image': binary_image,
         'binary_image_resolved': 'binary-image@sha256:abcdef',
         'from_index_resolved': 'from-index@sha256:bcdefg',
         'ocp_version': 'v4.6',
         'distribution_scope': 'PROD',
     }
-    build.handle_rm_request(['some-operator'], 'binary-image:latest', 3, 'from-index:latest')
+    binary_image_config = {'prod': {'v4.6': 'some_image'}}
+    build.handle_rm_request(
+        ['some-operator'],
+        3,
+        'from-index:latest',
+        binary_image,
+        binary_image_config=binary_image_config,
+    )
 
     mock_cleanup.assert_called_once()
-    mock_prfb.assert_called_once()
+    mock_prfb.assert_called_once_with(
+        3,
+        binary_image,
+        'from-index:latest',
+        None,
+        None,
+        binary_image_config=binary_image_config,
+        distribution_scope=None,
+    )
     mock_oir.assert_called_once()
     assert mock_alti.call_count == 2
     assert mock_bi.call_count == len(arches)

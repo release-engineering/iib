@@ -50,13 +50,14 @@ def _get_rm_args(payload, request, overwrite_from_index):
     """
     return [
         payload['operators'],
-        payload['binary_image'],
         request.id,
         payload['from_index'],
+        payload.get('binary_image'),
         payload.get('add_arches'),
         overwrite_from_index,
         payload.get('overwrite_from_index_token'),
         request.distribution_scope,
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
 
 
@@ -71,8 +72,8 @@ def _get_add_args(payload, request, overwrite_from_index, celery_queue):
     """
     return [
         payload.get('bundles', []),
-        payload['binary_image'],
         request.id,
+        payload.get('binary_image'),
         payload.get('from_index'),
         payload.get('add_arches'),
         payload.get('cnr_token'),
@@ -82,6 +83,7 @@ def _get_add_args(payload, request, overwrite_from_index, celery_queue):
         payload.get('overwrite_from_index_token'),
         request.distribution_scope,
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
 
 
@@ -371,6 +373,7 @@ def patch_request(request_id):
             )
 
     image_keys = (
+        'binary_image',
         'binary_image_resolved',
         'bundle_image',
         'from_bundle_image_resolved',
@@ -654,14 +657,15 @@ def merge_index_image():
     overwrite_target_index = payload.get('overwrite_target_index', False)
     celery_queue = _get_user_queue(serial=overwrite_target_index)
     args = [
-        payload['binary_image'],
         payload['source_from_index'],
         payload.get('deprecation_list', []),
         request.id,
+        payload.get('binary_image'),
         payload.get('target_index'),
         overwrite_target_index,
         payload.get('overwrite_target_index_token'),
         payload.get('distribution_scope'),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
     safe_args = _get_safe_args(args, payload)
 
