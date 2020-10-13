@@ -202,8 +202,8 @@ markupsafe==1.1.1 \
     --hash=sha256:e249096428b3ae81b08327a63a485ad0878de3fb939049038579ac0ef61e17e7 \
     --hash=sha256:e8313f01ba26fbbe36c7be1966a7b7424942f670f38e666995b88d012765b9be \
     # via jinja2, mako
-operator-manifest==0.0.3 \
-    --hash=sha256:848b7070360bcf50735a2c086c2bb662b259135d5b20f3ab2ea33de0ccd43ebc \
+operator-manifest==0.0.4 \
+    --hash=sha256:787dbeb52ef0f39f67970c49cc1b700f857661108e15042f18d13665e7a551f6 \
     # via -r requirements-test.in
 packaging==20.1 \
     --hash=sha256:170748228214b70b672c581a3dd610ee51f733018650740e98c7df862a583f73 \
