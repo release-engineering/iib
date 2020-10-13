@@ -1,5 +1,9 @@
 FROM centos:8 AS builder
 
+RUN dnf -y install dnf-plugins-core \
+    && dnf -y install epel-release \
+    && dnf config-manager --set-enabled PowerTools
+
 RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
@@ -7,6 +11,18 @@ RUN dnf -y install \
     git \
     golang \
     make \
+    git \
+    rpm-build \
+    redhat-rpm-config \
+    go-compilers-golang-compiler \
+    glib2-devel \
+    glibc-static \
+    gpgme-devel \
+    libassuan-devel \
+    libgpg-error-devel \
+    libseccomp-devel \
+    ostree-devel \
+    systemd-devel \
     && dnf clean all
 
 ENV OPM_SRC="/src"
@@ -15,6 +31,14 @@ ENV OPM_TAG="v1.14.2"
 RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC && \
     (cd $OPM_SRC && git checkout $OPM_TAG && make build) && \
     cp $OPM_SRC/bin/opm /usr/bin/opm
+
+# Version 1.9.3 not available due to https://bugs.centos.org/view.php?id=17786
+COPY ./docker/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm /tmp/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm
+COPY ./docker/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm /tmp/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm
+RUN rpmbuild --rebuild /tmp/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm \
+    && dnf install -y ~/rpmbuild/RPMS/x86_64/golang-github-cpuguy83-go-md2man-1.0.7-13.el8.x86_64.rpm
+RUN rpmbuild --rebuild /tmp/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm \
+    && cp ~/rpmbuild/RPMS/x86_64/podman-1.9.3-2.el8.x86_64.rpm /tmp/podman-1.9.3-2.el8.x86_64.rpm
 
 FROM centos:8
 LABEL maintainer="Red Hat - EXD"
@@ -29,12 +53,14 @@ RUN dnf -y install \
     buildah \
     gcc \
     krb5-devel \
-    https://kojipkgs.fedoraproject.org/packages/podman/1.7.0/3.fc30/x86_64/podman-1.7.0-3.fc30.x86_64.rpm \
-    https://kojipkgs.fedoraproject.org/packages/runc/1.0.0/93.dev.gitb9b6cc6.fc30/x86_64/runc-1.0.0-93.dev.gitb9b6cc6.fc30.x86_64.rpm \
+    runc \
     python3-devel \
     python3-pip \
     skopeo \
     && dnf clean all
+
+COPY --from=builder /tmp/podman-1.9.3-2.el8.x86_64.rpm /tmp/podman-1.9.3-2.el8.x86_64.rpm
+RUN dnf -y install /tmp/podman-1.9.3-2.el8.x86_64.rpm
 
 COPY --from=builder /usr/bin/opm /usr/bin/opm
 ADD https://github.com/estesp/manifest-tool/releases/download/v1.0.0/manifest-tool-linux-amd64 /usr/bin/manifest-tool
