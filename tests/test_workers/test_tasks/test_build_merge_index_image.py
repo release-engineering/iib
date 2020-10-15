@@ -182,13 +182,50 @@ def test_add_bundles_missing_in_source(
     mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml
 ):
     source_bundles = [
-        {'packageName': 'bundle1', 'version': '1.0', 'bundlePath': 'quay.io/bundle1@sha256:123456'},
-        {'packageName': 'bundle2', 'version': '2.0', 'bundlePath': 'quay.io/bundle2@sha256:234567'},
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+        {
+            'packageName': 'bundle5',
+            'version': '5.0-2',
+            'bundlePath': 'quay.io/bundle2@sha256:456132',
+            'csvName': 'bundle5-5.0',
+        },
     ]
     target_bundles = [
-        {'packageName': 'bundle1', 'version': '1.0', 'bundlePath': 'quay.io/bundle1@sha256:123456'},
-        {'packageName': 'bundle3', 'version': '3.0', 'bundlePath': 'quay.io/bundle3@sha256:456789'},
-        {'packageName': 'bundle4', 'version': '4.0', 'bundlePath': 'quay.io/bundle4@sha256:567890'},
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle3',
+            'version': '3.0',
+            'bundlePath': 'quay.io/bundle3@sha256:456789',
+            'csvName': 'bundle3-3.0',
+        },
+        {
+            'packageName': 'bundle4',
+            'version': '4.0',
+            'bundlePath': 'quay.io/bundle4@sha256:567890',
+            'csvName': 'bundle4-4.0',
+        },
+        {
+            'packageName': 'bundle5',
+            'version': '5.0-1',
+            'bundlePath': 'quay.io/bundle4@sha256:569854',
+            'csvName': 'bundle5-5.0',
+        },
     ]
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
@@ -201,8 +238,18 @@ def test_add_bundles_missing_in_source(
         '4.6',
     )
     assert missing_bundles == [
-        {'packageName': 'bundle3', 'version': '3.0', 'bundlePath': 'quay.io/bundle3@sha256:456789'},
-        {'packageName': 'bundle4', 'version': '4.0', 'bundlePath': 'quay.io/bundle4@sha256:567890'},
+        {
+            'packageName': 'bundle3',
+            'version': '3.0',
+            'bundlePath': 'quay.io/bundle3@sha256:456789',
+            'csvName': 'bundle3-3.0',
+        },
+        {
+            'packageName': 'bundle4',
+            'version': '4.0',
+            'bundlePath': 'quay.io/bundle4@sha256:567890',
+            'csvName': 'bundle4-4.0',
+        },
     ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
@@ -227,11 +274,13 @@ def test_add_bundles_missing_in_source(
                     'packageName': 'bundle1',
                     'version': '1.0',
                     'bundlePath': 'quay.io/bundle1@sha256:123456',
+                    'csvName': 'bundle1-1.0',
                 },
                 {
                     'packageName': 'bundle2',
                     'version': '2.0',
                     'bundlePath': 'quay.io/bundle2:234567',
+                    'csvName': 'bundle2-2.0',
                 },
             ],
             [
@@ -259,11 +308,13 @@ def test_add_bundles_missing_in_source(
                     'packageName': 'bundle1',
                     'version': '1.0',
                     'bundlePath': 'quay.io/bundle1@sha256:123456',
+                    'csvName': 'bundle1-1.0',
                 },
                 {
                     'packageName': 'bundle2',
                     'version': '2.0',
                     'bundlePath': 'quay.io/bundle2:234567',
+                    'csvName': 'bundle2-2.0',
                 },
             ],
             [
@@ -327,14 +378,44 @@ def test_add_bundles_missing_in_source_none_missing(
     mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml
 ):
     source_bundles = [
-        {'packageName': 'bundle1', 'version': '1.0', 'bundlePath': 'quay.io/bundle1@sha256:123456'},
-        {'packageName': 'bundle2', 'version': '2.0', 'bundlePath': 'quay.io/bundle2@sha256:123456'},
-        {'packageName': 'bundle3', 'version': '3.0', 'bundlePath': 'quay.io/bundle3@sha256:123456'},
-        {'packageName': 'bundle4', 'version': '4.0', 'bundlePath': 'quay.io/bundle4@sha256:123456'},
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:123456',
+            'csvName': 'bundle2-2.0',
+        },
+        {
+            'packageName': 'bundle3',
+            'version': '3.0',
+            'bundlePath': 'quay.io/bundle3@sha256:123456',
+            'csvName': 'bundle3-3.0',
+        },
+        {
+            'packageName': 'bundle4',
+            'version': '4.0',
+            'bundlePath': 'quay.io/bundle4@sha256:123456',
+            'csvName': 'bundle4-4.0',
+        },
     ]
     target_bundles = [
-        {'packageName': 'bundle1', 'version': '1.0', 'bundlePath': 'quay.io/bundle1@sha256:123456'},
-        {'packageName': 'bundle2', 'version': '2.0', 'bundlePath': 'quay.io/bundle2@sha256:123456'},
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:123456',
+            'csvName': 'bundle2-2.0',
+        },
     ]
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,

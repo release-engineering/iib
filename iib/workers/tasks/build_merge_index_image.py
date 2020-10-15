@@ -63,11 +63,13 @@ def _add_bundles_missing_in_source(
     log.info('Adding bundles from target index image which are missing from source index image')
     missing_bundles = []
     source_bundle_digests = []
+    source_bundle_csv_names = []
     target_bundle_digests = []
 
     for bundle in source_index_bundles:
         if '@sha256:' in bundle['bundlePath']:
             source_bundle_digests.append(bundle['bundlePath'].split('@sha256:')[-1])
+            source_bundle_csv_names.append(bundle['csvName'])
         else:
             raise IIBError(
                 f'Bundle {bundle["bundlePath"]} in the source index image is not defined via digest'
@@ -81,7 +83,10 @@ def _add_bundles_missing_in_source(
             )
 
     for target_bundle_digest, bundle in target_bundle_digests:
-        if target_bundle_digest not in source_bundle_digests:
+        if (
+            target_bundle_digest not in source_bundle_digests
+            and bundle['csvName'] not in source_bundle_csv_names
+        ):
             missing_bundles.append(bundle)
 
     missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
