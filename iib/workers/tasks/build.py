@@ -1093,6 +1093,7 @@ def handle_add_request(
         distribution_scope,
         binary_image_config=binary_image_config,
     )
+    from_index_resolved = prebuild_info['from_index_resolved']
 
     log.info('Checking if interacting with the legacy app registry is required')
     legacy_support_packages = get_legacy_support_packages(
@@ -1111,8 +1112,8 @@ def handle_add_request(
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
 
-            with set_registry_token(overwrite_from_index_token, from_index):
-                present_bundles = _get_present_bundles(from_index, temp_dir)
+            with set_registry_token(overwrite_from_index_token, from_index_resolved):
+                present_bundles = _get_present_bundles(from_index_resolved, temp_dir)
 
             filtered_bundles = _get_missing_bundles(present_bundles, resolved_bundles)
             excluded_bundles = [
@@ -1130,7 +1131,7 @@ def handle_add_request(
             temp_dir,
             resolved_bundles,
             prebuild_info['binary_image_resolved'],
-            from_index,
+            from_index_resolved,
             overwrite_from_index_token,
             (prebuild_info['distribution_scope'] in ['dev', 'stage']),
         )
@@ -1168,7 +1169,7 @@ def handle_add_request(
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
-        prebuild_info['from_index_resolved'],
+        from_index_resolved,
     )
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
@@ -1223,12 +1224,14 @@ def handle_rm_request(
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
+    from_index_resolved = prebuild_info['from_index_resolved']
+
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         _opm_index_rm(
             temp_dir,
             operators,
             prebuild_info['binary_image'],
-            from_index,
+            from_index_resolved,
             overwrite_from_index_token,
         )
 
@@ -1261,7 +1264,7 @@ def handle_rm_request(
         from_index,
         overwrite_from_index,
         overwrite_from_index_token,
-        prebuild_info['from_index_resolved'],
+        from_index_resolved,
     )
     set_request_state(
         request_id, 'complete', 'The operator(s) were successfully removed from the index image',
