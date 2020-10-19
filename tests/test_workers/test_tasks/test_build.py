@@ -638,6 +638,57 @@ def test_prepare_request_for_build(
     }
 
 
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build.get_index_image_info')
+@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build._get_image_arches')
+def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
+    from_index_image_info = {
+        'resolved_from_index': None,
+        'ocp_version': 'v4.5',
+        'arches': set(),
+        'resolved_distribution_scope': 'prod',
+    }
+    source_index_image_info = {
+        'resolved_from_index': 'some_resolved_image@sha256',
+        'ocp_version': 'v4.5',
+        'arches': {'amd64'},
+        'resolved_distribution_scope': 'stage',
+    }
+
+    target_index_info = {
+        'resolved_from_index': 'some_other_image@sha256',
+        'ocp_version': 'v4.6',
+        'arches': {'amd64'},
+        'resolved_distribution_scope': 'stage',
+    }
+    mock_giii.side_effect = [from_index_image_info, source_index_image_info, target_index_info]
+    mock_gri.return_value = 'binary-image@sha256:12345'
+    mock_gia.return_value = {'amd64'}
+    rv = build._prepare_request_for_build(
+        1,
+        'binary-image:tag',
+        None,
+        None,
+        source_from_index='some_source_index:tag',
+        target_index='some_target_index:tag',
+    )
+
+    assert rv == {
+        'arches': {'amd64'},
+        'binary_image': 'binary-image:tag',
+        'binary_image_resolved': 'binary-image@sha256:12345',
+        'bundle_mapping': {},
+        'from_index_resolved': None,
+        'ocp_version': 'v4.5',
+        'distribution_scope': 'stage',
+        'source_from_index_resolved': 'some_resolved_image@sha256',
+        'source_ocp_version': 'v4.5',
+        'target_index_resolved': 'some_other_image@sha256',
+        'target_ocp_version': 'v4.6',
+    }
+
+
 @pytest.mark.parametrize('bundle_mapping', (True, False))
 @pytest.mark.parametrize('from_index_resolved', (True, False))
 @mock.patch('iib.workers.tasks.build.update_request')
