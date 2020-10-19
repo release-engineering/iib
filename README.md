@@ -7,6 +7,8 @@ IIB is a recursive acronym.  IIB stands for IIB Image Builder.
 Note: IIB was originally called "Index Image Build Service" but the name has been changed since
   its scope widened.
 
+Podman 1.9.2+ is required by IIB.
+
 ## External Documentation
 
 * [API Documentation](http://release-engineering.github.io/iib)

@@ -220,16 +220,18 @@ def handle_merge_request(
         binary_image_config=binary_image_config,
     )
     _update_index_image_build_state(request_id, prebuild_info)
+    source_from_index_resolved = prebuild_info['source_from_index_resolved']
+    target_index_resolved = prebuild_info['target_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         set_request_state(request_id, 'in_progress', 'Getting bundles present in the index images')
         log.info('Getting bundles present in the source index image')
-        source_index_bundles = _get_present_bundles(source_from_index, temp_dir)
+        source_index_bundles = _get_present_bundles(source_from_index_resolved, temp_dir)
 
         target_index_bundles = []
         if target_index:
             log.info('Getting bundles present in the target index image')
-            target_index_bundles = _get_present_bundles(target_index, temp_dir)
+            target_index_bundles = _get_present_bundles(target_index_resolved, temp_dir)
 
         arches = list(prebuild_info['arches'])
         arch = 'amd64' if 'amd64' in arches else arches[0]
@@ -239,7 +241,7 @@ def handle_merge_request(
             target_index_bundles,
             temp_dir,
             prebuild_info['binary_image'],
-            source_from_index,
+            source_from_index_resolved,
             request_id,
             arch,
             prebuild_info['target_ocp_version'],
@@ -278,7 +280,7 @@ def handle_merge_request(
         target_index,
         overwrite_target_index,
         overwrite_target_index_token,
-        prebuild_info['target_index_resolved'],
+        target_index_resolved,
     )
     set_request_state(
         request_id, 'complete', 'The index image was successfully cleaned and updated.'
