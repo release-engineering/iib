@@ -821,8 +821,15 @@ def _prepare_request_for_build(
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
+    # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
+    # and 'Rm' requests, but use the distribution_scope of the target_index as the resolved
+    # distribution scope for `merge-index-image` requests.
+    resolved_distribution_scope = from_index_info['resolved_distribution_scope']
+    if source_from_index:
+        resolved_distribution_scope = target_index_info['resolved_distribution_scope']
+
     distribution_scope = _validate_distribution_scope(
-        from_index_info['resolved_distribution_scope'], distribution_scope
+        resolved_distribution_scope, distribution_scope
     )
 
     if not binary_image:
