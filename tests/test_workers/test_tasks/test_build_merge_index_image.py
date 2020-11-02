@@ -5,6 +5,7 @@ import pytest
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build_merge_index_image
+from iib.workers.tasks.utils import RequestConfigMerge
 
 
 @pytest.mark.parametrize(
@@ -74,12 +75,13 @@ def test_handle_merge_request(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         1,
-        binary_image,
-        overwrite_from_index_token=None,
-        source_from_index='source-from-index:1.0',
-        target_index=target_index,
-        distribution_scope='stage',
-        binary_image_config=binary_image_config,
+        RequestConfigMerge(
+            binary_image=binary_image,
+            source_from_index='source-from-index:1.0',
+            target_index=target_index,
+            distribution_scope='stage',
+            binary_image_config=binary_image_config,
+        ),
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     if target_index:
@@ -152,12 +154,14 @@ def test_handle_merge_request_no_deprecate(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         1,
-        'binary-image:1.0',
-        binary_image_config=None,
-        overwrite_from_index_token=None,
-        source_from_index='source-from-index:1.0',
-        target_index='target-from-index:1.0',
-        distribution_scope='stage',
+        RequestConfigMerge(
+            binary_image='binary-image:1.0',
+            binary_image_config=None,
+            overwrite_from_index_token=None,
+            source_from_index='source-from-index:1.0',
+            target_index='target-from-index:1.0',
+            distribution_scope='stage',
+        ),
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     assert mock_gpb.call_count == 2

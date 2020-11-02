@@ -10,7 +10,15 @@ import pytest
 import ruamel.yaml
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build
+from iib.workers.tasks import build, build_merge_index_image
+from iib.workers.tasks.utils import (
+    RequestConfigAddRm,
+    RequestConfigMerge,
+    get_binary_image_from_config,
+    get_image_label,
+    _get_image_arches,
+    _get_resolved_image,
+)
 
 
 yaml = ruamel.yaml.YAML()
@@ -145,7 +153,7 @@ def test_get_local_pull_spec(request_id, arch):
     assert re.match(f'.+:{request_id}-{arch}', rv)
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches(mock_si):
     mock_si.return_value = {
         'mediaType': 'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -154,32 +162,32 @@ def test_get_image_arches(mock_si):
             {'platform': {'architecture': 's390x'}},
         ],
     }
-    rv = build._get_image_arches('image:latest')
+    rv = _get_image_arches('image:latest')
     assert rv == {'amd64', 's390x'}
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches_manifest(mock_si):
     mock_si.side_effect = [
         {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
         {'architecture': 'amd64'},
     ]
-    rv = build._get_image_arches('image:latest')
+    rv = _get_image_arches('image:latest')
     assert rv == {'amd64'}
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches_not_manifest_list(mock_si):
     mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json'}
     with pytest.raises(IIBError, match='.+is neither a v2 manifest list nor a v2 manifest'):
-        build._get_image_arches('image:latest')
+        _get_image_arches('image:latest')
 
 
 @pytest.mark.parametrize('label, expected', (('some_label', 'value'), ('not_there', None)))
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_label(mock_si, label, expected):
     mock_si.return_value = {'config': {'Labels': {'some_label': 'value'}}}
-    assert build.get_image_label('some-image:latest', label) == expected
+    assert get_image_label('some-image:latest', label) == expected
 
 
 @pytest.mark.parametrize(
@@ -211,7 +219,7 @@ def test_get_image_label(mock_si, label, expected):
         ),
     ),
 )
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_resolved_image(mock_si, pull_spec, expected):
     mock_si.return_value = textwrap.dedent(
         '''
@@ -257,7 +265,7 @@ def test_get_resolved_image(mock_si, pull_spec, expected):
     assert rv == expected
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_resolved_image_manifest_list(mock_si):
     mock_si.return_value = (
         r'{"manifests":[{"digest":"sha256:9e0c275e0bcb495773b10a18e499985d782810e47b4fce076422acb4b'
@@ -270,7 +278,7 @@ def test_get_resolved_image_manifest_list(mock_si):
         r'chitecture":"ppc64le","os":"linux"},"size":529}],"mediaType":"application\/vnd.docker.dis'
         r'tribution.manifest.list.v2+json","schemaVersion":2}'
     )
-    rv = build._get_resolved_image('docker.io/library/centos:8')
+    rv = _get_resolved_image('docker.io/library/centos:8')
     assert rv == (
         'docker.io/library/centos@sha256:fe8d824220415eed5477b63addf40fb06c3b049404242b31982106ac'
         '204f6700'
@@ -280,7 +288,7 @@ def test_get_resolved_image_manifest_list(mock_si):
     )
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_resolved_image_schema_1(mock_si):
     image_manifest_schema_1 = textwrap.dedent(
         """\
@@ -317,7 +325,7 @@ def test_get_resolved_image_schema_1(mock_si):
     }
 
     mock_si.side_effect = [image_manifest_schema_1, skopeo_output]
-    rv = build._get_resolved_image('registry.example.com/repository/name:1.0.0')
+    rv = _get_resolved_image('registry.example.com/repository/name:1.0.0')
     assert rv == (
         'registry.example.com/repository/name@sha256:aa6680b35f45cf0fd6fb5f417159257ba410a47b8fa2'
         '0d37b4c7fcd4a564b3fb'
@@ -560,15 +568,21 @@ def test_overwrite_from_index(
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.utils._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.utils._get_image_arches')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.utils.get_image_label')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 @mock.patch('iib.workers.tasks.build.update_request')
 def test_prepare_request_for_build(
     mock_ur,
     mock_gil,
+    mock_gil2,
     mock_gia,
+    mock_gia2,
     mock_gri,
+    mock_gri2,
     mock_srs,
     add_arches,
     from_index,
@@ -584,37 +598,41 @@ def test_prepare_request_for_build(
     from_index_resolved = None
     expected_arches = set(add_arches) | from_index_arches
     expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
-    gil_side_effect = []
+    gil_side_effect2 = []
     ocp_version = 'v4.5'
     if expected_bundle_mapping:
         expected_payload_keys.add('bundle_mapping')
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
-        mock_gri.side_effect = [from_index_resolved, binary_image_resolved]
-        mock_gia.side_effect = [from_index_arches, expected_arches]
+        mock_gri2.side_effect = [from_index_resolved]
+        mock_gri.side_effect = [binary_image_resolved]
+        mock_gia2.side_effect = [from_index_arches]
+        mock_gia.side_effect = [expected_arches]
         expected_payload_keys.add('from_index_resolved')
-        gil_side_effect = ['v4.6', resolved_distribution_scope]
+        gil_side_effect2 = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
         mock_gri.side_effect = [binary_image_resolved]
         mock_gia.side_effect = [expected_arches]
-        gil_side_effect = []
+        gil_side_effect2 = []
 
+    gil_side_effect1 = []
     if bundles:
         bundle_side_effects = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
-        gil_side_effect.extend(bundle_side_effects)
-
-    mock_gil.side_effect = gil_side_effect
+        gil_side_effect1.extend(bundle_side_effects)
+    mock_gil2.side_effect = gil_side_effect2
+    mock_gil.side_effect = gil_side_effect1
     rv = build._prepare_request_for_build(
         1,
-        binary_image,
-        from_index,
-        None,
-        add_arches,
-        bundles,
-        distribution_scope,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index=from_index,
+            add_arches=add_arches,
+            bundles=bundles,
+            distribution_scope=distribution_scope,
+            binary_image_config=binary_image_config,
+        ),
     )
 
     if not binary_image:
@@ -629,24 +647,14 @@ def test_prepare_request_for_build(
         'ocp_version': ocp_version,
         # want to verify that the output is always lower cased.
         'distribution_scope': resolved_distribution_scope.lower(),
-        'source_from_index_resolved': None,
-        'source_ocp_version': 'v4.5',
-        'target_index_resolved': None,
-        'target_ocp_version': 'v4.6',
     }
 
 
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_index_image_info')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_index_image_info')
+@mock.patch('iib.workers.tasks.build_merge_index_image._get_resolved_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._get_image_arches')
 def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
-    from_index_image_info = {
-        'resolved_from_index': None,
-        'ocp_version': 'v4.5',
-        'arches': set(),
-        'resolved_distribution_scope': 'prod',
-    }
     source_index_image_info = {
         'resolved_from_index': 'some_resolved_image@sha256',
         'ocp_version': 'v4.5',
@@ -660,25 +668,22 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
         'arches': {'amd64'},
         'resolved_distribution_scope': 'stage',
     }
-    mock_giii.side_effect = [from_index_image_info, source_index_image_info, target_index_info]
+    mock_giii.side_effect = [source_index_image_info, target_index_info]
     mock_gri.return_value = 'binary-image@sha256:12345'
     mock_gia.return_value = {'amd64'}
-    rv = build._prepare_request_for_build(
+    rv = build_merge_index_image._prepare_request_for_build(
         1,
-        'binary-image:tag',
-        None,
-        None,
-        source_from_index='some_source_index:tag',
-        target_index='some_target_index:tag',
+        RequestConfigMerge(
+            binary_image='binary-image:tag',
+            source_from_index='some_source_index:tag',
+            target_index='some_target_index:tag',
+        ),
     )
 
     assert rv == {
         'arches': {'amd64'},
         'binary_image': 'binary-image:tag',
         'binary_image_resolved': 'binary-image@sha256:12345',
-        'bundle_mapping': {},
-        'from_index_resolved': None,
-        'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
         'source_from_index_resolved': 'some_resolved_image@sha256',
         'source_ocp_version': 'v4.5',
@@ -720,18 +725,18 @@ def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_reso
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
+@mock.patch('iib.workers.tasks.utils._get_resolved_image')
+@mock.patch('iib.workers.tasks.utils._get_image_arches')
 def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
 
     with pytest.raises(IIBError, match='No arches.+'):
-        build._prepare_request_for_build(1, 'binary-image:latest')
+        build._prepare_request_for_build(1, RequestConfigAddRm(binary_image='binary-image:latest'))
 
 
 def test_get_binary_image_config_no_config_val():
     with pytest.raises(IIBError, match='IIB does not have a configured binary_image.+'):
-        build.get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
+        get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -742,7 +747,9 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 
     expected = 'The binary image is not available for the following arches.+'
     with pytest.raises(IIBError, match=expected):
-        build._prepare_request_for_build(1, 'binary-image:latest', add_arches=['s390x'])
+        build._prepare_request_for_build(
+            1, RequestConfigAddRm(binary_image='binary-image:latest', add_arches=['s390x'])
+        )
 
 
 @pytest.mark.parametrize('schema_version', (1, 2))
@@ -900,13 +907,13 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        binary_image,
-        'from-index:latest',
-        None,
-        ['s390x'],
-        ['some-bundle:2.3-1'],
-        None,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index='from-index:latest',
+            add_arches=['s390x'],
+            bundles=['some-bundle:2.3-1'],
+            binary_image_config=binary_image_config,
+        ),
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count
@@ -1126,12 +1133,12 @@ def test_handle_rm_request(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        binary_image,
-        'from-index:latest',
-        None,
-        None,
-        binary_image_config=binary_image_config,
-        distribution_scope=None,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index='from-index:latest',
+            binary_image_config=binary_image_config,
+            distribution_scope=None,
+        ),
     )
     mock_oir.assert_called_once()
     assert mock_alti.call_count == 2
@@ -1514,7 +1521,7 @@ def test_adjust_operator_bundle_invalid_yaml_file(mock_apns, tmpdir):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.utils._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (

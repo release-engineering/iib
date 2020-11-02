@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import hashlib
 import json
 import logging
 import os
@@ -31,6 +30,14 @@ from iib.workers.tasks.utils import (
     run_cmd,
     set_registry_token,
     skopeo_inspect,
+    RequestConfigAddRm,
+    get_index_image_infos,
+    gather_index_image_arches,
+    _validate_distribution_scope,
+    _get_resolved_image,
+    _get_image_arches,
+    get_image_label,
+    _get_container_image_name,
 )
 
 
@@ -207,24 +214,8 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
-    payload = {
-        'arches': list(arches),
-        'index_image': index_image,
-    }
+    payload = {'arches': list(arches), 'index_image': index_image}
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
-
-
-def _get_container_image_name(pull_spec):
-    """
-    Get the container image name from a pull specification.
-
-    :param str pull_spec: the pull spec to analyze
-    :return: the container image name
-    """
-    if '@' in pull_spec:
-        return pull_spec.split('@', 1)[0]
-    else:
-        return pull_spec.rsplit(':', 1)[0]
 
 
 def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
@@ -254,32 +245,6 @@ def _get_local_pull_spec(request_id, arch):
     :rtype: str
     """
     return f'iib-build:{request_id}-{arch}'
-
-
-def _get_image_arches(pull_spec):
-    """
-    Get the architectures this image was built for.
-
-    :param str pull_spec: the pull specification to a v2 manifest list
-    :return: a set of architectures of the container images contained in the manifest list
-    :rtype: set
-    :raises IIBError: if the pull specification is not a v2 manifest list
-    """
-    log.debug('Get the available arches for %s', pull_spec)
-    skopeo_raw = skopeo_inspect(f'docker://{pull_spec}', '--raw')
-    arches = set()
-    if skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.list.v2+json':
-        for manifest in skopeo_raw['manifests']:
-            arches.add(manifest['platform']['architecture'])
-    elif skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json':
-        skopeo_out = skopeo_inspect(f'docker://{pull_spec}', '--config')
-        arches.add(skopeo_out['architecture'])
-    else:
-        raise IIBError(
-            f'The pull specification of {pull_spec} is neither a v2 manifest list nor a v2 manifest'
-        )
-
-    return arches
 
 
 def get_rebuilt_image_pull_spec(request_id):
@@ -335,32 +300,6 @@ def _get_resolved_bundles(bundles):
             raise IIBError(error_msg)
 
     return list(resolved_bundles)
-
-
-def _get_resolved_image(pull_spec):
-    """
-    Get the pull specification of the container image using its digest.
-
-    :param str pull_spec: the pull specification of the container image to resolve
-    :return: the resolved pull specification
-    :rtype: str
-    """
-    log.debug('Resolving %s', pull_spec)
-    name = _get_container_image_name(pull_spec)
-    skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
-    if json.loads(skopeo_output).get('schemaVersion') == 2:
-        raw_digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
-        digest = f'sha256:{raw_digest}'
-    else:
-        # Schema 1 is not a stable format. The contents of the manifest may change slightly
-        # between requests causing a different digest to be computed. Instead, let's leverage
-        # skopeo's own logic for determining the digest in this case. In the future, we
-        # may want to use skopeo in all cases, but this will have significant performance
-        # issues until https://github.com/containers/skopeo/issues/785
-        digest = skopeo_inspect(f'docker://{pull_spec}')['Digest']
-    pull_spec_resolved = f'{name}@{digest}'
-    log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
-    return pull_spec_resolved
 
 
 def _get_index_database(from_index, base_dir):
@@ -570,9 +509,7 @@ def _opm_index_add(
         cmd.extend(['--overwrite-latest'])
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        run_cmd(
-            cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image',
-        )
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
@@ -615,9 +552,7 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
     )
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        run_cmd(
-            cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image',
-        )
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
 
 
 def _overwrite_from_index(
@@ -684,77 +619,7 @@ def _overwrite_from_index(
             temp_dir.cleanup()
 
 
-def get_index_image_info(overwrite_from_index_token, from_index=None, default_ocp_version='v4.5'):
-    """
-    Get arches, resolved pull specification and ocp_version for the index image.
-
-    :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
-    :param str from_index: the pull specification of the index image to be resolved.
-    :param str default_ocp_version: default ocp_version to use if index image pull_spec is absent.
-    :return: dictionary of resolved index image pull spec, set of arches, default ocp_version and
-        resolved_distribution_scope
-    :rtype: dict
-    """
-    result = {
-        'resolved_from_index': None,
-        'ocp_version': default_ocp_version,
-        'arches': set(),
-        'resolved_distribution_scope': 'prod',
-    }
-    if not from_index:
-        return result
-
-    with set_registry_token(overwrite_from_index_token, from_index):
-        from_index_resolved = _get_resolved_image(from_index)
-        result['arches'] = _get_image_arches(from_index_resolved)
-        result['ocp_version'] = (
-            get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
-        )
-        result['resolved_distribution_scope'] = (
-            get_image_label(from_index_resolved, 'com.redhat.index.delivery.distribution_scope')
-            or 'prod'
-        )
-        result['resolved_from_index'] = from_index_resolved
-    return result
-
-
-def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_config={}):
-    """
-    Determine the binary image to be used to build the index image.
-
-    :param str ocp_version: the ocp_version label value of the index image.
-    :param str distribution_scope: the distribution_scope label value of the index image.
-    :param dict binary_image_config: the dict of config required to identify the appropriate
-        ``binary_image`` to use.
-    :return: pull specification of the binary_image to be used for this build.
-    :rtype: str
-    :raises IIBError: when the config value for the ocp_version and distribution_scope is missing.
-    """
-    binary_image = binary_image_config.get(distribution_scope, {}).get(ocp_version, None)
-    if not binary_image:
-        raise IIBError(
-            'IIB does not have a configured binary_image for'
-            f' distribution_scope : {distribution_scope} and ocp_version: {ocp_version}.'
-            ' Please specify a binary_image value in the request.'
-        )
-
-    return binary_image
-
-
-def _prepare_request_for_build(
-    request_id,
-    binary_image=None,
-    from_index=None,
-    overwrite_from_index_token=None,
-    add_arches=None,
-    bundles=None,
-    distribution_scope=None,
-    source_from_index=None,
-    target_index=None,
-    binary_image_config=None,
-):
+def _prepare_request_for_build(request_id, build_request_config):
     """
     Prepare the request for the index image build.
 
@@ -764,83 +629,33 @@ def _prepare_request_for_build(
     This function was created so that code didn't need to be duplicated for the ``add`` and ``rm``
     request types.
 
-    :param str binary_image: the pull specification of the container image where the opm binary
-        gets copied from.
     :param int request_id: the ID of the IIB build request
-    :param str from_index: the pull specification of the container image containing the index that
-        the index image build will be based from.
-    :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
-    :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
-        currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
-        to build the index image for
-    :param list bundles: the list of bundles to create the bundle mapping on the request
-    :param str distribution_scope: the scope for distribution of the index image, defaults to
-        ``None``.
-    :param str source_from_index: the pull specification of the container image containing the index
-        that will be used as a base of the merged index image.
-    :param str target_index: the pull specification of the container image containing the index
-        whose new data will be added to the merged index image.
-    :param dict binary_image_config: the dict of config required to identify the appropriate
-        ``binary_image`` to use.
-    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
-        ocp_version.
+    :param RequestConfg build_request_config: build request configuration
     :rtype: dict
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
+    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
+        ocp_version.
     """
-    if bundles is None:
+    bundles = build_request_config.bundles
+    if build_request_config.bundles is None:
         bundles = []
 
     set_request_state(request_id, 'in_progress', 'Resolving the container images')
-
-    if add_arches:
-        arches = set(add_arches)
-    else:
-        arches = set()
-
-    from_index_info = get_index_image_info(
-        overwrite_from_index_token, from_index=from_index, default_ocp_version='v4.5'
-    )
-    arches = arches | from_index_info['arches']
-
-    source_from_index_info = get_index_image_info(
-        overwrite_from_index_token, from_index=source_from_index, default_ocp_version='v4.5'
-    )
-    arches = arches | source_from_index_info['arches']
-
-    target_index_info = get_index_image_info(
-        overwrite_from_index_token, from_index=target_index, default_ocp_version='v4.6'
-    )
-    arches = arches | target_index_info['arches']
-
-    if not arches:
-        raise IIBError('No arches were provided to build the index image')
-
+    infos = get_index_image_infos(build_request_config, [("from_index", "v4.5")])
+    arches = gather_index_image_arches(build_request_config, infos)
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
-    # and 'Rm' requests, but use the distribution_scope of the target_index as the resolved
-    # distribution scope for `merge-index-image` requests.
-    resolved_distribution_scope = from_index_info['resolved_distribution_scope']
-    if source_from_index:
-        resolved_distribution_scope = target_index_info['resolved_distribution_scope']
+    # and 'Rm' requests,
+    resolved_distribution_scope = infos["from_index"]['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(
-        resolved_distribution_scope, distribution_scope
+        resolved_distribution_scope, build_request_config.distribution_scope
     )
 
-    if not binary_image:
-        binary_image_ocp_version = from_index_info['ocp_version']
-        if source_from_index:
-            binary_image_ocp_version = target_index_info['ocp_version']
-
-        binary_image = get_binary_image_from_config(
-            binary_image_ocp_version, distribution_scope, binary_image_config
-        )
-
+    binary_image = build_request_config.get_binary_image(infos['from_index'], distribution_scope)
     binary_image_resolved = _get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
@@ -862,13 +677,9 @@ def _prepare_request_for_build(
         'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
-        'from_index_resolved': from_index_info['resolved_from_index'],
-        'ocp_version': from_index_info['ocp_version'],
+        'from_index_resolved': infos["from_index"]['resolved_from_index'],
+        'ocp_version': infos["from_index"]['ocp_version'],
         'distribution_scope': distribution_scope,
-        'source_from_index_resolved': source_from_index_info['resolved_from_index'],
-        'source_ocp_version': source_from_index_info['ocp_version'],
-        'target_index_resolved': target_index_info['resolved_from_index'],
-        'target_ocp_version': target_index_info['ocp_version'],
     }
 
 
@@ -956,14 +767,7 @@ def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
     """
     skopeo_timeout = get_worker_config()['iib_skopeo_timeout']
     log.debug('Copying the container image %s to %s', source, destination)
-    cmd = [
-        'skopeo',
-        '--command-timeout',
-        skopeo_timeout,
-        'copy',
-        '--format',
-        'v2s2',
-    ]
+    cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'copy', '--format', 'v2s2']
     if copy_all:
         cmd.append('--all')
     cmd.extend([source, destination])
@@ -1011,18 +815,6 @@ def _verify_labels(bundles):
         for label, value in conf['iib_required_labels'].items():
             if labels.get(label) != value:
                 raise IIBError(f'The bundle {bundle} does not have the label {label}={value}')
-
-
-def get_image_label(pull_spec, label):
-    """
-    Get a specific label from the container image.
-
-    :param str label: the label to get
-    :return: the label on the container image or None
-    :rtype: str
-    """
-    log.debug('Getting the label of %s from %s', label, pull_spec)
-    return get_image_labels(pull_spec).get(label)
 
 
 @app.task
@@ -1086,13 +878,15 @@ def handle_add_request(
 
     prebuild_info = _prepare_request_for_build(
         request_id,
-        binary_image,
-        from_index,
-        overwrite_from_index_token,
-        add_arches,
-        bundles,
-        distribution_scope,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index=from_index,
+            overwrite_from_index_token=overwrite_from_index_token,
+            add_arches=add_arches,
+            bundles=bundles,
+            distribution_scope=distribution_scope,
+            binary_image_config=binary_image_config,
+        ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
 
@@ -1173,7 +967,7 @@ def handle_add_request(
         from_index_resolved,
     )
     set_request_state(
-        request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
+        request_id, 'complete', 'The operator bundle(s) were successfully added to the index image'
     )
 
 
@@ -1216,12 +1010,14 @@ def handle_rm_request(
     _cleanup()
     prebuild_info = _prepare_request_for_build(
         request_id,
-        binary_image,
-        from_index,
-        overwrite_from_index_token,
-        add_arches,
-        distribution_scope=distribution_scope,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index=from_index,
+            overwrite_from_index_token=overwrite_from_index_token,
+            add_arches=add_arches,
+            distribution_scope=distribution_scope,
+            binary_image_config=binary_image_config,
+        ),
     )
     _update_index_image_build_state(request_id, prebuild_info)
 
@@ -1268,7 +1064,7 @@ def handle_rm_request(
         from_index_resolved,
     )
     set_request_state(
-        request_id, 'complete', 'The operator(s) were successfully removed from the index image',
+        request_id, 'complete', 'The operator(s) were successfully removed from the index image'
     )
 
 
@@ -1556,9 +1352,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             # If the tag is in the format "<algorithm>:<checksum>", the image is already pinned.
             # Otherwise, always pin it to a digest.
             if ':' not in ImageName.parse(pullspec).tag:
-                log.debug(
-                    '%s will be pinned to %s', pullspec, resolved_image.to_str(),
-                )
+                log.debug('%s will be pinned to %s', pullspec, resolved_image.to_str())
                 new_pullspec = resolved_image
                 replacement_needed = True
                 labels['com.redhat.iib.pinned'] = 'true'
@@ -1570,9 +1364,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             new_pullspec.registry = new_registry
 
         if replacement_needed:
-            log.debug(
-                '%s will be replaced with %s', pullspec, new_pullspec.to_str(),
-            )
+            log.debug('%s will be replaced with %s', pullspec, new_pullspec.to_str())
             replacement_pullspecs[pullspec] = new_pullspec
 
     # Apply modifications to the operator bundle image metadata
@@ -1633,31 +1425,4 @@ def _add_label_to_index(label_key, label_value, temp_dir, dockerfile_name):
     with open(os.path.join(temp_dir, dockerfile_name), 'a') as dockerfile:
         label = f'LABEL {label_key}="{label_value}"'
         dockerfile.write(f'\n{label}\n')
-        log.debug(
-            'Added the following line to %s: %s', dockerfile_name, label,
-        )
-
-
-def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):
-    """
-    Validate distribution scope is allowed to be updated.
-
-    :param str resolved_distribution_scope: the distribution_scope that the index is for.
-    :param str distribution_scope: the distribution scope that has been requested for
-        the index image.
-    :return: the valid distribution scope
-    :rtype: str
-    :raises IIBError: if the ``resolved_distribution_scope`` is of lesser scope than
-        ``distribution_scope``
-    """
-    if not distribution_scope:
-        return resolved_distribution_scope
-
-    scopes = ["dev", "stage", "prod"]
-    # Make sure the request isn't regressing the distribution scope
-    if scopes.index(distribution_scope) > scopes.index(resolved_distribution_scope):
-        raise IIBError(
-            f'Cannot set "distribution_scope" to {distribution_scope} because from index is'
-            f' already set to {resolved_distribution_scope}'
-        )
-    return distribution_scope
+        log.debug('Added the following line to %s: %s', dockerfile_name, label)

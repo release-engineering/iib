@@ -10,6 +10,7 @@ def pagination_metadata(pagination_query, **kwargs):
 
     :param flask_sqlalchemy.Pagination pagination_query: the paginated query
     :param dict kwargs: the query parameters to add to the URLs
+
     :return: a dictionary containing metadata about the paginated query
     """
     pagination_data = {

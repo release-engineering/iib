@@ -15,18 +15,84 @@ from iib.workers.tasks.build import (
     _get_present_bundles,
     _get_resolved_bundles,
     _opm_index_add,
-    _prepare_request_for_build,
     _push_image,
     _update_index_image_build_state,
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.utils import request_logger, run_cmd, set_registry_token
+from iib.workers.tasks.utils import (
+    request_logger,
+    run_cmd,
+    set_registry_token,
+    RequestConfigMerge,
+    get_index_image_infos,
+    gather_index_image_arches,
+    _validate_distribution_scope,
+    _get_resolved_image,
+    _get_image_arches,
+)
 
 
 __all__ = ['handle_merge_request']
 
 log = logging.getLogger(__name__)
+
+
+def _prepare_request_for_build(request_id, build_request_config):
+    """
+    Prepare the request for the index image build.
+
+    All information that was retrieved and/or calculated for the next steps in the build are
+    returned as a dictionary.
+
+    This function was created so that code didn't need to be duplicated for the ``add`` and ``rm``
+    request types.
+
+    :param int request_id: the ID of the IIB build request
+    :param RequestConfg build_request_config: build request configuration
+    :rtype: dict
+    :raises IIBError: if the container image resolution fails or the architectures couldn't be
+        detected.
+    :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
+        ocp_version.
+    """
+    set_request_state(request_id, 'in_progress', 'Resolving the container images')
+    infos = get_index_image_infos(
+        build_request_config, [("source_from_index", "v4.5"), ("target_index", "v4.6")]
+    )
+    arches = gather_index_image_arches(build_request_config, infos)
+    arches_str = ', '.join(sorted(arches))
+    log.debug('Set to build the index image for the following arches: %s', arches_str)
+
+    # use the distribution_scope of the target_index as the resolved
+    # distribution scope for `merge-index-image` requests.
+    resolved_distribution_scope = infos["target_index"]['resolved_distribution_scope']
+
+    distribution_scope = _validate_distribution_scope(
+        resolved_distribution_scope, build_request_config.distribution_scope
+    )
+
+    binary_image = build_request_config.get_binary_image(infos['target_index'], distribution_scope)
+    binary_image_resolved = _get_resolved_image(binary_image)
+    binary_image_arches = _get_image_arches(binary_image_resolved)
+
+    if not arches.issubset(binary_image_arches):
+        raise IIBError(
+            'The binary image is not available for the following arches: {}'.format(
+                ', '.join(sorted(arches - binary_image_arches))
+            )
+        )
+
+    return {
+        'arches': arches,
+        'binary_image': binary_image,
+        'binary_image_resolved': binary_image_resolved,
+        'distribution_scope': distribution_scope,
+        'source_from_index_resolved': infos["source_from_index"]['resolved_from_index'],
+        'source_ocp_version': infos["source_from_index"]['ocp_version'],
+        'target_index_resolved': infos["target_index"]['resolved_from_index'],
+        'target_ocp_version': infos["target_index"]['ocp_version'],
+    }
 
 
 def _add_bundles_missing_in_source(
@@ -215,12 +281,14 @@ def handle_merge_request(
     _cleanup()
     prebuild_info = _prepare_request_for_build(
         request_id,
-        binary_image,
-        overwrite_from_index_token=overwrite_target_index_token,
-        source_from_index=source_from_index,
-        target_index=target_index,
-        distribution_scope=distribution_scope,
-        binary_image_config=binary_image_config,
+        RequestConfigMerge(
+            binary_image=binary_image,
+            overwrite_from_index_token=overwrite_target_index_token,
+            source_from_index=source_from_index,
+            target_index=target_index,
+            distribution_scope=distribution_scope,
+            binary_image_config=binary_image_config,
+        ),
     )
     _update_index_image_build_state(request_id, prebuild_info)
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
