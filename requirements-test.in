@@ -16,3 +16,4 @@ python-qpid-proton
 requests
 requests-kerberos
 ruamel.yaml
+cryptography==3.2.1
