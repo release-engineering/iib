@@ -376,25 +376,29 @@ class RequestConfig:
     """
     Request config abstract class.
 
-    Attributes:
-        binary_image(str): the pull specification of the container image
-                           where the opm binary gets copied from.
-        overwrite_from_index_token(str): the token used for overwriting the input
-                                         ``from_index`` image. This is required for
-                                         non-privileged users to use ``overwrite_from_index``.
-                                         The format of the token must be
-                                         in the format "user:password".
-        distribution_scope(str): the scope for distribution
-                                 of the index image, defaults to ``None``.
-        source_from_index(str): the pull specification of the container image
-                                containing the index that will be used
-                                as a base of the merged index image.
-        target_index(str): the pull specification of the container image
-                           containing the index whose new data will be added
-                           to the merged index image.
-        binary_image_config(dict): the dict of config required to
-                                   identify the appropriate ``binary_image`` to use.
-
+    :param binary_image:  the pull specification of the container image
+                          where the opm binary gets copied from.
+    :type binary_image: str
+    :param overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for
+        non-privileged users to use ``overwrite_from_index``.
+        The format of the token must be
+        in the format "user:password".
+    :type overwrite_from_index_token: str
+    :param distribution_scope: the scope for distribution
+        of the index image, defaults to ``None``.
+    :type distribution_scope: str
+    :param source_from_index: the pull specification of the container image
+        containing the index that will be used
+        as a base of the merged index image.
+    :type source_from_index: str
+    :param target_index: the pull specification of the container image
+        containing the index whose new data will be added
+        to the merged index image.
+    :type target_index: str
+    :param binary_image_config: the dict of config required to
+        identify the appropriate ``binary_image`` to use.
+    :type binary_image_config: dict
     """
 
     _attrs = [
@@ -435,16 +439,18 @@ class RequestConfigAddRm(RequestConfig):
     """
     Request config for add and remove operations.
 
-    Attributes:
-        from_index(str): the pull specification of the container image
-                         containing the index that the index image build
-                         will be based from.
-        add_arches(list): the list of arches to build in addition to the
-                          arches ``from_index`` is currently built for;
-                          if ``from_index`` is ``None``, then this is used as the list of arches
-                          to build the index image for
-        bundles(list): the list of bundles to create the
-                       bundle mapping on the request
+    :param from_index: the pull specification of the container image
+        containing the index that the index image build
+        will be based from.
+    :type from_index: str
+    :param add_arches: the list of arches to build in addition to the
+        arches ``from_index`` is currently built for;
+        if ``from_index`` is ``None``, then this is used as the list of arches
+        to build the index image for
+    :type add_arches: list
+    :param bundles: the list of bundles to create the
+        bundle mapping on the request
+    :type bundles: list
 
     """
 
@@ -465,13 +471,14 @@ class RequestConfigMerge(RequestConfig):
     """
     Request config for merge operation.
 
-    Attributes:
-        source_from_index(str): the pull specification of the container image
-                                containing the index that will be used
-                                as a base of the merged index image.
-        target_index(str): the pull specification of the container image
-                           containing the index whose new data will be added
-                           to the merged index image.
+    :param source_from_index: the pull specification of the container image
+        containing the index that will be used
+        as a base of the merged index image.
+    :type source_from_index: str
+    :param target_index: the pull specification of the container image
+        containing the index whose new data will be added
+        to the merged index image.
+    :type target_index: str
 
     """
 
