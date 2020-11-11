@@ -375,9 +375,7 @@ def test_get_resolved_bundles_failure(mock_si):
         'schemaVersion': 1,
     }
     mock_si.return_value = skopeo_inspect_rv
-    with pytest.raises(
-        IIBError, match='.+ and schema version 1 is not supported by IIB.',
-    ):
+    with pytest.raises(IIBError, match='.+ and schema version 1 is not supported by IIB.'):
         build._get_resolved_bundles(['some_bundle@some_sha'])
 
 
@@ -481,7 +479,7 @@ def test_overwrite_from_index(
         mock_sc.assert_has_calls(
             (
                 mock.call(
-                    f'docker://{output_pull_spec}', oci_pull_spec, copy_all=True, exc_msg=mock.ANY,
+                    f'docker://{output_pull_spec}', oci_pull_spec, copy_all=True, exc_msg=mock.ANY
                 ),
                 mock.call(oci_pull_spec, f'docker://{from_index}', copy_all=True, exc_msg=mock.ANY),
             )
@@ -692,14 +690,13 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
 @pytest.mark.parametrize('bundle_mapping', (True, False))
 @pytest.mark.parametrize('from_index_resolved', (True, False))
 @mock.patch('iib.workers.tasks.build.update_request')
-def test_update_index_image_build_state(
-    mock_ur, bundle_mapping, from_index_resolved,
-):
+def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_resolved):
     prebuild_info = {
         'arches': ['amd64', 's390x'],
         'binary_image': 'binary-image:1',
         'binary_image_resolved': 'binary-image@sha256:12345',
         'extra': 'ignored',
+        'distribution_scope': 'stage',
     }
 
     if bundle_mapping:
@@ -1849,10 +1846,7 @@ def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, m
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_gil.return_value = 'some-path'
-    mock_run_cmd.side_effect = [
-        'api.Registry.ListBundles',
-        '',
-    ]
+    mock_run_cmd.side_effect = ['api.Registry.ListBundles', '']
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.stderr.read.return_value = 'address already in use'
@@ -1869,7 +1863,7 @@ def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, m
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_not_initialize(
-    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
+    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
@@ -1892,7 +1886,7 @@ def test_get_present_bundles_grpc_not_initialize(
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_delayed_initialize(
-    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir,
+    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
@@ -1925,10 +1919,7 @@ def test_get_present_bundles_grpc_delayed_initialize(
 def test_serve_image_registry(mock_run_cmd, mock_popen, mock_sleep, tmpdir):
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
-    my_mock.stderr.read.side_effect = [
-        'address already in use',
-        'address already in use',
-    ]
+    my_mock.stderr.read.side_effect = ['address already in use', 'address already in use']
     mock_run_cmd.return_value = 'api.Registry.ListBundles'
     my_mock.poll.side_effect = [1, 1, None]
     port, _ = build._serve_index_registry('some_path.db')

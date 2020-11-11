@@ -890,6 +890,7 @@ def _update_index_image_build_state(request_id, prebuild_info):
         'binary_image': prebuild_info['binary_image'],
         'binary_image_resolved': prebuild_info['binary_image_resolved'],
         'state': 'in_progress',
+        'distribution_scope': prebuild_info['distribution_scope'],
         'state_reason': f'Building the index image for the following arches: {arches_str}',
     }
 
