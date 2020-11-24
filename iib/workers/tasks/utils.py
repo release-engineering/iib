@@ -349,8 +349,13 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
     return result
 
 
-def get_index_image_infos(build_request_config, index_version_map):
-    """Get image infos of all images in version map."""
+def get_all_index_image_infos(build_request_config, index_version_map):
+    """Get image infos of all images in version map.
+    :param RequestConfg build_request_config: build request configuration
+    :param list index_version_map: list of tuples with (index_name, index_ocp_version)
+    :return: dictionary with inex image information obtained from `get_index_image_info`
+    :rtype: dict
+    """
     infos = {}
     for (index, version) in index_version_map:
         infos[index] = get_index_image_info(
@@ -362,10 +367,16 @@ def get_index_image_infos(build_request_config, index_version_map):
 
 
 def gather_index_image_arches(build_request_config, index_image_infos):
-    """Gather architectures from build_request_config and provided index image."""
+    """Gather architectures from build_request_config and provided index image.
+    :param RequestConfg build_request_config: build request configuration
+    :param dict index_image_infos: dict with index image infos returned
+    by `get_all_index_image_infos`
+    :return: set of architecture of all index images
+    :rtype: set
+    """
     arches = set(build_request_config.add_arches or [])
-    for val in index_image_infos.values():
-        arches |= set(val['arches'])
+    for info in index_image_infos.values():
+        arches |= set(info['arches'])
 
     if not arches:
         raise IIBError('No arches were provided to build the index image')
@@ -434,6 +445,15 @@ class RequestConfig:
             return True
         return False
 
+    def get_binary_image(self, index_info, distribution_scope):
+        """Get binary image based on self configuration, index image info and distribution scope."""
+        if not self.binary_image:
+            binary_image_ocp_version = index_info['ocp_version']
+            return get_binary_image_from_config(
+                binary_image_ocp_version, distribution_scope, self.binary_image_config
+            )
+        return self.binary_image
+
 
 class RequestConfigAddRm(RequestConfig):
     """
@@ -457,15 +477,6 @@ class RequestConfigAddRm(RequestConfig):
     _attrs = RequestConfig._attrs + ["from_index", "add_arches", "bundles"]
     __slots__ = _attrs
 
-    def get_binary_image(self, index_info, distribution_scope):
-        """Get binary image based on self configuration, index image info and distribution scope."""
-        if not self.binary_image:
-            binary_image_ocp_version = index_info['ocp_version']
-            return get_binary_image_from_config(
-                binary_image_ocp_version, distribution_scope, self.binary_image_config
-            )
-        return self.binary_image
-
 
 class RequestConfigMerge(RequestConfig):
     """
@@ -485,15 +496,6 @@ class RequestConfigMerge(RequestConfig):
     _attrs = RequestConfig._attrs + ["source_from_index", "target_index"]
 
     __slots__ = _attrs
-
-    def get_binary_image(self, index_info, distribution_scope):
-        """Get binary image based on self configuration, index image info and distribution scope."""
-        if not self.binary_image:
-            binary_image_ocp_version = index_info['ocp_version']
-            return get_binary_image_from_config(
-                binary_image_ocp_version, distribution_scope, self.binary_image_config
-            )
-        return self.binary_image
 
 
 def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):

@@ -25,13 +25,13 @@ from iib.workers.tasks.utils import (
     get_image_labels,
     podman_pull,
     request_logger,
+    RequestConfigAddRm,
     reset_docker_config,
     retry,
     run_cmd,
     set_registry_token,
     skopeo_inspect,
-    RequestConfigAddRm,
-    get_index_image_infos,
+    get_all_index_image_infos,
     gather_index_image_arches,
     _validate_distribution_scope,
     _get_resolved_image,
@@ -642,20 +642,24 @@ def _prepare_request_for_build(request_id, build_request_config):
         bundles = []
 
     set_request_state(request_id, 'in_progress', 'Resolving the container images')
-    infos = get_index_image_infos(build_request_config, [("from_index", "v4.5")])
-    arches = gather_index_image_arches(build_request_config, infos)
+    from_index_image_info = get_all_index_image_infos(
+        build_request_config, [("from_index", "v4.5")]
+    )
+    arches = gather_index_image_arches(build_request_config, from_index_image_info)
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
     # and 'Rm' requests,
-    resolved_distribution_scope = infos["from_index"]['resolved_distribution_scope']
+    resolved_distribution_scope = from_index_image_info["from_index"]['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(
         resolved_distribution_scope, build_request_config.distribution_scope
     )
 
-    binary_image = build_request_config.get_binary_image(infos['from_index'], distribution_scope)
+    binary_image = build_request_config.get_binary_image(
+        from_index_image_info['from_index'], distribution_scope
+    )
     binary_image_resolved = _get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
@@ -677,8 +681,8 @@ def _prepare_request_for_build(request_id, build_request_config):
         'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
-        'from_index_resolved': infos["from_index"]['resolved_from_index'],
-        'ocp_version': infos["from_index"]['ocp_version'],
+        'from_index_resolved': from_index_image_info["from_index"]['resolved_from_index'],
+        'ocp_version': from_index_image_info["from_index"]['ocp_version'],
         'distribution_scope': distribution_scope,
     }
 
