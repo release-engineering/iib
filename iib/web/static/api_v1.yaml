@@ -61,8 +61,10 @@ paths:
                     type: array
                     items:
                       oneOf:
-                        - $ref: '#/components/schemas/RequestIndexImage'
-                        - $ref: '#/components/schemas/RequestRegenerateBundleOutput'
+                        - $ref: '#/components/schemas/AddResponse'
+                        - $ref: '#/components/schemas/RmResponse'
+                        - $ref: '#/components/schemas/RegenerateBundleResponse'
+                        - $ref: '#/components/schemas/MergeIndexImageResponse'
                   meta:
                     $ref: '#/components/schemas/Pagination'
         '400':
@@ -104,8 +106,10 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/RequestIndexImageVerbose'
-                  - $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+                  - $ref: '#/components/schemas/AddResponseVerbose'
+                  - $ref: '#/components/schemas/RmResponseVerbose'
+                  - $ref: '#/components/schemas/RegenerateBundleResponseVerbose'
+                  - $ref: '#/components/schemas/MergeIndexImageResponseVerbose'
         '404':
           description: The build request wasn't found
           content:
@@ -132,8 +136,9 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/RequestIndexImageVerbose'
-                  - $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+                  - $ref: '#/components/schemas/AddResponseVerbose'
+                  - $ref: '#/components/schemas/RmResponseVerbose'
+                  - $ref: '#/components/schemas/RegenerateBundleResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -155,7 +160,8 @@ paths:
                     type: string
                     example: You must be authenticated to perform this action
         '403':
-          description: The user is not allowed to create a build request with this input
+          description: >
+            The user is not allowed to create a build request with this input
           content:
             application/json:
               schema:
@@ -180,7 +186,6 @@ paths:
         content:
           application/json:
             schema:
-              # TODO: update to include Regenerate Bundle attrs
               $ref: '#/components/schemas/RequestUpdate'
       security:
         - Kerberos Authentication: []
@@ -251,14 +256,15 @@ paths:
                     example: The logs for the build request 1 no longer exist
   /builds/add:
     post:
-      description: Submit a build request to add operator bundles to an index image
+      description: >
+        Submit a build request to add operator bundles to an index image
       requestBody:
         description: The build request to create
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RequestAdd'
+              $ref: '#/components/schemas/AddRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -267,7 +273,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestIndexImageVerbose'
+                $ref: '#/components/schemas/AddResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -279,7 +285,8 @@ paths:
                     type: string
                     example: '"bundles" should be a non-empty array of strings'
         '401':
-          description: The user is not allowed to create a request with this input
+          description: >
+            The user is not allowed to create a request with this input
           content:
             application/json:
               schema:
@@ -290,14 +297,15 @@ paths:
                     example: You must be authenticated to perform this action
   /builds/rm:
     post:
-      description: Submit a build request to remove operators from an index image
+      description: >
+        Submit a build request to remove operators from an index image
       requestBody:
         description: The build request to remove
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RequestRemove'
+              $ref: '#/components/schemas/RmRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -306,7 +314,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestIndexImageVerbose'
+                $ref: '#/components/schemas/RmResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -336,7 +344,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RequestRegenerateBundle'
+              $ref: '#/components/schemas/RegenerateBundleRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -345,7 +353,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+                $ref: '#/components/schemas/RegenerateBundleResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -368,7 +376,8 @@ paths:
                     example: You must be authenticated to perform this action
   /builds/regenerate-bundle-batch:
     post:
-      description: Submit a batch of build requests to regenerate an operator bundle image
+      description: >
+        Submit a batch of build requests to regenerate an operator bundle image
       requestBody:
         description: The build requests to create
         required: true
@@ -385,7 +394,7 @@ paths:
                 build_requests:
                   type: array
                   items:
-                    $ref: '#/components/schemas/RequestRegenerateBundle'
+                    $ref: '#/components/schemas/RegenerateBundleRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -396,7 +405,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/RequestRegenerateBundleVerbose'
+                  $ref: '#/components/schemas/RegenerateBundleResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -419,8 +428,9 @@ paths:
                     example: You must be authenticated to perform this action
   /builds/add-rm-batch:
     post:
-      description: Submit a batch of build requests to add or remove operators
-        to/from an index image.
+      description: >
+        Submit a batch of build requests to add or
+        remove operators to/from an index image.
       requestBody:
         description: The build requests to create
         required: true
@@ -439,8 +449,8 @@ paths:
                   description: Request objects of type Add or Rm
                   items:
                     anyOf:
-                      - $ref: '#/components/schemas/RequestAdd'
-                      - $ref: '#/components/schemas/RequestRemove'
+                      - $ref: '#/components/schemas/AddRequest'
+                      - $ref: '#/components/schemas/RmRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -449,9 +459,9 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RequestIndexImageVerbose'
+                oneOf:
+                  - $ref: '#/components/schemas/AddResponseVerbose'
+                  - $ref: '#/components/schemas/RmResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -483,7 +493,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RequestMergeIndexImage'
+              $ref: '#/components/schemas/MergeIndexImageRequest'
       security:
         - Kerberos Authentication: []
       responses:
@@ -492,7 +502,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RequestMergeIndexImageVerbose'
+                $ref: '#/components/schemas/MergeIndexImageResponseVerbose'
         '400':
           description: The input is invalid
           content:
@@ -558,7 +568,12 @@ components:
         total:
           type: integer
           example: 45
-    Request:
+    OMPSOperatorVersion:
+      type: object
+      example:
+        some_operator:
+          - "1.0.0"
+    BaseResponse:
       type: object
       properties:
         arches:
@@ -575,9 +590,6 @@ components:
         id:
           type: integer
           example: 1
-        request_type:
-          type: string
-          example: add
         state:
           type: string
           example: complete
@@ -590,11 +602,40 @@ components:
         user:
           type: string
           example: msdhoni@DOMAIN.LOCAL
-    RequestIndexImage:
+    BaseResponseVerbose:
+      - type: object
+        properties:
+          batch_annotations:
+            type: object
+            description: >
+              An arbitrary JSON object created by the submitter associated with the batch.
+          state_history:
+            type: array
+            items:
+              $ref: '#/components/schemas/StateHistory'
+          logs:
+            type: object
+            properties:
+              url:
+                type: string
+                description: URL to fetch the logs for the request
+              expiration:
+                type: string
+                description: >-
+                  UTC timestamp in ISO format that indicates when the logs for the request are
+                  considered to be expired and will be removed.
+            example:
+              url: https://iib.domain.local/api/v1/builds/1/logs
+              expiration: '2019-09-19T19:35:15.722265Z'
+    AddRmResponse:
       allOf:
-        - $ref: '#/components/schemas/Request'
+        - $ref: '#/components/schemas/BaseResponse'
         - type: object
           properties:
+            organization:
+              type: string
+              description: The name of the organization the bundle was regenerated for.
+              example: openshift-operators
             binary_image:
               type: string
               example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
@@ -626,16 +667,13 @@ components:
                 This determined what level of protection the addition or removal had.
               type: string
               example: 'prod'
-            organization:
-              type: string
-              example: openshift-operators
             removed_operators:
               type: array
               items:
                 type: string
               example:
                 - prometheus-operator
-    RequestAdd:
+    AddRequest:
       type: object
       properties:
         add_arches:
@@ -695,15 +733,25 @@ components:
             index images that IIB does not have access to. The format of the token is in the format
             "user:password".
           example: token
-          distribution_scope:
-            description: >
-                The scope of distribution for the index created by the request.
-                This will determine what level of protection the addition will have.
-            type: string
-            example: 'prod'
+        distribution_scope:
+          description: >
+              The scope of distribution for the index created by the request.
+              This will determine what level of protection the addition will have.
+          type: string
+          example: 'prod'
       required:
         - bundles
-    RequestRemove:
+    AddResponse:
+      allOf:
+        - $ref: '#/components/schemas/AddRmResponse'
+        - type: object
+          properties:
+            request_type:
+              type: string
+              example: add
+            omps_operator_version:
+              $ref: '#/components/schemas/OMPSOperatorVersion'
+    RmRequest:
       type: object
       properties:
         add_arches:
@@ -747,26 +795,56 @@ components:
       required:
         - from_index
         - operators
-    RequestRegenerateBundle:
+    RmResponse:
       allOf:
+        - $ref: '#/components/schemas/AddRmResponse'
         - type: object
           properties:
-            from_bundle_image:
+            request_type:
               type: string
-              description: >-
-                The pull specification of the original bundle image that will be modified.
-              example: 'quay.io/user/openshift-bundle-example-container:v1'
+              example: rm
+    RegenerateBundleRequest:
+      type: object
+      properties:
+        from_bundle_image:
+          type: string
+          description: >-
+            The pull specification of the original bundle image that will be modified.
+          example: 'quay.io/user/openshift-bundle-example-container:v1'
+        organization:
+          type: string
+          description: >-
+            The name of the organization the bundle should be regenerated for. If provided,
+            the value must exist in IIB's server configuration. This will be used to perform
+            various modifications in the operator metadata embeded in the operator bundle
+            image, e.g. change the container registry, or the operator package name.
+          example: 'openshift-operators'
+      required:
+        - from_bundle_image
+    RegenerateBundleResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
             organization:
               type: string
-              description: >-
-                The name of the organization the bundle should be regenerated for. If provided,
-                the value must exist in IIB's server configuration. This will be used to perform
-                various modifications in the operator metadata embeded in the operator bundle
-                image, e.g. change the container registry, or the operator package name.
+              description: The name of the organization the bundle was regenerated for.
               example: openshift-operators
-          required:
-            - from_bundle_image
-    RequestMergeIndexImage:
+            request_type:
+              type: string
+              example: regenerate-bundle
+            bundle_image:
+              type: string
+              example: 'quay.io/user/openshift-bundle-example-container:v1'
+            from_bundle_image:
+              type: string
+              description: The pull specification of the original bundle image that was modified.
+              example: 'quay.io/user/openshift-bundle-example-container:v1'
+            from_bundle_image_resolved:
+              type: string
+              example: >-
+                quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+    MergeIndexImageRequest:
       type: object
       properties:
         binary_image:
@@ -815,11 +893,14 @@ components:
           example: 'prod'
       required:
         - source_from_index
-    RequestMergeIndexImageOutput:
+    MergeIndexImageResponse:
       allOf:
-        - $ref: '#/components/schemas/Request'
+        - $ref: '#/components/schemas/BaseResponse'
         - type: object
           properties:
+            request_type:
+              type: string
+              example: merge-index-image
             binary_image:
               type: string
               example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
@@ -862,20 +943,6 @@ components:
                 This determined what level of protection the addition or removal had.
               type: string
               example: 'prod'
-
-    RequestRegenerateBundleOutput:
-      allOf:
-        - $ref: '#/components/schemas/Request'
-        - type: object
-          properties:
-            from_bundle_image:
-              type: string
-              description: The pull specification of the original bundle image that was modified.
-              example: 'quay.io/user/openshift-bundle-example-container:v1'
-            organization:
-              type: string
-              description: The name of the organization the bundle was regenerated for.
-              example: openshift-operators
     RequestUpdate:
       type: object
       properties:
@@ -896,6 +963,16 @@ components:
             quay.io/user/openshift-bundle-example-container:v1
         bundle_mapping:
           $ref: '#/components/schemas/BundleMapping'
+        deprecation_list:
+          type: array
+          items:
+            type: string
+          example:
+            - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
+        from_bundle_image:
+          type: string
+          example: >-
+            quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
         from_bundle_image_resolved:
           type: string
           example: >-
@@ -913,46 +990,22 @@ components:
         state_reason:
           type: string
           example: Completed successfully
-    RequestVerbose:
+    AddResponseVerbose:
       allOf:
-        - $ref: '#/components/schemas/Request'
-        - type: object
-          properties:
-            batch_annotations:
-              type: object
-              description: >
-                An arbitrary JSON object created by the submitter associated with the batch.
-            state_history:
-              type: array
-              items:
-                $ref: '#/components/schemas/StateHistory'
-            logs:
-              type: object
-              properties:
-                url:
-                  type: string
-                  description: URL to fetch the logs for the request
-                expiration:
-                  type: string
-                  description: >-
-                    UTC timestamp in ISO format that indicates when the logs for the request are
-                    considered to be expired and will be removed.
-              example:
-                url: https://iib.domain.local/api/v1/builds/1/logs
-                expiration: '2019-09-19T19:35:15.722265Z'
-
-    RequestIndexImageVerbose:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/AddResponse'
+    RmResponseVerbose:
       allOf:
-        - $ref: '#/components/schemas/RequestVerbose'
-        - $ref: '#/components/schemas/RequestIndexImage'
-    RequestMergeIndexImageVerbose:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/RmResponse'
+    MergeIndexImageResponseVerbose:
       allOf:
-        - $ref: '#/components/schemas/RequestVerbose'
-        - $ref: '#/components/schemas/RequestMergeIndexImageOutput'
-    RequestRegenerateBundleVerbose:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/MergeIndexImageResponse'
+    RegenerateBundleResponseVerbose:
       allOf:
-        - $ref: '#/components/schemas/RequestVerbose'
-        - $ref: '#/components/schemas/RequestRegenerateBundleOutput'
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/RegenerateBundleResponse'
     StateHistory:
       type: object
       properties:
