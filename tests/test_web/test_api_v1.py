@@ -884,8 +884,11 @@ def test_patch_request_forbidden_user(mock_smfsc, minimal_request, worker_forbid
     mock_smfsc.assert_not_called()
 
 
+@pytest.mark.parametrize('distribution_scope', (None, 'stage'))
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_auth_env, client):
+def test_patch_request_add_success(
+    mock_smfsc, db, minimal_request_add, worker_auth_env, client, distribution_scope
+):
     bundles = [
         'quay.io/some-operator:v1.0.0',
         'quay.io/some-operator:v1.1.0',
@@ -904,6 +907,9 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
         'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
+    if distribution_scope:
+        data['distribution_scope'] = distribution_scope
+
     response_json = {
         'arches': ['arches'],
         'batch': 1,
@@ -912,7 +918,7 @@ def test_patch_request_add_success(mock_smfsc, db, minimal_request_add, worker_a
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
-        'distribution_scope': None,
+        'distribution_scope': distribution_scope,
         'from_index': None,
         'from_index_resolved': None,
         'id': minimal_request_add.id,
