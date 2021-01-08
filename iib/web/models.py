@@ -926,7 +926,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         """
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
-        rv.update({'bundles', 'bundle_mapping', 'omps_operator_version'})
+        rv.update({'bundles', 'bundle_mapping', 'distribution_scope', 'omps_operator_version'})
         return rv
 
 

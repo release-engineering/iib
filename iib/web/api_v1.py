@@ -433,6 +433,9 @@ def patch_request(request_id):
             bundle_img = Image.get_or_create(bundle)
             bundle_img.operator = operator_img
 
+    if 'distribution_scope' in payload:
+        request.distribution_scope = payload['distribution_scope']
+
     db.session.commit()
 
     if state_updated:
