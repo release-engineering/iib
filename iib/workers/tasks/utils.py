@@ -349,10 +349,10 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
     return result
 
 
-def get_all_index_image_infos(build_request_config, index_version_map):
-    """Get image infos of all images in version map.
+def get_all_index_images_info(build_request_config, index_version_map):
+    """Get image info of all images in version map.
 
-    :param RequestConfg build_request_config: build request configuration
+    :param RequestConfig build_request_config: build request configuration
     :param list index_version_map: list of tuples with (index_name, index_ocp_version)
     :return: dictionary with inex image information obtained from `get_index_image_info`
     :rtype: dict
@@ -370,9 +370,9 @@ def get_all_index_image_infos(build_request_config, index_version_map):
 def gather_index_image_arches(build_request_config, index_image_infos):
     """Gather architectures from build_request_config and provided index image.
 
-    :param RequestConfg build_request_config: build request configuration
+    :param RequestConfig build_request_config: build request configuration
     :param dict index_image_infos: dict with index image infos returned
-    by `get_all_index_image_infos`
+        by `get_all_index_images_info`
     :return: set of architecture of all index images
     :rtype: set
     """

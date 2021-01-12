@@ -22,6 +22,7 @@ from iib.workers.tasks.legacy import (
     validate_legacy_params_and_config,
 )
 from iib.workers.tasks.utils import (
+    get_all_index_images_info,
     get_image_labels,
     podman_pull,
     request_logger,
@@ -31,7 +32,6 @@ from iib.workers.tasks.utils import (
     run_cmd,
     set_registry_token,
     skopeo_inspect,
-    get_all_index_image_infos,
     gather_index_image_arches,
     _validate_distribution_scope,
     _get_resolved_image,
@@ -630,7 +630,7 @@ def _prepare_request_for_build(request_id, build_request_config):
     request types.
 
     :param int request_id: the ID of the IIB build request
-    :param RequestConfg build_request_config: build request configuration
+    :param RequestConfig build_request_config: build request configuration
     :rtype: dict
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
         detected.
@@ -642,7 +642,9 @@ def _prepare_request_for_build(request_id, build_request_config):
         bundles = []
 
     set_request_state(request_id, 'in_progress', 'Resolving the container images')
-    from_index_image_info = get_all_index_image_infos(
+
+    # Use v4.5 as default version
+    from_index_image_info = get_all_index_images_info(
         build_request_config, [("from_index", "v4.5")]
     )
     arches = gather_index_image_arches(build_request_config, from_index_image_info)
@@ -650,7 +652,7 @@ def _prepare_request_for_build(request_id, build_request_config):
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
-    # and 'Rm' requests,
+    # and 'Rm' requests.
     resolved_distribution_scope = from_index_image_info["from_index"]['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(

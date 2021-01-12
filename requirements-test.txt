@@ -418,3 +418,7 @@ zipp==3.4.0 \
     --hash=sha256:102c24ef8f171fd729d46599845e95c7ab894a4cf45f5de11a44cc7444fb1108 \
     --hash=sha256:ed5eee1974372595f9e416cc7bbeeb12335201d8081ca8a0743c954d4446e5cb \
     # via importlib-metadata
+click-repl==0.1.6 \
+    --hash=sha256:9c4c3d022789cae912aad8a3f5e1d7c2cdd016ee1225b5212ad3e8691563cda5
+click-didyoumean==0.0.3 \
+    --hash=sha256:112229485c9704ff51362fe34b2d4f0b12fc71cc20f6d2b3afabed4b8bfa6aeb

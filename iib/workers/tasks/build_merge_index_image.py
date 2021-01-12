@@ -21,15 +21,15 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import (
+    get_all_index_images_info,
+    gather_index_image_arches,
+    RequestConfigMerge,
     request_logger,
     run_cmd,
     set_registry_token,
-    RequestConfigMerge,
-    get_all_index_image_infos,
-    gather_index_image_arches,
-    _validate_distribution_scope,
-    _get_resolved_image,
     _get_image_arches,
+    _get_resolved_image,
+    _validate_distribution_scope,
 )
 
 
@@ -45,11 +45,11 @@ def _prepare_request_for_build(request_id, build_request_config):
     All information that was retrieved and/or calculated for the next steps in the build are
     returned as a dictionary.
 
-    This function was created so that code didn't need to be duplicated for the ``add`` and ``rm``
+    This function was created so that code need not to be duplicated for the ``add`` and ``rm``
     request types.
 
     :param int request_id: the ID of the IIB build request
-    :param RequestConfg build_request_config: build request configuration
+    :param RequestConfig build_request_config: build request configuration
     :rtype: dict
     :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
         ocp_version.
@@ -58,7 +58,7 @@ def _prepare_request_for_build(request_id, build_request_config):
         detected.
     """
     set_request_state(request_id, 'in_progress', 'Resolving the container images')
-    index_image_infos = get_all_index_image_infos(
+    index_image_infos = get_all_index_images_info(
         build_request_config, [("source_from_index", "v4.5"), ("target_index", "v4.6")]
     )
     arches = gather_index_image_arches(build_request_config, index_image_infos)
