@@ -805,7 +805,7 @@ class RequestIndexImageMixin:
             'index_image': getattr(self.index_image, 'pull_specification', None),
             'organization': None,
             'removed_operators': [],
-            'distribution_scope': getattr(self, 'distribution_scope', None),
+            'distribution_scope': self.distribution_scope,
         }
 
     def get_index_image_mutable_keys(self):
@@ -818,6 +818,7 @@ class RequestIndexImageMixin:
         return {
             'binary_image',
             'binary_image_resolved',
+            'distribution_scope',
             'from_bundle_image_resolved',
             'from_index_resolved',
             'index_image',
@@ -926,7 +927,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         """
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
-        rv.update({'bundles', 'bundle_mapping', 'distribution_scope', 'omps_operator_version'})
+        rv.update({'bundles', 'bundle_mapping', 'omps_operator_version'})
         return rv
 
 
@@ -1242,7 +1243,7 @@ class RequestMergeIndexImage(Request):
         rv['target_index_resolved'] = getattr(
             self.target_index_resolved, 'pull_specification', None
         )
-        rv['distribution_scope'] = getattr(self.distribution_scope, 'distribution_scope', None)
+        rv['distribution_scope'] = self.distribution_scope
 
         return rv
 
@@ -1258,6 +1259,7 @@ class RequestMergeIndexImage(Request):
             {
                 'binary_image',
                 'binary_image_resolved',
+                'distribution_scope',
                 'index_image',
                 'source_from_index_resolved',
                 'target_index_resolved',
