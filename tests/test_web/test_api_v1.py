@@ -1596,15 +1596,21 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
     assert rv.json == {'error': error_msg}
 
 
+@pytest.mark.parametrize('distribution_scope', (None, 'stage'))
 @mock.patch('iib.web.api_v1.handle_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-def test_merge_index_image_success(mock_smfsc, mock_merge, db, auth_env, client):
+def test_merge_index_image_success(
+    mock_smfsc, mock_merge, db, auth_env, client, distribution_scope
+):
     data = {
         'deprecation_list': ['some@sha256:bundle'],
         'binary_image': 'binary:image',
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
     }
+
+    if distribution_scope:
+        data['distribution_scope'] = distribution_scope
 
     response_json = {
         'arches': [],
@@ -1613,7 +1619,7 @@ def test_merge_index_image_success(mock_smfsc, mock_merge, db, auth_env, client)
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
         'deprecation_list': ['some@sha256:bundle'],
-        'distribution_scope': None,
+        'distribution_scope': distribution_scope,
         'id': 1,
         'index_image': None,
         'logs': {
