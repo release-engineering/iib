@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 3.10.1
+- fix distribution_scope bug
+
 ## 3.10.0
 - added propagation of validated distribution_scope
 - added ability to turn on caching for skopeo inspect of images with same digest
