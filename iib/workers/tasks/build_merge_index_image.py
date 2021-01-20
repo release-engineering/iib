@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import itertools
 import logging
 import tempfile
 
@@ -10,6 +11,7 @@ from iib.workers.tasks.build import (
     _cleanup,
     _create_and_push_manifest_list,
     _get_external_arch_pull_spec,
+    get_image_label,
     _get_present_bundles,
     _get_resolved_bundles,
     _opm_index_add,
@@ -89,7 +91,12 @@ def _add_bundles_missing_in_source(
         ):
             missing_bundles.append(bundle)
 
-    missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
+    missing_bundle_paths = [
+        bundle['bundlePath']
+        for bundle in itertools.chain(missing_bundles, source_index_bundles)
+        if is_bundle_version_valid(bundle['bundlePath'], ocp_version)
+    ]
+
     if missing_bundle_paths:
         log.info('%s bundles are missing in the source index image.', len(missing_bundle_paths))
     else:
@@ -99,11 +106,7 @@ def _add_bundles_missing_in_source(
         )
 
     _opm_index_add(
-        base_dir,
-        missing_bundle_paths,
-        binary_image,
-        source_from_index,
-        overwrite_target_index_token,
+        base_dir, missing_bundle_paths, binary_image, overwrite_target_index_token,
     )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
@@ -285,3 +288,57 @@ def handle_merge_request(
     set_request_state(
         request_id, 'complete', 'The index image was successfully cleaned and updated.'
     )
+
+
+def is_bundle_version_valid(bundle_path, valid_ocp_version):
+    """
+    Check if the version label of the bundle satisfies the index ocp_version.
+
+    :param str bundle_path: pull specification of the bundle to be validated.
+    :param str valid_ocp_version: the index ocp version against which the bundles will be validated.
+    :return: a boolean indicating if the bundle_path satisfies the index ocp_version
+    :rtype: bool
+
+           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"
+    ---------------------------------------------------------------
+    v4.5   | included  | NOT included |  included   |  included
+    ---------------------------------------------------------------
+    v4.6   | included  |   included   |  included   |  included
+    ---------------------------------------------------------------
+    v4.7   | included  | NOT included |  included   |  included
+    """
+    try:
+        float_valid_ocp_version = float(valid_ocp_version.replace('v', ''))
+    except ValueError:
+        raise IIBError(f'Invalid OCP version, "{valid_ocp_version}", specified in Index Image')
+    try:
+        bundle_version_label = get_image_label(bundle_path, 'com.redhat.openshift.versions')
+        bundle_version = bundle_version_label.replace('v', '')
+        if bundle_version_label.startswith('='):
+            if float(bundle_version.strip('=')) == float_valid_ocp_version:
+                return True
+        elif '-' in bundle_version_label:
+            min_version, max_version = [float(version) for version in bundle_version.split('-')]
+            if min_version <= float_valid_ocp_version <= max_version:
+                return True
+        elif "," in bundle_version_label:
+            versions = [float(version) for version in bundle_version.split(",")]
+            # This means the version is something like v4.6, v4.5 which is not valid
+            if versions != sorted(versions):
+                raise ValueError(
+                    'Bundle %s has an invalid `com.redhat.openshift.versions` label value set: %s',
+                    bundle_path,
+                    bundle_version_label,
+                )
+            if float_valid_ocp_version >= versions[0]:
+                return True
+        elif float_valid_ocp_version >= float(bundle_version):
+            return True
+    except ValueError:
+        log.warning(
+            'Bundle %s has an invalid `com.redhat.openshift.versions` label value set: %s',
+            bundle_path,
+            bundle_version_label,
+        )
+
+    return False

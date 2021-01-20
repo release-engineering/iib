@@ -172,6 +172,7 @@ def test_handle_merge_request_no_deprecate(
     mock_uiips.assert_called_once()
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -179,7 +180,7 @@ def test_handle_merge_request_no_deprecate(
 @mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil
 ):
     source_bundles = [
         {
@@ -227,6 +228,7 @@ def test_add_bundles_missing_in_source(
             'csvName': 'bundle5-5.0',
         },
     ]
+    mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6']
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -254,11 +256,15 @@ def test_add_bundles_missing_in_source(
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
         'some_dir',
-        ['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
+        [
+            'quay.io/bundle4@sha256:567890',
+            'quay.io/bundle2@sha256:234567',
+            'quay.io/bundle2@sha256:456132',
+        ],
         'binary-image:4.5',
-        'index-image:4.6',
         None,
     )
+    assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
@@ -368,6 +374,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
         )
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -375,7 +382,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
 @mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source_none_missing(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil
 ):
     source_bundles = [
         {
@@ -417,6 +424,7 @@ def test_add_bundles_missing_in_source_none_missing(
             'csvName': 'bundle2-2.0',
         },
     ]
+    mock_gil.side_effect = ['v=4.5', 'v4.6,v4.5', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -429,7 +437,13 @@ def test_add_bundles_missing_in_source_none_missing(
     )
     assert missing_bundles == []
     mock_srs.assert_called_once()
-    mock_oia.assert_called_once()
+    mock_oia.assert_called_once_with(
+        'some_dir',
+        ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
+        'binary-image:4.5',
+        None,
+    )
+    assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
@@ -482,3 +496,29 @@ def test_deprecate_bundles(mock_srt, mock_run_cmd):
     mock_run_cmd.assert_called_once_with(
         cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
     )
+
+
+@pytest.mark.parametrize(
+    'version_label, result',
+    (
+        ('=v4.5', False),
+        ('v4.5-v4.7', True),
+        ('v4.6', True),
+        ('v=4.6', False),
+        ('v4.5,v4.6', True),
+        ('v4.6,v4.5', False),
+        ('tom_brady', False),
+    ),
+)
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+def test_is_bundle_version_valid(mock_gil, version_label, result):
+    mock_gil.return_value = version_label
+    is_valid = build_merge_index_image.is_bundle_version_valid('some_bundle', 'v4.6')
+    assert is_valid == result
+
+
+@pytest.mark.parametrize('version_label', ('random-version', 'v4.6,v4.5'))
+def test_is_bundle_version_valid_invalid_ocp_version(version_label):
+    match_str = f'Invalid OCP version, "{version_label}", specified in Index Image'
+    with pytest.raises(IIBError, match=match_str):
+        build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
