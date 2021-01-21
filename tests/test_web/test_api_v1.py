@@ -46,6 +46,7 @@ def test_get_build(app, auth_env, client, db):
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
         'bundle_mapping': {},
         'bundles': ['quay.io/namespace/bundle:1.0-3'],
+        'deprecation_list': [],
         'distribution_scope': None,
         'from_index': 'quay.io/namespace/repo:latest',
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
@@ -571,6 +572,7 @@ def test_add_bundle_success(
         'binary_image_resolved': None,
         'bundle_mapping': {},
         'bundles': bundles,
+        'deprecation_list': [],
         'distribution_scope': expected_distribution_scope,
         'from_index': from_index,
         'from_index_resolved': None,
@@ -629,7 +631,7 @@ def test_add_bundle_forced_overwrite(
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-5] == force_overwrite
+    assert mock_har.apply_async.call_args[1]['args'][-6] == force_overwrite
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
@@ -667,9 +669,9 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-5] is True
+    assert mock_har.apply_async.call_args[1]['args'][-6] is True
     # Third to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-4] == token
+    assert mock_har.apply_async.call_args[1]['args'][-5] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -918,6 +920,7 @@ def test_patch_request_add_success(
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
+        'deprecation_list': [],
         'distribution_scope': distribution_scope,
         'from_index': None,
         'from_index_resolved': None,
@@ -981,6 +984,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'binary_image_resolved': 'binary-image@sha256:1234',
         'bundle_mapping': {},
         'bundles': [],
+        'deprecation_list': [],
         'distribution_scope': None,
         'from_index': 'quay.io/rm/index-image:latest',
         'from_index_resolved': None,
@@ -1099,6 +1103,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'bundle_mapping': {},
         'distribution_scope': None,
         'bundles': [],
+        'deprecation_list': [],
         'from_index': 'index:image',
         'from_index_resolved': None,
         'id': 1,
@@ -1492,12 +1497,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     None,
                     {},
+                    [],
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
                     "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None, {}]"
+                    "'hello-operator', None, True, '*****', None, None, {}, []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,

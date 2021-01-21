@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import hashlib
 import json
 import logging
 import os
@@ -23,7 +22,11 @@ from iib.workers.tasks.legacy import (
     validate_legacy_params_and_config,
 )
 from iib.workers.tasks.utils import (
+    deprecate_bundles,
+    get_bundles_from_deprecation_list,
     get_image_labels,
+    get_resolved_bundles,
+    get_resolved_image,
     podman_pull,
     request_logger,
     reset_docker_config,
@@ -214,19 +217,6 @@ def _update_index_image_pull_spec(
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
 
-def _get_container_image_name(pull_spec):
-    """
-    Get the container image name from a pull specification.
-
-    :param str pull_spec: the pull spec to analyze
-    :return: the container image name
-    """
-    if '@' in pull_spec:
-        return pull_spec.split('@', 1)[0]
-    else:
-        return pull_spec.rsplit(':', 1)[0]
-
-
 def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
     """
     Get the pull specification of the single arch image in the external registry.
@@ -294,73 +284,6 @@ def get_rebuilt_image_pull_spec(request_id):
     return conf['iib_image_push_template'].format(
         registry=conf['iib_registry'], request_id=request_id
     )
-
-
-def _get_resolved_bundles(bundles):
-    """
-    Get the pull specification of the bundle images using their digests.
-
-    Determine if the pull spec refers to a manifest list.
-    If so, simply use the digest of the first item in the manifest list.
-    If not a manifest list, it must be a v2s2 image manifest and should be used as it is.
-
-    :param list bundles: the list of bundle images to be resolved.
-    :return: the list of bundle images resolved to their digests.
-    :rtype: list
-    :raises IIBError: if unable to resolve a bundle image.
-    """
-    log.info('Resolving bundles %s', ', '.join(bundles))
-    resolved_bundles = set()
-    for bundle_pull_spec in bundles:
-        skopeo_raw = skopeo_inspect(f'docker://{bundle_pull_spec}', '--raw')
-        if (
-            skopeo_raw.get('mediaType')
-            == 'application/vnd.docker.distribution.manifest.list.v2+json'
-        ):
-            # Get the digest of the first item in the manifest list
-            digest = skopeo_raw['manifests'][0]['digest']
-            name = _get_container_image_name(bundle_pull_spec)
-            resolved_bundles.add(f'{name}@{digest}')
-        elif (
-            skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json'
-            and skopeo_raw.get('schemaVersion') == 2
-        ):
-            resolved_bundles.add(_get_resolved_image(bundle_pull_spec))
-        else:
-            error_msg = (
-                f'The pull specification of {bundle_pull_spec} is neither '
-                f'a v2 manifest list nor a v2s2 manifest. Type {skopeo_raw.get("mediaType")}'
-                f' and schema version {skopeo_raw.get("schemaVersion")} is not supported by IIB.'
-            )
-            raise IIBError(error_msg)
-
-    return list(resolved_bundles)
-
-
-def _get_resolved_image(pull_spec):
-    """
-    Get the pull specification of the container image using its digest.
-
-    :param str pull_spec: the pull specification of the container image to resolve
-    :return: the resolved pull specification
-    :rtype: str
-    """
-    log.debug('Resolving %s', pull_spec)
-    name = _get_container_image_name(pull_spec)
-    skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
-    if json.loads(skopeo_output).get('schemaVersion') == 2:
-        raw_digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
-        digest = f'sha256:{raw_digest}'
-    else:
-        # Schema 1 is not a stable format. The contents of the manifest may change slightly
-        # between requests causing a different digest to be computed. Instead, let's leverage
-        # skopeo's own logic for determining the digest in this case. In the future, we
-        # may want to use skopeo in all cases, but this will have significant performance
-        # issues until https://github.com/containers/skopeo/issues/785
-        digest = skopeo_inspect(f'docker://{pull_spec}')['Digest']
-    pull_spec_resolved = f'{name}@{digest}'
-    log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
-    return pull_spec_resolved
 
 
 def _get_index_database(from_index, base_dir):
@@ -707,7 +630,7 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
         return result
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        from_index_resolved = _get_resolved_image(from_index)
+        from_index_resolved = get_resolved_image(from_index)
         result['arches'] = _get_image_arches(from_index_resolved)
         result['ocp_version'] = (
             get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
@@ -841,7 +764,7 @@ def _prepare_request_for_build(
             binary_image_ocp_version, distribution_scope, binary_image_config
         )
 
-    binary_image_resolved = _get_resolved_image(binary_image)
+    binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):
@@ -985,7 +908,7 @@ def _verify_index_image(
     :raises IIBError: if the index image has changed since IIB build started.
     """
     with set_registry_token(overwrite_from_index_token, unresolved_from_index):
-        resolved_post_build_from_index = _get_resolved_image(unresolved_from_index)
+        resolved_post_build_from_index = get_resolved_image(unresolved_from_index)
 
     if resolved_post_build_from_index != resolved_prebuild_from_index:
         raise IIBError(
@@ -1041,6 +964,7 @@ def handle_add_request(
     distribution_scope=None,
     greenwave_config=None,
     binary_image_config=None,
+    deprecation_list=[],
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -1070,13 +994,15 @@ def handle_add_request(
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
+    :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
+        to an empty list.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
     _cleanup()
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
-    resolved_bundles = _get_resolved_bundles(bundles)
+    resolved_bundles = get_resolved_bundles(bundles)
 
     _verify_labels(resolved_bundles)
 
@@ -1106,7 +1032,7 @@ def handle_add_request(
         )
 
     _update_index_image_build_state(request_id, prebuild_info)
-
+    present_bundles = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
             msg = 'Checking if bundles are already present in index image'
@@ -1151,7 +1077,25 @@ def handle_add_request(
             'index.Dockerfile',
         )
 
+        present_bundles_pull_spec = [bundle['bundlePath'] for bundle in present_bundles]
+        deprecation_bundles = get_bundles_from_deprecation_list(
+            present_bundles_pull_spec + resolved_bundles, deprecation_list
+        )
+
         arches = prebuild_info['arches']
+        if deprecation_bundles:
+            arch = 'amd64' if 'amd64' in arches else arches[0]
+            intermediate_image_name = _get_external_arch_pull_spec(
+                request_id, arch, include_transport=False
+            )
+            deprecate_bundles(
+                deprecation_bundles,
+                temp_dir,
+                prebuild_info['binary_image'],
+                intermediate_image_name,
+                overwrite_from_index_token,
+            )
+
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
@@ -1286,7 +1230,7 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     _cleanup()
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
-    from_bundle_image_resolved = _get_resolved_image(from_bundle_image)
+    from_bundle_image_resolved = get_resolved_image(from_bundle_image)
     arches = _get_image_arches(from_bundle_image_resolved)
     if not arches:
         raise IIBError(
@@ -1551,7 +1495,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
         if not pinned_by_iib:
             # Resolve the image only if it has not already been processed by IIB. This
             # helps making sure the pullspec is valid
-            resolved_image = ImageName.parse(_get_resolved_image(pullspec.to_str()))
+            resolved_image = ImageName.parse(get_resolved_image(pullspec.to_str()))
 
             # If the tag is in the format "<algorithm>:<checksum>", the image is already pinned.
             # Otherwise, always pin it to a digest.
