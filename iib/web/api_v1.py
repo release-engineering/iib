@@ -84,6 +84,7 @@ def _get_add_args(payload, request, overwrite_from_index, celery_queue):
         request.distribution_scope,
         flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+        payload.get('deprecation_list', []),
     ]
 
 
