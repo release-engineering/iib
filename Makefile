@@ -33,7 +33,7 @@ all:
 	@echo '  IIB_COMPOSE_ENGINE environment variable to another compose system, e.g.'
 	@echo '  "podman-compose".'
 
-up: ca-bundle.crt
+up: ca-bundle.crt iib-data
 	@echo "Starting the local development instance..."
 	${IIB_COMPOSE_ENGINE} up -d
 
@@ -51,3 +51,6 @@ test:
 
 ca-bundle.crt:
 	@cp -f /etc/pki/tls/certs/ca-bundle.crt .
+
+iib-data:
+	@mkdir -p iib_data/registry
