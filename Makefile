@@ -17,15 +17,21 @@ all:
 	@echo 'Available make targets:'
 	@echo ''
 	@echo 'down:'
-	@echo '  Destroy the local development instance of IIB. By default, this uses docker-compose.'
-	@echo '  Alternatively, set the IIB_COMPOSE_ENGINE environment variable to "podman-compose".'
+	@echo '  Destroy the local development instance of IIB.'
 	@echo ''
 	@echo 'up:'
-	@echo '  Run a local development instance of IIB. By default, this uses docker-compose.'
-	@echo '  Alternatively, set the IIB_COMPOSE_ENGINE environment variable to "podman-compose".'
+	@echo '  Run a local development instance of IIB.'
+	@echo ''
+	@echo 'build:'
+	@echo '  Build the container images used in the local development instance of IIB.'
+	@echo '  This is useful for forcing the images to be rebuilt.'
 	@echo ''
 	@echo 'test:'
 	@echo '  Execute unit tests and linters. Use the command "tox" directly for more options.'
+	@echo ''
+	@echo 'NOTE: By default, the targets use docker-compose. Alternatively, set the'
+	@echo '  IIB_COMPOSE_ENGINE environment variable to another compose system, e.g.'
+	@echo '  "podman-compose".'
 
 up: ca-bundle.crt
 	@echo "Starting the local development instance..."
@@ -35,6 +41,10 @@ down:
 	@echo "Destroying the local development instance..."
 	${IIB_COMPOSE_ENGINE} down $(COMPOSER_DOWN_OPTS)
 	@rm -rf iib_data
+
+build:
+	@echo "Building the container images for the local development instance..."
+	${IIB_COMPOSE_ENGINE} build
 
 test:
 	@tox
