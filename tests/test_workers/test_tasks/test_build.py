@@ -1491,6 +1491,29 @@ def test_adjust_operator_bundle_invalid_related_images(mock_apns, tmpdir):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
+def test_adjust_operator_bundle_invalid_yaml_file(mock_apns, tmpdir):
+    mock_apns.return_value = ('amqstreams', {})
+    manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
+    csv = manifests_dir.join('csv.yaml')
+    csv.write(
+        textwrap.dedent(
+            """\
+            apiVersion: operators.example.com/v1
+            kind: ClusterServiceVersion
+            metadata:
+              @\n name: amqstreams.v1.0.0
+            """
+        )
+    )
+
+    expected = r'The Operator Manifest is not in a valid YAML format'
+
+    with pytest.raises(IIBError, match=expected):
+        build._adjust_operator_bundle(str(manifests_dir), str(metadata_dir))
+
+
+@mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
 @mock.patch('iib.workers.tasks.build._get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_apns, tmpdir):
