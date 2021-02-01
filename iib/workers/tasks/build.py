@@ -1498,7 +1498,13 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
     """
     package_name, labels = _apply_package_name_suffix(metadata_path, organization)
 
-    operator_manifest = OperatorManifest.from_directory(manifests_path)
+    try:
+        operator_manifest = OperatorManifest.from_directory(manifests_path)
+    except (ruamel.yaml.YAMLError, ruamel.yaml.constructor.DuplicateKeyError) as e:
+        error = f'The Operator Manifest is not in a valid YAML format: {e}'
+        log.exception(error)
+        raise IIBError(error)
+
     found_pullspecs = set()
     operator_csvs = []
     for operator_csv in operator_manifest.files:
