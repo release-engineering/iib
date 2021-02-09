@@ -83,7 +83,7 @@ class RequestTypeMapping(BaseEnum):
         return cls(num).name.replace('_', '-')
 
 
-class BundleDeprecation(db.Model):
+class RequestMergeBundleDeprecation(db.Model):
     """An association table between index merge requests and bundle images which they deprecate."""
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
@@ -1138,7 +1138,7 @@ class RequestMergeIndexImage(Request):
         'Image', foreign_keys=[binary_image_resolved_id], uselist=False
     )
 
-    deprecation_list = db.relationship('Image', secondary=BundleDeprecation.__table__)
+    deprecation_list = db.relationship('Image', secondary=RequestMergeBundleDeprecation.__table__)
 
     index_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
     index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
