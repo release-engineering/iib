@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 3.11.0
+- fixed docker-compose quirks
+- added support for parsing bundle version in merge-index-image before adding it to the index
+- added better error handling for regenerate-bundle requests
+- added support for deprecation list in add requests
+
 ## 3.10.1
 - fix distribution_scope bug
 
