@@ -212,9 +212,13 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
+    with set_registry_token(overwrite_from_index_token, from_index):
+        index_image_resolved = get_resolved_image(from_index)
+
     payload = {
         'arches': list(arches),
         'index_image': index_image,
+        'index_image_resolved': index_image_resolved,
     }
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
@@ -500,9 +504,7 @@ def _opm_index_add(
         cmd.extend(['--overwrite-latest'])
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        run_cmd(
-            cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image',
-        )
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
 @retry(attempts=2, wait_on=IIBError, logger=log)
@@ -545,9 +547,7 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
     )
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        run_cmd(
-            cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image',
-        )
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
 
 
 def _overwrite_from_index(
@@ -793,6 +793,7 @@ def _prepare_request_for_build(
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
         'from_index_resolved': from_index_info['resolved_from_index'],
+        'index_image_resolved': None,
         'ocp_version': from_index_info['ocp_version'],
         'distribution_scope': distribution_scope,
         'source_from_index_resolved': source_from_index_info['resolved_from_index'],
@@ -886,14 +887,7 @@ def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
     """
     skopeo_timeout = get_worker_config()['iib_skopeo_timeout']
     log.debug('Copying the container image %s to %s', source, destination)
-    cmd = [
-        'skopeo',
-        '--command-timeout',
-        skopeo_timeout,
-        'copy',
-        '--format',
-        'v2s2',
-    ]
+    cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'copy', '--format', 'v2s2']
     if copy_all:
         cmd.append('--all')
     cmd.extend([source, destination])
@@ -1137,7 +1131,7 @@ def handle_add_request(
         from_index_resolved,
     )
     set_request_state(
-        request_id, 'complete', 'The operator bundle(s) were successfully added to the index image',
+        request_id, 'complete', 'The operator bundle(s) were successfully added to the index image'
     )
 
 
@@ -1232,7 +1226,7 @@ def handle_rm_request(
         from_index_resolved,
     )
     set_request_state(
-        request_id, 'complete', 'The operator(s) were successfully removed from the index image',
+        request_id, 'complete', 'The operator(s) were successfully removed from the index image'
     )
 
 
@@ -1520,9 +1514,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             # If the tag is in the format "<algorithm>:<checksum>", the image is already pinned.
             # Otherwise, always pin it to a digest.
             if ':' not in ImageName.parse(pullspec).tag:
-                log.debug(
-                    '%s will be pinned to %s', pullspec, resolved_image.to_str(),
-                )
+                log.debug('%s will be pinned to %s', pullspec, resolved_image.to_str())
                 new_pullspec = resolved_image
                 replacement_needed = True
                 labels['com.redhat.iib.pinned'] = 'true'
@@ -1534,9 +1526,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             new_pullspec.registry = new_registry
 
         if replacement_needed:
-            log.debug(
-                '%s will be replaced with %s', pullspec, new_pullspec.to_str(),
-            )
+            log.debug('%s will be replaced with %s', pullspec, new_pullspec.to_str())
             replacement_pullspecs[pullspec] = new_pullspec
 
     # Apply modifications to the operator bundle image metadata
@@ -1597,9 +1587,7 @@ def _add_label_to_index(label_key, label_value, temp_dir, dockerfile_name):
     with open(os.path.join(temp_dir, dockerfile_name), 'a') as dockerfile:
         label = f'LABEL {label_key}="{label_value}"'
         dockerfile.write(f'\n{label}\n')
-        log.debug(
-            'Added the following line to %s: %s', dockerfile_name, label,
-        )
+        log.debug('Added the following line to %s: %s', dockerfile_name, label)
 
 
 def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):
