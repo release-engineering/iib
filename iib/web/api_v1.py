@@ -414,6 +414,7 @@ def patch_request(request_id):
         'from_bundle_image_resolved',
         'from_index_resolved',
         'index_image',
+        'index_image_resolved',
         'source_from_index_resolved',
         'target_index_resolved',
     )

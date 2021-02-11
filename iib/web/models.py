@@ -623,6 +623,7 @@ def get_request_query_options(verbose=False):
         joinedload(RequestAdd.from_index),
         joinedload(RequestAdd.from_index_resolved),
         joinedload(RequestAdd.index_image),
+        joinedload(RequestAdd.index_image_resolved),
         joinedload(RequestRegenerateBundle.bundle_image),
         joinedload(RequestRegenerateBundle.from_bundle_image),
         joinedload(RequestRegenerateBundle.from_bundle_image_resolved),
@@ -631,6 +632,7 @@ def get_request_query_options(verbose=False):
         joinedload(RequestRm.from_index),
         joinedload(RequestRm.from_index_resolved),
         joinedload(RequestRm.index_image),
+        joinedload(RequestRm.index_image_resolved),
         joinedload(RequestRm.operators),
     ]
     if verbose:
@@ -680,6 +682,11 @@ class RequestIndexImageMixin:
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
+    def index_resolved_id(cls):
+        """Return the ID of the resolved index image to base the request from."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
     def from_index(cls):
         """Return the relationship of the index image to base the request from."""
         return db.relationship('Image', foreign_keys=[cls.from_index_id], uselist=False)
@@ -697,7 +704,12 @@ class RequestIndexImageMixin:
     @declared_attr
     def index_image(cls):
         """Return the relationship to the built index image."""
-        return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
+        return db.relationship('Image', foreign_keys=[cls.index_resolved_id], uselist=False)
+
+    @declared_attr
+    def index_image_resolved(cls):
+        """Return the relationship to the built index image."""
+        return db.relationship('Image', foreign_keys=[cls.index_resolved_id], uselist=False)
 
     @declared_attr
     def distribution_scope(cls):
@@ -846,6 +858,7 @@ class RequestIndexImageMixin:
             'from_bundle_image_resolved',
             'from_index_resolved',
             'index_image',
+            'index_image_resolved',
         }
 
 

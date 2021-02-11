@@ -85,7 +85,11 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build._overwrite_from_index')
 @mock.patch('iib.workers.tasks.build.update_request')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_update_index_image_pull_spec(
+    mock_st_rgstr_tknm,
+    mock_get_rslv_img,
     mock_ur,
     mock_ofi,
     mock_gwc,
@@ -101,6 +105,8 @@ def test_update_index_image_pull_spec(
     request_id = 2
     arches = {'amd64'}
     overwrite_token = 'username:password'
+
+    mock_get_rslv_img.return_value = "quay.io/ns/iib@sha256:abcdef1234"
     mock_gwc.return_value = {
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
@@ -117,7 +123,7 @@ def test_update_index_image_pull_spec(
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload.keys() == {'arches', 'index_image'}
+    assert update_request_payload.keys() == {'arches', 'index_image', 'index_image_resolved'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:
         mock_ofi.assert_called_once_with(
@@ -383,13 +389,15 @@ def test_prepare_request_for_build(
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
-        mock_gri.side_effect = [from_index_resolved, binary_image_resolved]
+        index_resolved = f'{from_index_name}@sha256:abcdef1234'
+        mock_gri.side_effect = [from_index_resolved, binary_image_resolved, index_resolved]
         mock_gia.side_effect = [from_index_arches, expected_arches]
         expected_payload_keys.add('from_index_resolved')
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        mock_gri.side_effect = [binary_image_resolved]
+        index_resolved = f'index-image@sha256:abcdef1234'
+        mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.side_effect = [expected_arches]
         gil_side_effect = []
 
@@ -418,6 +426,7 @@ def test_prepare_request_for_build(
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': expected_bundle_mapping,
         'from_index_resolved': from_index_resolved,
+        'index_image_resolved': None,
         'ocp_version': ocp_version,
         # want to verify that the output is always lower cased.
         'distribution_scope': resolved_distribution_scope.lower(),
@@ -470,6 +479,7 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
         'binary_image_resolved': 'binary-image@sha256:12345',
         'bundle_mapping': {},
         'from_index_resolved': None,
+        'index_image_resolved': None,
         'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
         'source_from_index_resolved': 'some_resolved_image@sha256',
