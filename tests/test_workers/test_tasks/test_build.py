@@ -725,7 +725,12 @@ def test_handle_add_request(
 
     mock_srt.assert_called_once()
 
-    assert mock_bi.call_count == len(arches)
+    if deprecate_bundles:
+        # Take into account the temporarily created index image
+        assert mock_bi.call_count == len(arches) + 1
+    else:
+        assert mock_bi.call_count == len(arches)
+
     assert mock_pi.call_count == len(arches)
 
     mock_elp.assert_called_once()
@@ -739,9 +744,14 @@ def test_handle_add_request(
     mock_capml.assert_called_once()
     assert mock_srs.call_count == 4
     if deprecate_bundles:
-        mock_dep_b.assert_called_once()
-        filter_args = mock_dep_b.call_args[0]
-        assert ['random_bundle@sha', 'some-deprecation-bundle@sha'] in filter_args
+        mock_dep_b.assert_called_once_with(
+            ['random_bundle@sha', 'some-deprecation-bundle@sha'],
+            mock.ANY,
+            binary_image or 'some_image',
+            'containers-storage:localhost/iib-build:3-amd64',
+            None,
+            container_tool='podman',
+        )
     else:
         mock_dep_b.assert_not_called()
 
