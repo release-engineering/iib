@@ -234,16 +234,21 @@ def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
     return pull_spec
 
 
-def _get_local_pull_spec(request_id, arch):
+def _get_local_pull_spec(request_id, arch, include_transport=False):
     """
     Get the local pull specification of the architecture specfic index image for this request.
 
     :param int request_id: the ID of the IIB build request
     :param str arch: the specific architecture of the container image.
+    :param bool include_transport: if true, `containers-storage:localhost/` will be prefixed
+        in the returned pull specification
     :return: the pull specification of the index image for this request.
     :rtype: str
     """
-    return f'iib-build:{request_id}-{arch}'
+    pull_spec = f'iib-build:{request_id}-{arch}'
+    if include_transport:
+        return f'containers-storage:localhost/{pull_spec}'
+    return pull_spec
 
 
 def _get_image_arches(pull_spec):
@@ -1084,16 +1089,20 @@ def handle_add_request(
 
         arches = prebuild_info['arches']
         if deprecation_bundles:
-            arch = 'amd64' if 'amd64' in arches else arches[0]
-            intermediate_image_name = _get_external_arch_pull_spec(
-                request_id, arch, include_transport=False
-            )
+            # opm can only deprecate a bundle image on an existing index image. Build and
+            # push a temporary index image to satisfy this requirement. Any arch will do.
+            arch = sorted(arches)[0]
+            log.info('Building a temporary index image to satisfy the deprecation requirement')
+            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+            intermediate_image_name = _get_local_pull_spec(request_id, arch, include_transport=True)
             deprecate_bundles(
                 deprecation_bundles,
                 temp_dir,
                 prebuild_info['binary_image'],
                 intermediate_image_name,
                 overwrite_from_index_token,
+                # Use podman so opm can find the image locally
+                container_tool='podman',
             )
 
         for arch in sorted(arches):

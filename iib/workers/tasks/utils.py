@@ -25,7 +25,12 @@ dogpile_cache_region = create_dogpile_region()
 
 
 def deprecate_bundles(
-    bundles, base_dir, binary_image, from_index, overwrite_target_index_token=None
+    bundles,
+    base_dir,
+    binary_image,
+    from_index,
+    overwrite_target_index_token=None,
+    container_tool=None,
 ):
     """
     Deprecate the specified bundles from the index image.
@@ -39,6 +44,7 @@ def deprecate_bundles(
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``from_index`` image. This is required for non-privileged users to use
         ``overwrite_target_index``. The format of the token must be in the format "user:password".
+    :param str container_tool: the container tool to be used to operate on the index image
     """
     cmd = [
         'opm',
@@ -52,6 +58,9 @@ def deprecate_bundles(
         '--bundles',
         ','.join(bundles),
     ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
     with set_registry_token(overwrite_target_index_token, from_index):
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
 
