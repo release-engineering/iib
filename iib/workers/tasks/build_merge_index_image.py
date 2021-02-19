@@ -109,7 +109,10 @@ def _add_bundles_missing_in_source(
         )
 
     _opm_index_add(
-        base_dir, missing_bundle_paths, binary_image, overwrite_target_index_token,
+        base_dir,
+        missing_bundle_paths,
+        binary_image,
+        overwrite_from_index_token=overwrite_target_index_token,
     )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
