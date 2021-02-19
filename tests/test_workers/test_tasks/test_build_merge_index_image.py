@@ -262,7 +262,7 @@ def test_add_bundles_missing_in_source(
             'quay.io/bundle2@sha256:456132',
         ],
         'binary-image:4.5',
-        None,
+        overwrite_from_index_token=None,
     )
     assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
@@ -441,7 +441,7 @@ def test_add_bundles_missing_in_source_none_missing(
         'some_dir',
         ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
         'binary-image:4.5',
-        None,
+        overwrite_from_index_token=None,
     )
     assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2
