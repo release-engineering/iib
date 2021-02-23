@@ -212,8 +212,8 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
-    with set_registry_token(overwrite_from_index_token, from_index):
-        index_image_resolved = get_resolved_image(from_index)
+    with set_registry_token(overwrite_from_index_token, index_image):
+        index_image_resolved = get_resolved_image(index_image)
 
     payload = {
         'arches': list(arches),
