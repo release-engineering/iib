@@ -20,9 +20,9 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
-@mock.patch('iib.workers.tasks.build_merge_index_image._deprecate_bundles')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
-@mock.patch('iib.workers.tasks.build_merge_index_image._get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
@@ -104,9 +104,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
-@mock.patch('iib.workers.tasks.build_merge_index_image._deprecate_bundles')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
-@mock.patch('iib.workers.tasks.build_merge_index_image._get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
@@ -266,7 +266,7 @@ def test_add_bundles_missing_in_source(
             'quay.io/bundle2@sha256:456132',
         ],
         'binary-image:4.5',
-        None,
+        overwrite_from_index_token=None,
     )
     assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
@@ -445,61 +445,13 @@ def test_add_bundles_missing_in_source_none_missing(
         'some_dir',
         ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
         'binary-image:4.5',
-        None,
+        overwrite_from_index_token=None,
     )
     assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
     mock_capml.assert_called_once()
-
-
-@mock.patch('iib.workers.tasks.build_merge_index_image._get_resolved_bundles')
-def test_get_bundles_from_deprecation_list(mock_grb):
-    present_bundles = [
-        {'packageName': 'bundle1', 'version': '1.0', 'bundlePath': 'quay.io/bundle1@sha256:123456'},
-        {'packageName': 'bundle2', 'version': '2.0', 'bundlePath': 'quay.io/bundle2@sha256:987654'},
-        {'packageName': 'bundle3', 'version': '3.0', 'bundlePath': 'quay.io/bundle3@sha256:not555'},
-    ]
-    deprecation_list = [
-        'quay.io/bundle1@sha256:123456',
-        'quay.io/bundle2@sha256:987654',
-        'quay.io/bundle4@sha256:1a2bcd',
-    ]
-    mock_grb.return_value = [
-        'quay.io/bundle1@sha256:123456',
-        'quay.io/bundle2@sha256:987654',
-        'quay.io/bundle3@sha256:abcdef',
-    ]
-    deprecate_bundles = build_merge_index_image._get_bundles_from_deprecation_list(
-        present_bundles, deprecation_list
-    )
-    assert deprecate_bundles == ['quay.io/bundle1@sha256:123456', 'quay.io/bundle2@sha256:987654']
-    mock_grb.assert_called_once_with(deprecation_list)
-
-
-@mock.patch('iib.workers.tasks.build_merge_index_image.run_cmd')
-@mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
-def test_deprecate_bundles(mock_srt, mock_run_cmd):
-    bundles = ['quay.io/bundle1:1.0', 'quay.io/bundle2:2.0']
-    from_index = 'quay.io/index-image:4.6'
-    binary_image = 'quay.io/binary-image:4.6'
-    cmd = [
-        'opm',
-        'index',
-        'deprecatetruncate',
-        '--generate',
-        '--binary-image',
-        binary_image,
-        '--from-index',
-        from_index,
-        '--bundles',
-        ','.join(bundles),
-    ]
-    build_merge_index_image._deprecate_bundles(bundles, 'some_dir', binary_image, from_index, '4.6')
-    mock_run_cmd.assert_called_once_with(
-        cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
-    )
 
 
 @pytest.mark.parametrize(

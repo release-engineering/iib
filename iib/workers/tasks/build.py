@@ -23,7 +23,11 @@ from iib.workers.tasks.legacy import (
 )
 from iib.workers.tasks.utils import (
     get_all_index_images_info,
+    deprecate_bundles,
+    get_bundles_from_deprecation_list,
     get_image_labels,
+    get_resolved_bundles,
+    get_resolved_image,
     podman_pull,
     request_logger,
     RequestConfigAddRm,
@@ -235,16 +239,21 @@ def _get_external_arch_pull_spec(request_id, arch, include_transport=False):
     return pull_spec
 
 
-def _get_local_pull_spec(request_id, arch):
+def _get_local_pull_spec(request_id, arch, include_transport=False):
     """
     Get the local pull specification of the architecture specfic index image for this request.
 
     :param int request_id: the ID of the IIB build request
     :param str arch: the specific architecture of the container image.
+    :param bool include_transport: if true, `containers-storage:localhost/` will be prefixed
+        in the returned pull specification
     :return: the pull specification of the index image for this request.
     :rtype: str
     """
-    return f'iib-build:{request_id}-{arch}'
+    pull_spec = f'iib-build:{request_id}-{arch}'
+    if include_transport:
+        return f'containers-storage:localhost/{pull_spec}'
+    return pull_spec
 
 
 def get_rebuilt_image_pull_spec(request_id):
@@ -619,7 +628,78 @@ def _overwrite_from_index(
             temp_dir.cleanup()
 
 
-def _prepare_request_for_build(request_id, build_request_config):
+
+def get_index_image_info(overwrite_from_index_token, from_index=None, default_ocp_version='v4.5'):
+    """
+    Get arches, resolved pull specification and ocp_version for the index image.
+
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+    :param str from_index: the pull specification of the index image to be resolved.
+    :param str default_ocp_version: default ocp_version to use if index image pull_spec is absent.
+    :return: dictionary of resolved index image pull spec, set of arches, default ocp_version and
+        resolved_distribution_scope
+    :rtype: dict
+    """
+    result = {
+        'resolved_from_index': None,
+        'ocp_version': default_ocp_version,
+        'arches': set(),
+        'resolved_distribution_scope': 'prod',
+    }
+    if not from_index:
+        return result
+
+    with set_registry_token(overwrite_from_index_token, from_index):
+        from_index_resolved = get_resolved_image(from_index)
+        result['arches'] = _get_image_arches(from_index_resolved)
+        result['ocp_version'] = (
+            get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
+        )
+        result['resolved_distribution_scope'] = (
+            get_image_label(from_index_resolved, 'com.redhat.index.delivery.distribution_scope')
+            or 'prod'
+        )
+        result['resolved_from_index'] = from_index_resolved
+    return result
+
+
+def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_config={}):
+    """
+    Determine the binary image to be used to build the index image.
+
+    :param str ocp_version: the ocp_version label value of the index image.
+    :param str distribution_scope: the distribution_scope label value of the index image.
+    :param dict binary_image_config: the dict of config required to identify the appropriate
+        ``binary_image`` to use.
+    :return: pull specification of the binary_image to be used for this build.
+    :rtype: str
+    :raises IIBError: when the config value for the ocp_version and distribution_scope is missing.
+    """
+    binary_image = binary_image_config.get(distribution_scope, {}).get(ocp_version, None)
+    if not binary_image:
+        raise IIBError(
+            'IIB does not have a configured binary_image for'
+            f' distribution_scope : {distribution_scope} and ocp_version: {ocp_version}.'
+            ' Please specify a binary_image value in the request.'
+        )
+
+    return binary_image
+
+
+def _prepare_request_for_build(
+    request_id,
+    binary_image=None,
+    from_index=None,
+    overwrite_from_index_token=None,
+    add_arches=None,
+    bundles=None,
+    distribution_scope=None,
+    source_from_index=None,
+    target_index=None,
+    binary_image_config=None,
+):
     """
     Prepare the request for the index image build.
 
@@ -659,10 +739,17 @@ def _prepare_request_for_build(request_id, build_request_config):
         resolved_distribution_scope, build_request_config.distribution_scope
     )
 
-    binary_image = build_request_config.get_binary_image(
-        from_index_image_info['from_index'], distribution_scope
-    )
-    binary_image_resolved = _get_resolved_image(binary_image)
+
+    if not binary_image:
+        binary_image_ocp_version = from_index_info['ocp_version']
+        if source_from_index:
+            binary_image_ocp_version = target_index_info['ocp_version']
+
+        binary_image = get_binary_image_from_config(
+            binary_image_ocp_version, distribution_scope, binary_image_config
+        )
+
+    binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):
@@ -795,7 +882,7 @@ def _verify_index_image(
     :raises IIBError: if the index image has changed since IIB build started.
     """
     with set_registry_token(overwrite_from_index_token, unresolved_from_index):
-        resolved_post_build_from_index = _get_resolved_image(unresolved_from_index)
+        resolved_post_build_from_index = get_resolved_image(unresolved_from_index)
 
     if resolved_post_build_from_index != resolved_prebuild_from_index:
         raise IIBError(
@@ -839,6 +926,7 @@ def handle_add_request(
     distribution_scope=None,
     greenwave_config=None,
     binary_image_config=None,
+    deprecation_list=[],
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -868,13 +956,15 @@ def handle_add_request(
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
+    :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
+        to an empty list.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
     _cleanup()
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
-    resolved_bundles = _get_resolved_bundles(bundles)
+    resolved_bundles = get_resolved_bundles(bundles)
 
     _verify_labels(resolved_bundles)
 
@@ -906,7 +996,7 @@ def handle_add_request(
         )
 
     _update_index_image_build_state(request_id, prebuild_info)
-
+    present_bundles = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
             msg = 'Checking if bundles are already present in index image'
@@ -951,7 +1041,29 @@ def handle_add_request(
             'index.Dockerfile',
         )
 
+        present_bundles_pull_spec = [bundle['bundlePath'] for bundle in present_bundles]
+        deprecation_bundles = get_bundles_from_deprecation_list(
+            present_bundles_pull_spec + resolved_bundles, deprecation_list
+        )
+
         arches = prebuild_info['arches']
+        if deprecation_bundles:
+            # opm can only deprecate a bundle image on an existing index image. Build and
+            # push a temporary index image to satisfy this requirement. Any arch will do.
+            arch = sorted(arches)[0]
+            log.info('Building a temporary index image to satisfy the deprecation requirement')
+            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+            intermediate_image_name = _get_local_pull_spec(request_id, arch, include_transport=True)
+            deprecate_bundles(
+                deprecation_bundles,
+                temp_dir,
+                prebuild_info['binary_image'],
+                intermediate_image_name,
+                overwrite_from_index_token,
+                # Use podman so opm can find the image locally
+                container_tool='podman',
+            )
+
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
@@ -1088,7 +1200,7 @@ def handle_regenerate_bundle_request(from_bundle_image, organization, request_id
     _cleanup()
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
-    from_bundle_image_resolved = _get_resolved_image(from_bundle_image)
+    from_bundle_image_resolved = get_resolved_image(from_bundle_image)
     arches = _get_image_arches(from_bundle_image_resolved)
     if not arches:
         raise IIBError(
@@ -1353,7 +1465,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
         if not pinned_by_iib:
             # Resolve the image only if it has not already been processed by IIB. This
             # helps making sure the pullspec is valid
-            resolved_image = ImageName.parse(_get_resolved_image(pullspec.to_str()))
+            resolved_image = ImageName.parse(get_resolved_image(pullspec.to_str()))
 
             # If the tag is in the format "<algorithm>:<checksum>", the image is already pinned.
             # Otherwise, always pin it to a digest.

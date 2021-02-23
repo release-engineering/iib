@@ -13,7 +13,6 @@ from iib.workers.tasks.build import (
     _get_external_arch_pull_spec,
     get_image_label,
     _get_present_bundles,
-    _get_resolved_bundles,
     _opm_index_add,
     _push_image,
     _update_index_image_build_state,
@@ -30,6 +29,9 @@ from iib.workers.tasks.utils import (
     _get_image_arches,
     _get_resolved_image,
     _validate_distribution_scope,
+    deprecate_bundles,
+    get_bundles_from_deprecation_list,
+   
 )
 
 
@@ -175,7 +177,10 @@ def _add_bundles_missing_in_source(
         )
 
     _opm_index_add(
-        base_dir, missing_bundle_paths, binary_image, overwrite_target_index_token,
+        base_dir,
+        missing_bundle_paths,
+        binary_image,
+        overwrite_from_index_token=overwrite_target_index_token,
     )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
@@ -192,60 +197,6 @@ def _add_bundles_missing_in_source(
     log.info('New index image created')
 
     return missing_bundles
-
-
-def _get_bundles_from_deprecation_list(bundles, deprecation_list):
-    """
-    Get a list of to-be-deprecated bundles based on the data from the deprecation list.
-
-    :param list bundles: list of bundles to apply the filter on.
-    :param list deprecation_list: list of deprecated bundle pull specifications.
-    :return: bundles which are to be deprecated.
-    :rtype: list
-    """
-    resolved_deprecation_list = _get_resolved_bundles(deprecation_list)
-    deprecate_bundles = []
-    for bundle in bundles:
-        resolved_bundle = bundle['bundlePath']
-        if resolved_bundle in resolved_deprecation_list:
-            deprecate_bundles.append(resolved_bundle)
-
-    log.info(
-        'Bundles that will be deprecated from the index image: %s', ', '.join(deprecate_bundles)
-    )
-    return deprecate_bundles
-
-
-def _deprecate_bundles(
-    bundles, base_dir, binary_image, from_index, overwrite_target_index_token=None
-):
-    """
-    Deprecate the specified bundles from the index image.
-
-    Only Dockerfile is created, no build is performed.
-
-    :param list bundles: pull specifications of bundles to deprecate.
-    :param str base_dir: base directory where operation files will be located.
-    :param str binary_image: binary image to be used by the new index image.
-    :param str from_index: index image, from which the bundles will be deprecated.
-    :param str overwrite_target_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_target_index``. The format of the token must be in the format "user:password".
-    """
-    cmd = [
-        'opm',
-        'index',
-        'deprecatetruncate',
-        '--generate',
-        '--binary-image',
-        binary_image,
-        '--from-index',
-        from_index,
-        '--bundles',
-        ','.join(bundles),
-    ]
-    with set_registry_token(overwrite_target_index_token, from_index):
-        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
 
 
 @app.task
@@ -325,17 +276,20 @@ def handle_merge_request(
 
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
-        intermediate_bundles = source_index_bundles + missing_bundles
-        deprecate_bundles = _get_bundles_from_deprecation_list(
+        intermediate_bundles = [
+            bundle['bundlePath']
+            for bundle in itertools.chain(missing_bundles, source_index_bundles)
+        ]
+        deprecation_bundles = get_bundles_from_deprecation_list(
             intermediate_bundles, deprecation_list
         )
         intermediate_image_name = _get_external_arch_pull_spec(
             request_id, arch, include_transport=False
         )
 
-        if deprecate_bundles:
-            _deprecate_bundles(
-                deprecate_bundles,
+        if deprecation_bundles:
+            deprecate_bundles(
+                deprecation_bundles,
                 temp_dir,
                 prebuild_info['binary_image'],
                 intermediate_image_name,

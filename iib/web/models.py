@@ -83,7 +83,7 @@ class RequestTypeMapping(BaseEnum):
         return cls(num).name.replace('_', '-')
 
 
-class BundleDeprecation(db.Model):
+class RequestMergeBundleDeprecation(db.Model):
     """An association table between index merge requests and bundle images which they deprecate."""
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
@@ -102,6 +102,29 @@ class BundleDeprecation(db.Model):
     __table_args__ = (
         db.UniqueConstraint(
             'merge_index_image_id', 'bundle_id', name='merge_index_bundle_constraint'
+        ),
+    )
+
+
+class RequestAddBundleDeprecation(db.Model):
+    """An association table between add requests and bundle images which they deprecate."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_add_id = db.Column(
+        db.Integer,
+        db.ForeignKey('request_add.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    bundle_id = db.Column(
+        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'request_add_id', 'bundle_id', name='request_add_bundle_deprecation_constraint'
         ),
     )
 
@@ -800,6 +823,7 @@ class RequestIndexImageMixin:
             ),
             'bundle_mapping': {},
             'bundles': [],
+            'deprecation_list': [],
             'from_index': getattr(self.from_index, 'pull_specification', None),
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
             'index_image': getattr(self.index_image, 'pull_specification', None),
@@ -832,6 +856,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
     id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
     bundles = db.relationship('Image', secondary=RequestAddBundle.__table__)
+    deprecation_list = db.relationship('Image', secondary=RequestAddBundleDeprecation.__table__)
     organization = db.Column(db.String, nullable=True)
 
     omps_operator_version = db.Column(db.String, nullable=True)
@@ -848,13 +873,14 @@ class RequestAdd(Request, RequestIndexImageMixin):
         """
         request_kwargs = deepcopy(kwargs)
 
-        bundles = request_kwargs.get('bundles', [])
-        if not isinstance(bundles, list) or any(
-            not item or not isinstance(item, str) for item in bundles
-        ):
-            raise ValidationError(
-                '"bundles" should be either an empty array or an array of non-empty strings'
-            )
+        for key in ('bundles', 'deprecation_list'):
+            value = request_kwargs.get(key, [])
+            if not isinstance(value, list) or any(
+                not item or not isinstance(item, str) for item in value
+            ):
+                raise ValidationError(
+                    f'"{key}" should be either an empty array or an array of non-empty strings'
+                )
 
         # Check if no bundles and `from_index is specified
         # if no bundles and no from index then an empty index will be created which is a no-op
@@ -882,13 +908,15 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 'organization',
                 'bundles',
                 'distribution_scope',
+                'deprecation_list',
             ],
             batch=batch,
         )
 
-        request_kwargs['bundles'] = [
-            Image.get_or_create(pull_specification=item) for item in bundles
-        ]
+        for key in ('bundles', 'deprecation_list'):
+            request_kwargs[key] = [
+                Image.get_or_create(pull_specification=item) for item in request_kwargs.get(key, [])
+            ]
 
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
@@ -915,6 +943,8 @@ class RequestAdd(Request, RequestIndexImageMixin):
                     bundle.pull_specification
                 )
             rv['bundles'].append(bundle.pull_specification)
+
+        rv['deprecation_list'] = [bundle.pull_specification for bundle in self.deprecation_list]
 
         return rv
 
@@ -1108,7 +1138,7 @@ class RequestMergeIndexImage(Request):
         'Image', foreign_keys=[binary_image_resolved_id], uselist=False
     )
 
-    deprecation_list = db.relationship('Image', secondary=BundleDeprecation.__table__)
+    deprecation_list = db.relationship('Image', secondary=RequestMergeBundleDeprecation.__table__)
 
     index_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
     index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)

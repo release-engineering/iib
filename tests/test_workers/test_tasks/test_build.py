@@ -135,17 +135,6 @@ def test_update_index_image_pull_spec(
         mock_ofi.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    'pull_spec, expected',
-    (
-        ('quay.io/ns/repo:latest', 'quay.io/ns/repo'),
-        ('quay.io/ns/repo@sha256:123456', 'quay.io/ns/repo'),
-    ),
-)
-def test_get_container_image_name(pull_spec, expected):
-    assert build._get_container_image_name(pull_spec) == expected
-
-
 @pytest.mark.parametrize('request_id, arch', ((1, 'amd64'), (5, 's390x')))
 def test_get_local_pull_spec(request_id, arch):
     rv = build._get_local_pull_spec(request_id, arch)
@@ -654,6 +643,9 @@ def test_prepare_request_for_build(
 @mock.patch('iib.workers.tasks.utils.get_index_image_info')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_resolved_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_image_arches')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
     source_index_image_info = {
         'resolved_from_index': 'some_resolved_image@sha256',
@@ -725,8 +717,8 @@ def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_reso
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.utils._get_resolved_image')
-@mock.patch('iib.workers.tasks.utils._get_image_arches')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
 
@@ -740,7 +732,7 @@ def test_get_binary_image_config_no_config_val():
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
@@ -822,6 +814,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
     'force_backport, binary_image', ((True, 'binary-image:latest'), (False, None))
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
+@pytest.mark.parametrize('deprecate_bundles', (True, False))
+@mock.patch('iib.workers.tasks.build.deprecate_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
 @mock.patch('iib.workers.tasks.build._prepare_request_for_build')
@@ -837,14 +832,12 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
-@mock.patch('iib.workers.tasks.build._get_missing_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_handle_add_request(
     mock_srt,
-    mock_gmb,
     mock_gpb,
     mock_alti,
     mock_grb,
@@ -863,9 +856,12 @@ def test_handle_add_request(
     mock_prfb,
     mock_vl,
     mock_cleanup,
+    mock_ugrb,
+    mock_dep_b,
     force_backport,
     binary_image,
     distribution_scope,
+    deprecate_bundles,
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
@@ -877,16 +873,21 @@ def test_handle_add_request(
         'ocp_version': 'v4.5',
         'distribution_scope': distribution_scope,
     }
-    mock_grb.return_value = ['some-bundle@sha']
+    mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
     legacy_packages = {'some_package'}
     mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
-
-    bundles = ['some-bundle:2.3-1']
+    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}]
+    bundles = ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1']
     cnr_token = 'token'
     organization = 'org'
     greenwave_config = {'some_key': 'other_value'}
+    deprecation_list = []
+    if deprecate_bundles:
+        mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+        deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+
     build.handle_add_request(
         bundles,
         3,
@@ -901,26 +902,27 @@ def test_handle_add_request(
         None,
         greenwave_config,
         binary_image_config=binary_image_config,
+        deprecation_list=deprecation_list,
     )
 
     mock_cleanup.assert_called_once()
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        RequestConfigAddRm(
-            binary_image=binary_image,
-            from_index='from-index:latest',
-            add_arches=['s390x'],
-            bundles=['some-bundle:2.3-1'],
-            binary_image_config=binary_image_config,
-        ),
+        binary_image,
+        'from-index:latest',
+        None,
+        ['s390x'],
+        ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+        None,
+        binary_image_config=binary_image_config,
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count
-    mock_glsp.assert_called_once_with(['some-bundle@sha'], 3, 'v4.5', force_backport=force_backport)
+    mock_glsp.assert_called_once_with(
+        ['some-bundle@sha', 'some-deprecation-bundle@sha'], 3, 'v4.5', force_backport=force_backport
+    )
 
-    filter_args = mock_gmb.call_args[0]
-    assert ['some-bundle@sha'] in filter_args
     mock_oia.assert_called_once()
 
     if distribution_scope in ['dev', 'stage']:
@@ -930,7 +932,12 @@ def test_handle_add_request(
 
     mock_srt.assert_called_once()
 
-    assert mock_bi.call_count == len(arches)
+    if deprecate_bundles:
+        # Take into account the temporarily created index image
+        assert mock_bi.call_count == len(arches) + 1
+    else:
+        assert mock_bi.call_count == len(arches)
+
     assert mock_pi.call_count == len(arches)
 
     mock_elp.assert_called_once()
@@ -943,13 +950,24 @@ def test_handle_add_request(
     mock_vii.assert_not_called()
     mock_capml.assert_called_once()
     assert mock_srs.call_count == 4
+    if deprecate_bundles:
+        mock_dep_b.assert_called_once_with(
+            ['random_bundle@sha', 'some-deprecation-bundle@sha'],
+            mock.ANY,
+            binary_image or 'some_image',
+            'containers-storage:localhost/iib-build:3-amd64',
+            None,
+            container_tool='podman',
+        )
+    else:
+        mock_dep_b.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build._verify_labels')
-@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs, mock_cleanup):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
@@ -981,7 +999,7 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs,
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
@@ -1022,7 +1040,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
 @mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build._get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
@@ -1152,7 +1170,7 @@ def test_handle_rm_request(
 
 
 @mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 def test_verify_index_image_failure(mock_gri, mock_srt):
     mock_gri.return_value = 'image:works'
     match_str = (
@@ -1200,7 +1218,7 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 )
 @mock.patch('iib.workers.tasks.build.get_image_label')
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.build.podman_pull')
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
@@ -1361,7 +1379,7 @@ def test_copy_files_from_image(mock_run_cmd, fail_rm):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (
@@ -1410,7 +1428,7 @@ def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
     csv2.write(csv_template.format(registry='quay.io', ref='@sha256:654321'))
     csv3.write(csv_template.format(registry='registry.access.company.com', ref=':v2'))
 
-    def _get_resolved_image(image):
+    def get_resolved_image(image):
         return {
             'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
             'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
@@ -1419,7 +1437,7 @@ def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
             ),
         }[image]
 
-    mock_gri.side_effect = _get_resolved_image
+    mock_gri.side_effect = get_resolved_image
 
     labels = build._adjust_operator_bundle(
         str(manifests_dir), str(metadata_dir), 'company-marketplace'
@@ -1521,7 +1539,7 @@ def test_adjust_operator_bundle_invalid_yaml_file(mock_apns, tmpdir):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
-@mock.patch('iib.workers.tasks.utils._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (

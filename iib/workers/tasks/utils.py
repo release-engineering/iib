@@ -24,6 +24,148 @@ log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
 
 
+def deprecate_bundles(
+    bundles,
+    base_dir,
+    binary_image,
+    from_index,
+    overwrite_target_index_token=None,
+    container_tool=None,
+):
+    """
+    Deprecate the specified bundles from the index image.
+
+    Only Dockerfile is created, no build is performed.
+
+    :param list bundles: pull specifications of bundles to deprecate.
+    :param str base_dir: base directory where operation files will be located.
+    :param str binary_image: binary image to be used by the new index image.
+    :param str from_index: index image, from which the bundles will be deprecated.
+    :param str overwrite_target_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for non-privileged users to use
+        ``overwrite_target_index``. The format of the token must be in the format "user:password".
+    :param str container_tool: the container tool to be used to operate on the index image
+    """
+    cmd = [
+        'opm',
+        'index',
+        'deprecatetruncate',
+        '--generate',
+        '--binary-image',
+        binary_image,
+        '--from-index',
+        from_index,
+        '--bundles',
+        ','.join(bundles),
+    ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
+    with set_registry_token(overwrite_target_index_token, from_index):
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
+
+
+def get_bundles_from_deprecation_list(bundles, deprecation_list):
+    """
+    Get a list of to-be-deprecated bundles based on the data from the deprecation list.
+
+    :param list bundles: list of bundles pull spec to apply the filter on.
+    :param list deprecation_list: list of deprecated bundle pull specifications.
+    :return: bundles which are to be deprecated.
+    :rtype: list
+    """
+    resolved_deprecation_list = get_resolved_bundles(deprecation_list)
+    deprecate_bundles = []
+    for bundle in bundles:
+        if bundle in resolved_deprecation_list:
+            deprecate_bundles.append(bundle)
+
+    log.info(
+        'Bundles that will be deprecated from the index image: %s', ', '.join(deprecate_bundles)
+    )
+    return deprecate_bundles
+
+
+def get_resolved_bundles(bundles):
+    """
+    Get the pull specification of the bundle images using their digests.
+
+    Determine if the pull spec refers to a manifest list.
+    If so, simply use the digest of the first item in the manifest list.
+    If not a manifest list, it must be a v2s2 image manifest and should be used as it is.
+
+    :param list bundles: the list of bundle images to be resolved.
+    :return: the list of bundle images resolved to their digests.
+    :rtype: list
+    :raises IIBError: if unable to resolve a bundle image.
+    """
+    log.info('Resolving bundles %s', ', '.join(bundles))
+    resolved_bundles = set()
+    for bundle_pull_spec in bundles:
+        skopeo_raw = skopeo_inspect(f'docker://{bundle_pull_spec}', '--raw')
+        if (
+            skopeo_raw.get('mediaType')
+            == 'application/vnd.docker.distribution.manifest.list.v2+json'
+        ):
+            # Get the digest of the first item in the manifest list
+            digest = skopeo_raw['manifests'][0]['digest']
+            name = _get_container_image_name(bundle_pull_spec)
+            resolved_bundles.add(f'{name}@{digest}')
+        elif (
+            skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json'
+            and skopeo_raw.get('schemaVersion') == 2
+        ):
+            resolved_bundles.add(get_resolved_image(bundle_pull_spec))
+        else:
+            error_msg = (
+                f'The pull specification of {bundle_pull_spec} is neither '
+                f'a v2 manifest list nor a v2s2 manifest. Type {skopeo_raw.get("mediaType")}'
+                f' and schema version {skopeo_raw.get("schemaVersion")} is not supported by IIB.'
+            )
+            raise IIBError(error_msg)
+
+    return list(resolved_bundles)
+
+
+def _get_container_image_name(pull_spec):
+    """
+    Get the container image name from a pull specification.
+
+    :param str pull_spec: the pull spec to analyze
+    :return: the container image name
+    """
+    if '@' in pull_spec:
+        return pull_spec.split('@', 1)[0]
+    else:
+        return pull_spec.rsplit(':', 1)[0]
+
+
+def get_resolved_image(pull_spec):
+    """
+    Get the pull specification of the container image using its digest.
+
+    :param str pull_spec: the pull specification of the container image to resolve
+    :return: the resolved pull specification
+    :rtype: str
+    """
+    log.debug('Resolving %s', pull_spec)
+    name = _get_container_image_name(pull_spec)
+    skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
+    if json.loads(skopeo_output).get('schemaVersion') == 2:
+        raw_digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
+        digest = f'sha256:{raw_digest}'
+    else:
+        # Schema 1 is not a stable format. The contents of the manifest may change slightly
+        # between requests causing a different digest to be computed. Instead, let's leverage
+        # skopeo's own logic for determining the digest in this case. In the future, we
+        # may want to use skopeo in all cases, but this will have significant performance
+        # issues until https://github.com/containers/skopeo/issues/785
+        digest = skopeo_inspect(f'docker://{pull_spec}')['Digest']
+    pull_spec_resolved = f'{name}@{digest}'
+    log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
+    return pull_spec_resolved
+
+
 def get_image_labels(pull_spec):
     """
     Get the labels from the image.

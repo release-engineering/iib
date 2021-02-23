@@ -651,6 +651,14 @@ components:
                 - 'quay.io/user/openshift-bundle-example-container:v1'
             bundle_mapping:
               $ref: '#/components/schemas/BundleMapping'
+            deprecation_list:
+              type: array
+              items:
+                type: string
+              description: >
+                List of bundles to be deprecated from the new index image.
+              example:
+                - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
             from_index:
               type: string
               example: 'quay.io/iib-stage/iib:4'
@@ -702,6 +710,14 @@ components:
             This token is required only if support for legacy app registry is
             required.
           example: token
+        deprecation_list:
+          type: array
+          items:
+            type: string
+          description: >
+            List of bundles to be deprecated from the new index image.
+          example:
+            - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
         force_backport:
           type: boolean
           description: >
