@@ -173,7 +173,6 @@ def test_json_to_envelope(mock_current_app, durable):
     # Verify that the ID is a UUID
     assert len(envelope.message.id) == 36
     assert envelope.message.body == '{"han": "solo"}'
-    assert envelope.message.content_encoding == 'utf-8'
     assert envelope.message.content_type == 'application/json'
     assert envelope.message.durable is durable
 
