@@ -244,7 +244,6 @@ def json_to_envelope(address, content, properties=None):
     """
     message = proton.Message(body=json.dumps(content), properties=properties)
     message.id = str(uuid.uuid4())
-    message.content_encoding = 'utf-8'
     message.content_type = 'application/json'
     message.durable = current_app.config['IIB_MESSAGING_DURABLE']
     return Envelope(address, message)
