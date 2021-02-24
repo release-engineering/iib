@@ -38,7 +38,6 @@ from iib.workers.tasks.utils import (
     skopeo_inspect,
     gather_index_image_arches,
     _validate_distribution_scope,
-    _get_resolved_image,
     _get_image_arches,
     get_image_label,
     _get_container_image_name,
@@ -299,7 +298,7 @@ def _get_resolved_bundles(bundles):
             skopeo_raw.get('mediaType') == 'application/vnd.docker.distribution.manifest.v2+json'
             and skopeo_raw.get('schemaVersion') == 2
         ):
-            resolved_bundles.add(_get_resolved_image(bundle_pull_spec))
+            resolved_bundles.add(get_resolved_image(bundle_pull_spec))
         else:
             error_msg = (
                 f'The pull specification of {bundle_pull_spec} is neither '
@@ -690,15 +689,7 @@ def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_c
 
 def _prepare_request_for_build(
     request_id,
-    binary_image=None,
-    from_index=None,
-    overwrite_from_index_token=None,
-    add_arches=None,
-    bundles=None,
-    distribution_scope=None,
-    source_from_index=None,
-    target_index=None,
-    binary_image_config=None,
+    build_request_config
 ):
     """
     Prepare the request for the index image build.
@@ -724,31 +715,26 @@ def _prepare_request_for_build(
     set_request_state(request_id, 'in_progress', 'Resolving the container images')
 
     # Use v4.5 as default version
-    from_index_image_info = get_all_index_images_info(
-        build_request_config, [("from_index", "v4.5")]
+    index_info = get_all_index_images_info(
+        build_request_config, [("from_index", "v4.5"),
+                               ("source_from_index", "v4.5"),
+                               ("target_index", "v4.6")]
     )
-    arches = gather_index_image_arches(build_request_config, from_index_image_info)
+    arches = gather_index_image_arches(build_request_config, index_info)
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
     # and 'Rm' requests.
-    resolved_distribution_scope = from_index_image_info["from_index"]['resolved_distribution_scope']
+    resolved_distribution_scope = index_info["from_index"]['resolved_distribution_scope']
+    if build_request_config.source_from_index:
+        resolved_distribution_scope = index_info['target_index']['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(
         resolved_distribution_scope, build_request_config.distribution_scope
     )
-
-
-    if not binary_image:
-        binary_image_ocp_version = from_index_info['ocp_version']
-        if source_from_index:
-            binary_image_ocp_version = target_index_info['ocp_version']
-
-        binary_image = get_binary_image_from_config(
-            binary_image_ocp_version, distribution_scope, binary_image_config
-        )
-
+    binary_image = build_request_config.get_binary_image(index_info['from_index'],
+                                                         distribution_scope)
     binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
@@ -770,8 +756,8 @@ def _prepare_request_for_build(
         'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
-        'from_index_resolved': from_index_image_info["from_index"]['resolved_from_index'],
-        'ocp_version': from_index_image_info["from_index"]['ocp_version'],
+        'from_index_resolved': index_info["from_index"]['resolved_from_index'],
+        'ocp_version': index_info["from_index"]['ocp_version'],
         'distribution_scope': distribution_scope,
     }
 

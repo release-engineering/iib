@@ -17,7 +17,7 @@ from iib.workers.tasks.utils import (
     get_binary_image_from_config,
     get_image_label,
     _get_image_arches,
-    _get_resolved_image,
+    get_resolved_image,
 )
 
 
@@ -250,7 +250,7 @@ def test_get_resolved_image(mock_si, pull_spec, expected):
         }
         '''  # noqa: E501
     ).strip('\n')
-    rv = build._get_resolved_image(pull_spec)
+    rv = build.get_resolved_image(pull_spec)
     assert rv == expected
 
 
@@ -267,7 +267,7 @@ def test_get_resolved_image_manifest_list(mock_si):
         r'chitecture":"ppc64le","os":"linux"},"size":529}],"mediaType":"application\/vnd.docker.dis'
         r'tribution.manifest.list.v2+json","schemaVersion":2}'
     )
-    rv = _get_resolved_image('docker.io/library/centos:8')
+    rv = get_resolved_image('docker.io/library/centos:8')
     assert rv == (
         'docker.io/library/centos@sha256:fe8d824220415eed5477b63addf40fb06c3b049404242b31982106ac'
         '204f6700'
@@ -314,7 +314,7 @@ def test_get_resolved_image_schema_1(mock_si):
     }
 
     mock_si.side_effect = [image_manifest_schema_1, skopeo_output]
-    rv = _get_resolved_image('registry.example.com/repository/name:1.0.0')
+    rv = get_resolved_image('registry.example.com/repository/name:1.0.0')
     assert rv == (
         'registry.example.com/repository/name@sha256:aa6680b35f45cf0fd6fb5f417159257ba410a47b8fa2'
         '0d37b4c7fcd4a564b3fb'
@@ -352,7 +352,7 @@ def test_get_resolved_image_schema_1(mock_si):
         ),
     ),
 )
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
 def test_get_resolved_bundles_success(mock_si, mock_gri, skopeo_inspect_rv, expected_response):
     mock_si.return_value = skopeo_inspect_rv
@@ -557,8 +557,8 @@ def test_overwrite_from_index(
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.utils._get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
 @mock.patch('iib.workers.tasks.utils._get_image_arches')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 @mock.patch('iib.workers.tasks.utils.get_image_label')
@@ -589,13 +589,15 @@ def test_prepare_request_for_build(
     expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
     gil_side_effect2 = []
     ocp_version = 'v4.5'
+    #mock_gri2.side_effect = [binary_image_resolved]
+    #mock_gri2.side_effect = [binary_image_resolved]
     if expected_bundle_mapping:
         expected_payload_keys.add('bundle_mapping')
     if from_index:
         from_index_name = from_index.split(':', 1)[0]
         from_index_resolved = f'{from_index_name}@sha256:bcdefg'
-        mock_gri2.side_effect = [from_index_resolved]
         mock_gri.side_effect = [binary_image_resolved]
+        mock_gri2.side_effect = [from_index_resolved]
         mock_gia2.side_effect = [from_index_arches]
         mock_gia.side_effect = [expected_arches]
         expected_payload_keys.add('from_index_resolved')
@@ -641,11 +643,8 @@ def test_prepare_request_for_build(
 
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.utils.get_index_image_info')
-@mock.patch('iib.workers.tasks.build_merge_index_image._get_resolved_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_image_arches')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
     source_index_image_info = {
         'resolved_from_index': 'some_resolved_image@sha256',
@@ -909,13 +908,13 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        binary_image,
-        'from-index:latest',
-        None,
-        ['s390x'],
-        ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
-        None,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            binary_image=binary_image,
+            from_index='from-index:latest',
+            add_arches=['s390x'],
+            bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+            binary_image_config=binary_image_config,
+        )
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count

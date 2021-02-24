@@ -27,7 +27,7 @@ from iib.workers.tasks.utils import (
     run_cmd,
     set_registry_token,
     _get_image_arches,
-    _get_resolved_image,
+    get_resolved_image,
     _validate_distribution_scope,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
@@ -78,7 +78,7 @@ def _prepare_request_for_build(request_id, build_request_config):
     binary_image = build_request_config.get_binary_image(
         index_image_infos['target_index'], distribution_scope
     )
-    binary_image_resolved = _get_resolved_image(binary_image)
+    binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):

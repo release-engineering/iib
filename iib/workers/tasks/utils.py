@@ -478,7 +478,7 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
         return result
 
     with set_registry_token(overwrite_from_index_token, from_index):
-        from_index_resolved = _get_resolved_image(from_index)
+        from_index_resolved = get_resolved_image(from_index)
         result['arches'] = _get_image_arches(from_index_resolved)
         result['ocp_version'] = (
             get_image_label(from_index_resolved, 'com.redhat.index.delivery.version') or 'v4.5'
@@ -678,32 +678,6 @@ def _get_container_image_name(pull_spec):
         return pull_spec.split('@', 1)[0]
     else:
         return pull_spec.rsplit(':', 1)[0]
-
-
-def _get_resolved_image(pull_spec):
-    """
-    Get the pull specification of the container image using its digest.
-
-    :param str pull_spec: the pull specification of the container image to resolve
-    :return: the resolved pull specification
-    :rtype: str
-    """
-    log.debug('Resolving %s', pull_spec)
-    name = _get_container_image_name(pull_spec)
-    skopeo_output = skopeo_inspect(f'docker://{pull_spec}', '--raw', return_json=False)
-    if json.loads(skopeo_output).get('schemaVersion') == 2:
-        raw_digest = hashlib.sha256(skopeo_output.encode('utf-8')).hexdigest()
-        digest = f'sha256:{raw_digest}'
-    else:
-        # Schema 1 is not a stable format. The contents of the manifest may change slightly
-        # between requests causing a different digest to be computed. Instead, let's leverage
-        # skopeo's own logic for determining the digest in this case. In the future, we
-        # may want to use skopeo in all cases, but this will have significant performance
-        # issues until https://github.com/containers/skopeo/issues/785
-        digest = skopeo_inspect(f'docker://{pull_spec}')['Digest']
-    pull_spec_resolved = f'{name}@{digest}'
-    log.debug('%s resolved to %s', pull_spec, pull_spec_resolved)
-    return pull_spec_resolved
 
 
 def _get_image_arches(pull_spec):
