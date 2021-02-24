@@ -589,8 +589,8 @@ def test_prepare_request_for_build(
     expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
     gil_side_effect2 = []
     ocp_version = 'v4.5'
-    #mock_gri2.side_effect = [binary_image_resolved]
-    #mock_gri2.side_effect = [binary_image_resolved]
+    # mock_gri2.side_effect = [binary_image_resolved]
+    # mock_gri2.side_effect = [binary_image_resolved]
     if expected_bundle_mapping:
         expected_payload_keys.add('bundle_mapping')
     if from_index:
@@ -914,7 +914,7 @@ def test_handle_add_request(
             add_arches=['s390x'],
             bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
             binary_image_config=binary_image_config,
-        )
+        ),
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count

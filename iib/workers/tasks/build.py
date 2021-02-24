@@ -627,7 +627,6 @@ def _overwrite_from_index(
             temp_dir.cleanup()
 
 
-
 def get_index_image_info(overwrite_from_index_token, from_index=None, default_ocp_version='v4.5'):
     """
     Get arches, resolved pull specification and ocp_version for the index image.
@@ -687,10 +686,7 @@ def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_c
     return binary_image
 
 
-def _prepare_request_for_build(
-    request_id,
-    build_request_config
-):
+def _prepare_request_for_build(request_id, build_request_config):
     """
     Prepare the request for the index image build.
 
@@ -716,9 +712,8 @@ def _prepare_request_for_build(
 
     # Use v4.5 as default version
     index_info = get_all_index_images_info(
-        build_request_config, [("from_index", "v4.5"),
-                               ("source_from_index", "v4.5"),
-                               ("target_index", "v4.6")]
+        build_request_config,
+        [("from_index", "v4.5"), ("source_from_index", "v4.5"), ("target_index", "v4.6")],
     )
     arches = gather_index_image_arches(build_request_config, index_info)
     arches_str = ', '.join(sorted(arches))
@@ -733,8 +728,9 @@ def _prepare_request_for_build(
     distribution_scope = _validate_distribution_scope(
         resolved_distribution_scope, build_request_config.distribution_scope
     )
-    binary_image = build_request_config.get_binary_image(index_info['from_index'],
-                                                         distribution_scope)
+    binary_image = build_request_config.get_binary_image(
+        index_info['from_index'], distribution_scope
+    )
     binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = _get_image_arches(binary_image_resolved)
 

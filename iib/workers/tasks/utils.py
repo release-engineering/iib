@@ -667,19 +667,6 @@ def _validate_distribution_scope(resolved_distribution_scope, distribution_scope
     return distribution_scope
 
 
-def _get_container_image_name(pull_spec):
-    """
-    Get the container image name from a pull specification.
-
-    :param str pull_spec: the pull spec to analyze
-    :return: the container image name
-    """
-    if '@' in pull_spec:
-        return pull_spec.split('@', 1)[0]
-    else:
-        return pull_spec.rsplit(':', 1)[0]
-
-
 def _get_image_arches(pull_spec):
     """
     Get the architectures this image was built for.
