@@ -313,6 +313,7 @@ def add_bundles():
     request = RequestAdd.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    db.session.refresh(request)
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
@@ -438,6 +439,7 @@ def patch_request(request_id):
         request.distribution_scope = payload['distribution_scope']
 
     db.session.commit()
+    db.session.refresh(request)
 
     if state_updated:
         messaging.send_message_for_state_change(request)
@@ -468,6 +470,7 @@ def rm_operators():
     request = RequestRm.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    db.session.refresh(request)
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
@@ -506,6 +509,7 @@ def regenerate_bundle():
     request = RequestRegenerateBundle.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    db.session.refresh(request)
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     error_callback = failed_request_callback.s(request.id)
@@ -554,6 +558,8 @@ def regenerate_bundle_batch():
         requests.append(request)
 
     db.session.commit()
+    for request in requests:
+        db.session.refresh(request)
     messaging.send_messages_for_new_batch_of_requests(requests)
 
     request_jsons = []
@@ -629,6 +635,7 @@ def add_rm_batch():
         requests.append(request)
 
     db.session.commit()
+    db.session.refresh(request)
     messaging.send_messages_for_new_batch_of_requests(requests)
 
     request_jsons = []
@@ -694,6 +701,7 @@ def merge_index_image():
     request = RequestMergeIndexImage.from_json(payload)
     db.session.add(request)
     db.session.commit()
+    db.session.refresh(request)
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_target_index = payload.get('overwrite_target_index', False)

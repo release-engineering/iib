@@ -60,5 +60,5 @@ def load_user_from_request(request):
     user = User.get_or_create(username)
     if not user.id:
         db.session.commit()
-
+        db.session.refresh(user)
     return user
