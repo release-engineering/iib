@@ -427,7 +427,6 @@ def test_prepare_request_for_build(
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': expected_bundle_mapping,
         'from_index_resolved': from_index_resolved,
-        'index_image_resolved': None,
         'ocp_version': ocp_version,
         # want to verify that the output is always lower cased.
         'distribution_scope': resolved_distribution_scope.lower(),
@@ -480,7 +479,6 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
         'binary_image_resolved': 'binary-image@sha256:12345',
         'bundle_mapping': {},
         'from_index_resolved': None,
-        'index_image_resolved': None,
         'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
         'source_from_index_resolved': 'some_resolved_image@sha256',

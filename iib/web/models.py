@@ -678,7 +678,7 @@ class RequestIndexImageMixin:
 
     @declared_attr
     def from_index_resolved_id(cls):
-        """Return the ID of the resolved built index image."""
+        """Return the ID of the resolved index image  to base the request from."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
@@ -699,11 +699,11 @@ class RequestIndexImageMixin:
     @declared_attr
     def index_image(cls):
         """Return the relationship to the built index image."""
-        return db.relationship('Image', foreign_keys=[cls.index_image_resolved_id], uselist=False)
+        return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
     @declared_attr
     def index_image_resolved_id(cls):
-        """Return the ID of the resolved index image to base the request from."""
+        """Return the ID of the resolved built index image."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr

@@ -793,7 +793,6 @@ def _prepare_request_for_build(
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
         'from_index_resolved': from_index_info['resolved_from_index'],
-        'index_image_resolved': None,
         'ocp_version': from_index_info['ocp_version'],
         'distribution_scope': distribution_scope,
         'source_from_index_resolved': source_from_index_info['resolved_from_index'],

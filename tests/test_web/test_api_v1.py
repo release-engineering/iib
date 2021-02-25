@@ -52,7 +52,7 @@ def test_get_build(app, auth_env, client, db):
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
-        'index_image_resolved': 'quay.io/namespace/index@sha256:fghijk',
+        'index_image_resolved': None,
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -908,6 +908,7 @@ def test_patch_request_add_success(
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
@@ -928,7 +929,7 @@ def test_patch_request_add_success(
         'from_index_resolved': None,
         'id': minimal_request_add.id,
         'index_image': 'index:image',
-        'index_image_resolved': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -976,6 +977,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
@@ -993,7 +995,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'from_index_resolved': None,
         'id': minimal_request_rm.id,
         'index_image': 'index:image',
-        'index_image_resolved': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
