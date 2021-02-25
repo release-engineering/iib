@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import stat
 import subprocess
 import time
 import tempfile
@@ -22,6 +23,7 @@ from iib.workers.tasks.legacy import (
     validate_legacy_params_and_config,
 )
 from iib.workers.tasks.utils import (
+    chmod_recursively,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
     get_image_labels,
@@ -1108,6 +1110,15 @@ def handle_add_request(
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
+
+        # If the container-tool podman is used in the opm commands above, opm will create temporary
+        # files and directories without the write permission. This will cause the context manager
+        # to fail to delete these files. Adjust the file modes to avoid this error.
+        chmod_recursively(
+            temp_dir,
+            dir_mode=(stat.S_IRWXU | stat.S_IRWXG),
+            file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
+        )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
