@@ -669,6 +669,9 @@ components:
             index_image:
               type: string
               example: 'quay.io/iib-stage/iib:5'
+            index_image_resolved:
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
             distribution_scope:
               description: >
                 The scope of distribution for the index created by the request.
