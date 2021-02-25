@@ -432,3 +432,29 @@ def _get_function_arg_value(arg_name, func, args, kwargs):
     if arg_value is None and len(args) > arg_index:
         arg_value = args[arg_index]
     return arg_value
+
+
+def chmod_recursively(dir_path, dir_mode, file_mode):
+    """Change file mode bits recursively.
+
+    :param str dir_path: the path to the starting directory to apply the file mode bits
+    :param dir_mode int: the mode, as defined in the stat module, to apply to directories
+    :param file_mode int: the mode, as defined in the stat module, to apply to files
+    """
+    for dirpath, dirnames, filenames in os.walk(dir_path):
+        os.chmod(dirpath, dir_mode)
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            # As per the man pages:
+            #   On Linux, the permissions of an ordinary symbolic link are not used in any
+            #   operations; the permissions are always 0777, and can't be changed.
+            #   - https://www.man7.org/linux/man-pages/man7/symlink.7.html
+            #
+            # The python docs state that islink will only return True if the symlink points
+            # to an existing file.
+            #   - https://docs.python.org/3/library/os.path.html#os.path.islink
+            # To completely ignore attempting to set permissions on a symlink, first verify the
+            # file exists.
+            if not os.path.exists(file_path) or os.path.islink(file_path):
+                continue
+            os.chmod(file_path, file_mode)

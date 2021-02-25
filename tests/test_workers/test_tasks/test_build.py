@@ -2,6 +2,7 @@
 import copy
 import os
 import re
+import stat
 import textwrap
 from unittest import mock
 
@@ -680,6 +681,17 @@ def test_handle_add_request(
     if deprecate_bundles:
         mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
         deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+
+    # Simulate opm's behavior of creating files that cannot be deleted
+    def side_effect(_, temp_dir, *args, **kwargs):
+        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+        os.mkdir(read_only_dir)
+        with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
+            os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
+        # Make the dir read-only *after* populating it
+        os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
+
+    mock_dep_b.side_effect = side_effect
 
     build.handle_add_request(
         bundles,

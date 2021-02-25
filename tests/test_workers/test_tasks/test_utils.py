@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
+import os
+import stat
 import textwrap
 from unittest import mock
 
@@ -526,3 +528,45 @@ def testdeprecate_bundles(mock_srt, mock_run_cmd):
     mock_run_cmd.assert_called_once_with(
         cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
     )
+
+
+def test_chmod_recursiverly(tmpdir):
+
+    # Create a directory structure like this:
+    # spam-dir/
+    # └── eggs-dir
+    #     ├── eggs-file
+    #     ├── eggs-symlink -> spam-dir/eggs-dir/missing-file
+    #     └── bacon-dir
+
+    spam_dir = tmpdir.mkdir('spam-dir')
+    eggs_dir = spam_dir.mkdir('eggs-dir')
+    bacon_dir = eggs_dir.mkdir('bacon-dir')
+
+    eggs_file = eggs_dir.join('eggs_file')
+    eggs_file.write('')
+
+    eggs_symlink = eggs_dir.join('eggs-symlink')
+    missing_file = eggs_dir.join('missing-file')
+    os.symlink(str(missing_file), str(eggs_symlink))
+    assert not missing_file.exists()
+
+    # Set the current file mode to some initial known values so we can verify
+    # they're modified properly
+    eggs_file.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+    bacon_dir.chmod(stat.S_IRUSR | stat.S_IRWXG)
+    eggs_dir.chmod(stat.S_IRWXU)
+    spam_dir.chmod(stat.S_IRUSR)
+
+    expected_dir_mode = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP
+    expected_file_mode = stat.S_IRUSR | stat.S_IRGRP
+    utils.chmod_recursively(spam_dir, dir_mode=expected_dir_mode, file_mode=expected_file_mode)
+
+    def assert_mode(file_path, expected_mode):
+        # The last three digits specify the file mode for user-group-others
+        assert oct(os.stat(file_path).st_mode)[-3:] == oct(expected_mode)[-3:]
+
+    assert_mode(eggs_file, expected_file_mode)
+    assert_mode(bacon_dir, expected_dir_mode)
+    assert_mode(eggs_dir, expected_dir_mode)
+    assert_mode(bacon_dir, expected_dir_mode)
