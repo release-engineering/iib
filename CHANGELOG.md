@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 3.11.1
+- fixed bugs for deprecating bundles in add requests
+- upgraded cryptography from 3.3.1 to 3.3.2
+- upgraded jinja2 from 2.11.1 to 2.11.3
+- added new attribute index_image_resolved to add and rm response
+
 ## 3.11.0
 - fixed docker-compose quirks
 - added support for parsing bundle version in merge-index-image before adding it to the index
