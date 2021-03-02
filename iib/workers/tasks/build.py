@@ -171,6 +171,7 @@ def _update_index_image_pull_spec(
     overwrite_from_index=False,
     overwrite_from_index_token=None,
     resolved_prebuild_from_index=None,
+    add_or_rm=False,
 ):
     """
     Update the request with the modified index image.
@@ -188,6 +189,7 @@ def _update_index_image_pull_spec(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image.
     :param str resolved_prebuild_from_index: resolved index image before starting the build.
+    :param bool add_or_rm: true if the request is an ``Add`` or ``Rm`` request. defaults to false
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -212,14 +214,16 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
-    with set_registry_token(overwrite_from_index_token, index_image):
-        index_image_resolved = get_resolved_image(index_image)
-
     payload = {
         'arches': list(arches),
         'index_image': index_image,
-        'index_image_resolved': index_image_resolved,
     }
+
+    if add_or_rm:
+        with set_registry_token(overwrite_from_index_token, index_image):
+            index_image_resolved = get_resolved_image(index_image)
+        payload['index_image_resolved'] = index_image_resolved
+
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
 
@@ -1128,6 +1132,7 @@ def handle_add_request(
         overwrite_from_index,
         overwrite_from_index_token,
         from_index_resolved,
+        add_or_rm=True,
     )
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image'
@@ -1223,6 +1228,7 @@ def handle_rm_request(
         overwrite_from_index,
         overwrite_from_index_token,
         from_index_resolved,
+        add_or_rm=True,
     )
     set_request_state(
         request_id, 'complete', 'The operator(s) were successfully removed from the index image'
