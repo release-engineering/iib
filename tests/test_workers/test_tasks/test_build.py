@@ -69,18 +69,20 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
 
 @pytest.mark.parametrize(
-    'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index',
+    'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index,'
+    'add_or_rm',
     (
-        (None, None, False, '{default}', None),
+        (None, None, False, '{default}', None, False),
         (
             'registry-proxy.domain.local',
             None,
             False,
             'registry-proxy.domain.local/{default_no_registry}',
             None,
+            False,
         ),
-        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef'),
-        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba'),
+        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef', True),
+        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba', True),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
@@ -99,6 +101,7 @@ def test_update_index_image_pull_spec(
     overwrite,
     expected,
     resolved_from_index,
+    add_or_rm,
 ):
     default_no_registry = 'namespace/some-image:3'
     default = f'quay.io/{default_no_registry}'
@@ -112,19 +115,35 @@ def test_update_index_image_pull_spec(
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
-    build._update_index_image_pull_spec(
-        default,
-        request_id,
-        arches,
-        from_index,
-        overwrite,
-        overwrite_token,
-        resolved_prebuild_from_index=resolved_from_index,
-    )
+
+    if add_or_rm:
+        build._update_index_image_pull_spec(
+            default,
+            request_id,
+            arches,
+            from_index,
+            overwrite,
+            overwrite_token,
+            resolved_prebuild_from_index=resolved_from_index,
+            add_or_rm=add_or_rm,
+        )
+    else:
+        build._update_index_image_pull_spec(
+            default,
+            request_id,
+            arches,
+            from_index,
+            overwrite,
+            overwrite_token,
+            resolved_prebuild_from_index=resolved_from_index,
+        )
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload.keys() == {'arches', 'index_image', 'index_image_resolved'}
+    if add_or_rm:
+        assert update_request_payload.keys() == {'arches', 'index_image', 'index_image_resolved'}
+    else:
+        assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:
         mock_ofi.assert_called_once_with(
