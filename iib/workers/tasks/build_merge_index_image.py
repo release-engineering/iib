@@ -254,13 +254,13 @@ def is_bundle_version_valid(bundle_path, valid_ocp_version):
     :return: a boolean indicating if the bundle_path satisfies the index ocp_version
     :rtype: bool
 
-           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"
-    ---------------------------------------------------------------
-    v4.5   | included  | NOT included |  included   |  included
-    ---------------------------------------------------------------
-    v4.6   | included  |   included   |  included   |  included
-    ---------------------------------------------------------------
-    v4.7   | included  | NOT included |  included   |  included
+           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"  | "v4.6,v4.5"
+    -------------------------------------------------------------------------------
+    v4.5   | included  | NOT included |  included   |  included    |  NOT included
+    -------------------------------------------------------------------------------
+    v4.6   | included  |   included   |  included   |  included    |  included
+    -------------------------------------------------------------------------------
+    v4.7   | included  | NOT included |  included   |  included    |  included
     """
     try:
         float_valid_ocp_version = float(valid_ocp_version.replace('v', ''))
@@ -278,13 +278,6 @@ def is_bundle_version_valid(bundle_path, valid_ocp_version):
                 return True
         elif "," in bundle_version_label:
             versions = [float(version) for version in bundle_version.split(",")]
-            # This means the version is something like v4.6, v4.5 which is not valid
-            if versions != sorted(versions):
-                raise ValueError(
-                    'Bundle %s has an invalid `com.redhat.openshift.versions` label value set: %s',
-                    bundle_path,
-                    bundle_version_label,
-                )
             if float_valid_ocp_version >= versions[0]:
                 return True
         elif float_valid_ocp_version >= float(bundle_version):
