@@ -424,7 +424,7 @@ def test_add_bundles_missing_in_source_none_missing(
             'csvName': 'bundle2-2.0',
         },
     ]
-    mock_gil.side_effect = ['v=4.5', 'v4.6,v4.5', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
+    mock_gil.side_effect = ['v=4.5', 'v4.7,v4.6', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -458,7 +458,7 @@ def test_add_bundles_missing_in_source_none_missing(
         ('v4.6', True),
         ('v=4.6', False),
         ('v4.5,v4.6', True),
-        ('v4.6,v4.5', False),
+        ('v4.6,v4.5', True),
         ('tom_brady', False),
     ),
 )
@@ -469,8 +469,10 @@ def test_is_bundle_version_valid(mock_gil, version_label, result):
     assert is_valid == result
 
 
-@pytest.mark.parametrize('version_label', ('random-version', 'v4.6,v4.5'))
-def test_is_bundle_version_valid_invalid_ocp_version(version_label):
+# version_label is the target version of the index image. It should only ever be a single
+# version in the format vX.Y where X and Y are both integers.
+@pytest.mark.parametrize('version_label', ('random-version', 'v4.6,v4.5', 'v4.5,v4.6'))
+def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
     match_str = f'Invalid OCP version, "{version_label}", specified in Index Image'
     with pytest.raises(IIBError, match=match_str):
         build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
