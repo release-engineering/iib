@@ -102,7 +102,9 @@ def get_resolved_bundles(bundles):
     log.info('Resolving bundles %s', ', '.join(bundles))
     resolved_bundles = set()
     for bundle_pull_spec in bundles:
-        skopeo_raw = skopeo_inspect(f'docker://{bundle_pull_spec}', '--raw')
+        skopeo_raw = skopeo_inspect(
+            f'docker://{bundle_pull_spec}', '--raw', require_media_type=True
+        )
         if (
             skopeo_raw.get('mediaType')
             == 'application/vnd.docker.distribution.manifest.list.v2+json'
@@ -299,15 +301,18 @@ def set_registry_token(token, container_image):
 @dogpile_cache(
     dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache
 )
-def skopeo_inspect(*args, return_json=True):
+def skopeo_inspect(*args, return_json=True, require_media_type=False):
     """
     Wrap the ``skopeo inspect`` command.
 
     :param args: any arguments to pass to ``skopeo inspect``
     :param bool return_json: if ``True``, the output will be parsed as JSON and returned
+    :param bool require_media_type: if ``True``, ``mediaType`` will be checked in the output
+        and it will be ignored when ``return_json`` is ``False``
     :return: a dictionary of the JSON output from the skopeo inspect command
     :rtype: dict
-    :raises IIBError: if the command fails
+    :raises IIBError: if the command fails and if ``mediaType`` is not found in the output while
+        ``require_media_type`` is ``True``
     """
     exc_msg = None
     for arg in args:
@@ -318,10 +323,14 @@ def skopeo_inspect(*args, return_json=True):
     skopeo_timeout = get_worker_config().iib_skopeo_timeout
     cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'inspect'] + list(args)
     output = run_cmd(cmd, exc_msg=exc_msg)
-    if return_json:
-        return json.loads(output)
+    if not return_json:
+        return output
 
-    return output
+    json_output = json.loads(output)
+
+    if require_media_type and not json_output.get('mediaType'):
+        raise IIBError('mediaType not found')
+    return json_output
 
 
 @retry(wait_on=IIBError, logger=log)

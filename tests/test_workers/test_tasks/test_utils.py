@@ -473,6 +473,14 @@ def test_get_resolved_bundles_failure(mock_si):
         utils.get_resolved_bundles(['some_bundle@some_sha'])
 
 
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_rasise_exception_on_none_mediatype_skopeo_inspect(mock_run_cmd):
+    mock_run_cmd.return_value = '{"Name": "some-image"}'
+    image = 'docker://some-image:latest'
+    with pytest.raises(IIBError, match='mediaType not found'):
+        utils.skopeo_inspect(image, '--raw', require_media_type=True)
+
+
 @pytest.mark.parametrize(
     'pull_spec, expected',
     (
