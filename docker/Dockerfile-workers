@@ -26,7 +26,7 @@ RUN dnf -y install \
     && dnf clean all
 
 ENV OPM_SRC="/src"
-ENV OPM_TAG="v1.14.2"
+ENV OPM_TAG="v1.16.1"
 
 RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC && \
     (cd $OPM_SRC && git checkout $OPM_TAG && make build) && \
