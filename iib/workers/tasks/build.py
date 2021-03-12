@@ -462,6 +462,7 @@ def _opm_index_add(
     from_index=None,
     overwrite_from_index_token=None,
     overwrite_csv=False,
+    container_tool=None,
 ):
     """
     Add the input bundles to an operator index.
@@ -480,6 +481,7 @@ def _opm_index_add(
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
+    :param str container_tool: the container tool to be used to operate on the index image
     :raises IIBError: if the ``opm index add`` command fails.
     """
     # The bundles are not resolved since these are stable tags, and references
@@ -495,6 +497,9 @@ def _opm_index_add(
         '--binary-image',
         binary_image,
     ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
 
     log.info('Generating the database file with the following bundle(s): %s', ', '.join(bundles))
     if from_index:

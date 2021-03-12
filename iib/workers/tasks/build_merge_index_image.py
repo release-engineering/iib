@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import itertools
 import logging
+import stat
 import tempfile
 
 from iib.exceptions import IIBError
@@ -21,6 +22,7 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import (
+    chmod_recursively,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
     request_logger,
@@ -113,6 +115,9 @@ def _add_bundles_missing_in_source(
         missing_bundle_paths,
         binary_image,
         overwrite_from_index_token=overwrite_target_index_token,
+        # Use podman until opm's default mechanism is more resilient:
+        #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
+        container_tool='podman',
     )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
@@ -229,6 +234,15 @@ def handle_merge_request(
         for arch in sorted(prebuild_info['arches']):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
+
+        # If the container-tool podman is used in the opm commands above, opm will create temporary
+        # files and directories without the write permission. This will cause the context manager
+        # to fail to delete these files. Adjust the file modes to avoid this error.
+        chmod_recursively(
+            temp_dir,
+            dir_mode=(stat.S_IRWXU | stat.S_IRWXG),
+            file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
+        )
 
     output_pull_spec = _create_and_push_manifest_list(request_id, prebuild_info['arches'])
     _update_index_image_pull_spec(

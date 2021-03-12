@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
+import stat
 from unittest import mock
 
 import pytest
@@ -60,6 +62,17 @@ def test_handle_merge_request(
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
     binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
+
+    # Simulate opm's behavior of creating files that cannot be deleted
+    def side_effect(_, temp_dir, *args, **kwargs):
+        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+        os.mkdir(read_only_dir)
+        with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
+            os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
+        # Make the dir read-only *after* populating it
+        os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
+
+    mock_dep_b.side_effect = side_effect
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -263,6 +276,7 @@ def test_add_bundles_missing_in_source(
         ],
         'binary-image:4.5',
         overwrite_from_index_token=None,
+        container_tool='podman',
     )
     assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
@@ -442,6 +456,7 @@ def test_add_bundles_missing_in_source_none_missing(
         ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
         'binary-image:4.5',
         overwrite_from_index_token=None,
+        container_tool='podman',
     )
     assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2

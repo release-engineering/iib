@@ -200,11 +200,18 @@ def test_get_image_label(mock_si, label, expected):
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
+@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv):
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool):
     build._opm_index_add(
-        '/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass', overwrite_csv
+        '/tmp/somedir',
+        bundles,
+        'binary-image:latest',
+        from_index,
+        'user:pass',
+        overwrite_csv,
+        container_tool=container_tool,
     )
 
     mock_run_cmd.assert_called_once()
@@ -223,6 +230,11 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
         assert '--overwrite-latest' in opm_args
     else:
         assert '--overwrite-latest' not in opm_args
+    if container_tool:
+        assert '--container-tool' in opm_args
+        assert container_tool in opm_args
+    else:
+        assert '--container-tool' not in opm_args
 
     mock_srt.assert_called_once_with('user:pass', from_index)
 
