@@ -1350,7 +1350,7 @@ def test_regenerate_bundle_custom_user_queue(
     assert rv.status_code == 201, rv.json
     mock_hrbr.apply_async.assert_called_once()
     mock_hrbr.apply_async.assert_called_with(
-        args=mock.ANY, link_error=mock.ANY, queue=expected_queue
+        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 

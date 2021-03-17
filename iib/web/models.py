@@ -1079,7 +1079,9 @@ class RequestRegenerateBundle(Request):
         request_kwargs = deepcopy(kwargs)
 
         validate_request_params(
-            request_kwargs, required_params={'from_bundle_image'}, optional_params={'organization'}
+            request_kwargs,
+            required_params={'from_bundle_image'},
+            optional_params={'organization', 'registry_auths'},
         )
 
         # Validate organization is correctly provided
@@ -1091,6 +1093,13 @@ class RequestRegenerateBundle(Request):
         from_bundle_image = request_kwargs.pop('from_bundle_image')
         if not isinstance(from_bundle_image, str):
             raise ValidationError('"from_bundle_image" must be a string')
+
+        # Remove attributes that are not stored in the database
+        registry_auths = request_kwargs.pop('registry_auths', None)
+
+        # Check that registry_auths were provided in valid format
+        if registry_auths:
+            validate_registry_auths(registry_auths)
 
         request_kwargs['from_bundle_image'] = Image.get_or_create(
             pull_specification=from_bundle_image
@@ -1398,3 +1407,31 @@ def validate_request_params(request_params, required_params, optional_params):
             and not request_params[param]
         ):
             del request_params[param]
+
+
+def validate_registry_auths(registry_auths):
+    """
+    Validate registry_auths for a build request.
+
+    Only auth item in dockerconfig.json is supported for iib.
+
+    :param dict registry_auths: User provided dockerconfig for authentication
+      to private registries
+    :raises ValidationError: if registry_auths are not in valid format
+    """
+    auths = 'auths'
+    if not isinstance(registry_auths, dict):
+        raise ValidationError('"registry_auths" must be a dict')
+    if list(registry_auths.keys()) != [auths]:
+        raise ValidationError(f'"registry_auths" must contain single key "{auths}"')
+    if not registry_auths[auths] or not isinstance(registry_auths[auths], dict):
+        raise ValidationError(f'"registry_auths.{auths}" must be a non-empty dict')
+    for reg, auth_dict in registry_auths[auths].items():
+        err_msg = (
+            f'{reg} in registry_auths has auth value in incorrect format. '
+            'See the API docs for details on the expected format'
+        )
+        if not isinstance(auth_dict, dict) or len(auth_dict) != 1:
+            raise ValidationError(err_msg)
+        if not all(k == 'auth' and isinstance(v, str) for (k, v) in auth_dict.items()):
+            raise ValidationError(err_msg)

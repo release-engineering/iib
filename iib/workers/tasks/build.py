@@ -35,6 +35,7 @@ from iib.workers.tasks.utils import (
     retry,
     run_cmd,
     set_registry_token,
+    set_registry_auths,
     skopeo_inspect,
 )
 
@@ -1242,68 +1243,76 @@ def handle_rm_request(
 
 @app.task
 @request_logger
-def handle_regenerate_bundle_request(from_bundle_image, organization, request_id):
+def handle_regenerate_bundle_request(
+    from_bundle_image, organization, request_id, registry_auths=None
+):
     """
     Coordinate the work needed to regenerate the operator bundle image.
 
     :param str from_bundle_image: the pull specification of the bundle image to be regenerated.
     :param str organization: the name of the organization the bundle should be regenerated for.
     :param int request_id: the ID of the IIB build request
+    :param dict registry_auths: Provide the dockerconfig.json for authentication to private
+      registries, defaults to ``None``.
     :raises IIBError: if the regenerate bundle image build fails.
     """
     _cleanup()
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
-    from_bundle_image_resolved = get_resolved_image(from_bundle_image)
-    arches = _get_image_arches(from_bundle_image_resolved)
-    if not arches:
-        raise IIBError(
-            f'No arches were found in the resolved from_bundle_image {from_bundle_image_resolved}'
-        )
 
-    pinned_by_iib = yaml.load(
-        get_image_label(from_bundle_image_resolved, 'com.redhat.iib.pinned') or 'false'
-    )
+    with set_registry_auths(registry_auths):
+        from_bundle_image_resolved = get_resolved_image(from_bundle_image)
 
-    arches_str = ', '.join(sorted(arches))
-    log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
-
-    payload = {
-        'from_bundle_image_resolved': from_bundle_image_resolved,
-        'state': 'in_progress',
-        'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
-    }
-    exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
-    update_request(request_id, payload, exc_msg=exc_msg)
-
-    # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
-    podman_pull(from_bundle_image_resolved)
-
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        manifests_path = os.path.join(temp_dir, 'manifests')
-        _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
-        metadata_path = os.path.join(temp_dir, 'metadata')
-        _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
-        new_labels = _adjust_operator_bundle(
-            manifests_path, metadata_path, organization, pinned_by_iib
-        )
-
-        with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
-            dockerfile.write(
-                textwrap.dedent(
-                    f"""\
-                        FROM {from_bundle_image_resolved}
-                        COPY ./manifests /manifests
-                        COPY ./metadata /metadata
-                    """
-                )
+        arches = _get_image_arches(from_bundle_image_resolved)
+        if not arches:
+            raise IIBError(
+                'No arches were found in the resolved from_bundle_image '
+                f'{from_bundle_image_resolved}'
             )
-            for name, value in new_labels.items():
-                dockerfile.write(f'LABEL {name}={value}\n')
 
-        for arch in sorted(arches):
-            _build_image(temp_dir, 'Dockerfile', request_id, arch)
-            _push_image(request_id, arch)
+        pinned_by_iib = yaml.load(
+            get_image_label(from_bundle_image_resolved, 'com.redhat.iib.pinned') or 'false'
+        )
+
+        arches_str = ', '.join(sorted(arches))
+        log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
+
+        payload = {
+            'from_bundle_image_resolved': from_bundle_image_resolved,
+            'state': 'in_progress',
+            'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
+        }
+        exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
+        update_request(request_id, payload, exc_msg=exc_msg)
+
+        # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
+        podman_pull(from_bundle_image_resolved)
+
+        with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+            manifests_path = os.path.join(temp_dir, 'manifests')
+            _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
+            metadata_path = os.path.join(temp_dir, 'metadata')
+            _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
+            new_labels = _adjust_operator_bundle(
+                manifests_path, metadata_path, organization, pinned_by_iib
+            )
+
+            with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
+                dockerfile.write(
+                    textwrap.dedent(
+                        f"""\
+                            FROM {from_bundle_image_resolved}
+                            COPY ./manifests /manifests
+                            COPY ./metadata /metadata
+                        """
+                    )
+                )
+                for name, value in new_labels.items():
+                    dockerfile.write(f'LABEL {name}={value}\n')
+
+            for arch in sorted(arches):
+                _build_image(temp_dir, 'Dockerfile', request_id, arch)
+                _push_image(request_id, arch)
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
