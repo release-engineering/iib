@@ -103,6 +103,8 @@ def _get_safe_args(args, payload):
         safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'
     if payload.get('overwrite_target_index_token'):
         safe_args[safe_args.index(payload['overwrite_target_index_token'])] = '*****'
+    if payload.get('registry_auths'):
+        safe_args[safe_args.index(payload['registry_auths'])] = '*****'
 
     return safe_args
 
@@ -509,12 +511,18 @@ def regenerate_bundle():
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
+    args = [
+        payload['from_bundle_image'],
+        payload.get('organization'),
+        request.id,
+        payload.get('registry_auths'),
+    ]
+    safe_args = _get_safe_args(args, payload)
+
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_regenerate_bundle_request.apply_async(
-            args=[payload['from_bundle_image'], payload.get('organization'), request.id],
-            link_error=error_callback,
-            queue=_get_user_queue(),
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)

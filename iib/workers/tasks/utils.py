@@ -267,6 +267,31 @@ def set_registry_token(token, container_image):
 
         return
 
+    registry = ImageName.parse(container_image).registry
+    encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
+    registry_auths = {'auths': {registry: {'auth': encoded_token}}}
+    with set_registry_auths(registry_auths):
+        yield
+
+
+@contextmanager
+def set_registry_auths(registry_auths):
+    """
+    Configure authentication to the registry with provided dockerconfig.json.
+
+    This context manager will reset the authentication to the way it was after it exits. If
+    ``registry_auths`` is falsy, this context manager will do nothing.
+    :param dict registry_auths: dockerconfig.json auth only information to private registries
+
+    :return: None
+    :rtype: None
+    """
+    if not registry_auths:
+        log.debug('Not changing the Docker configuration since no registry_auths were provided')
+        yield
+
+        return
+
     docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
     try:
         log.debug('Removing the Docker config symlink at %s', docker_config_path)
@@ -282,11 +307,13 @@ def set_registry_token(token, container_image):
         else:
             docker_config = {}
 
-        registry = ImageName.parse(container_image).registry
-        log.debug('Setting the override token for the registry %s in the Docker config', registry)
+        registries = list(registry_auths.get('auths', {}).keys())
+        log.debug(
+            'Setting the override token for the registries %s in the Docker config', registries
+        )
+
         docker_config.setdefault('auths', {})
-        encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
-        docker_config['auths'][registry] = {'auth': encoded_token}
+        docker_config['auths'].update(registry_auths.get('auths', {}))
         with open(docker_config_path, 'w') as f:
             json.dump(docker_config, f)
 

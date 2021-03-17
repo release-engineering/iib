@@ -106,6 +106,76 @@ def test_set_registry_token(
     mock_rdc.assert_called_once_with()
 
 
+@pytest.mark.parametrize('config_exists', (True, False))
+@pytest.mark.parametrize('template_exists', (True, False))
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_remove,
+    mock_expanduser,
+    config_exists,
+    template_exists,
+):
+    mock_expanduser.return_value = '/home/iib-worker'
+    if not config_exists:
+        mock_remove.side_effect = FileNotFoundError()
+    mock_exists.return_value = template_exists
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}, "quay.overwrite.io": '
+            r'{"auth": "foo_bar"}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'registry.redhat.io': {'auth': 'YOLO'},
+            'registry.redhat.stage.io': {'auth': 'YOLO_FOO'},
+            'quay.overwrite.io': {'auth': 'YOLO_QUAY'},
+        }
+    }
+    with utils.set_registry_auths(registry_auths):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    if template_exists:
+        mock_open.assert_has_calls(
+            (
+                mock.call('/home/iib-worker/.docker/config.json.template', 'r'),
+                mock.call('/home/iib-worker/.docker/config.json', 'w'),
+            )
+        )
+        assert mock_open.call_count == 2
+        assert mock_json_dump.call_args[0][0] == {
+            'auths': {
+                'quay.io': {
+                    'auth': (
+                        'IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIgZm9yIDkxMSEiIC0gSG9tZXIgSi'
+                        '4gU2ltcHNvbgo='
+                    ),
+                },
+                'quay.overwrite.io': {'auth': 'YOLO_QUAY'},
+                'registry.redhat.io': {'auth': 'YOLO'},
+                'registry.redhat.stage.io': {'auth': 'YOLO_FOO'},
+            }
+        }
+    else:
+        mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+        assert mock_open.call_count == 1
+        assert mock_json_dump.call_args[0][0] == registry_auths
+
+    mock_rdc.assert_called_once_with()
+
+
 @mock.patch('os.remove')
 def test_set_registry_token_null_token(mock_remove):
     with utils.set_registry_token(None, 'quay.io/ns/repo:latest'):
