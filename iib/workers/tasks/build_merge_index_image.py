@@ -186,12 +186,14 @@ def handle_merge_request(
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         set_request_state(request_id, 'in_progress', 'Getting bundles present in the index images')
         log.info('Getting bundles present in the source index image')
-        source_index_bundles = _get_present_bundles(source_from_index_resolved, temp_dir)
+        source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
+            source_from_index_resolved, temp_dir
+        )
 
         target_index_bundles = []
         if target_index:
             log.info('Getting bundles present in the target index image')
-            target_index_bundles = _get_present_bundles(target_index_resolved, temp_dir)
+            target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
 
         arches = list(prebuild_info['arches'])
         arch = 'amd64' if 'amd64' in arches else arches[0]
@@ -212,9 +214,8 @@ def handle_merge_request(
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = [
-            bundle['bundlePath']
-            for bundle in itertools.chain(missing_bundles, source_index_bundles)
-        ]
+            bundle['bundlePath'] for bundle in missing_bundles
+        ] + source_index_bundles_pull_spec
         deprecation_bundles = get_bundles_from_deprecation_list(
             intermediate_bundles, deprecation_list
         )

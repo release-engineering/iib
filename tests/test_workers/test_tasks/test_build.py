@@ -711,7 +711,7 @@ def test_handle_add_request(
     mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
-    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}]
+    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
     bundles = ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1']
     cnr_token = 'token'
     organization = 'org'
@@ -886,7 +886,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
-@mock.patch('iib.workers.tasks.build._get_present_bundles')
+@mock.patch('iib.workers.tasks.build._get_present_bundles', return_value=[[], []])
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_handle_add_request_backport_failure_no_overwrite(
@@ -1715,17 +1715,20 @@ def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock
     mock_gil.return_value = 'some-path'
     mock_run_cmd.side_effect = [
         'api.Registry.ListBundles',
-        '{"packageName": "package1", "version": "v1.0"\n}'
-        '\n{\n"packageName": "package2", "version": "v2.0"}',
+        '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
     ]
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.stderr.read.return_value = 'address already in use'
     my_mock.poll.side_effect = [1, None]
-    assert build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir)) == [
-        {'packageName': 'package1', 'version': 'v1.0'},
-        {'packageName': 'package2', 'version': 'v2.0'},
+    bundles, bundles_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
+    assert bundles == [
+        {'packageName': 'package1', 'version': 'v1.0', 'bundlePath': 'bundle1'},
+        {'packageName': 'package2', 'version': 'v2.0', 'bundlePath': 'bundle2'},
     ]
+    assert bundles_pull_spec == ['bundle1', 'bundle2']
     assert mock_run_cmd.call_count == 2
 
 
@@ -1743,7 +1746,9 @@ def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, m
     mock_popen.return_value = my_mock
     my_mock.stderr.read.return_value = 'address already in use'
     my_mock.poll.side_effect = [1, None]
-    assert build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir)) == []
+    bundle, bundle_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
+    assert bundle == []
+    assert bundle_pull_spec == []
     assert mock_run_cmd.call_count == 2
 
 
@@ -1792,16 +1797,19 @@ def test_get_present_bundles_grpc_delayed_initialize(
         '',
         '',
         'api.Registry.ListBundles',
-        '{"packageName": "package1", "version": "v1.0"\n}'
-        '\n{\n"packageName": "package2", "version": "v2.0"}',
+        '{"packageName": "package1", "version": "v1.0", "bundlePath": "bundle1"\n}'
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"}'
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"}',
     ]
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.poll.return_value = None
-    assert build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir)) == [
-        {'packageName': 'package1', 'version': 'v1.0'},
-        {'packageName': 'package2', 'version': 'v2.0'},
+    bundles, bundles_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
+    assert bundles == [
+        {'packageName': 'package1', 'version': 'v1.0', 'bundlePath': 'bundle1'},
+        {'packageName': 'package2', 'version': 'v2.0', 'bundlePath': 'bundle2'},
     ]
+    assert bundles_pull_spec == ['bundle1', 'bundle2']
     assert mock_run_cmd.call_count == 8
 
 
