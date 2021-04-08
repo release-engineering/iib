@@ -411,8 +411,9 @@ def _get_present_bundles(from_index, base_dir):
 
     :param str from_index: index image to inspect.
     :param str base_dir: base directory to create temporary files in.
-    :return: list of present bundles as provided by the grpc query.
-    :rtype: list
+    :return: list of unique present bundles as provided by the grpc query and a list of unique
+        bundle pull_specs
+    :rtype: list, list
     :raises IIBError: if any of the commands fail.
     """
     db_path = _get_index_database(from_index, base_dir)
@@ -426,11 +427,21 @@ def _get_present_bundles(from_index, base_dir):
 
     # If no data is returned there are not bundles present
     if not bundles:
-        return []
+        return [], []
 
     # Transform returned data to parsable json
+    unique_present_bundles = []
+    unique_present_bundles_pull_spec = []
     present_bundles = [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
-    return present_bundles
+
+    for bundle in present_bundles:
+        bundle_path = bundle['bundlePath']
+        if bundle_path in unique_present_bundles_pull_spec:
+            continue
+        unique_present_bundles.append(bundle)
+        unique_present_bundles_pull_spec.append(bundle_path)
+
+    return unique_present_bundles, unique_present_bundles_pull_spec
 
 
 def _get_missing_bundles(present_bundles, bundles):
@@ -1050,7 +1061,9 @@ def handle_add_request(
             set_request_state(request_id, 'in_progress', msg)
 
             with set_registry_token(overwrite_from_index_token, from_index_resolved):
-                present_bundles = _get_present_bundles(from_index_resolved, temp_dir)
+                present_bundles, present_bundles_pull_spec = _get_present_bundles(
+                    from_index_resolved, temp_dir
+                )
 
             filtered_bundles = _get_missing_bundles(present_bundles, resolved_bundles)
             excluded_bundles = [
@@ -1087,7 +1100,6 @@ def handle_add_request(
             'index.Dockerfile',
         )
 
-        present_bundles_pull_spec = [bundle['bundlePath'] for bundle in present_bundles]
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list
         )
