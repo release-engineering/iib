@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
+import os
+import stat
 import textwrap
 from unittest import mock
 
@@ -100,6 +102,76 @@ def test_set_registry_token(
         assert mock_json_dump.call_args[0][0] == {
             'auths': {'registry.redhat.io': {'auth': 'dXNlcjpwYXNz'}},
         }
+
+    mock_rdc.assert_called_once_with()
+
+
+@pytest.mark.parametrize('config_exists', (True, False))
+@pytest.mark.parametrize('template_exists', (True, False))
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_remove,
+    mock_expanduser,
+    config_exists,
+    template_exists,
+):
+    mock_expanduser.return_value = '/home/iib-worker'
+    if not config_exists:
+        mock_remove.side_effect = FileNotFoundError()
+    mock_exists.return_value = template_exists
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}, "quay.overwrite.io": '
+            r'{"auth": "foo_bar"}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'registry.redhat.io': {'auth': 'YOLO'},
+            'registry.redhat.stage.io': {'auth': 'YOLO_FOO'},
+            'quay.overwrite.io': {'auth': 'YOLO_QUAY'},
+        }
+    }
+    with utils.set_registry_auths(registry_auths):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    if template_exists:
+        mock_open.assert_has_calls(
+            (
+                mock.call('/home/iib-worker/.docker/config.json.template', 'r'),
+                mock.call('/home/iib-worker/.docker/config.json', 'w'),
+            )
+        )
+        assert mock_open.call_count == 2
+        assert mock_json_dump.call_args[0][0] == {
+            'auths': {
+                'quay.io': {
+                    'auth': (
+                        'IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIgZm9yIDkxMSEiIC0gSG9tZXIgSi'
+                        '4gU2ltcHNvbgo='
+                    ),
+                },
+                'quay.overwrite.io': {'auth': 'YOLO_QUAY'},
+                'registry.redhat.io': {'auth': 'YOLO'},
+                'registry.redhat.stage.io': {'auth': 'YOLO_FOO'},
+            }
+        }
+    else:
+        mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+        assert mock_open.call_count == 1
+        assert mock_json_dump.call_args[0][0] == registry_auths
 
     mock_rdc.assert_called_once_with()
 
@@ -471,6 +543,14 @@ def test_get_resolved_bundles_failure(mock_si):
         utils.get_resolved_bundles(['some_bundle@some_sha'])
 
 
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_rasise_exception_on_none_mediatype_skopeo_inspect(mock_run_cmd):
+    mock_run_cmd.return_value = '{"Name": "some-image"}'
+    image = 'docker://some-image:latest'
+    with pytest.raises(IIBError, match='mediaType not found'):
+        utils.skopeo_inspect(image, '--raw', require_media_type=True)
+
+
 @pytest.mark.parametrize(
     'pull_spec, expected',
     (
@@ -526,3 +606,45 @@ def testdeprecate_bundles(mock_srt, mock_run_cmd):
     mock_run_cmd.assert_called_once_with(
         cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
     )
+
+
+def test_chmod_recursiverly(tmpdir):
+
+    # Create a directory structure like this:
+    # spam-dir/
+    # └── eggs-dir
+    #     ├── eggs-file
+    #     ├── eggs-symlink -> spam-dir/eggs-dir/missing-file
+    #     └── bacon-dir
+
+    spam_dir = tmpdir.mkdir('spam-dir')
+    eggs_dir = spam_dir.mkdir('eggs-dir')
+    bacon_dir = eggs_dir.mkdir('bacon-dir')
+
+    eggs_file = eggs_dir.join('eggs_file')
+    eggs_file.write('')
+
+    eggs_symlink = eggs_dir.join('eggs-symlink')
+    missing_file = eggs_dir.join('missing-file')
+    os.symlink(str(missing_file), str(eggs_symlink))
+    assert not missing_file.exists()
+
+    # Set the current file mode to some initial known values so we can verify
+    # they're modified properly
+    eggs_file.chmod(stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+    bacon_dir.chmod(stat.S_IRUSR | stat.S_IRWXG)
+    eggs_dir.chmod(stat.S_IRWXU)
+    spam_dir.chmod(stat.S_IRUSR)
+
+    expected_dir_mode = stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP
+    expected_file_mode = stat.S_IRUSR | stat.S_IRGRP
+    utils.chmod_recursively(spam_dir, dir_mode=expected_dir_mode, file_mode=expected_file_mode)
+
+    def assert_mode(file_path, expected_mode):
+        # The last three digits specify the file mode for user-group-others
+        assert oct(os.stat(file_path).st_mode)[-3:] == oct(expected_mode)[-3:]
+
+    assert_mode(eggs_file, expected_file_mode)
+    assert_mode(bacon_dir, expected_dir_mode)
+    assert_mode(eggs_dir, expected_dir_mode)
+    assert_mode(bacon_dir, expected_dir_mode)

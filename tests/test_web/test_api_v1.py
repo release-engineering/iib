@@ -52,6 +52,7 @@ def test_get_build(app, auth_env, client, db):
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
+        'index_image_resolved': None,
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -578,6 +579,7 @@ def test_add_bundle_success(
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
+        'index_image_resolved': None,
         'removed_operators': [],
         'request_type': 'add',
         'state': 'in_progress',
@@ -906,6 +908,7 @@ def test_patch_request_add_success(
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
@@ -926,6 +929,7 @@ def test_patch_request_add_success(
         'from_index_resolved': None,
         'id': minimal_request_add.id,
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -973,6 +977,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'state': 'complete',
         'state_reason': 'All done!',
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
     }
 
@@ -990,6 +995,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'from_index_resolved': None,
         'id': minimal_request_rm.id,
         'index_image': 'index:image',
+        'index_image_resolved': 'index:image-resolved',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -1108,6 +1114,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'from_index_resolved': None,
         'id': 1,
         'index_image': None,
+        'index_image_resolved': None,
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -1343,7 +1350,7 @@ def test_regenerate_bundle_custom_user_queue(
     assert rv.status_code == 201, rv.json
     mock_hrbr.apply_async.assert_called_once()
     mock_hrbr.apply_async.assert_called_with(
-        args=mock.ANY, link_error=mock.ANY, queue=expected_queue
+        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
     )
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 

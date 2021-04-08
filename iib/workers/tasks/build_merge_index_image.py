@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import itertools
 import logging
+import stat
 import tempfile
 
 from iib.exceptions import IIBError
@@ -27,6 +28,8 @@ from iib.workers.tasks.utils import (
     _get_image_arches,
     get_resolved_image,
     _validate_distribution_scope,
+    chmod_recursively,
+
     deprecate_bundles,
     get_bundles_from_deprecation_list,
 )
@@ -178,6 +181,9 @@ def _add_bundles_missing_in_source(
         missing_bundle_paths,
         binary_image,
         overwrite_from_index_token=overwrite_target_index_token,
+        # Use podman until opm's default mechanism is more resilient:
+        #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
+        container_tool='podman',
     )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
@@ -297,6 +303,15 @@ def handle_merge_request(
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
+        # If the container-tool podman is used in the opm commands above, opm will create temporary
+        # files and directories without the write permission. This will cause the context manager
+        # to fail to delete these files. Adjust the file modes to avoid this error.
+        chmod_recursively(
+            temp_dir,
+            dir_mode=(stat.S_IRWXU | stat.S_IRWXG),
+            file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
+        )
+
     output_pull_spec = _create_and_push_manifest_list(request_id, prebuild_info['arches'])
     _update_index_image_pull_spec(
         output_pull_spec,
@@ -321,13 +336,13 @@ def is_bundle_version_valid(bundle_path, valid_ocp_version):
     :return: a boolean indicating if the bundle_path satisfies the index ocp_version
     :rtype: bool
 
-           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"
-    ---------------------------------------------------------------
-    v4.5   | included  | NOT included |  included   |  included
-    ---------------------------------------------------------------
-    v4.6   | included  |   included   |  included   |  included
-    ---------------------------------------------------------------
-    v4.7   | included  | NOT included |  included   |  included
+           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"  | "v4.6,v4.5"
+    -------------------------------------------------------------------------------
+    v4.5   | included  | NOT included |  included   |  included    |  NOT included
+    -------------------------------------------------------------------------------
+    v4.6   | included  |   included   |  included   |  included    |  included
+    -------------------------------------------------------------------------------
+    v4.7   | included  | NOT included |  included   |  included    |  included
     """
     try:
         float_valid_ocp_version = float(valid_ocp_version.replace('v', ''))
@@ -345,13 +360,6 @@ def is_bundle_version_valid(bundle_path, valid_ocp_version):
                 return True
         elif "," in bundle_version_label:
             versions = [float(version) for version in bundle_version.split(",")]
-            # This means the version is something like v4.6, v4.5 which is not valid
-            if versions != sorted(versions):
-                raise ValueError(
-                    'Bundle %s has an invalid `com.redhat.openshift.versions` label value set: %s',
-                    bundle_path,
-                    bundle_version_label,
-                )
             if float_valid_ocp_version >= versions[0]:
                 return True
         elif float_valid_ocp_version >= float(bundle_version):

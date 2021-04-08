@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import stat
 import subprocess
 import time
 import tempfile
@@ -22,7 +23,9 @@ from iib.workers.tasks.legacy import (
     validate_legacy_params_and_config,
 )
 from iib.workers.tasks.utils import (
+
     get_all_index_images_info,
+    chmod_recursively,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
     get_image_labels,
@@ -35,6 +38,7 @@ from iib.workers.tasks.utils import (
     retry,
     run_cmd,
     set_registry_token,
+    set_registry_auths,
     skopeo_inspect,
     gather_index_image_arches,
     _validate_distribution_scope,
@@ -176,6 +180,7 @@ def _update_index_image_pull_spec(
     overwrite_from_index=False,
     overwrite_from_index_token=None,
     resolved_prebuild_from_index=None,
+    add_or_rm=False,
 ):
     """
     Update the request with the modified index image.
@@ -193,6 +198,7 @@ def _update_index_image_pull_spec(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image.
     :param str resolved_prebuild_from_index: resolved index image before starting the build.
+    :param bool add_or_rm: true if the request is an ``Add`` or ``Rm`` request. defaults to false
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -218,6 +224,13 @@ def _update_index_image_pull_spec(
         index_image = output_pull_spec
 
     payload = {'arches': list(arches), 'index_image': index_image}
+
+
+    if add_or_rm:
+        with set_registry_token(overwrite_from_index_token, index_image):
+            index_image_resolved = get_resolved_image(index_image)
+        payload['index_image_resolved'] = index_image_resolved
+
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
 
@@ -471,6 +484,7 @@ def _opm_index_add(
     from_index=None,
     overwrite_from_index_token=None,
     overwrite_csv=False,
+    container_tool=None,
 ):
     """
     Add the input bundles to an operator index.
@@ -489,6 +503,7 @@ def _opm_index_add(
         ``overwrite_from_index``. The format of the token must be in the format "user:password".
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
+    :param str container_tool: the container tool to be used to operate on the index image
     :raises IIBError: if the ``opm index add`` command fails.
     """
     # The bundles are not resolved since these are stable tags, and references
@@ -504,6 +519,9 @@ def _opm_index_add(
         '--binary-image',
         binary_image,
     ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
 
     log.info('Generating the database file with the following bundle(s): %s', ', '.join(bundles))
     if from_index:
@@ -1050,6 +1068,15 @@ def handle_add_request(
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
 
+        # If the container-tool podman is used in the opm commands above, opm will create temporary
+        # files and directories without the write permission. This will cause the context manager
+        # to fail to delete these files. Adjust the file modes to avoid this error.
+        chmod_recursively(
+            temp_dir,
+            dir_mode=(stat.S_IRWXU | stat.S_IRWXG),
+            file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
+        )
+
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
     if legacy_support_packages:
@@ -1065,6 +1092,7 @@ def handle_add_request(
         overwrite_from_index,
         overwrite_from_index_token,
         from_index_resolved,
+        add_or_rm=True,
     )
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image'
@@ -1162,6 +1190,7 @@ def handle_rm_request(
         overwrite_from_index,
         overwrite_from_index_token,
         from_index_resolved,
+        add_or_rm=True,
     )
     set_request_state(
         request_id, 'complete', 'The operator(s) were successfully removed from the index image'
@@ -1170,68 +1199,76 @@ def handle_rm_request(
 
 @app.task
 @request_logger
-def handle_regenerate_bundle_request(from_bundle_image, organization, request_id):
+def handle_regenerate_bundle_request(
+    from_bundle_image, organization, request_id, registry_auths=None
+):
     """
     Coordinate the work needed to regenerate the operator bundle image.
 
     :param str from_bundle_image: the pull specification of the bundle image to be regenerated.
     :param str organization: the name of the organization the bundle should be regenerated for.
     :param int request_id: the ID of the IIB build request
+    :param dict registry_auths: Provide the dockerconfig.json for authentication to private
+      registries, defaults to ``None``.
     :raises IIBError: if the regenerate bundle image build fails.
     """
     _cleanup()
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
-    from_bundle_image_resolved = get_resolved_image(from_bundle_image)
-    arches = _get_image_arches(from_bundle_image_resolved)
-    if not arches:
-        raise IIBError(
-            f'No arches were found in the resolved from_bundle_image {from_bundle_image_resolved}'
-        )
 
-    pinned_by_iib = yaml.load(
-        get_image_label(from_bundle_image_resolved, 'com.redhat.iib.pinned') or 'false'
-    )
+    with set_registry_auths(registry_auths):
+        from_bundle_image_resolved = get_resolved_image(from_bundle_image)
 
-    arches_str = ', '.join(sorted(arches))
-    log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
-
-    payload = {
-        'from_bundle_image_resolved': from_bundle_image_resolved,
-        'state': 'in_progress',
-        'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
-    }
-    exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
-    update_request(request_id, payload, exc_msg=exc_msg)
-
-    # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
-    podman_pull(from_bundle_image_resolved)
-
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        manifests_path = os.path.join(temp_dir, 'manifests')
-        _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
-        metadata_path = os.path.join(temp_dir, 'metadata')
-        _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
-        new_labels = _adjust_operator_bundle(
-            manifests_path, metadata_path, organization, pinned_by_iib
-        )
-
-        with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
-            dockerfile.write(
-                textwrap.dedent(
-                    f"""\
-                        FROM {from_bundle_image_resolved}
-                        COPY ./manifests /manifests
-                        COPY ./metadata /metadata
-                    """
-                )
+        arches = _get_image_arches(from_bundle_image_resolved)
+        if not arches:
+            raise IIBError(
+                'No arches were found in the resolved from_bundle_image '
+                f'{from_bundle_image_resolved}'
             )
-            for name, value in new_labels.items():
-                dockerfile.write(f'LABEL {name}={value}\n')
 
-        for arch in sorted(arches):
-            _build_image(temp_dir, 'Dockerfile', request_id, arch)
-            _push_image(request_id, arch)
+        pinned_by_iib = yaml.load(
+            get_image_label(from_bundle_image_resolved, 'com.redhat.iib.pinned') or 'false'
+        )
+
+        arches_str = ', '.join(sorted(arches))
+        log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
+
+        payload = {
+            'from_bundle_image_resolved': from_bundle_image_resolved,
+            'state': 'in_progress',
+            'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
+        }
+        exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
+        update_request(request_id, payload, exc_msg=exc_msg)
+
+        # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
+        podman_pull(from_bundle_image_resolved)
+
+        with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+            manifests_path = os.path.join(temp_dir, 'manifests')
+            _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
+            metadata_path = os.path.join(temp_dir, 'metadata')
+            _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
+            new_labels = _adjust_operator_bundle(
+                manifests_path, metadata_path, organization, pinned_by_iib
+            )
+
+            with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
+                dockerfile.write(
+                    textwrap.dedent(
+                        f"""\
+                            FROM {from_bundle_image_resolved}
+                            COPY ./manifests /manifests
+                            COPY ./metadata /metadata
+                        """
+                    )
+                )
+                for name, value in new_labels.items():
+                    dockerfile.write(f'LABEL {name}={value}\n')
+
+            for arch in sorted(arches):
+                _build_image(temp_dir, 'Dockerfile', request_id, arch)
+                _push_image(request_id, arch)
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
@@ -1526,3 +1563,28 @@ def _add_label_to_index(label_key, label_value, temp_dir, dockerfile_name):
         label = f'LABEL {label_key}="{label_value}"'
         dockerfile.write(f'\n{label}\n')
         log.debug('Added the following line to %s: %s', dockerfile_name, label)
+
+
+def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):
+    """
+    Validate distribution scope is allowed to be updated.
+
+    :param str resolved_distribution_scope: the distribution_scope that the index is for.
+    :param str distribution_scope: the distribution scope that has been requested for
+        the index image.
+    :return: the valid distribution scope
+    :rtype: str
+    :raises IIBError: if the ``resolved_distribution_scope`` is of lesser scope than
+        ``distribution_scope``
+    """
+    if not distribution_scope:
+        return resolved_distribution_scope
+
+    scopes = ["dev", "stage", "prod"]
+    # Make sure the request isn't regressing the distribution scope
+    if scopes.index(distribution_scope) > scopes.index(resolved_distribution_scope):
+        raise IIBError(
+            f'Cannot set "distribution_scope" to {distribution_scope} because from index is'
+            f' already set to {resolved_distribution_scope}'
+        )
+    return distribution_scope

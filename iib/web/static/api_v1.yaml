@@ -669,6 +669,9 @@ components:
             index_image:
               type: string
               example: 'quay.io/iib-stage/iib:5'
+            index_image_resolved:
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
             distribution_scope:
               description: >
                 The scope of distribution for the index created by the request.
@@ -835,6 +838,15 @@ components:
             various modifications in the operator metadata embeded in the operator bundle
             image, e.g. change the container registry, or the operator package name.
           example: 'openshift-operators'
+        registry_auths:
+          type: object
+          description: >
+            Provide the dockerconfig.json for authentication to private registries.
+            Non-auth information in the dockerconfig.json is not allowed.
+          example:
+            auths:
+              registry.example.io:
+                auth: "my-secret-token-base-64-encoded"
       required:
         - from_bundle_image
     RegenerateBundleResponse:

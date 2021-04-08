@@ -122,3 +122,37 @@ def test_batch_request_states(db):
     db.session.commit()
 
     assert request.batch.request_states == ['in_progress', 'failed', 'complete']
+
+
+@pytest.mark.parametrize(
+    'registry_auths, msg_error',
+    (
+        ([{'registry.redhat.io': {'auth': 'YOLO'}}], '"registry_auths" must be a dict'),
+        (
+            {
+                'auths': {'registry.redhat.io': {'auth': 'YOLO'}},
+                'foo': {'registry.redhat.stage.io': {'auth': 'YOLO2'}},
+            },
+            '"registry_auths" must contain single key "auths"',
+        ),
+        ({'auths': {}}, '"registry_auths.auths" must be a non-empty dict'),
+        (
+            {'auths': {'registry': {'authS': 'YOLO'}}},
+            'registry in registry_auths has auth value in incorrect format. '
+            'See the API docs for details on the expected format',
+        ),
+        (
+            {'auths': {'registry': ['auth', 'YOLO']}},
+            'registry in registry_auths has auth value in incorrect format. '
+            'See the API docs for details on the expected format',
+        ),
+        (
+            {'auths': {'registry': {'auth': 'YOLO', 'foo': 'YOLO2'}}},
+            'registry in registry_auths has auth value in incorrect format. '
+            'See the API docs for details on the expected format',
+        ),
+    ),
+)
+def test_validate_registry_auths(registry_auths, msg_error):
+    with pytest.raises(ValidationError, match=msg_error):
+        models.validate_registry_auths(registry_auths)

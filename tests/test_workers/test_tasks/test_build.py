@@ -2,6 +2,7 @@
 import copy
 import os
 import re
+import stat
 import textwrap
 from unittest import mock
 
@@ -76,24 +77,30 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
 
 @pytest.mark.parametrize(
-    'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index',
+    'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index,'
+    'add_or_rm',
     (
-        (None, None, False, '{default}', None),
+        (None, None, False, '{default}', None, False),
         (
             'registry-proxy.domain.local',
             None,
             False,
             'registry-proxy.domain.local/{default_no_registry}',
             None,
+            False,
         ),
-        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef'),
-        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba'),
+        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef', True),
+        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba', True),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.build._overwrite_from_index')
 @mock.patch('iib.workers.tasks.build.update_request')
+@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
 def test_update_index_image_pull_spec(
+    mock_st_rgstr_tknm,
+    mock_get_rslv_img,
     mock_ur,
     mock_ofi,
     mock_gwc,
@@ -102,6 +109,7 @@ def test_update_index_image_pull_spec(
     overwrite,
     expected,
     resolved_from_index,
+    add_or_rm,
 ):
     default_no_registry = 'namespace/some-image:3'
     default = f'quay.io/{default_no_registry}'
@@ -109,23 +117,41 @@ def test_update_index_image_pull_spec(
     request_id = 2
     arches = {'amd64'}
     overwrite_token = 'username:password'
+
+    mock_get_rslv_img.return_value = "quay.io/ns/iib@sha256:abcdef1234"
     mock_gwc.return_value = {
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
-    build._update_index_image_pull_spec(
-        default,
-        request_id,
-        arches,
-        from_index,
-        overwrite,
-        overwrite_token,
-        resolved_prebuild_from_index=resolved_from_index,
-    )
+
+    if add_or_rm:
+        build._update_index_image_pull_spec(
+            default,
+            request_id,
+            arches,
+            from_index,
+            overwrite,
+            overwrite_token,
+            resolved_prebuild_from_index=resolved_from_index,
+            add_or_rm=add_or_rm,
+        )
+    else:
+        build._update_index_image_pull_spec(
+            default,
+            request_id,
+            arches,
+            from_index,
+            overwrite,
+            overwrite_token,
+            resolved_prebuild_from_index=resolved_from_index,
+        )
 
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
-    assert update_request_payload.keys() == {'arches', 'index_image'}
+    if add_or_rm:
+        assert update_request_payload.keys() == {'arches', 'index_image', 'index_image_resolved'}
+    else:
+        assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:
         mock_ofi.assert_called_once_with(
@@ -379,11 +405,18 @@ def test_get_resolved_bundles_failure(mock_si):
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
+@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv):
+def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool):
     build._opm_index_add(
-        '/tmp/somedir', bundles, 'binary-image:latest', from_index, 'user:pass', overwrite_csv
+        '/tmp/somedir',
+        bundles,
+        'binary-image:latest',
+        from_index,
+        'user:pass',
+        overwrite_csv,
+        container_tool=container_tool,
     )
 
     mock_run_cmd.assert_called_once()
@@ -402,6 +435,11 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
         assert '--overwrite-latest' in opm_args
     else:
         assert '--overwrite-latest' not in opm_args
+    if container_tool:
+        assert '--container-tool' in opm_args
+        assert container_tool in opm_args
+    else:
+        assert '--container-tool' not in opm_args
 
     mock_srt.assert_called_once_with('user:pass', from_index)
 
@@ -604,7 +642,8 @@ def test_prepare_request_for_build(
         gil_side_effect2 = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        mock_gri.side_effect = [binary_image_resolved]
+        index_resolved = f'index-image@sha256:abcdef1234'
+        mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.side_effect = [expected_arches]
         gil_side_effect2 = []
 
@@ -886,6 +925,17 @@ def test_handle_add_request(
     if deprecate_bundles:
         mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
         deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+
+    # Simulate opm's behavior of creating files that cannot be deleted
+    def side_effect(_, temp_dir, *args, **kwargs):
+        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+        os.mkdir(read_only_dir)
+        with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
+            os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
+        # Make the dir read-only *after* populating it
+        os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
+
+    mock_dep_b.side_effect = side_effect
 
     build.handle_add_request(
         bundles,

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
+import stat
 from unittest import mock
 
 import pytest
@@ -61,6 +63,17 @@ def test_handle_merge_request(
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
     binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
+
+    # Simulate opm's behavior of creating files that cannot be deleted
+    def side_effect(_, temp_dir, *args, **kwargs):
+        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+        os.mkdir(read_only_dir)
+        with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
+            os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
+        # Make the dir read-only *after* populating it
+        os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
+
+    mock_dep_b.side_effect = side_effect
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -267,6 +280,7 @@ def test_add_bundles_missing_in_source(
         ],
         'binary-image:4.5',
         overwrite_from_index_token=None,
+        container_tool='podman',
     )
     assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
@@ -428,7 +442,7 @@ def test_add_bundles_missing_in_source_none_missing(
             'csvName': 'bundle2-2.0',
         },
     ]
-    mock_gil.side_effect = ['v=4.5', 'v4.6,v4.5', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
+    mock_gil.side_effect = ['v=4.5', 'v4.7,v4.6', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
     missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -446,6 +460,7 @@ def test_add_bundles_missing_in_source_none_missing(
         ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
         'binary-image:4.5',
         overwrite_from_index_token=None,
+        container_tool='podman',
     )
     assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2
@@ -462,7 +477,7 @@ def test_add_bundles_missing_in_source_none_missing(
         ('v4.6', True),
         ('v=4.6', False),
         ('v4.5,v4.6', True),
-        ('v4.6,v4.5', False),
+        ('v4.6,v4.5', True),
         ('tom_brady', False),
     ),
 )
@@ -473,8 +488,10 @@ def test_is_bundle_version_valid(mock_gil, version_label, result):
     assert is_valid == result
 
 
-@pytest.mark.parametrize('version_label', ('random-version', 'v4.6,v4.5'))
-def test_is_bundle_version_valid_invalid_ocp_version(version_label):
+# version_label is the target version of the index image. It should only ever be a single
+# version in the format vX.Y where X and Y are both integers.
+@pytest.mark.parametrize('version_label', ('random-version', 'v4.6,v4.5', 'v4.5,v4.6'))
+def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
     match_str = f'Invalid OCP version, "{version_label}", specified in Index Image'
     with pytest.raises(IIBError, match=match_str):
         build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
