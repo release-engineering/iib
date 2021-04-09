@@ -985,7 +985,7 @@ def handle_add_request(
     distribution_scope=None,
     greenwave_config=None,
     binary_image_config=None,
-    deprecation_list=[],
+    deprecation_list=None,
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -1016,7 +1016,7 @@ def handle_add_request(
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
-        to an empty list.
+        to ``None``.
     :raises IIBError: if the index image build fails or legacy support is required and one of
         ``cnr_token`` or ``organization`` is not specified.
     """
@@ -1101,7 +1101,7 @@ def handle_add_request(
         )
 
         deprecation_bundles = get_bundles_from_deprecation_list(
-            present_bundles_pull_spec + resolved_bundles, deprecation_list
+            present_bundles_pull_spec + resolved_bundles, deprecation_list or []
         )
 
         arches = prebuild_info['arches']
