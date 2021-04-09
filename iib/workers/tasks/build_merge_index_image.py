@@ -15,7 +15,6 @@ from iib.workers.tasks.build import (
     get_image_label,
     _get_present_bundles,
     _opm_index_add,
-    _prepare_request_for_build,
     _push_image,
     _update_index_image_build_state,
     _update_index_image_pull_spec,
@@ -27,6 +26,8 @@ from iib.workers.tasks.utils import (
     get_bundles_from_deprecation_list,
     request_logger,
     set_registry_token,
+    prepare_request_for_build,
+    RequestConfigMerge,
 )
 
 
@@ -171,14 +172,16 @@ def handle_merge_request(
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
-    prebuild_info = _prepare_request_for_build(
+    prebuild_info = prepare_request_for_build(
         request_id,
-        binary_image,
-        overwrite_from_index_token=overwrite_target_index_token,
-        source_from_index=source_from_index,
-        target_index=target_index,
-        distribution_scope=distribution_scope,
-        binary_image_config=binary_image_config,
+        RequestConfigMerge(
+            _binary_image=binary_image,
+            overwrite_target_index_token=overwrite_target_index_token,
+            source_from_index=source_from_index,
+            target_index=target_index,
+            distribution_scope=distribution_scope,
+            binary_image_config=binary_image_config,
+        ),
     )
     _update_index_image_build_state(request_id, prebuild_info)
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
