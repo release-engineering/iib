@@ -31,7 +31,9 @@ from iib.workers.tasks import build_merge_index_image
 @mock.patch('iib.workers.tasks.build_merge_index_image._prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
 def test_handle_merge_request(
+    mock_set_registry_token,
     mock_add_label_to_index,
     mock_cleanup,
     mock_prfb,
@@ -104,6 +106,7 @@ def test_handle_merge_request(
     mock_gbfdl.assert_called_once()
     mock_geaps.assert_called_once()
     mock_dep_b.assert_called_once()
+    mock_set_registry_token.assert_called_once()
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
     assert mock_capml.call_count == 1
