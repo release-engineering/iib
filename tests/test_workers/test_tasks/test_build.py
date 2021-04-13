@@ -17,7 +17,7 @@ from iib.workers.tasks import build
 yaml = ruamel.yaml.YAML()
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_build_image(mock_run_cmd):
     build._build_image('/some/dir', 'some.Dockerfile', 3, 'amd64')
 
@@ -27,8 +27,8 @@ def test_build_image(mock_run_cmd):
     assert '/some/dir/some.Dockerfile' in build_args
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.reset_docker_config')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
 def test_cleanup(mock_rdc, mock_run_cmd):
     build._cleanup()
 
@@ -37,9 +37,9 @@ def test_cleanup(mock_rdc, mock_run_cmd):
     assert rmi_args[0:2] == ['podman', 'rmi']
     mock_rdc.assert_called_once_with()
 
-
+# where is tmp_path
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     mock_td.return_value.__enter__.return_value = tmp_path
 
@@ -85,13 +85,13 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
         (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba', True),
     ),
 )
-@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build._overwrite_from_index')
-@mock.patch('iib.workers.tasks.build.update_request')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.api_utils.update_request')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 def test_update_index_image_pull_spec(
-    mock_st_rgstr_tknm,
+    mock_st_rgstr_tknm, # is it needed?
     mock_get_rslv_img,
     mock_ur,
     mock_ofi,
@@ -160,7 +160,7 @@ def test_get_local_pull_spec(request_id, arch):
     assert re.match(f'.+:{request_id}-{arch}', rv)
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches(mock_si):
     mock_si.return_value = {
         'mediaType': 'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -173,7 +173,7 @@ def test_get_image_arches(mock_si):
     assert rv == {'amd64', 's390x'}
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches_manifest(mock_si):
     mock_si.side_effect = [
         {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
@@ -183,7 +183,7 @@ def test_get_image_arches_manifest(mock_si):
     assert rv == {'amd64'}
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_get_image_arches_not_manifest_list(mock_si):
     mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json'}
     with pytest.raises(IIBError, match='.+is neither a v2 manifest list nor a v2 manifest'):
@@ -197,12 +197,13 @@ def test_get_image_label(mock_si, label, expected):
     assert build.get_image_label('some-image:latest', label) == expected
 
 
+# is the order from pathes and parametrized different?
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool):
     build._opm_index_add(
         '/tmp/somedir',
@@ -239,8 +240,8 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
     mock_srt.assert_called_once_with('user:pass', from_index)
 
 
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_index_rm(mock_run_cmd, mock_srt):
     operators = ['operator_1', 'operator_2']
     build._opm_index_rm(
@@ -285,7 +286,7 @@ def test_opm_index_rm(mock_run_cmd, mock_srt):
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 def test_overwrite_from_index(
     mock_vii,
@@ -390,10 +391,10 @@ def test_overwrite_from_index(
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 @mock.patch('iib.workers.tasks.build.get_image_label')
-@mock.patch('iib.workers.tasks.build.update_request')
+@mock.patch('iib.workers.api_utils.update_request')
 def test_prepare_request_for_build(
     mock_ur,
     mock_gil,
@@ -470,7 +471,7 @@ def test_prepare_request_for_build(
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.get_index_image_info')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
     from_index_image_info = {
@@ -521,7 +522,7 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
 
 @pytest.mark.parametrize('bundle_mapping', (True, False))
 @pytest.mark.parametrize('from_index_resolved', (True, False))
-@mock.patch('iib.workers.tasks.build.update_request')
+@mock.patch('iib.workers.api_utils.update_request')
 def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_resolved):
     prebuild_info = {
         'arches': ['amd64', 's390x'],
@@ -552,7 +553,7 @@ def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_reso
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
@@ -567,7 +568,7 @@ def test_get_binary_image_config_no_config_val():
 
 
 @mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
@@ -579,8 +580,8 @@ def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock
 
 @pytest.mark.parametrize('schema_version', (1, 2))
 @mock.patch('iib.workers.tasks.build._get_local_pull_spec')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 def test_push_image(mock_sc, mock_si, mock_run_cmd, mock_glps, schema_version):
     mock_glps.return_value = 'source:tag'
@@ -601,7 +602,7 @@ def test_push_image(mock_sc, mock_si, mock_run_cmd, mock_glps, schema_version):
 
 
 @pytest.mark.parametrize('copy_all', (False, True))
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_skopeo_copy(mock_run_cmd, copy_all):
     destination = 'some_destination'
     build._skopeo_copy(destination, destination, copy_all=copy_all)
@@ -633,7 +634,7 @@ def test_skopeo_copy(mock_run_cmd, copy_all):
     mock_run_cmd.assert_called_once()
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_skopeo_copy_fail_max_retries(mock_run_cmd):
     match_str = 'Something went wrong'
     mock_run_cmd.side_effect = IIBError(match_str)
@@ -648,7 +649,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
-@mock.patch('iib.workers.tasks.build.deprecate_bundles')
+@mock.patch('iib.workers.tasks.utils.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build._verify_labels')
@@ -659,16 +660,16 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build.export_legacy_packages')
-@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.legacy.export_legacy_packages')
+@mock.patch('iib.workers.api_utils.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
-@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
-@mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.legacy.get_legacy_support_packages')
+@mock.patch('iib.workers.tasks.legacy.validate_legacy_params_and_config')
+@mock.patch('iib.workers.greenwave.gate_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 def test_handle_add_request(
     mock_srt,
     mock_gpb,
@@ -808,10 +809,10 @@ def test_handle_add_request(
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.greenwave.gate_bundles')
 @mock.patch('iib.workers.tasks.build._verify_labels')
-@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs, mock_cleanup):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
@@ -842,8 +843,8 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs,
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
@@ -878,17 +879,17 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build.export_legacy_packages')
-@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.legacy.export_legacy_packages')
+@mock.patch('iib.workers.api_utils.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
-@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
-@mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.legacy.get_legacy_support_packages')
+@mock.patch('iib.workers.tasks.legacy.validate_legacy_params_and_config')
+@mock.patch('iib.workers.greenwave.gate_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build._get_missing_bundles')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 def test_handle_add_request_backport_failure_no_overwrite(
     mock_srt,
     mock_gmb,
@@ -956,7 +957,7 @@ def test_handle_add_request_backport_failure_no_overwrite(
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
-@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.api_utils.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
@@ -1013,8 +1014,8 @@ def test_handle_rm_request(
     assert mock_srs.call_args[0][1] == 'complete'
 
 
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 def test_verify_index_image_failure(mock_gri, mock_srt):
     mock_gri.return_value = 'image:works'
     match_str = (
@@ -1031,7 +1032,7 @@ def test_verify_index_image_failure(mock_gri, mock_srt):
     'iib_required_labels', ({'com.redhat.delivery.operator.bundle': 'true'}, {})
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.get_image_labels')
+@mock.patch('iib.workers.tasks.utils.get_image_labels')
 def test_verify_labels(mock_gil, mock_gwc, iib_required_labels):
     mock_gwc.return_value = {'iib_required_labels': iib_required_labels}
     mock_gil.return_value = {'com.redhat.delivery.operator.bundle': 'true'}
@@ -1044,7 +1045,7 @@ def test_verify_labels(mock_gil, mock_gwc, iib_required_labels):
 
 
 @mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.get_image_labels')
+@mock.patch('iib.workers.tasks.utils.get_image_labels')
 def test_verify_labels_fails(mock_gil, mock_gwc):
     mock_gwc.return_value = {'iib_required_labels': {'com.redhat.delivery.operator.bundle': 'true'}}
     mock_gil.return_value = {'lunch': 'pizza'}
@@ -1062,18 +1063,18 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 )
 @mock.patch('iib.workers.tasks.build.get_image_label')
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build.podman_pull')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.podman_pull')
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build._get_image_arches')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build._adjust_operator_bundle')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
-@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.api_utils.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.update_request')
+@mock.patch('iib.workers.config.get_worker_config')
+@mock.patch('iib.workers.api_utils.update_request')
 def test_handle_regenerate_bundle_request(
     mock_ur,
     mock_gwc,
@@ -1196,7 +1197,7 @@ def test_handle_regenerate_bundle_request(
 
 
 @pytest.mark.parametrize('fail_rm', (True, False))
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_copy_files_from_image(mock_run_cmd, fail_rm):
     image = 'bundle-image:latest'
     src_path = '/manifests'
@@ -1223,7 +1224,7 @@ def test_copy_files_from_image(mock_run_cmd, fail_rm):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (
@@ -1383,7 +1384,7 @@ def test_adjust_operator_bundle_invalid_yaml_file(mock_apns, tmpdir):
 
 
 @mock.patch('iib.workers.tasks.build._apply_package_name_suffix')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build._adjust_csv_annotations')
 def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_apns, tmpdir):
     mock_apns.return_value = (
@@ -1706,7 +1707,7 @@ def test_get_missing_bundles_match_hash():
 
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
@@ -1731,7 +1732,7 @@ def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock
 
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
@@ -1751,7 +1752,7 @@ def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, m
 @mock.patch('os.remove')
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_not_initialize(
@@ -1774,7 +1775,7 @@ def test_get_present_bundles_grpc_not_initialize(
 @mock.patch('os.remove')
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_delayed_initialize(
@@ -1807,7 +1808,7 @@ def test_get_present_bundles_grpc_delayed_initialize(
 
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_serve_image_registry(mock_run_cmd, mock_popen, mock_sleep, tmpdir):
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
@@ -1819,7 +1820,7 @@ def test_serve_image_registry(mock_run_cmd, mock_popen, mock_sleep, tmpdir):
     assert my_mock.poll.call_count == 3
 
 
-@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 def test_serve_image_registry_no_ports(mock_popen, mock_sleep, mock_config, tmpdir):
