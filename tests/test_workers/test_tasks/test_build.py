@@ -235,6 +235,7 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
         assert container_tool in opm_args
     else:
         assert '--container-tool' not in opm_args
+    assert "--enable-alpha" in opm_args
 
     mock_srt.assert_called_once_with('user:pass', from_index)
 

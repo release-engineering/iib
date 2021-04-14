@@ -503,6 +503,9 @@ def _opm_index_add(
         'opm',
         'index',
         'add',
+        # This enables substitutes-for functionality for rebuilds. See
+        # https://github.com/operator-framework/enhancements/blob/master/enhancements/substitutes-for.md
+        '--enable-alpha',
         '--generate',
         '--bundles',
         bundle_str,
