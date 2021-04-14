@@ -1054,7 +1054,8 @@ def test_verify_labels_fails(mock_gil, mock_gwc):
 
 @pytest.mark.parametrize('fail_rm', (True, False))
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_copy_files_from_image(mock_run_cmd, fail_rm):
+@mock.patch('iib.workers.tasks.build.podman_pull')
+def test_copy_files_from_image(mock_podman_pull, mock_run_cmd, fail_rm):
     image = 'bundle-image:latest'
     src_path = '/manifests'
     dest_path = '/destination/path/manifests'
@@ -1069,6 +1070,7 @@ def test_copy_files_from_image(mock_run_cmd, fail_rm):
     mock_run_cmd.side_effect = side_effect
 
     build._copy_files_from_image(image, src_path, dest_path)
+    mock_podman_pull.assert_called_once()
 
     mock_run_cmd.assert_has_calls(
         [
