@@ -29,6 +29,7 @@ from iib.workers.tasks.utils import (
     get_image_labels,
     get_resolved_bundles,
     get_resolved_image,
+    podman_pull,
     request_logger,
     reset_docker_config,
     retry,
@@ -1264,6 +1265,9 @@ def _copy_files_from_image(image, src_path, dest_path):
     :param str src_path: the full path within the container image to copy from.
     :param str dest_path: the full path on the local host to copy into.
     """
+    # Check that image is pullable
+    podman_pull(image)
+
     # One way to copy a file from the image is to create a container from its filesystem
     # so the contents can be read. To create a container, podman always requires that a
     # command for the container is set. In this method, however, the command is not needed
