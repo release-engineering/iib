@@ -44,7 +44,6 @@ FROM centos:8
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
-# Install podman 1.7.0 from Fedora 30 as a workaround for
 # https://bugzilla.redhat.com/show_bug.cgi?id=1801874
 RUN dnf -y install \
     --setopt=deltarpm=0 \
