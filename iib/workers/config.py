@@ -41,6 +41,7 @@ class Config(object):
     include = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
+        'iib.workers.tasks.build_regenerate_bundle',
         'iib.workers.tasks.general',
     ]
     # The task messages will be acknowledged after the task has been executed,

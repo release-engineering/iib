@@ -31,9 +31,9 @@ from iib.web.models import (
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
     handle_add_request,
-    handle_regenerate_bundle_request,
     handle_rm_request,
 )
+from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
 from iib.workers.tasks.build_merge_index_image import handle_merge_request
 from iib.workers.tasks.general import failed_request_callback
 
