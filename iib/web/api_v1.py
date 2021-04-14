@@ -309,7 +309,9 @@ def add_bundles():
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
-    if 'bundles' in payload and payload['bundles']:
+    # Only run `_get_unique_bundles` if it is a list. If it's not, `from_json`
+    # will raise an error to the user.
+    if payload.get('bundles') and isinstance(payload['bundles'], list):
         payload['bundles'] = _get_unique_bundles(payload['bundles'])
 
     request = RequestAdd.from_json(payload)
