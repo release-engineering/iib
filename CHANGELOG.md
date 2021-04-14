@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 3.11.2
+- fixed bug to filter unique bundles from listBundles response
+- added support for private registry pull secrets to regenerate bundle requests
+- added podman container-tool when merging indexes
+- upgraded pytest from 6.2.2 to 6.2.3
+- upgraded opm in dev environment to v1.16.1
+- fixed skopeo pull to retry when mediatype is none
+- fixed index_image_resolved bug for merge index image endpoint
+- fixed ocp_version range filter
+- stopped setting content-encoding on AMQP messages
+
 ## 3.11.1
 - fixed bugs for deprecating bundles in add requests
 - upgraded cryptography from 3.3.1 to 3.3.2
