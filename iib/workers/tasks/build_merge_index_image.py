@@ -192,10 +192,10 @@ def handle_merge_request(
                 source_from_index_resolved, temp_dir
             )
 
-        target_index_bundles = []
-        if target_index:
-            log.info('Getting bundles present in the target index image')
-            target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
+            target_index_bundles = []
+            if target_index:
+                log.info('Getting bundles present in the target index image')
+                target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
 
         arches = list(prebuild_info['arches'])
         arch = 'amd64' if 'amd64' in arches else arches[0]
