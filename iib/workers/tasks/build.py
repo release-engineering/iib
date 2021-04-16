@@ -1088,20 +1088,6 @@ def handle_add_request(
             (prebuild_info['distribution_scope'] in ['dev', 'stage']),
         )
 
-        _add_label_to_index(
-            'com.redhat.index.delivery.version',
-            prebuild_info['ocp_version'],
-            temp_dir,
-            'index.Dockerfile',
-        )
-
-        _add_label_to_index(
-            'com.redhat.index.delivery.distribution_scope',
-            prebuild_info['distribution_scope'],
-            temp_dir,
-            'index.Dockerfile',
-        )
-
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list or []
         )
@@ -1123,6 +1109,20 @@ def handle_add_request(
                 # Use podman so opm can find the image locally
                 container_tool='podman',
             )
+
+        _add_label_to_index(
+            'com.redhat.index.delivery.version',
+            prebuild_info['ocp_version'],
+            temp_dir,
+            'index.Dockerfile',
+        )
+
+        _add_label_to_index(
+            'com.redhat.index.delivery.distribution_scope',
+            prebuild_info['distribution_scope'],
+            temp_dir,
+            'index.Dockerfile',
+        )
 
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
