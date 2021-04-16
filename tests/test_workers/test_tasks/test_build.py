@@ -807,6 +807,130 @@ def test_handle_add_request(
         mock_dep_b.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build.deprecate_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build._verify_labels')
+@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build._opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build.export_legacy_packages')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
+@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
+@mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
+@mock.patch('iib.workers.tasks.build._get_present_bundles')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+def test_handle_add_request_check_index_label_behavior(
+    mock_srt,
+    mock_gpb,
+    mock_alti,
+    mock_grb,
+    mock_gb,
+    mock_vlpc,
+    mock_glsp,
+    mock_capml,
+    mock_srs,
+    mock_elp,
+    mock_uiips,
+    mock_vii,
+    mock_pi,
+    mock_bi,
+    mock_oia,
+    mock_uiibs,
+    mock_prfb,
+    mock_vl,
+    mock_cleanup,
+    mock_ugrb,
+    mock_dep_b,
+):
+    arches = {'amd64', 's390x'}
+    binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'ocp_version': 'v4.5',
+        'distribution_scope': 'stage',
+    }
+    mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
+    legacy_packages = {'some_package'}
+    mock_glsp.return_value = legacy_packages
+    output_pull_spec = 'quay.io/namespace/some-image:3'
+    mock_capml.return_value = output_pull_spec
+    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
+    bundles = ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1']
+    cnr_token = 'token'
+    organization = 'org'
+    greenwave_config = {'some_key': 'other_value'}
+    mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+    deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+    # Assume default labels are set on the index
+    label_state = {'LABEL_SET': 'default_labels_set'}
+
+    def _add_label_to_index(*args):
+        # Set the labels in the index again making sure they were wiped out
+        if label_state['LABEL_SET'] == 'wiping_out_labels':
+            label_state['LABEL_SET'] = 'setting_label_in_add_label_to_index'
+
+    mock_alti.side_effect = _add_label_to_index
+
+    def deprecate_bundles_mock(*args, **kwargs):
+        # Wipe out the labels on the index
+        label_state['LABEL_SET'] = 'wiping_out_labels'
+
+    mock_dep_b.side_effect = deprecate_bundles_mock
+
+    build.handle_add_request(
+        bundles,
+        3,
+        'binary-image:latest',
+        'from-index:latest',
+        ['s390x'],
+        cnr_token,
+        organization,
+        True,
+        False,
+        None,
+        None,
+        greenwave_config,
+        binary_image_config=binary_image_config,
+        deprecation_list=deprecation_list,
+    )
+
+    mock_cleanup.assert_called_once()
+    mock_vl.assert_called_once()
+    mock_prfb.assert_called_once_with(
+        3,
+        'binary-image:latest',
+        'from-index:latest',
+        None,
+        ['s390x'],
+        ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+        None,
+        binary_image_config=binary_image_config,
+    )
+    mock_dep_b.assert_called_once_with(
+        ['random_bundle@sha', 'some-deprecation-bundle@sha'],
+        mock.ANY,
+        'binary-image:latest',
+        'containers-storage:localhost/iib-build:3-amd64',
+        None,
+        container_tool='podman',
+    )
+    # Assert the labels are set again once they were wiped out
+    assert label_state['LABEL_SET'] == 'setting_label_in_add_label_to_index'
+    assert mock_alti.call_count == 2
+
+
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
