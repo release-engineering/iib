@@ -70,20 +70,26 @@ class DevelopmentConfig(Config):
     iib_api_url = 'http://iib-api:8080/api/v1/'
     iib_log_level = 'DEBUG'
     iib_organization_customizations = {
-        'company-marketplace': {
-            'csv_annotations': {
-                'marketplace.company.io/remote-workflow': (
-                    'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
-                ),
-                'marketplace.company.io/support-workflow': (
-                    'https://marketplace.company.com/en-us/operators/{package_name}/support'
-                ),
+        'company-marketplace': [
+            {
+                'type': 'csv_annotations',
+                'annotations': {
+                    'marketplace.company.io/remote-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+                    ),
+                    'marketplace.company.io/support-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/support'
+                    ),
+                },
             },
-            'package_name_suffix': '-cmp',
-            'registry_replacements': {
-                'registry.access.company.com': 'registry.marketplace.company.com/cm',
+            {'type': 'package_name_suffix', 'suffix': '-cmp'},
+            {
+                'type': 'registry_replacements',
+                'replacements': {
+                    'registry.access.company.com': 'registry.marketplace.company.com/cm',
+                },
             },
-        }
+        ]
     }
     iib_registry = 'registry:8443'
     iib_request_logs_dir = '/var/log/iib/requests'
@@ -150,48 +156,7 @@ def validate_celery_config(conf, **kwargs):
     if not isinstance(conf['iib_required_labels'], dict):
         raise ConfigError('iib_required_labels must be a dictionary')
 
-    if not isinstance(conf['iib_organization_customizations'], dict):
-        raise ConfigError('iib_organization_customizations must be a dictionary')
-
-    for org, org_config in conf['iib_organization_customizations'].items():
-        if not isinstance(org, str):
-            raise ConfigError('The keys in iib_organization_customizations must be strings')
-
-        if not isinstance(org_config, dict):
-            raise ConfigError('The values in iib_organization_customizations must be dictionaries')
-
-        invalid_keys = org_config.keys() - {
-            'csv_annotations',
-            'package_name_suffix',
-            'registry_replacements',
-        }
-        if invalid_keys:
-            raise ConfigError(
-                'The following keys set on iib_organization_customizations are '
-                f'invalid: {", ".join(sorted(invalid_keys))}'
-            )
-
-        for key in ('csv_annotations', 'registry_replacements'):
-            value = org_config.get(key)
-            if not value:
-                continue
-
-            for k, v in value.items():
-                if not isinstance(k, str):
-                    raise ConfigError(
-                        f'The keys in iib_organization_customizations.{org}.{key} must be strings'
-                    )
-
-                if not isinstance(v, str):
-                    raise ConfigError(
-                        f'The values in iib_organization_customizations.{org}.{key} must be strings'
-                    )
-
-        if not isinstance(org_config.get('package_name_suffix', ''), str):
-            raise ConfigError(
-                f'The value of iib_organization_customizations.{org}.package_name_suffix '
-                'must be a string'
-            )
+    _validate_iib_org_customizations(conf['iib_organization_customizations'])
 
     iib_request_logs_dir = conf.get('iib_request_logs_dir')
     if iib_request_logs_dir:
@@ -201,6 +166,79 @@ def validate_celery_config(conf, **kwargs):
             )
         if not os.access(iib_request_logs_dir, os.W_OK):
             raise ConfigError(f'iib_request_logs_dir, {iib_request_logs_dir}, is not writable!')
+
+
+def _validate_iib_org_customizations(iib_org_customizations):
+    """
+    Validate ``iib_organization_customizations`` celery config variable.
+
+    :param dict iib_org_customizations: the value of iib_organization_customizations config
+        variable
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
+    """
+    if not isinstance(iib_org_customizations, dict):
+        raise ConfigError('iib_organization_customizations must be a dictionary')
+
+    valid_customizations = {
+        'csv_annotations': {'annotations'},
+        'package_name_suffix': {'suffix'},
+        'registry_replacements': {'replacements'},
+    }
+
+    for org, org_config in iib_org_customizations.items():
+        if not isinstance(org, str):
+            raise ConfigError('The org keys in iib_organization_customizations must be strings')
+
+        if not isinstance(org_config, list):
+            raise ConfigError('The org values in iib_organization_customizations must be a list')
+
+        for customization in org_config:
+            if not isinstance(customization, dict):
+                raise ConfigError(
+                    'Every customization for an org in '
+                    'iib_organization_customizations must be dictionary'
+                )
+
+            customization_type = customization.get('type')
+            if customization_type not in valid_customizations.keys():
+                raise ConfigError(
+                    f'Invalid customization in iib_organization_customizations {customization}'
+                )
+
+            invalid_customization_keys = (
+                customization.keys() - valid_customizations[customization_type] - {'type'}
+            )
+            if invalid_customization_keys:
+                raise ConfigError(
+                    f'The keys {invalid_customization_keys} in iib_organization_customizations'
+                    f'.{org}[{org_config.index(customization)}] are invalid.'
+                )
+
+            if customization_type in ('csv_annotations', 'registry_replacements'):
+                for valid_key in valid_customizations[customization_type]:
+                    if not customization[valid_key]:
+                        continue
+
+                    for k, v in customization[valid_key].items():
+                        if not isinstance(k, str):
+                            raise ConfigError(
+                                f'The keys in iib_organization_customizations.{org}'
+                                f'[{org_config.index(customization)}].{valid_key} must be strings'
+                            )
+
+                        if not isinstance(v, str):
+                            raise ConfigError(
+                                f'The values in iib_organization_customizations.{org}'
+                                f'[{org_config.index(customization)}].{valid_key} must be strings'
+                            )
+
+            if customization_type == 'package_name_suffix' and not isinstance(
+                customization['suffix'], str
+            ):
+                raise ConfigError(
+                    f'The value of iib_organization_customizations.{org}'
+                    f'[{org_config.index(customization)}].suffix must be a string'
+                )
 
 
 def get_worker_config():

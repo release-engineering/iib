@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import textwrap
 from unittest import mock
+from unittest.mock import call, MagicMock
 
 from operator_manifest.operator import OperatorManifest
 import pytest
@@ -158,10 +159,138 @@ def test_handle_regenerate_bundle_request(
     assert dockerfile == expected_dockerfile
 
 
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
-def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
+def test_adjust_operator_bundle_unordered(mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir):
+    manager = MagicMock()
+    manager.attach_mock(mock_gpa, 'mock_gpa')
+    manager.attach_mock(mock_apns, 'mock_apns')
+    manager.attach_mock(mock_gri, 'mock_gri')
+    manager.attach_mock(mock_aca, 'mock_aca')
+
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
+    mock_apns.return_value = (
+        'amqstreams',
+        {},
+    )
+    manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
+    csv1 = manifests_dir.join('1.clusterserviceversion.yaml')
+    csv2 = manifests_dir.join('2.clusterserviceversion.yaml')
+    csv3 = manifests_dir.join('3.clusterserviceversion.yaml')
+
+    # NOTE: The OperatorManifest class is capable of modifying pull specs found in
+    # various locations within the CSV file. Since IIB relies on this class to do
+    # such modifications, this test only verifies that at least one of the locations
+    # is being handled properly. This is to ensure IIB is using OperatorManifest
+    # correctly.
+    csv_template = textwrap.dedent(
+        """\
+        apiVersion: operators.example.com/v1
+        kind: ClusterServiceVersion
+        metadata:
+          name: amqstreams.v1.0.0
+          namespace: placeholder
+          annotations:
+            containerImage: {registry}/operator/image{ref}
+        """
+    )
+    image_digest = '654321'
+    csv_related_images_template = csv_template + textwrap.dedent(
+        """\
+        spec:
+          relatedImages:
+          - name: {related_name}
+            image: {registry}/operator/image{related_ref}
+        """
+    )
+    csv1.write(
+        csv_related_images_template.format(
+            registry='quay.io',
+            ref=':v1',
+            related_name=f'image-{image_digest}-annotation',
+            related_ref='@sha256:749327',
+        )
+    )
+    csv2.write(csv_template.format(registry='quay.io', ref='@sha256:654321'))
+    csv3.write(csv_template.format(registry='registry.access.company.com', ref=':v2'))
+
+    def get_resolved_image(image):
+        return {
+            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+            'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
+            'registry.access.company.com/operator/image:v2': (
+                'registry.access.company.com/operator/image@sha256:654321'
+            ),
+        }[image]
+
+    mock_gri.side_effect = get_resolved_image
+
+    labels = build_regenerate_bundle._adjust_operator_bundle(
+        str(manifests_dir), str(metadata_dir), 'company-unknown'
+    )
+
+    assert labels == {
+        'com.redhat.iib.pinned': 'true',
+    }
+    # Verify that the relatedImages are not modified if they were already set and that images were
+    # not pinned
+    assert csv1.read_text('utf-8') == csv_related_images_template.format(
+        registry='quay.io',
+        ref=':v1',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:749327',
+    )
+    assert csv2.read_text('utf-8') == csv_related_images_template.format(
+        registry='quay.io',
+        ref='@sha256:654321',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
+    )
+    assert csv3.read_text('utf-8') == csv_related_images_template.format(
+        registry='registry.access.company.com',
+        ref='@sha256:654321',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
+    )
+    mock_aca.assert_not_called()
+    mock_apns.assert_not_called()
+
+    expected_calls = [
+        call.mock_gpa(mock.ANY),
+        call.mock_gri(mock.ANY),
+        call.mock_gri(mock.ANY),
+    ]
+    assert manager.mock_calls == expected_calls
+
+
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
+def test_adjust_operator_bundle_ordered(mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir):
+    manager = MagicMock()
+    manager.attach_mock(mock_gpa, 'mock_gpa')
+    manager.attach_mock(mock_apns, 'mock_apns')
+    manager.attach_mock(mock_gri, 'mock_gri')
+    manager.attach_mock(mock_aca, 'mock_aca')
+
+    annotations = {
+        'marketplace.company.io/remote-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+        ),
+        'marketplace.company.io/support-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/support'
+        ),
+    }
+
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
     mock_apns.return_value = (
         'amqstreams',
         {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
@@ -247,11 +376,24 @@ def test_adjust_operator_bundle(mock_aca, mock_gri, mock_apns, tmpdir):
         related_name=f'operator/image-{image_digest}-annotation',
         related_ref='@sha256:654321',
     )
-    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', 'company-marketplace')
+    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', annotations)
+
+    expected_calls = [
+        call.mock_gpa(mock.ANY),
+        call.mock_aca(mock.ANY, 'amqstreams', annotations),
+        call.mock_apns(mock.ANY, '-cmp'),
+        call.mock_gri(mock.ANY),
+        call.mock_gri(mock.ANY),
+    ]
+    assert manager.mock_calls == expected_calls
 
 
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
-def test_adjust_operator_bundle_invalid_related_images(mock_apns, tmpdir):
+def test_adjust_operator_bundle_invalid_related_images(mock_apns, mock_gpa, tmpdir):
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
     mock_apns.return_value = ('amqstreams', {})
     manifests_dir = tmpdir.mkdir('manifests')
     metadata_dir = tmpdir.mkdir('metadata')
@@ -318,10 +460,24 @@ def test_adjust_operator_bundle_invalid_yaml_file(mock_apns, tmpdir):
         build_regenerate_bundle._adjust_operator_bundle(str(manifests_dir), str(metadata_dir))
 
 
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
-def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_apns, tmpdir):
+def test_adjust_operator_bundle_already_pinned_by_iib(
+    mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir
+):
+    annotations = {
+        'marketplace.company.io/remote-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+        ),
+        'marketplace.company.io/support-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/support'
+        ),
+    }
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
     mock_apns.return_value = (
         'amqstreams',
         {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
@@ -392,26 +548,24 @@ def test_adjust_operator_bundle_already_pinned_by_iib(mock_aca, mock_gri, mock_a
         related_name=f'operator/image-765432-annotation',
         related_ref='@sha256:765432',
     )
-    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', 'company-marketplace')
+    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', annotations)
     mock_gri.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    'organization, package, expected_package, expected_labels',
+    'package_name_suffix, package, expected_package, expected_labels',
     (
         (
-            'company-marketplace',
+            '-cmp',
             'amq-streams',
             'amq-streams-cmp',
             {'operators.operatorframework.io.bundle.package.v1': 'amq-streams-cmp'},
         ),
-        (None, 'amq-streams', 'amq-streams', {}),
-        ('company-marketplace', 'amq-streams-cmp', 'amq-streams-cmp', {}),
-        ('non-existent', 'amq-streams', 'amq-streams', {}),
+        ('-cmp', 'amq-streams-cmp', 'amq-streams-cmp', {}),
     ),
 )
 def test_apply_package_name_suffix(
-    organization, package, expected_package, expected_labels, tmpdir
+    package_name_suffix, package, expected_package, expected_labels, tmpdir
 ):
     metadata_dir = tmpdir.mkdir('metadata')
     annotations_yaml = metadata_dir.join('annotations.yaml')
@@ -430,7 +584,7 @@ def test_apply_package_name_suffix(
     )
 
     package_name, labels = build_regenerate_bundle._apply_package_name_suffix(
-        str(metadata_dir), organization
+        str(metadata_dir), package_name_suffix
     )
 
     assert package_name == expected_package
@@ -446,7 +600,7 @@ def test_apply_package_name_suffix_missing_annotations_yaml(tmpdir):
 
     expected = 'metadata/annotations.yaml does not exist in the bundle'
     with pytest.raises(IIBError, match=expected):
-        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir))
+        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir), '-cmp')
 
 
 @pytest.mark.parametrize(
@@ -479,16 +633,16 @@ def test_apply_package_name_suffix_invalid_annotations_yaml(annotations, expecte
         yaml.dump(annotations, f)
 
     with pytest.raises(IIBError, match=expected_error):
-        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir))
+        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir), '-msd')
 
 
 def test_apply_package_name_suffix_invalid_yaml(tmpdir):
     metadata_dir = tmpdir.mkdir('metadata')
     metadata_dir.join('annotations.yaml').write('"This is why you fail." - Yoda')
 
-    expected = 'metadata/annotations/yaml is not valid YAML'
+    expected = 'metadata/annotations.yaml is not valid YAML'
     with pytest.raises(IIBError, match=expected):
-        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir))
+        build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir), '-vk')
 
 
 def test_adjust_csv_annotations(tmpdir):
@@ -496,12 +650,20 @@ def test_adjust_csv_annotations(tmpdir):
     manifests_dir.join('backup.crd.yaml').write(
         'apiVersion: apiextensions.k8s.io/v1beta1\nkind: CustomResourceDefinition'
     )
+    annotations = {
+        'marketplace.company.io/remote-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+        ),
+        'marketplace.company.io/support-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/support'
+        ),
+    }
     csv = manifests_dir.join('mig-operator.v1.1.1.clusterserviceversion.yaml')
     csv.write('apiVersion: operators.coreos.com/v1alpha1\nkind: ClusterServiceVersion')
 
     operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
     build_regenerate_bundle._adjust_csv_annotations(
-        operator_manifest.files, 'amqp-streams', 'company-marketplace'
+        operator_manifest.files, 'amqp-streams', annotations
     )
 
     with open(csv, 'r') as f:
@@ -521,20 +683,3 @@ def test_adjust_csv_annotations(tmpdir):
             }
         },
     }
-
-
-@mock.patch('iib.workers.tasks.build_regenerate_bundle.yaml.dump')
-def test_adjust_csv_annotations_no_customizations(mock_yaml_dump, tmpdir):
-    manifests_dir = tmpdir.mkdir('manifests')
-    manifests_dir.join('backup.crd.yaml').write(
-        'apiVersion: apiextensions.k8s.io/v1beta1\nkind: CustomResourceDefinition'
-    )
-    csv = manifests_dir.join('mig-operator.v1.1.1.clusterserviceversion.yaml')
-    csv.write('apiVersion: operators.coreos.com/v1alpha1\nkind: ClusterServiceVersion')
-
-    operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
-    build_regenerate_bundle._adjust_csv_annotations(
-        operator_manifest.files, 'amqp-streams', 'mos-eisley'
-    )
-
-    mock_yaml_dump.assert_not_called()
