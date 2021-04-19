@@ -136,7 +136,7 @@ def handle_regenerate_bundle_request(
     update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
 
 
-def _apply_package_name_suffix(metadata_path, organization=None):
+def _apply_package_name_suffix(metadata_path, package_name_suffix):
     """
     Add the package name suffix if configured for this organization.
 
@@ -147,48 +147,13 @@ def _apply_package_name_suffix(metadata_path, organization=None):
     The final package name value is returned as part of the tuple.
 
     :param str metadata_path: the path to the bundle's metadata directory.
-    :param str organization: the organization this customization is for.
-    :raise IIBError: if the ``metadata/annotations.yaml`` file is in an unexpected format.
+    :param str package_name_suffix: the suffix to be added to the package name.
     :return: a tuple with the package name and a dictionary of labels to set on the bundle.
     :rtype: tuple(str, dict)
     """
-    annotations_yaml_path = os.path.join(metadata_path, 'annotations.yaml')
-    if not os.path.exists(annotations_yaml_path):
-        raise IIBError('metadata/annotations.yaml does not exist in the bundle')
-
-    with open(annotations_yaml_path, 'r') as f:
-        try:
-            annotations_yaml = yaml.load(f)
-        except ruamel.yaml.YAMLError:
-            error = 'metadata/annotations/yaml is not valid YAML'
-            log.exception(error)
-            raise IIBError(error)
-
-    if not isinstance(annotations_yaml.get('annotations', {}), dict):
-        raise IIBError('The value of metadata/annotations.yaml must be a dictionary')
-
+    annotations_yaml = _get_package_annotations(metadata_path)
     package_label = 'operators.operatorframework.io.bundle.package.v1'
-    package_annotation = annotations_yaml.get('annotations', {}).get(package_label)
-    if not package_annotation:
-        raise IIBError(f'{package_label} is not set in metadata/annotations.yaml')
-
-    if not isinstance(package_annotation, str):
-        raise IIBError(f'The value of {package_label} in metadata/annotations.yaml is not a string')
-
-    if not organization:
-        log.debug('No organization was provided to add the package name suffix')
-        return package_annotation, {}
-
-    conf = get_worker_config()
-    package_name_suffix = (
-        conf['iib_organization_customizations'].get(organization, {}).get('package_name_suffix')
-    )
-    if not package_name_suffix:
-        log.debug(
-            'The "package_name_suffix" configuration is not set for the organization %s',
-            organization,
-        )
-        return package_annotation, {}
+    package_annotation = annotations_yaml['annotations'][package_label]
 
     if package_annotation.endswith(package_name_suffix):
         log.debug('No modifications are needed on %s in metadata/annotations.yaml', package_label)
@@ -196,7 +161,7 @@ def _apply_package_name_suffix(metadata_path, organization=None):
 
     annotations_yaml['annotations'][package_label] = f'{package_annotation}{package_name_suffix}'
 
-    with open(annotations_yaml_path, 'w') as f:
+    with open(os.path.join(metadata_path, 'annotations.yaml'), 'w') as f:
         yaml.dump(annotations_yaml, f)
 
     log.info(
@@ -235,8 +200,6 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
     :return: a dictionary of labels to set on the bundle
     :rtype: dict
     """
-    package_name, labels = _apply_package_name_suffix(metadata_path, organization)
-
     try:
         operator_manifest = OperatorManifest.from_directory(manifests_path)
     except (ruamel.yaml.YAMLError, ruamel.yaml.constructor.DuplicateKeyError) as e:
@@ -244,8 +207,57 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
         log.exception(error)
         raise IIBError(error)
 
-    found_pullspecs = set()
-    operator_csvs = []
+    conf = get_worker_config()
+    organization_customizations = conf['iib_organization_customizations'].get(organization, [])
+    if not organization_customizations:
+        organization_customizations = [
+            {'type': 'package_name_suffix'},
+            {'type': 'registry_replacements'},
+            {'type': 'csv_annotations'},
+        ]
+
+    annotations_yaml = _get_package_annotations(metadata_path)
+    package_name = annotations_yaml['annotations'][
+        'operators.operatorframework.io.bundle.package.v1'
+    ]
+    labels = {}
+    # Perform the customizations in order
+    for customization in organization_customizations:
+        customization_type = customization['type']
+        if customization_type == 'package_name_suffix':
+            package_name_suffix = customization.get('suffix')
+            if package_name_suffix:
+                log.info('Applying package_name_suffix : %s', package_name_suffix)
+                package_name, labels = _apply_package_name_suffix(
+                    metadata_path, package_name_suffix
+                )
+        elif customization_type == 'registry_replacements':
+            registry_replacements = customization.get('replacements', {})
+            log.info('Resolving image pull specs and applying registry replacements')
+            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_replacements)
+        elif customization_type == 'csv_annotations' and organization:
+            org_csv_annotations = customization.get('annotations')
+            if org_csv_annotations:
+                log.info('Applying csv annotations for organization %s', organization)
+                _adjust_csv_annotations(operator_manifest.files, package_name, org_csv_annotations)
+
+    return labels
+
+
+def _get_bundle_metadata(operator_manifest, pinned_by_iib):
+    """
+    Get bundle metadata i.e. CSV's and all relatedImages pull specifications.
+
+    :param operator_manifest.operator.OperatorManifest operator_manifest: the operator manifest
+        object.
+    :param bool pinned_by_iib: whether or not the bundle image has already been processed by
+        IIB to perform image pinning of related images.
+    :raises IIBError: if the operator manifest has invalid entries
+    :return: a dictionary of CSV's and relatedImages pull specifications
+    :rtype: dict
+    """
+    bundle_metadata = {'found_pullspecs': set(), 'operator_csvs': []}
     for operator_csv in operator_manifest.files:
         if pinned_by_iib:
             # If the bundle image has already been previously pinned by IIB, the relatedImages
@@ -269,21 +281,62 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             )
             continue
 
-        operator_csvs.append(operator_csv)
+        bundle_metadata['operator_csvs'].append(operator_csv)
 
         for pullspec in operator_csv.get_pullspecs():
-            found_pullspecs.add(pullspec)
+            bundle_metadata['found_pullspecs'].add(pullspec)
+    return bundle_metadata
 
-    conf = get_worker_config()
-    registry_replacements = (
-        conf['iib_organization_customizations']
-        .get(organization, {})
-        .get('registry_replacements', {})
-    )
 
+def _get_package_annotations(metadata_path):
+    """
+    Get valid annotations yaml of the bundle.
+
+    :param str metadata_path: the path to the bundle's metadata directory.
+    :raises IIBError: if the annotations.yaml has invalid entries.
+    :return: a dictionary of the bundle annotations.yaml file.
+    :rtype: dict
+    """
+    annotations_yaml_path = os.path.join(metadata_path, 'annotations.yaml')
+    if not os.path.exists(annotations_yaml_path):
+        raise IIBError('metadata/annotations.yaml does not exist in the bundle')
+
+    with open(annotations_yaml_path, 'r') as f:
+        try:
+            annotations_yaml = yaml.load(f)
+        except ruamel.yaml.YAMLError:
+            error = 'metadata/annotations.yaml is not valid YAML'
+            log.exception(error)
+            raise IIBError(error)
+
+    if not isinstance(annotations_yaml.get('annotations', {}), dict):
+        raise IIBError('The value of metadata/annotations.yaml must be a dictionary')
+
+    package_label = 'operators.operatorframework.io.bundle.package.v1'
+    package_annotation = annotations_yaml.get('annotations', {}).get(package_label)
+    if not package_annotation:
+        raise IIBError(f'{package_label} is not set in metadata/annotations.yaml')
+
+    if not isinstance(package_annotation, str):
+        raise IIBError(f'The value of {package_label} in metadata/annotations.yaml is not a string')
+
+    return annotations_yaml
+
+
+def _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_replacements):
+    """
+    Resolve image pull specifications to container image digests.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param dict labels: the dictionary of labels to be set on the bundle image
+    :param str registry_replacements: the customization dictionary which specifies replacement of
+        registry in the pull specifications.
+    :param bool pinned_by_iib: whether or not the bundle image has already been processed by
+        IIB to perform image pinning of related images.
+    """
     # Resolve pull specs to container image digests
     replacement_pullspecs = {}
-    for pullspec in found_pullspecs:
+    for pullspec in bundle_metadata['found_pullspecs']:
         replacement_needed = False
         new_pullspec = ImageName.parse(pullspec.to_str())
 
@@ -311,7 +364,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             replacement_pullspecs[pullspec] = new_pullspec
 
     # Apply modifications to the operator bundle image metadata
-    for operator_csv in operator_csvs:
+    for operator_csv in bundle_metadata['operator_csvs']:
         csv_file_name = os.path.basename(operator_csv.path)
         log.info('Replacing the pull specifications on %s', csv_file_name)
         operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
@@ -321,29 +374,15 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
 
         operator_csv.dump()
 
-    if organization:
-        _adjust_csv_annotations(operator_manifest.files, package_name, organization)
 
-    return labels
-
-
-def _adjust_csv_annotations(operator_csvs, package_name, organization):
+def _adjust_csv_annotations(operator_csvs, package_name, org_csv_annotations):
     """
     Annotate ClusterServiceVersion objects based on an organization configuration.
 
     :param list operator_csvs: the list of ``OperatorCSV`` objects to examine.
     :param str package_name: the operator package name.
-    :param str organization: the organization this bundle is for. This determines what annotations
-        to make.
+    :param str org_csv_annotations: the dict of annotations customization for an organization.
     """
-    conf = get_worker_config()
-    org_csv_annotations = (
-        conf['iib_organization_customizations'].get(organization, {}).get('csv_annotations')
-    )
-    if not org_csv_annotations:
-        log.debug('The organization %s does not have CSV annotations configured', organization)
-        return
-
     for operator_csv in operator_csvs:
         log.debug(
             'Processing the ClusterServiceVersion file %s', os.path.basename(operator_csv.path)

@@ -255,8 +255,10 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_organization_customizations` - this is used to customize aspects of the bundle being
   regenerated. The format is a dictionary where each key is an organization that requires
-  customizations. Each value accepts the optional keys `csv_annotations`, `package_name_suffix`,
-  and `registry_replacements`.
+  customizations. Each value is a list of dictionaries with the ``type`` key set to one of the
+  optional values `csv_annotations`, `package_name_suffix`,
+  and `registry_replacements`. The order of the dictionaries in the list will determine the order
+  of customizations applied to the bundle.
 
   * The `csv_annotations` value is a dictionary where each key is the annotation to set on the
     ClusterServiceVersion files, and the value is a Python template string of the value to be set.
@@ -271,17 +273,27 @@ The custom configuration options for the Celery workers are listed below:
 
   ```python
   iib_organization_customizations = {
-      'company-marketplace': {
-          'csv_annotations': {
-              'marketplace.company.io/remote-workflow': 'https://marketplace.company.com/en-us/operators/{package_name}/pricing',
-              'marketplace.company.io/support-workflow': 'https://marketplace.company.com/en-us/operators/{package_name}/support',
-          },
-          'package_name_suffix': '-cmp',
-          'registry_replacements': {
-              'registry.access.company.com': 'registry.marketplace.company.com/cm',
-          },
-      }
-  }
+        'company-marketplace': [
+            {
+                'type': 'csv_annotations',
+                'annotations': {
+                    'marketplace.company.io/remote-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+                    ),
+                    'marketplace.company.io/support-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/support'
+                    ),
+                },
+            },
+            {'type': 'package_name_suffix', 'suffix': '-cmp'},
+            {
+                'type': 'registry_replacements',
+                'replacements': {
+                    'registry.access.company.com': 'registry.marketplace.company.com/cm',
+                },
+            },
+        ]
+    }
   ```
 
 * `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per

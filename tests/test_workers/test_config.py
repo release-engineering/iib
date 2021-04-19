@@ -2,6 +2,7 @@
 from unittest.mock import patch
 from io import BytesIO
 import os
+import re
 
 import celery
 import pytest
@@ -70,68 +71,95 @@ def test_validate_celery_config_iib_required_labels_not_dict():
     'config, error',
     (
         ('Do or do not. There is no try.', 'iib_organization_customizations must be a dictionary'),
-        ({123: {}}, 'The keys in iib_organization_customizations must be strings'),
+        ({123: []}, 'The org keys in iib_organization_customizations must be strings'),
         (
             {'company-marketplace': 123},
-            'The values in iib_organization_customizations must be dictionaries',
+            'The org values in iib_organization_customizations must be a list',
         ),
         (
-            {'company-marketplace': {'Yoda': 'Do or do not. There is no try.'}},
-            'The following keys set on iib_organization_customizations are invalid: Yoda',
+            {'company-marketplace': [['OathBreaker']]},
+            'Every customization for an org in iib_organization_customizations must be dictionary',
         ),
         (
-            {
-                'company-marketplace': {
-                    'csv_annotations': {
-                        123: (
-                            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
-                        ),
-                    },
-                }
-            },
+            {'company-marketplace': [{'Yoda': 'Do or do not. There is no try.'}]},
             (
-                'The keys in iib_organization_customizations.company-marketplace.csv_annotations '
-                'must be strings'
+                'Invalid customization in iib_organization_customizations '
+                '{\'Yoda\': \'Do or do not. There is no try.\'}'
             ),
         ),
         (
             {
-                'company-marketplace': {
-                    'registry_replacements': {123: 'registry.marketplace.company.com/cm'},
-                }
+                'company-marketplace': [
+                    {
+                        'type': 'csv_annotations',
+                        'annotations': {
+                            123: (
+                                'https://marketplace.company.com/en-us'
+                                '/operators/{package_name}/pricing'
+                            ),
+                        },
+                        'invalid_key': 'Something invalid is here.',
+                    }
+                ]
             },
-            (
-                'The keys in iib_organization_customizations.company-marketplace.'
-                'registry_replacements must be strings'
+            re.escape(
+                'The keys {\'invalid_key\'} in iib_organization_customizations'
+                '.company-marketplace[0] are invalid.'
             ),
         ),
         (
             {
-                'company-marketplace': {
-                    'csv_annotations': {'marketplace.company.io/remote-workflow': 123},
-                }
+                'company-marketplace': [
+                    {
+                        'type': 'csv_annotations',
+                        'annotations': {
+                            123: (
+                                'https://marketplace.company.com/en-us/operators'
+                                '/{package_name}/pricing'
+                            ),
+                        },
+                    }
+                ]
             },
-            (
-                'The values in iib_organization_customizations.company-marketplace.'
-                'csv_annotations must be strings'
+            re.escape(
+                'The keys in iib_organization_customizations.company-marketplace[0].annotations'
+                ' must be strings'
             ),
         ),
         (
             {
-                'company-marketplace': {
-                    'registry_replacements': {'registry.access.company.com': 123}
-                }
+                'company-marketplace': [
+                    {
+                        'type': 'registry_replacements',
+                        'replacements': {123: 'registry.marketplace.company.com/cm'},
+                    }
+                ]
             },
-            (
-                'The values in iib_organization_customizations.company-marketplace.'
-                'registry_replacements must be strings'
+            re.escape(
+                'The keys in iib_organization_customizations.company-marketplace[0].'
+                'replacements must be strings'
             ),
         ),
         (
-            {'company-marketplace': {'package_name_suffix': 123}},
-            (
-                'The value of iib_organization_customizations.company-marketplace.'
-                'package_name_suffix must be a string'
+            {
+                'company-marketplace': [
+                    {'type': 'registry_replacements', 'replacements': {'something': 123}}
+                ]
+            },
+            re.escape(
+                'The values in iib_organization_customizations.company-marketplace[0].'
+                'replacements must be strings'
+            ),
+        ),
+        (
+            {
+                'company-marketplace': [
+                    {'type': 'package_name_suffix', 'suffix': {'something': 123}}
+                ]
+            },
+            re.escape(
+                'The value of iib_organization_customizations.company-marketplace[0].'
+                'suffix must be a string'
             ),
         ),
     ),
