@@ -20,6 +20,7 @@ from iib.workers.tasks.build import (
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import (
+    get_image_labels,
     get_resolved_image,
     podman_pull,
     request_logger,
@@ -217,6 +218,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
         organization_customizations = [
             {'type': 'package_name_suffix'},
             {'type': 'registry_replacements'},
+            {'type': 'image_name_from_labels'},
             {'type': 'csv_annotations'},
         ]
 
@@ -245,11 +247,18 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             if org_csv_annotations:
                 log.info('Applying csv annotations for organization %s', organization)
                 _adjust_csv_annotations(operator_manifest.files, package_name, org_csv_annotations)
+        elif customization_type == 'image_name_from_labels':
+            org_image_name_template = customization.get('template', '')
+            if org_image_name_template:
+                bundle_metadata = _get_bundle_metadata(
+                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
+                )
+                _replace_image_name_from_labels(bundle_metadata, org_image_name_template)
 
     return labels
 
 
-def _get_bundle_metadata(operator_manifest, pinned_by_iib):
+def _get_bundle_metadata(operator_manifest, pinned_by_iib, perform_sanity_checks=True):
     """
     Get bundle metadata i.e. CSV's and all relatedImages pull specifications.
 
@@ -257,33 +266,36 @@ def _get_bundle_metadata(operator_manifest, pinned_by_iib):
         object.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
         IIB to perform image pinning of related images.
+    :param bool ignore_sanity_check: boolean specifying if sanity checks should be skipped.
+        defaults to ``True``
     :raises IIBError: if the operator manifest has invalid entries
     :return: a dictionary of CSV's and relatedImages pull specifications
     :rtype: dict
     """
     bundle_metadata = {'found_pullspecs': set(), 'operator_csvs': []}
     for operator_csv in operator_manifest.files:
-        if pinned_by_iib:
-            # If the bundle image has already been previously pinned by IIB, the relatedImages
-            # section will be populated and there may be related image environment variables.
-            # However, we still want to process the image to apply any of the other possible
-            # changes.
-            log.info('Skipping pinning because related images have already been pinned by IIB')
-        elif operator_csv.has_related_images():
-            csv_file_name = os.path.basename(operator_csv.path)
-            if operator_csv.has_related_image_envs():
-                raise IIBError(
-                    f'The ClusterServiceVersion file {csv_file_name} has entries in '
-                    'spec.relatedImages and one or more containers have RELATED_IMAGE_* '
-                    'environment variables set. This is not allowed for bundles regenerated with '
-                    'IIB.'
+        if perform_sanity_checks:
+            if pinned_by_iib:
+                # If the bundle image has already been previously pinned by IIB, the relatedImages
+                # section will be populated and there may be related image environment variables.
+                # However, we still want to process the image to apply any of the other possible
+                # changes.
+                log.info('Skipping pinning because related images have already been pinned by IIB')
+            elif operator_csv.has_related_images():
+                csv_file_name = os.path.basename(operator_csv.path)
+                if operator_csv.has_related_image_envs():
+                    raise IIBError(
+                        f'The ClusterServiceVersion file {csv_file_name} has entries in '
+                        'spec.relatedImages and one or more containers have RELATED_IMAGE_* '
+                        'environment variables set. This is not allowed for bundles '
+                        'regenerated with IIB.'
+                    )
+                log.debug(
+                    'Skipping pinning since the ClusterServiceVersion file %s has entries in '
+                    'spec.relatedImages',
+                    csv_file_name,
                 )
-            log.debug(
-                'Skipping pinning since the ClusterServiceVersion file %s has entries in '
-                'spec.relatedImages',
-                csv_file_name,
-            )
-            continue
+                continue
 
         bundle_metadata['operator_csvs'].append(operator_csv)
 
@@ -367,14 +379,63 @@ def _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_r
             log.debug('%s will be replaced with %s', pullspec, new_pullspec.to_str())
             replacement_pullspecs[pullspec] = new_pullspec
 
+    _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+
+
+def _replace_image_name_from_labels(bundle_metadata, replacement_template):
+    """
+    Replace repo/image-name in the CSV pull specs with values from their labels.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param str replacement_template: the template specifying which label values to use for
+        replacement
+    """
+    replacement_pullspecs = {}
+
+    for pullspec in bundle_metadata['found_pullspecs']:
+        new_pullspec = ImageName.parse(pullspec.to_str())
+        pullspec_labels = get_image_labels(pullspec.to_str())
+        try:
+            modified_namespace_repo = replacement_template.format(**pullspec_labels)
+        except KeyError:
+            raise IIBError(
+                f'Pull spec {pullspec.to_str()} is missing one or more label(s)'
+                f' required in the image_name_from_labels {replacement_template}.'
+                f' Available labels: {", ".join(list(pullspec_labels.keys()))}'
+            )
+
+        namespace_repo_list = modified_namespace_repo.split('/', 1)
+        if len(namespace_repo_list) == 1:
+            namespace_repo_list.insert(0, None)
+
+        new_pullspec.namespace, new_pullspec.repo = namespace_repo_list
+        replacement_pullspecs[pullspec] = new_pullspec
+
+    # Related images have already been set when resolving pull_specs.
+    _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+
+
+def _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs):
+    """
+    Replace pull specs in operator CSV files.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param dict replacement_pullspecs: the dictionary mapping existing pull specs to the new
+        pull specs that will replace the existing pull specs in the operator CSVs.
+    """
     # Apply modifications to the operator bundle image metadata
     for operator_csv in bundle_metadata['operator_csvs']:
         csv_file_name = os.path.basename(operator_csv.path)
         log.info('Replacing the pull specifications on %s', csv_file_name)
         operator_csv.replace_pullspecs_everywhere(replacement_pullspecs)
 
-        log.info('Setting spec.relatedImages on %s', csv_file_name)
-        operator_csv.set_related_images()
+        # Only set related images if they haven't been set already. Or else the OperatorManifest
+        # library will set it twice instead of replacing the old one. It's not required to be
+        # called everytime because replace_pullspecs_everywhere replaces the pull_specs even
+        # in the relatedImages part if they are set.
+        if not operator_csv.has_related_images():
+            log.info('Setting spec.relatedImages on %s', csv_file_name)
+            operator_csv.set_related_images()
 
         operator_csv.dump()
 
