@@ -162,6 +162,13 @@ def test_validate_celery_config_iib_required_labels_not_dict():
                 'suffix must be a string'
             ),
         ),
+        (
+            {'company-marketplace': [{'type': 'image_name_from_labels', 'template': 12345}]},
+            re.escape(
+                'The value of iib_organization_customizations.company-marketplace[0].'
+                'template must be a string'
+            ),
+        ),
     ),
 )
 def test_validate_celery_config_invalid_organization_customizations(config, error):

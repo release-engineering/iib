@@ -89,6 +89,7 @@ class DevelopmentConfig(Config):
                     'registry.access.company.com': 'registry.marketplace.company.com/cm',
                 },
             },
+            {'type': 'image_name_from_labels', 'template': '{name}-{version}-final'},
         ]
     }
     iib_registry = 'registry:8443'
@@ -183,6 +184,7 @@ def _validate_iib_org_customizations(iib_org_customizations):
         'csv_annotations': {'annotations'},
         'package_name_suffix': {'suffix'},
         'registry_replacements': {'replacements'},
+        'image_name_from_labels': {'template'},
     }
 
     for org, org_config in iib_org_customizations.items():
@@ -232,13 +234,13 @@ def _validate_iib_org_customizations(iib_org_customizations):
                                 f'[{org_config.index(customization)}].{valid_key} must be strings'
                             )
 
-            if customization_type == 'package_name_suffix' and not isinstance(
-                customization['suffix'], str
-            ):
-                raise ConfigError(
-                    f'The value of iib_organization_customizations.{org}'
-                    f'[{org_config.index(customization)}].suffix must be a string'
-                )
+            if customization_type in ('package_name_suffix', 'image_name_from_labels'):
+                for valid_key in valid_customizations[customization_type]:
+                    if not isinstance(customization[valid_key], str):
+                        raise ConfigError(
+                            f'The value of iib_organization_customizations.{org}'
+                            f'[{org_config.index(customization)}].{valid_key} must be a string'
+                        )
 
 
 def get_worker_config():

@@ -260,14 +260,19 @@ The custom configuration options for the Celery workers are listed below:
   and `registry_replacements`. The order of the dictionaries in the list will determine the order
   of customizations applied to the bundle.
 
-  * The `csv_annotations` value is a dictionary where each key is the annotation to set on the
-    ClusterServiceVersion files, and the value is a Python template string of the value to be set.
-    IIB only substitutes `{package_name}` in the template string.
-  * The `package_name_suffix` value is a string of a suffix to add to the package name of the
-    operator.
-  * The `registry_replacements` value is a dictionary where the keys are the old registries to
-    replace and the values are the registries to replace the old registries with. This replaces the
-    registry in all the ClusterServiceVersion files.
+  * The `csv_annotations` customization type is a dictionary where the key `annotations` value is
+    a dictionary where each key is the annotation to set on the ClusterServiceVersion files, and
+    the value is a Python template string of the value to be set. IIB only substitutes
+    `{package_name}` in the template string.
+  * The `package_name_suffix` customization type is a dictionary where the key `suffix` value is
+    a string of a suffix to add to the package name of the operator.
+  * The `registry_replacements` customization type is a dictionary where the key `replacements`
+    value is a dictionary where the keys are the old registries to replace and the values
+    are the registries to replace the old registries with. This replaces the registry in all
+    the ClusterServiceVersion files.
+  * The `image_name_from_labels` customization type is a dictionary where the key `template`
+    value is a string which specifies a combination of label names in curly braces which will be
+    substituted with the actual label values from the bundle image.
 
   Here is an example that ties this all together:
 
@@ -292,6 +297,7 @@ The custom configuration options for the Celery workers are listed below:
                     'registry.access.company.com': 'registry.marketplace.company.com/cm',
                 },
             },
+            {'type': 'image_name_from_labels', 'template': '{name}-{version}-final'},
         ]
     }
   ```
