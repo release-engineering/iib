@@ -90,7 +90,34 @@ class DevelopmentConfig(Config):
                 },
             },
             {'type': 'image_name_from_labels', 'template': '{name}-{version}-final'},
-        ]
+        ],
+        'company-managed': [
+            {'type': 'package_name_suffix', 'suffix': '-cmp'},
+            {
+                'type': 'csv_annotations',
+                'annotations': {
+                    'marketplace.company.io/remote-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+                    ),
+                    'marketplace.company.io/support-workflow': (
+                        'https://marketplace.company.com/en-us/operators/{package_name}/support'
+                    ),
+                },
+            },
+            {
+                'type': 'registry_replacements',
+                'replacements': {
+                    'registry.access.company.com': 'registry.koji.company.com',
+                    'quay.io': 'registry.koji.company.com',
+                },
+            },
+            {'type': 'image_name_from_labels', 'template': '{name}-{version}'},
+            {'type': 'enclose_repo', 'enclosure_glue': '----', 'namespace': "company-pending"},
+            {
+                'type': 'registry_replacements',
+                'replacements': {'registry.koji.company.com': 'quaaay.com'},
+            },
+        ],
     }
     iib_registry = 'registry:8443'
     iib_request_logs_dir = '/var/log/iib/requests'
@@ -185,6 +212,7 @@ def _validate_iib_org_customizations(iib_org_customizations):
         'package_name_suffix': {'suffix'},
         'registry_replacements': {'replacements'},
         'image_name_from_labels': {'template'},
+        'enclose_repo': {'enclosure_glue', 'namespace'},
     }
 
     for org, org_config in iib_org_customizations.items():
@@ -234,7 +262,11 @@ def _validate_iib_org_customizations(iib_org_customizations):
                                 f'[{org_config.index(customization)}].{valid_key} must be strings'
                             )
 
-            if customization_type in ('package_name_suffix', 'image_name_from_labels'):
+            if customization_type in (
+                'package_name_suffix',
+                'image_name_from_labels',
+                'enclose_repo',
+            ):
                 for valid_key in valid_customizations[customization_type]:
                     if not isinstance(customization[valid_key], str):
                         raise ConfigError(

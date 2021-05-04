@@ -220,6 +220,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             {'type': 'registry_replacements'},
             {'type': 'image_name_from_labels'},
             {'type': 'csv_annotations'},
+            {'type': 'enclose_repo'},
         ]
 
     annotations_yaml = _get_package_annotations(metadata_path)
@@ -227,6 +228,11 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
         'operators.operatorframework.io.bundle.package.v1'
     ]
     labels = {}
+
+    log.info('Resolving image pull specs')
+    bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+    _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib)
+
     # Perform the customizations in order
     for customization in organization_customizations:
         customization_type = customization['type']
@@ -234,14 +240,18 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
             package_name_suffix = customization.get('suffix')
             if package_name_suffix:
                 log.info('Applying package_name_suffix : %s', package_name_suffix)
-                package_name, labels = _apply_package_name_suffix(
+                package_name, package_labels = _apply_package_name_suffix(
                     metadata_path, package_name_suffix
                 )
+                labels = {**labels, **package_labels}
         elif customization_type == 'registry_replacements':
             registry_replacements = customization.get('replacements', {})
-            log.info('Resolving image pull specs and applying registry replacements')
-            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
-            _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_replacements)
+            if registry_replacements:
+                log.info('Applying registry replacements')
+                bundle_metadata = _get_bundle_metadata(
+                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
+                )
+                _apply_registry_replacements(bundle_metadata, registry_replacements)
         elif customization_type == 'csv_annotations' and organization:
             org_csv_annotations = customization.get('annotations')
             if org_csv_annotations:
@@ -254,6 +264,23 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
                     operator_manifest, pinned_by_iib, perform_sanity_checks=False
                 )
                 _replace_image_name_from_labels(bundle_metadata, org_image_name_template)
+        elif customization_type == 'enclose_repo':
+            org_enclose_repo_namespace = customization.get('namespace')
+            org_enclose_repo_glue = customization.get('enclosure_glue')
+            if org_enclose_repo_namespace and org_enclose_repo_glue:
+                log.info(
+                    'Applying enclose_repo customization with namespace %s and enclosure_glue %s'
+                    ' for organizaton %s',
+                    org_enclose_repo_namespace,
+                    org_enclose_repo_glue,
+                    organization,
+                )
+                bundle_metadata = _get_bundle_metadata(
+                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
+                )
+                _apply_repo_enclosure(
+                    bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue
+                )
 
     return labels
 
@@ -280,7 +307,9 @@ def _get_bundle_metadata(operator_manifest, pinned_by_iib, perform_sanity_checks
                 # section will be populated and there may be related image environment variables.
                 # However, we still want to process the image to apply any of the other possible
                 # changes.
-                log.info('Skipping pinning because related images have already been pinned by IIB')
+                log.info(
+                    'Pinning will be skipped because related images have already been pinned by IIB'
+                )
             elif operator_csv.has_related_images():
                 csv_file_name = os.path.basename(operator_csv.path)
                 if operator_csv.has_related_image_envs():
@@ -339,21 +368,18 @@ def _get_package_annotations(metadata_path):
     return annotations_yaml
 
 
-def _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_replacements):
+def _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib):
     """
     Resolve image pull specifications to container image digests.
 
     :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
     :param dict labels: the dictionary of labels to be set on the bundle image
-    :param str registry_replacements: the customization dictionary which specifies replacement of
-        registry in the pull specifications.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
         IIB to perform image pinning of related images.
     """
     # Resolve pull specs to container image digests
     replacement_pullspecs = {}
     for pullspec in bundle_metadata['found_pullspecs']:
-        replacement_needed = False
         new_pullspec = ImageName.parse(pullspec.to_str())
 
         if not pinned_by_iib:
@@ -366,20 +392,32 @@ def _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib, registry_r
             if ':' not in ImageName.parse(pullspec).tag:
                 log.debug('%s will be pinned to %s', pullspec, resolved_image.to_str())
                 new_pullspec = resolved_image
-                replacement_needed = True
                 labels['com.redhat.iib.pinned'] = 'true'
+                replacement_pullspecs[pullspec] = new_pullspec
 
+    if replacement_pullspecs:
+        _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+
+
+def _apply_registry_replacements(bundle_metadata, registry_replacements):
+    """
+    Apply registry replacements from the config customizations.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param str registry_replacements: the customization dictionary which specifies replacement of
+        registry in the pull specifications.
+    """
+    replacement_pullspecs = {}
+    for pullspec in bundle_metadata['found_pullspecs']:
+        new_pullspec = ImageName.parse(pullspec.to_str())
         # Apply registry modifications
         new_registry = registry_replacements.get(new_pullspec.registry)
         if new_registry:
-            replacement_needed = True
             new_pullspec.registry = new_registry
-
-        if replacement_needed:
-            log.debug('%s will be replaced with %s', pullspec, new_pullspec.to_str())
             replacement_pullspecs[pullspec] = new_pullspec
 
-    _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+    if replacement_pullspecs:
+        _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
 
 
 def _replace_image_name_from_labels(bundle_metadata, replacement_template):
@@ -423,6 +461,14 @@ def _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs):
     :param dict replacement_pullspecs: the dictionary mapping existing pull specs to the new
         pull specs that will replace the existing pull specs in the operator CSVs.
     """
+    # Log the pullspecs replacement
+    for old_pullspec, new_pullspec in replacement_pullspecs.items():
+        log.debug(
+            '%s will be replaced with %s in the bundle CSVs',
+            old_pullspec.to_str(),
+            new_pullspec.to_str(),
+        )
+
     # Apply modifications to the operator bundle image metadata
     for operator_csv in bundle_metadata['operator_csvs']:
         csv_file_name = os.path.basename(operator_csv.path)
@@ -458,3 +504,28 @@ def _adjust_csv_annotations(operator_csvs, package_name, org_csv_annotations):
             csv_annotations[annotation] = value
 
         operator_csv.dump()
+
+
+def _apply_repo_enclosure(bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue):
+    """
+    Apply repo_enclosure customization to the bundle image.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param str org_enclose_repo_namespace: the string sprecifying the namespace of the modified
+        pull specs in the CSV files
+    :param str org_enclose_repo_glue: the string specifying the enclosure glue to be applied
+        to modify the pull specs in the CSV files
+    """
+    replacement_pullspecs = {}
+    for pullspec in bundle_metadata['found_pullspecs']:
+        new_pullspec = ImageName.parse(pullspec.to_str())
+
+        repo_parts = new_pullspec.repo.split('/')
+        if org_enclose_repo_namespace != new_pullspec.namespace:
+            repo_parts.insert(0, new_pullspec.namespace)
+
+        new_pullspec.namespace = org_enclose_repo_namespace
+        new_pullspec.repo = org_enclose_repo_glue.join(repo_parts)
+        replacement_pullspecs[pullspec] = new_pullspec
+
+    _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)

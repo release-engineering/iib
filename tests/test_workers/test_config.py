@@ -169,6 +169,17 @@ def test_validate_celery_config_iib_required_labels_not_dict():
                 'template must be a string'
             ),
         ),
+        (
+            {
+                'company-marketplace': [
+                    {'type': 'enclose_repo', 'namespace': 'something', 'enclosure_glue': 123}
+                ]
+            },
+            re.escape(
+                'The value of iib_organization_customizations.company-marketplace[0].'
+                'enclosure_glue must be a string'
+            ),
+        ),
     ),
 )
 def test_validate_celery_config_invalid_organization_customizations(config, error):
