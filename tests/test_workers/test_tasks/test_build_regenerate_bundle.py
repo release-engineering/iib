@@ -357,7 +357,7 @@ def test_adjust_operator_bundle_ordered(mock_gil, mock_aca, mock_gri, mock_apns,
 
     def get_resolved_image(image):
         return {
-            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+            'quay.io/operator/imagel:v2': 'quay.io/operator/image@sha256:654321',
             'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
             'registry.access.company.com/operator/image:v2': (
                 'registry.access.company.com/operator/image@sha256:654321'
@@ -397,7 +397,7 @@ def test_adjust_operator_bundle_ordered(mock_gil, mock_aca, mock_gri, mock_apns,
         operator='namespace/reponame',
         image='-rhel-8-final',
         ref='@sha256:654321',
-        related_name=f'operator/image-{image_digest}-annotation',
+        related_name=f'image-{image_digest}-annotation',
         related_ref='@sha256:654321',
     )
     mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', annotations)
@@ -405,10 +405,10 @@ def test_adjust_operator_bundle_ordered(mock_gil, mock_aca, mock_gri, mock_apns,
 
     expected_calls = [
         call.mock_gpa(mock.ANY),
+        call.mock_gri(mock.ANY),
+        call.mock_gri(mock.ANY),
         call.mock_aca(mock.ANY, 'amqstreams', annotations),
         call.mock_apns(mock.ANY, '-cmp'),
-        call.mock_gri(mock.ANY),
-        call.mock_gri(mock.ANY),
         call.mock_gil(mock.ANY),
         call.mock_gil(mock.ANY),
         call.mock_gil(mock.ANY),
@@ -849,3 +849,204 @@ def test_replace_image_name_from_labels_invalid_labels(mock_gil, tmpdir):
         build_regenerate_bundle._replace_image_name_from_labels(
             bundle_metadata, '{name}-original-{unknown_label}'
         )
+
+
+@pytest.mark.parametrize(
+    'original_image, eclosure_namespace, expected_image',
+    (
+        ('/image', 'company-pending', 'operator----image'),
+        ('/image/foo/bar', 'operator', 'image----foo----bar'),
+        ('/image', 'operator', 'image'),
+    ),
+)
+def test_apply_repo_enclosure(original_image, eclosure_namespace, expected_image, tmpdir):
+    manifests_dir = tmpdir.mkdir('manifests')
+    csv1 = manifests_dir.join('1.clusterserviceversion.yaml')
+    csv_template = textwrap.dedent(
+        """\
+        apiVersion: operators.example.com/v1
+        kind: ClusterServiceVersion
+        metadata:
+          name: amqstreams.v1.0.0
+          namespace: placeholder
+          annotations:
+            containerImage: {registry}/{operator}{image}{ref}
+        """
+    )
+    image_digest = '654321'
+    csv_related_images_template = csv_template + textwrap.dedent(
+        """\
+        spec:
+          relatedImages:
+          - name: {related_name}
+            image: {registry}/{operator}{image}{related_ref}
+        """
+    )
+    csv1.write(
+        csv_related_images_template.format(
+            registry='quay.io',
+            operator='operator',
+            image=original_image,
+            ref=':v1',
+            related_name=f'image-{image_digest}-annotation',
+            related_ref='@sha256:749327',
+        )
+    )
+    operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
+    bundle_metadata = build_regenerate_bundle._get_bundle_metadata(
+        operator_manifest, False, perform_sanity_checks=False
+    )
+    build_regenerate_bundle._apply_repo_enclosure(bundle_metadata, eclosure_namespace, '----')
+    assert csv1.read_text('utf-8') == csv_related_images_template.format(
+        registry='quay.io',
+        ref=':v1',
+        related_name='image-654321-annotation',
+        related_ref='@sha256:749327',
+        operator=f'{eclosure_namespace}/',
+        image=expected_image,
+    )
+
+
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_labels')
+def test_adjust_operator_bundle_duplicate_customizations_ordered(
+    mock_gil, mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir
+):
+    manager = MagicMock()
+    manager.attach_mock(mock_gpa, 'mock_gpa')
+    manager.attach_mock(mock_apns, 'mock_apns')
+    manager.attach_mock(mock_gri, 'mock_gri')
+    manager.attach_mock(mock_aca, 'mock_aca')
+    manager.attach_mock(mock_gil, 'mock_gil')
+
+    annotations = {
+        'marketplace.company.io/remote-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+        ),
+        'marketplace.company.io/support-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/support'
+        ),
+    }
+
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
+    mock_apns.return_value = (
+        'amqstreams',
+        {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
+    )
+    mock_gil.return_value = {'name': 'namespace/reponame', 'version': 'rhel-8'}
+    manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
+    csv1 = manifests_dir.join('1.clusterserviceversion.yaml')
+    csv2 = manifests_dir.join('2.clusterserviceversion.yaml')
+    csv3 = manifests_dir.join('3.clusterserviceversion.yaml')
+
+    # NOTE: The OperatorManifest class is capable of modifying pull specs found in
+    # various locations within the CSV file. Since IIB relies on this class to do
+    # such modifications, this test only verifies that at least one of the locations
+    # is being handled properly. This is to ensure IIB is using OperatorManifest
+    # correctly.
+    csv_template = textwrap.dedent(
+        """\
+        apiVersion: operators.example.com/v1
+        kind: ClusterServiceVersion
+        metadata:
+          name: amqstreams.v1.0.0
+          namespace: placeholder
+          annotations:
+            containerImage: {registry}/{operator}{image}{ref}
+        """
+    )
+    image_digest = '654321'
+    csv_related_images_template = csv_template + textwrap.dedent(
+        """\
+        spec:
+          relatedImages:
+          - name: {related_name}
+            image: {registry}/{operator}{image}{related_ref}
+        """
+    )
+    csv1.write(
+        csv_related_images_template.format(
+            registry='quay.io',
+            operator='operator',
+            image='/image',
+            ref=':v1',
+            related_name=f'image-{image_digest}-annotation',
+            related_ref='@sha256:749327',
+        )
+    )
+    csv2.write(
+        csv_template.format(
+            registry='quay.io', operator='operator', image='/image', ref='@sha256:654321'
+        )
+    )
+    csv3.write(
+        csv_template.format(
+            registry='registry.access.company.com', operator='operator', image='/image', ref=':v2'
+        )
+    )
+
+    def get_resolved_image(image):
+        return {
+            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
+            'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
+            'registry.access.company.com/operator/image:v2': (
+                'registry.access.company.com/operator/image@sha256:654321'
+            ),
+        }[image]
+
+    mock_gri.side_effect = get_resolved_image
+
+    labels = build_regenerate_bundle._adjust_operator_bundle(
+        str(manifests_dir), str(metadata_dir), 'company-managed'
+    )
+
+    assert labels == {
+        'com.redhat.iib.pinned': 'true',
+        'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp',
+    }
+    # Verify that the relatedImages are not modified if they were already set and that images were
+    # not pinned
+    assert csv1.read_text('utf-8') == csv_related_images_template.format(
+        registry='quaaay.com',
+        operator='company-pending/',
+        image='namespace----reponame-rhel-8',
+        ref=':v1',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:749327',
+    )
+    assert csv2.read_text('utf-8') == csv_related_images_template.format(
+        registry='quaaay.com',
+        operator='company-pending/',
+        image='namespace----reponame-rhel-8',
+        ref='@sha256:654321',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
+    )
+    assert csv3.read_text('utf-8') == csv_related_images_template.format(
+        registry='quaaay.com',
+        operator='company-pending/',
+        image='namespace----reponame-rhel-8',
+        ref='@sha256:654321',
+        related_name=f'image-{image_digest}-annotation',
+        related_ref='@sha256:654321',
+    )
+    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', annotations)
+    assert mock_gil.call_count == 3
+
+    expected_calls = [
+        call.mock_gpa(mock.ANY),
+        call.mock_gri(mock.ANY),
+        call.mock_gri(mock.ANY),
+        call.mock_apns(mock.ANY, '-cmp'),
+        call.mock_aca(mock.ANY, 'amqstreams', annotations),
+        call.mock_gil(mock.ANY),
+        call.mock_gil(mock.ANY),
+        call.mock_gil(mock.ANY),
+    ]
+    assert manager.mock_calls == expected_calls

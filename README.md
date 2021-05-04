@@ -273,6 +273,10 @@ The custom configuration options for the Celery workers are listed below:
   * The `image_name_from_labels` customization type is a dictionary where the key `template`
     value is a string which specifies a combination of label names in curly braces which will be
     substituted with the actual label values from the bundle image.
+  * The `enclose_repo` customization type is a dictionary where the key `enclosure_glue` value
+    is a string which specifies the glue to replace ``/`` (forward slashes) in the pull spec
+    name and repo. The key `namespace` value is also a string which specifies the new namespace
+    for pull specs of the ClusterServiceVersion files.
 
   Here is an example that ties this all together:
 
@@ -298,6 +302,7 @@ The custom configuration options for the Celery workers are listed below:
                 },
             },
             {'type': 'image_name_from_labels', 'template': '{name}-{version}-final'},
+            {'type': 'enclose_repo', 'enclosure_glue': '----', 'namespace': "company-pending"},
         ]
     }
   ```
