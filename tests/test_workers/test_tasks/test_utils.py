@@ -886,10 +886,9 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
     mock_gia.return_value = {'amd64'}
     rv = utils.prepare_request_for_build(
         1,
-        utils.RequestConfigAddRm(
+        utils.RequestConfigMerge(
             _binary_image='binary-image:tag',
-            from_index=None,
-            overwrite_from_index_token=None,
+            overwrite_target_index_token=None,
             source_from_index='some_source_index:tag',
             target_index='some_target_index:tag',
         ),
@@ -903,8 +902,8 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
         'from_index_resolved': None,
         'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
-        'source_from_index_resolved': 'some_resolved_image@sha256',
         'source_ocp_version': 'v4.5',
+        'source_from_index_resolved': 'some_resolved_image@sha256',
         'target_index_resolved': 'some_other_image@sha256',
         'target_ocp_version': 'v4.6',
     }

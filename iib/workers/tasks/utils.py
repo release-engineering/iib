@@ -65,13 +65,7 @@ class RequestConfig:
         identify the appropriate ``binary_image`` to use.
     """
 
-    _attrs = [
-        "_binary_image",
-        "distribution_scope",
-        "source_from_index",
-        "target_index",
-        "binary_image_config",
-    ]
+    _attrs = ["_binary_image", "distribution_scope", "binary_image_config"]
     __slots__ = _attrs
 
     def __init__(self, **kwargs):
@@ -633,7 +627,10 @@ def gather_index_image_arches(build_request_config, index_image_infos):
     :return: set of architecture of all index images
     :rtype: set
     """
-    arches = set(build_request_config.add_arches or [])
+    arches = set(
+        (build_request_config.add_arches if hasattr(build_request_config, 'add_arches') else [])
+        or []
+    )
     for info in index_image_infos.values():
         arches |= set(info['arches'])
 
@@ -824,7 +821,10 @@ def prepare_request_for_build(request_id, build_request_config):
     # and 'Rm' requests, but use the distribution_scope of the target_index as the resolved
     # distribution scope for `merge-index-image` requests.
     resolved_distribution_scope = index_info['from_index']['resolved_distribution_scope']
-    if build_request_config.source_from_index:
+    if (
+        hasattr(build_request_config, "source_from_index")
+        and build_request_config.source_from_index
+    ):
         resolved_distribution_scope = index_info['target_index']['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(
