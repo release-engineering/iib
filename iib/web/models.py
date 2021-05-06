@@ -1444,10 +1444,6 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
     __tablename__ = 'request_create_empty_index'
 
     id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
-    from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
-    from_index = db.relationship('Image', foreign_keys=[from_index_id], uselist=False)
-    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
-    binary_image = db.relationship('Image', foreign_keys=[binary_image_id], uselist=False)
     _labels = db.Column('labels', db.Text, nullable=True)
 
     __mapper_args__ = {
@@ -1486,15 +1482,19 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         labels = request_kwargs.pop('labels', {})
         if not isinstance(labels, dict):
             raise ValidationError('The value of "labels" must be a JSON object')
+        for key, value in labels.items():
+            if not (isinstance(key, str) or isinstance(value, str)):
+                raise ValidationError(f'The key and value of {key} must be a string')
 
         for arg in (
             'add_arches',
             'overwrite_from_index',
             'overwrite_from_index_token',
-            'distribution_scope',
         ):
             if arg in request_kwargs:
-                raise ValidationError(f'The {arg} is not allowed to use.')
+                raise ValidationError(
+                    f'The "{arg}" arg is invalid for the create-empty-index endpoint.'
+                )
 
         cls._from_json(
             request_kwargs,
@@ -1518,6 +1518,12 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv = super().to_json(verbose=verbose)
         rv.update(self.get_common_index_image_json())
 
+        rv.pop('bundles')
+        rv.pop('bundle_mapping')
+        rv.pop('organization')
+        rv.pop('deprecation_list')
+        rv.pop('removed_operators')
+
         rv['labels'] = self.labels
 
         return rv
@@ -1532,5 +1538,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
         rv.update('labels')
+
+        rv.remove('from_bundle_image_resolved')
 
         return rv
