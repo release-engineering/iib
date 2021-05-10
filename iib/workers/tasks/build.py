@@ -1056,6 +1056,7 @@ def handle_add_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
     present_bundles = []
+    present_bundles_pull_spec = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
             msg = 'Checking if bundles are already present in index image'
