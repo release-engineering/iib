@@ -122,6 +122,7 @@ class RequestConfigAddRm(RequestConfig):
         "from_index",
         "add_arches",
         "bundles",
+        "operators",
     ]
     __slots__ = _attrs
 
