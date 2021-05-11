@@ -253,8 +253,8 @@ markupsafe==1.1.1 \
     # via
     #   jinja2
     #   mako
-operator-manifest==0.0.4 \
-    --hash=sha256:787dbeb52ef0f39f67970c49cc1b700f857661108e15042f18d13665e7a551f6
+operator-manifest==0.0.5 \
+    --hash=sha256:8e1dfc47fc133947ed575f947f0d51d7c5efb4beb0f5de5202214bea257c26b5
     # via -r requirements-test.in
 packaging==20.1 \
     --hash=sha256:170748228214b70b672c581a3dd610ee51f733018650740e98c7df862a583f73 \
