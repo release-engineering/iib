@@ -36,6 +36,10 @@ yaml = ruamel.yaml.YAML()
 # metadata.annotations."alm-examples" in a CSV file.
 # The default value is 80. Set it to a more forgiving higher number to avoid issues
 yaml.width = 200
+# ruamel will also cause issues when normalizing a YAML object that contains
+# a nested JSON object when it does not preserve quotes. Thus, it produces
+# invalid YAML. Let's prevent this from happening at all.
+yaml.preserve_quotes = True
 log = logging.getLogger(__name__)
 
 
