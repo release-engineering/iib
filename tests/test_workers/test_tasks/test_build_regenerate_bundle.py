@@ -595,6 +595,30 @@ def test_apply_package_name_suffix(
     assert annotations_yaml_content['annotations'][annotation_key] == expected_package
 
 
+def test_annotations_with_preserved_quotes(tmpdir):
+    metadata_dir = tmpdir.mkdir('metadata')
+    annotations_yaml = metadata_dir.join('annotations.yaml')
+    annotations_yaml.write(
+        textwrap.dedent(
+            '''\
+            annotations:
+              operators.operatorframework.io.bundle.package.v1: amq-streams
+              spam: "spam:maps"
+            '''
+        )
+    )
+
+    build_regenerate_bundle._apply_package_name_suffix(str(metadata_dir), '-cmp')
+    annotations_yaml_content = annotations_yaml.read()
+    assert annotations_yaml_content == textwrap.dedent(
+        '''\
+        annotations:
+          operators.operatorframework.io.bundle.package.v1: amq-streams-cmp
+          spam: "spam:maps"
+        '''
+    )
+
+
 def test_apply_package_name_suffix_missing_annotations_yaml(tmpdir):
     metadata_dir = tmpdir.mkdir('metadata')
 
