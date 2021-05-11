@@ -5,13 +5,13 @@ from unittest.mock import call, MagicMock
 
 from operator_manifest.operator import OperatorManifest
 import pytest
-import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build_regenerate_bundle
 
 
-yaml = ruamel.yaml.YAML()
+# Re-use the yaml instance to ensure configuration is also used in tests
+yaml = build_regenerate_bundle.yaml
 
 
 @pytest.mark.parametrize(
