@@ -7,13 +7,9 @@ import textwrap
 from unittest import mock
 
 import pytest
-import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build
-
-
-yaml = ruamel.yaml.YAML()
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
