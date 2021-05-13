@@ -7,6 +7,7 @@ import pytest
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build_merge_index_image
+from iib.workers.tasks.utils import RequestConfigMerge
 
 
 @pytest.mark.parametrize(
@@ -28,7 +29,7 @@ from iib.workers.tasks import build_merge_index_image
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles', return_value=[[], []])
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build_merge_index_image._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
@@ -89,12 +90,14 @@ def test_handle_merge_request(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         1,
-        binary_image,
-        overwrite_from_index_token=None,
-        source_from_index='source-from-index:1.0',
-        target_index=target_index,
-        distribution_scope='stage',
-        binary_image_config=binary_image_config,
+        RequestConfigMerge(
+            _binary_image=binary_image,
+            overwrite_target_index_token=None,
+            source_from_index='source-from-index:1.0',
+            target_index=target_index,
+            distribution_scope='stage',
+            binary_image_config=binary_image_config,
+        ),
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     if target_index:
@@ -123,9 +126,10 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles', return_value=[[], []])
+@mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build_merge_index_image._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 def test_handle_merge_request_no_deprecate(
@@ -134,6 +138,7 @@ def test_handle_merge_request_no_deprecate(
     mock_prfb,
     mock_uiibs,
     mock_srs,
+    mock_srs2,
     mock_gpb,
     mock_abmis,
     mock_gbfdl,
@@ -168,12 +173,14 @@ def test_handle_merge_request_no_deprecate(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         1,
-        'binary-image:1.0',
-        binary_image_config=None,
-        overwrite_from_index_token=None,
-        source_from_index='source-from-index:1.0',
-        target_index='target-from-index:1.0',
-        distribution_scope='stage',
+        RequestConfigMerge(
+            _binary_image='binary-image:1.0',
+            binary_image_config=None,
+            overwrite_target_index_token=None,
+            source_from_index='source-from-index:1.0',
+            target_index='target-from-index:1.0',
+            distribution_scope='stage',
+        ),
     )
     mock_uiibs.assert_called_once_with(1, prebuild_info)
     assert mock_gpb.call_count == 2

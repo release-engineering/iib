@@ -11,7 +11,6 @@ from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.tasks.build import (
     _cleanup,
-    _get_image_arches,
     get_image_label,
     _build_image,
     _push_image,
@@ -25,6 +24,7 @@ from iib.workers.tasks.utils import (
     podman_pull,
     request_logger,
     set_registry_auths,
+    get_image_arches,
 )
 
 
@@ -65,7 +65,7 @@ def handle_regenerate_bundle_request(
     with set_registry_auths(registry_auths):
         from_bundle_image_resolved = get_resolved_image(from_bundle_image)
 
-        arches = _get_image_arches(from_bundle_image_resolved)
+        arches = get_image_arches(from_bundle_image_resolved)
         if not arches:
             raise IIBError(
                 'No arches were found in the resolved from_bundle_image '

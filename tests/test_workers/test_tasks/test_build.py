@@ -10,7 +10,7 @@ import pytest
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import build
-
+from iib.workers.tasks.utils import RequestConfigAddRm
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd):
@@ -155,43 +155,6 @@ def test_get_local_pull_spec(request_id, arch):
     assert re.match(f'.+:{request_id}-{arch}', rv)
 
 
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_get_image_arches(mock_si):
-    mock_si.return_value = {
-        'mediaType': 'application/vnd.docker.distribution.manifest.list.v2+json',
-        'manifests': [
-            {'platform': {'architecture': 'amd64'}},
-            {'platform': {'architecture': 's390x'}},
-        ],
-    }
-    rv = build._get_image_arches('image:latest')
-    assert rv == {'amd64', 's390x'}
-
-
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_get_image_arches_manifest(mock_si):
-    mock_si.side_effect = [
-        {'mediaType': 'application/vnd.docker.distribution.manifest.v2+json'},
-        {'architecture': 'amd64'},
-    ]
-    rv = build._get_image_arches('image:latest')
-    assert rv == {'amd64'}
-
-
-@mock.patch('iib.workers.tasks.build.skopeo_inspect')
-def test_get_image_arches_not_manifest_list(mock_si):
-    mock_si.return_value = {'mediaType': 'application/vnd.docker.distribution.notmanifest.v2+json'}
-    with pytest.raises(IIBError, match='.+is neither a v2 manifest list nor a v2 manifest'):
-        build._get_image_arches('image:latest')
-
-
-@pytest.mark.parametrize('label, expected', (('some_label', 'value'), ('not_there', None)))
-@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
-def test_get_image_label(mock_si, label, expected):
-    mock_si.return_value = {'config': {'Labels': {'some_label': 'value'}}}
-    assert build.get_image_label('some-image:latest', label) == expected
-
-
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
@@ -324,197 +287,6 @@ def test_overwrite_from_index(
     mock_vii.assert_called_once_with(resolved_from_index, from_index, overwrite_from_index_token)
 
 
-@pytest.mark.parametrize(
-    'add_arches, from_index, from_index_arches, bundles, binary_image,'
-    'expected_bundle_mapping, distribution_scope, resolved_distribution_scope, binary_image_config',
-    (
-        ([], 'some-index:latest', {'amd64'}, None, 'binary-image:latest', {}, None, 'prod', {}),
-        (['amd64', 's390x'], None, set(), None, 'binary-image:latest', {}, None, 'prod', {}),
-        (
-            ['amd64'],
-            'some-index:latest',
-            {'amd64'},
-            None,
-            'binary-image:latest',
-            {},
-            None,
-            'prod',
-            {},
-        ),
-        (
-            ['amd64'],
-            None,
-            set(),
-            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
-            None,
-            {
-                'some-bundle': ['quay.io/some-bundle:v1'],
-                'some-bundle2': ['quay.io/some-bundle2:v1'],
-            },
-            None,
-            'prod',
-            {'prod': {'v4.5': 'binary-image:prod'}},
-        ),
-        (
-            ['amd64'],
-            'some-index:latest',
-            set(),
-            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
-            'binary-image:latest',
-            {
-                'some-bundle': ['quay.io/some-bundle:v1'],
-                'some-bundle2': ['quay.io/some-bundle2:v1'],
-            },
-            None,
-            'prod',
-            {},
-        ),
-        (
-            ['amd64'],
-            'some-index:latest',
-            set(),
-            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
-            'binary-image:latest',
-            {
-                'some-bundle': ['quay.io/some-bundle:v1'],
-                'some-bundle2': ['quay.io/some-bundle2:v1'],
-            },
-            None,
-            'prod',
-            {},
-        ),
-    ),
-)
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
-@mock.patch('iib.workers.tasks.build.get_image_label')
-@mock.patch('iib.workers.tasks.build.update_request')
-def test_prepare_request_for_build(
-    mock_ur,
-    mock_gil,
-    mock_gia,
-    mock_gri,
-    mock_srs,
-    add_arches,
-    from_index,
-    from_index_arches,
-    bundles,
-    binary_image,
-    expected_bundle_mapping,
-    distribution_scope,
-    resolved_distribution_scope,
-    binary_image_config,
-):
-    binary_image_resolved = 'binary-image@sha256:abcdef'
-    from_index_resolved = None
-    expected_arches = set(add_arches) | from_index_arches
-    expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
-    gil_side_effect = []
-    ocp_version = 'v4.5'
-    if expected_bundle_mapping:
-        expected_payload_keys.add('bundle_mapping')
-    if from_index:
-        from_index_name = from_index.split(':', 1)[0]
-        from_index_resolved = f'{from_index_name}@sha256:bcdefg'
-        index_resolved = f'{from_index_name}@sha256:abcdef1234'
-        mock_gri.side_effect = [from_index_resolved, binary_image_resolved, index_resolved]
-        mock_gia.side_effect = [from_index_arches, expected_arches]
-        expected_payload_keys.add('from_index_resolved')
-        gil_side_effect = ['v4.6', resolved_distribution_scope]
-        ocp_version = 'v4.6'
-    else:
-        index_resolved = f'index-image@sha256:abcdef1234'
-        mock_gri.side_effect = [binary_image_resolved, index_resolved]
-        mock_gia.side_effect = [expected_arches]
-        gil_side_effect = []
-
-    if bundles:
-        bundle_side_effects = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
-        gil_side_effect.extend(bundle_side_effects)
-
-    mock_gil.side_effect = gil_side_effect
-    rv = build._prepare_request_for_build(
-        1,
-        binary_image,
-        from_index,
-        None,
-        add_arches,
-        bundles,
-        distribution_scope,
-        binary_image_config=binary_image_config,
-    )
-
-    if not binary_image:
-        binary_image = 'binary-image:prod'
-
-    assert rv == {
-        'arches': expected_arches,
-        'binary_image': binary_image,
-        'binary_image_resolved': binary_image_resolved,
-        'bundle_mapping': expected_bundle_mapping,
-        'from_index_resolved': from_index_resolved,
-        'ocp_version': ocp_version,
-        # want to verify that the output is always lower cased.
-        'distribution_scope': resolved_distribution_scope.lower(),
-        'source_from_index_resolved': None,
-        'source_ocp_version': 'v4.5',
-        'target_index_resolved': None,
-        'target_ocp_version': 'v4.6',
-    }
-
-
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_index_image_info')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
-def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii, mock_srs):
-    from_index_image_info = {
-        'resolved_from_index': None,
-        'ocp_version': 'v4.5',
-        'arches': set(),
-        'resolved_distribution_scope': 'prod',
-    }
-    source_index_image_info = {
-        'resolved_from_index': 'some_resolved_image@sha256',
-        'ocp_version': 'v4.5',
-        'arches': {'amd64'},
-        'resolved_distribution_scope': 'stage',
-    }
-
-    target_index_info = {
-        'resolved_from_index': 'some_other_image@sha256',
-        'ocp_version': 'v4.6',
-        'arches': {'amd64'},
-        'resolved_distribution_scope': 'stage',
-    }
-    mock_giii.side_effect = [from_index_image_info, source_index_image_info, target_index_info]
-    mock_gri.return_value = 'binary-image@sha256:12345'
-    mock_gia.return_value = {'amd64'}
-    rv = build._prepare_request_for_build(
-        1,
-        'binary-image:tag',
-        None,
-        None,
-        source_from_index='some_source_index:tag',
-        target_index='some_target_index:tag',
-    )
-
-    assert rv == {
-        'arches': {'amd64'},
-        'binary_image': 'binary-image:tag',
-        'binary_image_resolved': 'binary-image@sha256:12345',
-        'bundle_mapping': {},
-        'from_index_resolved': None,
-        'ocp_version': 'v4.5',
-        'distribution_scope': 'stage',
-        'source_from_index_resolved': 'some_resolved_image@sha256',
-        'source_ocp_version': 'v4.5',
-        'target_index_resolved': 'some_other_image@sha256',
-        'target_ocp_version': 'v4.6',
-    }
-
-
 @pytest.mark.parametrize('bundle_mapping', (True, False))
 @pytest.mark.parametrize('from_index_resolved', (True, False))
 @mock.patch('iib.workers.tasks.build.update_request')
@@ -545,32 +317,6 @@ def test_update_index_image_build_state(mock_ur, bundle_mapping, from_index_reso
     request_id = 1
     build._update_index_image_build_state(request_id, prebuild_info)
     mock_ur.assert_called_once_with(request_id, expected_payload, mock.ANY)
-
-
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
-def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
-    mock_gia.side_effect = [{'amd64'}]
-
-    with pytest.raises(IIBError, match='No arches.+'):
-        build._prepare_request_for_build(1, 'binary-image:latest')
-
-
-def test_get_binary_image_config_no_config_val():
-    with pytest.raises(IIBError, match='IIB does not have a configured binary_image.+'):
-        build.get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
-
-
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build.get_resolved_image')
-@mock.patch('iib.workers.tasks.build._get_image_arches')
-def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock_srs):
-    mock_gia.side_effect = [{'amd64'}]
-
-    expected = 'The binary image is not available for the following arches.+'
-    with pytest.raises(IIBError, match=expected):
-        build._prepare_request_for_build(1, 'binary-image:latest', add_arches=['s390x'])
 
 
 @pytest.mark.parametrize('schema_version', (1, 2))
@@ -647,8 +393,8 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._verify_labels')
-@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
@@ -656,6 +402,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build.export_legacy_packages')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
@@ -675,6 +422,7 @@ def test_handle_add_request(
     mock_glsp,
     mock_capml,
     mock_srs,
+    mock_srs2,
     mock_elp,
     mock_uiips,
     mock_vii,
@@ -749,13 +497,15 @@ def test_handle_add_request(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        binary_image,
-        'from-index:latest',
-        None,
-        ['s390x'],
-        ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
-        None,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            _binary_image=binary_image,
+            from_index='from-index:latest',
+            overwrite_from_index_token=None,
+            add_arches=['s390x'],
+            bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+            distribution_scope=None,
+            binary_image_config=binary_image_config,
+        ),
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count
@@ -806,8 +556,8 @@ def test_handle_add_request(
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._verify_labels')
-@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
@@ -906,13 +656,15 @@ def test_handle_add_request_check_index_label_behavior(
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        'binary-image:latest',
-        'from-index:latest',
-        None,
-        ['s390x'],
-        ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
-        None,
-        binary_image_config=binary_image_config,
+        RequestConfigAddRm(
+            _binary_image='binary-image:latest',
+            from_index='from-index:latest',
+            overwrite_from_index_token=None,
+            add_arches=['s390x'],
+            bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+            distribution_scope=None,
+            binary_image_config=binary_image_config,
+        ),
     )
     mock_dep_b.assert_called_once_with(
         ['random_bundle@sha', 'some-deprecation-bundle@sha'],
@@ -929,10 +681,13 @@ def test_handle_add_request_check_index_label_behavior(
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build._verify_labels')
+@mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
-def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs, mock_cleanup):
+def test_handle_add_request_gating_failure(
+    mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
+):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
     mock_grb.return_value = ['some-bundle@sha']
@@ -956,7 +711,7 @@ def test_handle_add_request_gating_failure(mock_grb, mock_vl, mock_gb, mock_srs,
             greenwave_config,
         )
     mock_cleanup.assert_called_once_with()
-    mock_srs.assert_called_once()
+    mock_srs2.assert_called_once()
     mock_vl.assert_called_once()
     mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
 
@@ -990,8 +745,8 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._verify_labels')
-@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.utils.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
@@ -1070,12 +825,13 @@ def test_handle_add_request_backport_failure_no_overwrite(
 
 @pytest.mark.parametrize('binary_image', ('binary-image:latest', None))
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build._prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build._opm_index_rm')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
@@ -1085,6 +841,7 @@ def test_handle_rm_request(
     mock_uiips,
     mock_capml,
     mock_srs,
+    mock_srs2,
     mock_vii,
     mock_pi,
     mock_bi,
@@ -1115,12 +872,14 @@ def test_handle_rm_request(
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
-        binary_image,
-        'from-index:latest',
-        None,
-        None,
-        binary_image_config=binary_image_config,
-        distribution_scope=None,
+        RequestConfigAddRm(
+            _binary_image=binary_image,
+            from_index='from-index:latest',
+            overwrite_from_index_token=None,
+            add_arches=None,
+            binary_image_config=binary_image_config,
+            distribution_scope=None,
+        ),
     )
     mock_oir.assert_called_once()
     assert mock_alti.call_count == 2
@@ -1145,31 +904,6 @@ def test_verify_index_image_failure(mock_gri, mock_srt):
         build._verify_index_image('image:doesnt_work', 'unresolved_image', 'user:pass')
 
     mock_srt.assert_called_once_with('user:pass', 'unresolved_image')
-
-
-@pytest.mark.parametrize(
-    'iib_required_labels', ({'com.redhat.delivery.operator.bundle': 'true'}, {})
-)
-@mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.get_image_labels')
-def test_verify_labels(mock_gil, mock_gwc, iib_required_labels):
-    mock_gwc.return_value = {'iib_required_labels': iib_required_labels}
-    mock_gil.return_value = {'com.redhat.delivery.operator.bundle': 'true'}
-    build._verify_labels(['some-bundle:v1.0'])
-
-    if iib_required_labels:
-        mock_gil.assert_called_once()
-    else:
-        mock_gil.assert_not_called()
-
-
-@mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('iib.workers.tasks.build.get_image_labels')
-def test_verify_labels_fails(mock_gil, mock_gwc):
-    mock_gwc.return_value = {'iib_required_labels': {'com.redhat.delivery.operator.bundle': 'true'}}
-    mock_gil.return_value = {'lunch': 'pizza'}
-    with pytest.raises(IIBError, match='som'):
-        build._verify_labels(['some-bundle:v1.0'])
 
 
 @pytest.mark.parametrize('fail_rm', (True, False))
@@ -1237,35 +971,6 @@ def test_add_label_to_index(tmpdir):
 
     expected = dockerfile_txt + '\nLABEL com.redhat.index.delivery.version="v4.5"\n'
     assert operator_dir.join('Dockerfile').read_text('utf-8') == expected
-
-
-@pytest.mark.parametrize(
-    'resolved_distribution_scope, distribution_scope, output, raise_exception',
-    (
-        ('prod', 'prod', 'prod', False),
-        ('prod', 'stage', 'stage', False),
-        ('prod', 'dev', 'dev', False),
-        ('stage', 'stage', 'stage', False),
-        ('stage', 'dev', 'dev', False),
-        ('stage', None, 'stage', False),
-        ('stage', 'prod', 'prod', True),
-        ('dev', 'stage', 'prod', True),
-        ('dev', 'prod', 'prod', True),
-    ),
-)
-def test_validate_distribution_scope(
-    resolved_distribution_scope, distribution_scope, output, raise_exception
-):
-    if raise_exception:
-        expected = f'Cannot set "distribution_scope" to {distribution_scope.lower()} because from'
-        f'index is already set to {resolved_distribution_scope.lower()}'
-        with pytest.raises(IIBError, match=expected):
-            build._validate_distribution_scope(resolved_distribution_scope, distribution_scope)
-    else:
-        assert (
-            build._validate_distribution_scope(resolved_distribution_scope, distribution_scope)
-            == output
-        )
 
 
 def test_get_missing_bundles_no_match():
