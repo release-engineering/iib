@@ -12,6 +12,7 @@ from iib.exceptions import IIBError
 from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
 
+
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd):
     build._build_image('/some/dir', 'some.Dockerfile', 3, 'amd64')
