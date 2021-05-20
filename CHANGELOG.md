@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.0.0
+- fixed use of token when inspecting source and target indexes in merge-index-image endpoint
+- added support for substitutes-for functionality supported in OPM 1.17.0
+- upgraded py from 1.9.0 to 1.10.0
+- changed format of iib_organization_customizations to make it more generic
+- fixed bug to re-add labels to indexes if deprecation is run in add requests
+- upgraded pytest from 6.2.3 to 6.2.4
+- fixed a bug where a variable isn't assigned in handle_add_request
+- fixed bug to preserve double quotes when parsing YAML files in regenerate-bundle
+- added support for image_name_from_labels and enclose_repo customizations in regenerate-bundle
+
 ## 3.11.2
 - fixed bug to filter unique bundles from listBundles response
 - added support for private registry pull secrets to regenerate bundle requests
