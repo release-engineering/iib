@@ -63,8 +63,8 @@ def _add_bundles_missing_in_source(
     :param str arch: the architecture to build this image for.
     :param str ocp_version: ocp version which will be added as a label to the image.
     :param str overwrite_target_index_token: the token used for overwriting the input
-        ``source_from_index`` image. This is required for non-privileged users to use
-        ``overwrite_target_index``. The format of the token must be in the format "user:password".
+        ``source_from_index`` image. This is required to use ``overwrite_target_index``.
+        The format of the token must be in the format "user:password".
     :return: bundles which were added to the index image.
     :rtype: list
     """
@@ -165,8 +165,8 @@ def handle_merge_request(
     :param bool overwrite_target_index: if True, overwrite the input ``target_index`` with
         the built index image.
     :param str overwrite_target_index_token: the token used for overwriting the input
-        ``target_index`` image. This is required for non-privileged users to use
-        ``overwrite_target_index``. The format of the token must be in the format "user:password".
+        ``target_index`` image. This is required to use ``overwrite_target_index``.
+        The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
     :raises IIBError: if the index image merge fails.

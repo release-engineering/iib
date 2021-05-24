@@ -742,15 +742,13 @@ components:
           type: boolean
           description: >
             Overwrites the input from_index image with the built index image. This can only be
-            performed by privileged users unless overwrite_from_index_token is also provided.
+            performed when overwrite_from_index_token is provided.
           default: false
         overwrite_from_index_token:
           type: string
           description: >
             The token used for reading and overwriting the input from_index image. This is required
-            for non-privileged users to use overwrite_from_index. It's also useful for dealing with
-            index images that IIB does not have access to. The format of the token is in the format
-            "user:password".
+            to use overwrite_from_index. The format of the token is in the format "user:password".
           example: token
         distribution_scope:
           description: >
@@ -796,14 +794,13 @@ components:
           type: boolean
           description: >
             Overwrites the input from_index image with the built index image. This can only be
-            performed by privileged users unless overwrite_from_index_token is also provided.
+            performed when overwrite_from_index_token is provided.
           default: false
         overwrite_from_index_token:
           type: string
           description: >
-            The token used for overwriting the input from_index image. This is required for
-            non-privileged users to use overwrite_from_index. The format of the token must be in
-            the format "user:password".
+            The token used for reading and overwriting the input from_index image. This is required
+            to use overwrite_from_index. The format of the token is in the format "user:password".
           example: token
         distribution_scope:
           description: >
@@ -902,16 +899,15 @@ components:
           type: boolean
           description: >
             Overwrites the input target_index image with the built index image. This can only
-            be performed by privileged users unless overwrite_target_index_token is also provided.
+            be performed when overwrite_target_index_token is provided.
           default: false
         overwrite_target_index_token:
           type: string
           description: >
             The token used for reading and overwriting the input target_index image. This is
-            required for non-privileged users to use overwrite_target_index. It's also useful for
-            dealing with index images that IIB does not have access to. The format of the token is
-            in the format "user:password". If token is required for accessing the index images,
-            then both of them have to be in the same repository.
+            required to use overwrite_target_index. The format of the token is in the format
+            "user:password". If token is required for accessing the index images, then both of
+            them have to be in the same repository.
           example: token
         distribution_scope:
           description: >

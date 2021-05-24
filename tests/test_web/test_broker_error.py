@@ -26,6 +26,7 @@ def test_catch_add_bundle_failure(mock_smfsc, mock_har, db, auth_env, client):
         'organization': 'org',
         'cnr_token': 'token',
         'overwrite_from_index': True,
+        'overwrite_from_index_token': 'some_token',
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)

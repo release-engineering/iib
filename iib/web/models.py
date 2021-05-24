@@ -776,11 +776,9 @@ class RequestIndexImageMixin:
         # Verify the user is authorized to use overwrite_from_index
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
-            privileged_users = current_app.config['IIB_PRIVILEGED_USERNAMES']
-            if overwrite and not overwrite_token and current_user.username not in privileged_users:
+            if overwrite and not overwrite_token:
                 raise Forbidden(
-                    'You must be a privileged user to set "overwrite_from_index" without'
-                    ' setting "overwrite_from_index_token"'
+                    'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
                 )
 
         # Validate add_arches are correctly provided
