@@ -11,7 +11,6 @@ class Config(object):
     # Additional loggers to set to the level defined in IIB_LOG_LEVEL
     IIB_ADDITIONAL_LOGGERS = []
     IIB_BINARY_IMAGE_CONFIG = {}
-    IIB_FORCE_OVERWRITE_FROM_INDEX = False
     IIB_GREENWAVE_CONFIG = {}
     IIB_LOG_FORMAT = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
@@ -22,7 +21,6 @@ class Config(object):
     IIB_MESSAGING_DURABLE = True
     IIB_MESSAGING_KEY = '/etc/iib/messaging.key'
     IIB_MESSAGING_TIMEOUT = 30
-    IIB_PRIVILEGED_USERNAMES = []
     IIB_REQUEST_LOGS_DIR = None
     IIB_REQUEST_LOGS_DAYS_TO_LIVE = 3
     IIB_USER_TO_QUEUE = {}
@@ -53,7 +51,6 @@ class TestingConfig(DevelopmentConfig):
     """The testing IIB Flask configuration."""
 
     DEBUG = True
-    IIB_PRIVILEGED_USERNAMES = ['tbrady@DOMAIN.LOCAL']
     IIB_WORKER_USERNAMES = ['worker@DOMAIN.LOCAL']
     # IMPORTANT: don't use in-memory sqlite. Alembic migrations will create a new
     # connection producing a new instance of the database which is deleted immediately

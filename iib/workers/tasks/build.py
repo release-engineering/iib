@@ -456,8 +456,8 @@ def _opm_index_add(
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
     :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
     :param str container_tool: the container tool to be used to operate on the index image
@@ -513,8 +513,8 @@ def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
     :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :raises IIBError: if the ``opm index rm`` command fails.
     """
     cmd = [
@@ -706,8 +706,8 @@ def _verify_index_image(
     :param str resolved_prebuild_from_index: resolved index image before starting the build
     :param str unresolved_from_index: unresolved index image provided as API input
     :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :raises IIBError: if the index image has changed since IIB build started.
     """
     with set_registry_token(overwrite_from_index_token, unresolved_from_index):
@@ -759,8 +759,8 @@ def handle_add_request(
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
     :param dict greenwave_config: the dict of config required to query Greenwave to gate bundles.
@@ -939,8 +939,8 @@ def handle_rm_request(
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_from_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
     :param dict binary_image_config: the dict of config required to identify the appropriate

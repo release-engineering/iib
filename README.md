@@ -154,8 +154,6 @@ The custom configuration options for the REST API are listed below:
   to another dictionary mapping ocp_version label to a binary image pull specification.
   This is useful in setting up customized binary image for different index image images thus
   reducing complexity for the end user. This defaults to `{}`.
-* `IIB_FORCE_OVERWRITE_FROM_INDEX` - a boolean that determines if privileged users should be forced
-  to have `overwrite_from_index` set to `True`. This defaults to `False`.
 * `IIB_GREENWAVE_CONFIG` - the mapping, `dict(<str>: dict(<str>:<str>))`, of celery task queues to
   another dictionary of [Greenwave](https://docs.pagure.org/greenwave/) query parameters to their
   values. This is useful in setting up customized gating for each queue. This defaults to `{}`. Use
@@ -165,8 +163,6 @@ The custom configuration options for the REST API are listed below:
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
 * `IIB_MAX_PER_PAGE` - the maximum number of build requests that can be shown on a single page.
   This defaults to `20`.
-* `IIB_PRIVILEGED_USERNAMES` - the list of users that can perform privileged actions such
-  as overwriting the input index image with the built index image. This defaults to `[]`.
 * `IIB_REQUEST_LOGS_DIR` - the directory to load the request specific log files. If `None`, per
   request log files information will not appear in the API response. This defaults to `None`.
 * `IIB_REQUEST_LOGS_DAYS_TO_LIVE` - the amount of days after which per request logs are considered

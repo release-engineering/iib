@@ -167,8 +167,8 @@ def deprecate_bundles(
     :param str binary_image: binary image to be used by the new index image.
     :param str from_index: index image, from which the bundles will be deprecated.
     :param str overwrite_target_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required for non-privileged users to use
-        ``overwrite_target_index``. The format of the token must be in the format "user:password".
+        ``from_index`` image. This is required to use ``overwrite_target_index``.
+        The format of the token must be in the format "user:password".
     :param str container_tool: the container tool to be used to operate on the index image
     """
     cmd = [

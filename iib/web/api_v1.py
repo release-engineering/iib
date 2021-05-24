@@ -245,31 +245,6 @@ def get_healthcheck():
     return flask.jsonify({'status': 'Health check OK'})
 
 
-def _should_force_overwrite():
-    """
-    Determine if the ``overwrite_from_index`` parameter should be forced.
-
-    This is for clients that require this functionality but do not currently use the
-    ``overwrite_from_index`` parameter already.
-
-    :return: the boolean that determines if the overwrite should be forced
-    :rtype: bool
-    """
-    # current_user.is_authenticated is only ever False when auth is disabled
-    if not current_user.is_authenticated:
-        return False
-    privileged_users = flask.current_app.config['IIB_PRIVILEGED_USERNAMES']
-    force_ovewrite = flask.current_app.config['IIB_FORCE_OVERWRITE_FROM_INDEX']
-
-    should_force = current_user.username in privileged_users and force_ovewrite
-    if should_force:
-        flask.current_app.logger.info(
-            'The "overwrite_from_index" parameter is being forced to True'
-        )
-
-    return should_force
-
-
 def _get_user_queue(serial=False):
     """
     Return the name of the celery task queue mapped to the current user.
@@ -319,7 +294,7 @@ def add_bundles():
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
+    overwrite_from_index = payload.get('overwrite_from_index')
     celery_queue = _get_user_queue(serial=overwrite_from_index)
     args = _get_add_args(payload, request, overwrite_from_index, celery_queue)
     safe_args = _get_safe_args(args, payload)
@@ -475,7 +450,7 @@ def rm_operators():
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_from_index = _should_force_overwrite() or payload.get('overwrite_from_index')
+    overwrite_from_index = payload.get('overwrite_from_index')
 
     args = _get_rm_args(payload, request, overwrite_from_index)
     safe_args = _get_safe_args(args, payload)
@@ -649,9 +624,7 @@ def add_rm_batch():
     for build_request, request in zip(payload['build_requests'], requests):
         request_jsons.append(request.to_json())
 
-        overwrite_from_index = _should_force_overwrite() or build_request.get(
-            'overwrite_from_index'
-        )
+        overwrite_from_index = build_request.get('overwrite_from_index')
         celery_queue = _get_user_queue(serial=overwrite_from_index)
         if isinstance(request, RequestAdd):
             args = _get_add_args(build_request, request, overwrite_from_index, celery_queue)
