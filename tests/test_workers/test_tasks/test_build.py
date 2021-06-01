@@ -199,18 +199,12 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
     mock_srt.assert_called_once_with('user:pass', from_index)
 
 
-@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_rm(mock_run_cmd, mock_srt, container_tool):
+def test_opm_index_rm(mock_run_cmd, mock_srt):
     operators = ['operator_1', 'operator_2']
     build._opm_index_rm(
-        '/tmp/somedir',
-        operators,
-        'binary-image:latest',
-        'some_index:latest',
-        'user:pass',
-        container_tool=container_tool,
+        '/tmp/somedir', operators, 'binary-image:latest', 'some_index:latest', 'user:pass'
     )
 
     mock_run_cmd.assert_called_once()
@@ -218,11 +212,6 @@ def test_opm_index_rm(mock_run_cmd, mock_srt, container_tool):
     assert opm_args[0:3] == ['opm', 'index', 'rm']
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
-    if container_tool:
-        assert '--container-tool' in opm_args
-        assert container_tool in opm_args
-    else:
-        assert '--container-tool' not in opm_args
     mock_srt.assert_called_once_with('user:pass', 'some_index:latest')
 
 
