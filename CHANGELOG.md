@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.0.1
+- removed support for privileged users
+- added usage of container-tool podman when calling OPM to add and remove operator bundles
+
 ## 4.0.0
 - fixed use of token when inspecting source and target indexes in merge-index-image endpoint
 - added support for substitutes-for functionality supported in OPM 1.17.0
