@@ -100,8 +100,8 @@ def test_push_package_manifest_failure(mock_requests, mock_open):
         legacy._push_package_manifest(
             'something/download-pkg/download-pkg', 'cnr_token', 'organization'
         )
-    mock_open.assert_called_once_with('something/download-pkg/manifests.zip', 'rb')
-    mock_requests.assert_called_once()
+    mock_open.assert_called_with('something/download-pkg/manifests.zip', 'rb')
+    assert mock_requests.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.legacy.open')
@@ -117,8 +117,8 @@ def test_push_package_manifest_failure_invalid_json(mock_requests, mock_open):
         legacy._push_package_manifest(
             'something/download-pkg/download-pkg', 'cnr_token', 'organization'
         )
-    mock_open.assert_called_once_with('something/download-pkg/manifests.zip', 'rb')
-    mock_requests.assert_called_once()
+    mock_open.assert_called_with('something/download-pkg/manifests.zip', 'rb')
+    assert mock_requests.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.legacy.run_cmd')
