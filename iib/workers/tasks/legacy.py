@@ -114,6 +114,7 @@ def _opm_index_export(rebuilt_index_image, package, temp_dir):
     )
 
 
+@retry(attempts=3, wait_on=IIBError, logger=log)
 def _push_package_manifest(package_dir, cnr_token, organization):
     """
     Push ``manifests.zip`` file created for an exported package to OMPS.
