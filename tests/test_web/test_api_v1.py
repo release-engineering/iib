@@ -28,6 +28,7 @@ def test_get_build(app, auth_env, client, db):
         request.add_architecture('amd64')
         request.add_architecture('s390x')
         request.add_state('complete', 'Completed successfully')
+        request.add_build_tag('build-tag-1')
         db.session.add(request)
         db.session.commit()
 
@@ -44,6 +45,7 @@ def test_get_build(app, auth_env, client, db):
         'batch_annotations': None,
         'binary_image': 'quay.io/namespace/binary_image:latest',
         'binary_image_resolved': 'quay.io/namespace/binary_image@sha256:abcdef',
+        'build_tags': ['build-tag-1'],
         'bundle_mapping': {},
         'bundles': ['quay.io/namespace/bundle:1.0-3'],
         'deprecation_list': [],
@@ -161,7 +163,7 @@ def test_get_healthcheck_ok(app, client, db):
 
 @pytest.mark.parametrize(
     ("bundles", "exp_bundles"),
-    (([1, 2, 3, 4], [1, 2, 3, 4]), ([], []), ([1, 2, 1, 3, 1, 4, 3], [1, 2, 3, 4]),),
+    (([1, 2, 3, 4], [1, 2, 3, 4]), ([], []), ([1, 2, 1, 3, 1, 4, 3], [1, 2, 3, 4])),
 )
 def test_get_unique_bundles(bundles, exp_bundles, app):
     tmp_uniq = _get_unique_bundles(bundles)
@@ -400,7 +402,7 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
             {'add_arches': ['s390x'], 'binary_image': 'binary:image'},
             '"from_index" must be specified if no bundles are specified',
         ),
-        ({'add_arches': ['s390x']}, '"from_index" must be specified if no bundles are specified',),
+        ({'add_arches': ['s390x']}, '"from_index" must be specified if no bundles are specified'),
         (
             {
                 'bundles': ['some:thing'],
@@ -574,6 +576,7 @@ def test_add_bundle_success(
         'batch_annotations': None,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
+        'build_tags': [],
         'bundle_mapping': {},
         'bundles': bundles,
         'deprecation_list': [],
@@ -652,9 +655,9 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-6] is True
+    assert mock_har.apply_async.call_args[1]['args'][-7] is True
     # Third to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-5] == token
+    assert mock_har.apply_async.call_args[1]['args'][-6] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -903,6 +906,7 @@ def test_patch_request_add_success(
         'batch_annotations': None,
         'binary_image': 'quay.io/add/binary-image:latest',
         'binary_image_resolved': 'binary-image@sha256:1234',
+        'build_tags': [],
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
         'deprecation_list': [],
@@ -969,6 +973,7 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'batch_annotations': None,
         'binary_image': minimal_request_rm.binary_image.pull_specification,
         'binary_image_resolved': 'binary-image@sha256:1234',
+        'build_tags': [],
         'bundle_mapping': {},
         'bundles': [],
         'deprecation_list': [],
@@ -1098,6 +1103,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'bundle_mapping': {},
         'distribution_scope': None,
         'bundles': [],
+        'build_tags': [],
         'deprecation_list': [],
         'from_index': 'index:image',
         'from_index_resolved': None,
@@ -1152,8 +1158,8 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
     # Third to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-4] is True
-    assert mock_hrr.apply_async.call_args[1]['args'][-3] == token
+    assert mock_hrr.apply_async.call_args[1]['args'][-5] is True
+    assert mock_hrr.apply_async.call_args[1]['args'][-4] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_hrr.apply_async.call_args[1]['argsrepr']
@@ -1489,12 +1495,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     {},
                     [],
+                    [],
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
                     "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None, {}, []]"
+                    "'hello-operator', None, True, '*****', None, None, {}, [], []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1514,11 +1521,12 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     None,
                     {},
+                    [],
                 ],
                 argsrepr=(
                     "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "
                     "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
-                    ", None, None, None, None, {}]"
+                    ", None, None, None, None, {}, []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1604,6 +1612,7 @@ def test_merge_index_image_success(
         'binary_image': 'binary:image',
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
+        'build_tags': [],
     }
 
     if distribution_scope:
@@ -1615,6 +1624,7 @@ def test_merge_index_image_success(
         'batch_annotations': None,
         'binary_image': 'binary:image',
         'binary_image_resolved': None,
+        'build_tags': [],
         'deprecation_list': ['some@sha256:bundle'],
         'distribution_scope': distribution_scope,
         'id': 1,

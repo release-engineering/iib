@@ -21,6 +21,25 @@ def test_request_add_architecture(db, minimal_request):
     assert len(minimal_request.architectures) == 2
 
 
+def test_request_add_tag(db, minimal_request):
+    binary_image = models.Image(pull_specification='quay.io/add/binary-image:latest2')
+    db.session.add(binary_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    request = models.RequestAdd(batch=batch, binary_image=binary_image)
+    db.session.add(request)
+    db.session.commit()
+    minimal_request.add_build_tag('build-tag1')
+
+    minimal_request.add_build_tag('build-tag1')
+    minimal_request.add_build_tag('build-tag1')
+    minimal_request.add_build_tag('build-tag2')
+    db.session.commit()
+    assert len(minimal_request.build_tags) == 2
+    assert minimal_request.build_tags[0].name == 'build-tag1'
+    assert minimal_request.build_tags[1].name == 'build-tag2'
+
+
 def test_request_add_state(db, minimal_request):
     minimal_request.add_state('in_progress', 'Starting things up')
     minimal_request.add_state('complete', 'All done!')
