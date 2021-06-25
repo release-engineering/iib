@@ -65,12 +65,18 @@ def _add_bundles_missing_in_source(
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``source_from_index`` image. This is required to use ``overwrite_target_index``.
         The format of the token must be in the format "user:password".
-    :return: bundles which were added to the index image.
-    :rtype: list
+    :return: tuple where the first value is a list of bundles which were added to the index image
+        and the second value is a list of bundles in the new index whose ocp_version range does not
+        satisfy the ocp_version value of the target index.
+    :rtype: tuple
     """
     set_request_state(request_id, 'in_progress', 'Adding bundles missing in source index image')
     log.info('Adding bundles from target index image which are missing from source index image')
     missing_bundles = []
+    missing_bundle_paths = []
+    # This list stores the bundles whose ocp_version range does not satisfy the ocp_version
+    # of the target index
+    invalid_bundles = []
     source_bundle_digests = []
     source_bundle_csv_names = []
     target_bundle_digests = []
@@ -97,25 +103,22 @@ def _add_bundles_missing_in_source(
             and bundle['csvName'] not in source_bundle_csv_names
         ):
             missing_bundles.append(bundle)
+            missing_bundle_paths.append(bundle['bundlePath'])
 
-    missing_bundle_paths = [
-        bundle['bundlePath']
-        for bundle in itertools.chain(missing_bundles, source_index_bundles)
-        if is_bundle_version_valid(bundle['bundlePath'], ocp_version)
-    ]
+    for bundle in itertools.chain(missing_bundles, source_index_bundles):
+        if not is_bundle_version_valid(bundle['bundlePath'], ocp_version):
+            invalid_bundles.append(bundle)
 
-    if missing_bundle_paths:
-        log.info('%s bundles are missing in the source index image.', len(missing_bundle_paths))
-    else:
+    if invalid_bundles:
         log.info(
-            'No bundles are missing in the source index image. However, the index image is '
-            'still being rebuilt with the new binary image.'
+            '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
         )
 
     _opm_index_add(
         base_dir,
         missing_bundle_paths,
         binary_image,
+        from_index=source_from_index,
         overwrite_from_index_token=overwrite_target_index_token,
         # Use podman until opm's default mechanism is more resilient:
         #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
@@ -135,7 +138,7 @@ def _add_bundles_missing_in_source(
     _create_and_push_manifest_list(request_id, [arch])
     log.info('New index image created')
 
-    return missing_bundles
+    return (missing_bundles, invalid_bundles)
 
 
 @app.task
@@ -203,7 +206,7 @@ def handle_merge_request(
         arches = list(prebuild_info['arches'])
         arch = 'amd64' if 'amd64' in arches else arches[0]
 
-        missing_bundles = _add_bundles_missing_in_source(
+        missing_bundles, invalid_version_bundles = _add_bundles_missing_in_source(
             source_index_bundles,
             target_index_bundles,
             temp_dir,
@@ -224,6 +227,12 @@ def handle_merge_request(
         deprecation_bundles = get_bundles_from_deprecation_list(
             intermediate_bundles, deprecation_list
         )
+        # We do not need to pass the invalid_version_bundles through the
+        # get_bundles_from_deprecation_list function because we already know
+        # they are present in the newly created index.
+        deprecation_bundles = deprecation_bundles + [
+            bundle['bundlePath'] for bundle in invalid_version_bundles
+        ]
         intermediate_image_name = _get_external_arch_pull_spec(
             request_id, arch, include_transport=False
         )

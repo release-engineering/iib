@@ -25,7 +25,10 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
-@mock.patch('iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source')
+@mock.patch(
+    'iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source',
+    return_value=([], []),
+)
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles', return_value=[[], []])
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
@@ -116,6 +119,7 @@ def test_handle_merge_request(
     mock_uiips.assert_called_once()
 
 
+@pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
@@ -149,6 +153,7 @@ def test_handle_merge_request_no_deprecate(
     mock_capml,
     mock_vii,
     mock_uiips,
+    invalid_bundles,
 ):
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
@@ -160,6 +165,7 @@ def test_handle_merge_request_no_deprecate(
     }
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = []
+    mock_abmis.return_value = ([], invalid_bundles)
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -187,7 +193,12 @@ def test_handle_merge_request_no_deprecate(
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
     mock_geaps.assert_called_once()
-    assert mock_dep_b.call_count == 0
+    if invalid_bundles:
+        mock_dep_b.assert_called_once_with(
+            ['invalid_bundle:1.0'], mock.ANY, 'binary-image:1.0', mock.ANY, None
+        )
+    else:
+        mock_dep_b.assert_not_called()
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
     mock_vii.assert_not_called()
@@ -252,7 +263,7 @@ def test_add_bundles_missing_in_source(
         },
     ]
     mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6']
-    missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
+    missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
         'some_dir',
@@ -276,15 +287,26 @@ def test_add_bundles_missing_in_source(
             'csvName': 'bundle4-4.0',
         },
     ]
+    assert invalid_bundles == [
+        {
+            'packageName': 'bundle3',
+            'version': '3.0',
+            'bundlePath': 'quay.io/bundle3@sha256:456789',
+            'csvName': 'bundle3-3.0',
+        },
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+    ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
         'some_dir',
-        [
-            'quay.io/bundle4@sha256:567890',
-            'quay.io/bundle2@sha256:234567',
-            'quay.io/bundle2@sha256:456132',
-        ],
+        ['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
         'binary-image:4.5',
+        from_index='index-image:4.6',
         overwrite_from_index_token=None,
         container_tool='podman',
     )
@@ -449,7 +471,7 @@ def test_add_bundles_missing_in_source_none_missing(
         },
     ]
     mock_gil.side_effect = ['v=4.5', 'v4.7,v4.6', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
-    missing_bundles = build_merge_index_image._add_bundles_missing_in_source(
+    missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
         'some_dir',
@@ -460,11 +482,26 @@ def test_add_bundles_missing_in_source_none_missing(
         '4.6',
     )
     assert missing_bundles == []
+    assert invalid_bundles == [
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:123456',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
         'some_dir',
-        ['quay.io/bundle3@sha256:123456', 'quay.io/bundle4@sha256:123456'],
+        [],
         'binary-image:4.5',
+        from_index='index-image:4.6',
         overwrite_from_index_token=None,
         container_tool='podman',
     )
