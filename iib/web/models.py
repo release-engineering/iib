@@ -70,6 +70,7 @@ class RequestTypeMapping(BaseEnum):
     rm = 2
     regenerate_bundle = 3
     merge_index_image = 4
+    create_empty_index = 5
 
     @classmethod
     def pretty(cls, num):
@@ -788,7 +789,7 @@ class RequestIndexImageMixin:
         # Validate binary_image is correctly provided
         binary_image = request_kwargs.pop('binary_image', None)
         if binary_image is not None and not isinstance(binary_image, str):
-            raise ValidationError('"binary_image" must be a string')
+            raise ValidationError('The "binary_image" value must be a string')
         elif not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
             raise ValidationError('The "binary_image" value must be a non-empty string')
 
@@ -1433,3 +1434,107 @@ def validate_registry_auths(registry_auths):
             raise ValidationError(err_msg)
         if not all(k == 'auth' and isinstance(v, str) for (k, v) in auth_dict.items()):
             raise ValidationError(err_msg)
+
+
+class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
+    """An "create-empty-index" image build request."""
+
+    __tablename__ = 'request_create_empty_index'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    _labels = db.Column('labels', db.Text, nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['create_empty_index'].value
+    }
+
+    @property
+    def labels(self):
+        """Return the Python representation of the JSON labels."""
+        return json.loads(self._labels) if self._labels else None
+
+    @labels.setter
+    def labels(self, labels):
+        """
+        Set the labels column to the input labels as a JSON string.
+
+        If ``None`` is provided, it will be simply set to ``None`` and not be converted to JSON.
+
+        :param dict labels: the dictionary of the labels or ``None``
+        """
+        self._labels = json.dumps(labels, sort_keys=True) if labels is not None else None
+
+    @classmethod
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the create-empty-index API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
+        request_kwargs = deepcopy(kwargs)
+        if request_kwargs.get('from_index') is None:
+            raise ValidationError('"from_index" must be a specified')
+        if (
+            not isinstance(request_kwargs.get('from_index'), str)
+            or len(request_kwargs.get('from_index')) == 0
+        ):
+            raise ValidationError('"from_index" must be a non-empty string')
+
+        new_labels = request_kwargs.get('labels')
+        if new_labels is not None:
+            if not isinstance(new_labels, dict):
+                raise ValidationError('The value of "labels" must be a JSON object')
+
+            for key, value in new_labels.items():
+                if not isinstance(value, str) or not isinstance(key, str):
+                    raise ValidationError(f'The key and value of "{key}" must be a string')
+
+        for arg in ('add_arches', 'overwrite_from_index', 'overwrite_from_index_token'):
+            if arg in request_kwargs:
+                raise ValidationError(
+                    f'The "{arg}" arg is invalid for the create-empty-index endpoint.'
+                )
+
+        cls._from_json(
+            request_kwargs,
+            additional_required_params=['from_index'],
+            additional_optional_params=['labels'],
+            batch=batch,
+        )
+
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+
+        return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of an "create-empty-index" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv.update(self.get_common_index_image_json())
+        rv.pop('bundles')
+        rv.pop('bundle_mapping')
+        rv.pop('organization')
+        rv.pop('deprecation_list')
+        rv.pop('removed_operators')
+        rv['labels'] = self.labels
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
+        rv.update('labels')
+        rv.remove('from_bundle_image_resolved')
+        return rv
