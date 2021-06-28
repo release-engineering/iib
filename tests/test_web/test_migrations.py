@@ -4,7 +4,13 @@ import random
 import flask_migrate
 import pytest
 
-from iib.web.models import RequestAdd, RequestMergeIndexImage, RequestRegenerateBundle, RequestRm
+from iib.web.models import (
+    RequestAdd,
+    RequestMergeIndexImage,
+    RequestRegenerateBundle,
+    RequestRm,
+    RequestCreateEmptyIndex,
+)
 
 
 INITIAL_DB_REVISION = '274ba38408e8'
@@ -123,7 +129,6 @@ def test_abort_when_downgrading_from_regenerate_bundle_request(app, auth_env, cl
             else:
                 data = {'from_bundle_image': 'quay.io/namespace/bundle-image:latest'}
                 request = RequestRegenerateBundle.from_json(data)
-                db.session.add(request)
             db.session.add(request)
 
         db.session.commit()
@@ -134,3 +139,54 @@ def test_abort_when_downgrading_from_regenerate_bundle_request(app, auth_env, cl
     # do is catch the SystemExit exception.
     with pytest.raises(SystemExit):
         flask_migrate.downgrade(revision=INITIAL_DB_REVISION)
+
+
+def test_create_empty_index_image_request(app, auth_env, client, db):
+    total_requests = 20
+    empty_index_revision = 'e16a8cd2e028'
+    # flask_login.current_user is used in RequestAdd.from_json and RequestRm.from_json,
+    # which requires a request context
+    with app.test_request_context(environ_base=auth_env):
+        # Generate some data to verify migration
+        data = {
+            'from_index': 'quay.io/namespace/index_image:latest',
+            'binary_image': 'quay.io/namespace/binary_image:latest',
+        }
+        request = RequestCreateEmptyIndex.from_json(data)
+        db.session.add(request)
+
+        for i in range(total_requests):
+            request_class = random.choice((RequestAdd, RequestRm, RequestCreateEmptyIndex))
+            if request_class == RequestAdd:
+                data = {
+                    'binary_image': 'quay.io/namespace/binary_image:latest',
+                    'bundles': [f'quay.io/namespace/bundle:{i}'],
+                    'from_index': f'quay.io/namespace/repo:{i}',
+                }
+                request = RequestAdd.from_json(data)
+            elif request_class == RequestRm:
+                data = {
+                    'binary_image': 'quay.io/namespace/binary_image:latest',
+                    'operators': [f'operator-{i}'],
+                    'from_index': f'quay.io/namespace/repo:{i}',
+                }
+                request = RequestRm.from_json(data)
+            elif request_class == RequestCreateEmptyIndex:
+                data = {
+                    'from_index': f'quay.io/namespace/index_image:{i}',
+                    'binary_image': 'quay.io/namespace/binary_image:latest',
+                }
+                request = RequestCreateEmptyIndex.from_json(data)
+
+            if i % 5 == 0:
+                # Simulate failed request
+                request.add_state('failed', 'Failed due to an unknown error')
+            db.session.add(request)
+        db.session.commit()
+
+    expected_rv_json = client.get(f'/api/v1/builds?per_page={total_requests}&verbose=true').json
+    flask_migrate.downgrade(revision=empty_index_revision)
+    flask_migrate.upgrade()
+
+    actual_rv_json = client.get(f'/api/v1/builds?per_page={total_requests}&verbose=true').json
+    assert expected_rv_json == actual_rv_json

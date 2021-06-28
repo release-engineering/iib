@@ -62,6 +62,7 @@ def test_get_state_names():
 def test_get_type_names():
     assert models.RequestTypeMapping.get_names() == [
         'add',
+        'create_empty_index',
         'generic',
         'merge_index_image',
         'regenerate_bundle',
@@ -71,7 +72,17 @@ def test_get_type_names():
 
 @pytest.mark.parametrize(
     'type_num, is_valid',
-    [(0, True), (1, True), (2, True), (3, True), (5, False), ('1', False), (None, False)],
+    [
+        (0, True),
+        (1, True),
+        (2, True),
+        (3, True),
+        (4, True),
+        (5, True),
+        (6, False),
+        ('1', False),
+        (None, False),
+    ],
 )
 def test_request_type_validation(type_num, is_valid):
     if is_valid:
