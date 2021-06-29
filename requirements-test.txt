@@ -304,8 +304,8 @@ psycopg2-binary==2.8.4 \
     # via -r requirements-test.in
 py==1.10.0 \
     --hash=sha256:21b81bda15b66ef5e1a777a21c4dcd9c20ad3efd0b3f817e7a809035269e1bd3 \
-    --hash=sha256:3b80836aa6d1feeaa108e046da6423ab8f6ceda6468545ae8d02d9d58d18818a
-    # via pytest
+    --hash=sha256:3b80836aa6d1feeaa108e046da6423ab8f6ceda6468545ae8d02d9d58d18818a \
+    # via pytest, retry
 pycparser==2.19 \
     --hash=sha256:a988718abfad80b6b157acce7bf130a30876d27603738ac39f140993246b25b3
     # via cffi
@@ -356,6 +356,10 @@ requests==2.22.0 \
     # via
     #   -r requirements-test.in
     #   requests-kerberos
+retry==0.9.2 \
+    --hash=sha256:ccddf89761fa2c726ab29391837d4327f819ea14d244c232a1d24c67a2f98606 \
+    --hash=sha256:f8bfa8b99b69c4506d6f5bd3b0aabf77f98cdb17f3c9fc3f5ca820033336fba4 \
+    # via -r requirements-test.in
 ruamel.yaml.clib==0.2.0 \
     --hash=sha256:1e77424825caba5553bbade750cec2277ef130647d685c2b38f68bc03453bac6 \
     --hash=sha256:392b7c371312abf27fb549ec2d5e0092f7ef6e6c9f767bfb13e83cb903aca0fd \

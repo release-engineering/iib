@@ -12,7 +12,8 @@ import ruamel.yaml
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, set_omps_operator_version
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.utils import get_image_labels, retry, run_cmd
+from iib.workers.tasks.utils import get_image_labels, run_cmd
+from retry import retry
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +84,7 @@ def get_legacy_support_packages(bundles, request_id, ocp_version, force_backport
     return packages
 
 
-@retry(attempts=2, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=2, logger=log)
 def _opm_index_export(rebuilt_index_image, package, temp_dir):
     """
     Export the package that needs to be backported.
@@ -114,7 +115,7 @@ def _opm_index_export(rebuilt_index_image, package, temp_dir):
     )
 
 
-@retry(attempts=3, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=3, logger=log)
 def _push_package_manifest(package_dir, cnr_token, organization):
     """
     Push ``manifests.zip`` file created for an exported package to OMPS.
