@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 
 from operator_manifest.operator import ImageName
+from retry import retry
 
 from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.api_utils import set_request_state, update_request
@@ -31,7 +32,6 @@ from iib.workers.tasks.utils import (
     podman_pull,
     request_logger,
     reset_docker_config,
-    retry,
     run_cmd,
     set_registry_token,
     skopeo_inspect,
@@ -105,7 +105,7 @@ def _cleanup():
     reset_docker_config()
 
 
-@retry(attempts=3, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=3, logger=log)
 def _create_and_push_manifest_list(request_id, arches):
     """
     Create and push the manifest list to the configured registry.
@@ -320,7 +320,7 @@ def _serve_index_registry(db_path):
     raise IIBError(err_msg)
 
 
-@retry(attempts=2, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=2, logger=log)
 def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
     """
     Start an image registry service at a specified port.
@@ -438,7 +438,7 @@ def _get_missing_bundles(present_bundles, bundles):
     return filtered_bundles
 
 
-@retry(attempts=2, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=2, logger=log)
 def _opm_index_add(
     base_dir,
     bundles,
@@ -503,7 +503,7 @@ def _opm_index_add(
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
-@retry(attempts=2, wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=2, logger=log)
 def _opm_index_rm(base_dir, operators, binary_image, from_index, overwrite_from_index_token=None):
     """
     Remove the input operators from the operator index.
@@ -652,7 +652,7 @@ def _update_index_image_build_state(request_id, prebuild_info):
     update_request(request_id, payload, exc_msg)
 
 
-@retry(wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
 def _push_image(request_id, arch):
     """
     Push the single arch container image to the configured registry.
@@ -681,7 +681,7 @@ def _push_image(request_id, arch):
         _skopeo_copy(destination, destination, exc_msg=exc_msg)
 
 
-@retry(wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
 def _skopeo_copy(source, destination, copy_all=False, exc_msg=None):
     """
     Wrap the ``skopeo copy`` command.

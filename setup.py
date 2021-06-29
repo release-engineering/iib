@@ -21,6 +21,7 @@ setup(
         'python-qpid-proton',
         'requests',
         'requests-kerberos',
+        'retry',
         'ruamel.yaml',
     ],
     classifiers=[

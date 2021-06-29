@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 
+from retry import retry
+
 from iib.workers.dogpile_cache import (
     create_dogpile_region,
     dogpile_cache,
@@ -328,43 +330,6 @@ def get_image_labels(pull_spec):
     return skopeo_inspect(full_pull_spec, '--config').get('config', {}).get('Labels', {})
 
 
-def retry(attempts=get_worker_config().iib_total_attempts, wait_on=Exception, logger=None):
-    """
-    Retry a section of code until success or max attempts are reached.
-
-    :param int attempts: the total number of attempts to make before erroring out
-    :param Exception wait_on: the exception on encountering which the function will be retried
-    :param logging logger: the logger to log the messages on
-    :raises IIBError: if the maximum attempts are reached
-    """
-
-    def wrapper(function):
-        @functools.wraps(function)
-        def inner(*args, **kwargs):
-            remaining_attempts = attempts
-            while True:
-                try:
-                    return function(*args, **kwargs)
-                except wait_on as e:
-                    remaining_attempts -= 1
-                    if remaining_attempts <= 0:
-                        if logger is not None:
-                            logger.exception(
-                                'The maximum number of attempts (%s) have failed', attempts
-                            )
-                        raise
-                    if logger is not None:
-                        logger.warning(
-                            'Exception %r raised from %r.  Retrying now',
-                            e,
-                            f'{function.__module__}.{function.__name__}',
-                        )
-
-        return inner
-
-    return wrapper
-
-
 def reset_docker_config():
     """Create a symlink from ``iib_docker_config_template`` to ``~/.docker/config.json``."""
     conf = get_worker_config()
@@ -466,7 +431,13 @@ def set_registry_auths(registry_auths):
         reset_docker_config()
 
 
-@retry(wait_on=IIBError, logger=log)
+@retry(
+    exceptions=IIBError,
+    tries=get_worker_config().iib_total_attempts,
+    delay=5,
+    backoff=2,
+    logger=log,
+)
 @dogpile_cache(
     dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache
 )
@@ -502,7 +473,7 @@ def skopeo_inspect(*args, return_json=True, require_media_type=False):
     return json_output
 
 
-@retry(wait_on=IIBError, logger=log)
+@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
 def podman_pull(*args):
     """
     Wrap the ``podman pull`` command.

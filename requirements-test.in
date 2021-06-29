@@ -15,4 +15,5 @@ python-memcached
 python-qpid-proton
 requests
 requests-kerberos
+retry
 ruamel.yaml
