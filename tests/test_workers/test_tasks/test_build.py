@@ -391,6 +391,8 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._serve_index_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -436,6 +438,8 @@ def test_handle_add_request(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
+    mock_sir,
+    mock_run_cmd,
     force_backport,
     binary_image,
     distribution_scope,
@@ -477,6 +481,12 @@ def test_handle_add_request(
 
     mock_dep_b.side_effect = side_effect
 
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
+        "bundlePath": "bundle1"\n}'
+
     build.handle_add_request(
         bundles,
         3,
@@ -492,6 +502,17 @@ def test_handle_add_request(
         greenwave_config,
         binary_image_config=binary_image_config,
         deprecation_list=deprecation_list,
+    )
+
+    mock_sir.assert_called_once()
+    mock_run_cmd.assert_called_once()
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(
+                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+                exc_msg=mock.ANY,
+            ),
+        ]
     )
 
     mock_cleanup.assert_called_once()
@@ -554,6 +575,8 @@ def test_handle_add_request(
         mock_dep_b.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._serve_index_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -597,6 +620,8 @@ def test_handle_add_request_check_index_label_behavior(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
+    mock_sir,
+    mock_run_cmd,
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
@@ -636,6 +661,12 @@ def test_handle_add_request_check_index_label_behavior(
 
     mock_dep_b.side_effect = deprecate_bundles_mock
 
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
+        "bundlePath": "bundle1"\n}'
+
     build.handle_add_request(
         bundles,
         3,
@@ -651,6 +682,17 @@ def test_handle_add_request_check_index_label_behavior(
         greenwave_config,
         binary_image_config=binary_image_config,
         deprecation_list=deprecation_list,
+    )
+
+    mock_sir.assert_called_once()
+    mock_run_cmd.assert_called_once()
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(
+                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+                exc_msg=mock.ANY,
+            ),
+        ]
     )
 
     mock_cleanup.assert_called_once()
@@ -745,6 +787,8 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
     mock_grb.assert_called_once_with(bundles)
 
 
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build._serve_index_registry')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.utils.verify_labels')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
@@ -786,6 +830,8 @@ def test_handle_add_request_backport_failure_no_overwrite(
     mock_prfb,
     mock_vl,
     mock_cleanup,
+    mock_sir,
+    mock_run_cmd,
 ):
     error_msg = 'Backport failure!'
     mock_elp.side_effect = IIBError(error_msg)
@@ -802,6 +848,11 @@ def test_handle_add_request_backport_failure_no_overwrite(
     mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
+        "bundlePath": "bundle1"\n}'
 
     bundles = ['some-bundle:2.3-1']
     cnr_token = 'token'
@@ -820,6 +871,18 @@ def test_handle_add_request_backport_failure_no_overwrite(
             None,
             greenwave_config,
         )
+
+    mock_sir.assert_called_once()
+
+    mock_run_cmd.assert_called_once()
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(
+                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+                exc_msg=mock.ANY,
+            ),
+        ]
+    )
     mock_elp.assert_called_once()
     mock_uiips.assert_not_called()
 

@@ -497,7 +497,7 @@ def podman_pull(*args):
     )
 
 
-def run_cmd(cmd, params=None, exc_msg=None):
+def run_cmd(cmd, params=None, exc_msg=None, strict=True):
     """
     Run the given command with the provided parameters.
 
@@ -519,7 +519,7 @@ def run_cmd(cmd, params=None, exc_msg=None):
     log.debug('Running the command "%s"', ' '.join(cmd))
     response = subprocess.run(cmd, **params)
 
-    if response.returncode != 0:
+    if strict and response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         if cmd[0] == 'opm':
             # Capture the error message right before the help display
