@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import stat
 import subprocess
 import time
@@ -399,7 +400,7 @@ def _get_present_bundles(from_index, base_dir):
     # Transform returned data to parsable json
     unique_present_bundles = []
     unique_present_bundles_pull_spec = []
-    present_bundles = [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
+    present_bundles = _get_bundle_json(bundles)
 
     for bundle in present_bundles:
         bundle_path = bundle['bundlePath']
@@ -409,6 +410,10 @@ def _get_present_bundles(from_index, base_dir):
         unique_present_bundles_pull_spec.append(bundle_path)
 
     return unique_present_bundles, unique_present_bundles_pull_spec
+
+
+def _get_bundle_json(bundles):
+    return [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
 
 
 def _get_missing_bundles(present_bundles, bundles):
@@ -720,6 +725,69 @@ def _verify_index_image(
         )
 
 
+def _add_property_to_index(db_path, property):
+    """
+    Add a property to the index.
+
+    :param str db_path: path to the index database
+    :param dict property: a dict representing a property to be added to the index.db
+    """
+    insert = (
+        'INSERT INTO properties '
+        '(type, value, operatorbundle_name, operatorbundle_version, operatorbundle_path) '
+        'VALUES (?, ?, ?, ?, ?);'
+    )
+    con = sqlite3.connect(db_path)
+    # Insert property
+    con.execute(
+        insert,
+        (
+            property['type'],
+            property['value'],
+            property['operatorbundle_name'],
+            property['operatorbundle_version'],
+            property['operatorbundle_path'],
+        ),
+    )
+    con.commit()
+    con.close()
+
+
+def _requires_max_ocp_version(bundle):
+    """
+    Check if the bundle requires the olm.maxOpenShiftVersion property.
+
+    This property is required for bundles using deprecated APIs that don't already
+    have the olm.maxOpenShiftVersion property set.
+
+    :param str bundle: a string representing the bundle pull specification
+    :returns bool:
+    """
+    cmd = [
+        'operator-sdk',
+        'bundle',
+        'validate',
+        bundle,
+        '--select-optional',
+        'name=community',
+        '--output=json-alpha1',
+        '--image-builder',
+        'none',
+    ]
+    result = run_cmd(cmd, strict=False)
+    if result:
+        output = json.loads(result)
+        # check if the bundle validation failed
+        if not output['passed']:
+            # check if the failure is due to the presence of deprecated APIs
+            # and absence of the 'olm.maxOpenShiftVersion' property
+            # Note: there is no other error in the sdk that mentions this field
+            for msg in output['outputs']:
+                if 'olm.maxOpenShiftVersion' in msg['message']:
+                    return True
+    return False
+
+
 @app.task
 @request_logger
 def handle_add_request(
@@ -839,6 +907,39 @@ def handle_add_request(
             overwrite_from_index_token,
             (prebuild_info['distribution_scope'] in ['dev', 'stage']),
         )
+
+        # Add the max ocp version property
+        # We need to ensure that any bundle which has deprecated/removed API(s) in 1.22/ocp 4.9
+        # will have this property to prevent users from upgrading clusters to 4.9 before upgrading
+        # the operator installed to a version that is compatible with 4.9
+
+        # Get the CSV name and version (not just the bundle path)
+        db_path = temp_dir + "/database/index.db"
+        port, rpc_proc = _serve_index_registry(db_path)
+
+        raw_bundles = run_cmd(
+            ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+            exc_msg='Failed to get bundle data from index image',
+        )
+        rpc_proc.kill()
+
+        # Get bundle json for bundles in the request
+        updated_bundles = list(
+            filter(lambda b: b['bundlePath'] in resolved_bundles, _get_bundle_json(raw_bundles))
+        )
+
+        for bundle in updated_bundles:
+            if _requires_max_ocp_version(bundle['bundlePath']):
+                log.info('adding property for %s', bundle['bundlePath'])
+                max_openshift_version_property = {
+                    'type': 'olm.maxOpenShiftVersion',
+                    'value': '4.8',
+                    'operatorbundle_name': bundle['csvName'],
+                    'operatorbundle_version': bundle['version'],
+                    'operatorbundle_path': bundle['bundlePath'],
+                }
+                _add_property_to_index(db_path, max_openshift_version_property)
+                log.info('property added for %s', bundle['bundlePath'])
 
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list or []
