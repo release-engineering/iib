@@ -108,6 +108,27 @@ You may also run the development environment with
 branch as it has various fixes and new features required to run IIB. Set the environment variable
 `IIB_COMPOSE_ENGINE` to the path of the `podman-compose` script before running the `make` commands.
 
+### Troubleshooting
+
+#### Error authenticating creds for "registry:8443"
+
+**Error**
+
+```bash
+Error: error authenticating creds for "registry:8443": error pinging docker registry
+registry:8443: Get "https://registry:8443/v2/": x509: certificate relies on legacy
+Common Name field, use SANs or temporarily enable Common Name matching with
+GODEBUG=x509ignoreCN=0
+```
+
+**Quick Fix**
+
+Add the following to `Dockerfile-workers` (not in the builder part of the Dockerfile):
+
+```Dockerfile
+ENV GODEBUG="x509ignoreCN=0"
+```
+
 ## Dependency Management
 
 To manage dependencies, this project uses [pip-tools](https://github.com/jazzband/pip-tools) so that
