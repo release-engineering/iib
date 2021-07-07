@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.1.0
+- removed support for privileged users
+- added retries for OMPS pushes
+- fixed bug in merge-index-image endpoint to deprecate invalid bundles instead of filtering them
+- added functionality to add olm.maxOpenShiftVersion property to bundles being added
+
 ## 4.0.0
 - fixed use of token when inspecting source and target indexes in merge-index-image endpoint
 - added support for substitutes-for functionality supported in OPM 1.17.0
