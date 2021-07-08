@@ -914,7 +914,13 @@ def handle_add_request(
         # the operator installed to a version that is compatible with 4.9
 
         # Get the CSV name and version (not just the bundle path)
+        # If there is no from_index provided then this is the path to the
+        # the index.db
         db_path = temp_dir + "/database/index.db"
+        # Duplicating if statement in case opm_index_add has the side effect of moving the db
+        if from_index:
+            db_path = _get_index_database(from_index, temp_dir)
+            
         port, rpc_proc = _serve_index_registry(db_path)
 
         raw_bundles = run_cmd(
