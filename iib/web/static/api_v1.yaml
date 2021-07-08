@@ -523,6 +523,45 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/create-empty-index:
+    post:
+      description: Submit a build request to create an empty index image
+      requestBody:
+        description: The build request to create an empty index image
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestCreateEmptyIndex'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResponseCreateEmptyIndexVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"from_index" must be a string'
+        '401':
+          description: The user is not allowed to create a request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
 components:
   schemas:
     BundleMapping:
@@ -967,6 +1006,57 @@ components:
                 This determined what level of protection the addition or removal had.
               type: string
               example: 'prod'
+    RequestCreateEmptyIndex:
+      type: object
+      properties:
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+        from_index:
+          type: string
+          example: 'quay.io/iib-stage/iib:4'
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            version: 'v4.6'
+      required:
+        - from_index
+    ResponseCreateEmptyIndex:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            binary_image:
+              type: string
+              example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+            binary_image_resolved:
+              type: string
+              example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+            distribution_scope:
+              type: string
+              exmaple: 'prod'
+            from_index:
+              type: string
+              example: 'quay.io/iib-stage/iib:4'
+            from_index_resolved:
+              type: string
+              example: >-
+                quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            index_image:
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            index_image_resolved:
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            labels:
+              type: object
+              example:
+                version: 'v4.6'
+            request_type:
+              type: string
+              example: "create-empty-index"
     RequestUpdate:
       type: object
       properties:
@@ -1030,6 +1120,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/BaseResponseVerbose'
         - $ref: '#/components/schemas/RegenerateBundleResponse'
+    ResponseCreateEmptyIndexVerbose:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/ResponseCreateEmptyIndex'
     StateHistory:
       type: object
       properties:

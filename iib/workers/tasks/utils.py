@@ -149,6 +149,25 @@ class RequestConfigMerge(RequestConfig):
     __slots__ = _attrs
 
 
+class RequestConfigCreateIndexImage(RequestConfig):
+    """Request config for add and remove operations.
+
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for
+        non-privileged users to use ``overwrite_from_index``.
+        The format of the token must be
+        in the format "user:password".
+    :param str from_index: the pull specification of the container image
+        containing the index that the index image build
+        will be based from.
+    :param dict labels: the dictionary of labels to build in addition to the
+        labels ``from_index`` is currently built for;
+    """
+
+    _attrs = RequestConfig._attrs + ["from_index", "labels"]
+    __slots__ = _attrs
+
+
 def deprecate_bundles(
     bundles,
     base_dir,
@@ -716,12 +735,14 @@ def get_all_index_images_info(build_request_config, index_version_map):
         else:
             from_index = getattr(build_request_config, index)
 
+        token = None
+        if hasattr(build_request_config, 'overwrite_from_index_token'):
+            token = build_request_config.overwrite_from_index_token
+        elif hasattr(build_request_config, 'overwrite_target_index_token'):
+            token = build_request_config.overwrite_target_index_token
+
         infos[index] = get_index_image_info(
-            build_request_config.overwrite_from_index_token
-            if hasattr(build_request_config, 'overwrite_from_index_token')
-            else build_request_config.overwrite_target_index_token,
-            from_index=from_index,
-            default_ocp_version=version,
+            overwrite_from_index_token=token, from_index=from_index, default_ocp_version=version
         )
     return infos
 
@@ -863,3 +884,32 @@ def prepare_request_for_build(request_id, build_request_config):
         'target_index_resolved': index_info['target_index']['resolved_from_index'],
         'target_ocp_version': index_info['target_index']['ocp_version'],
     }
+
+
+def grpcurl_get_db_data(from_index, base_dir, endpoint):
+    """Get a list of operators already present in the index image.
+
+    :param str from_index: index image to inspect.
+    :param str base_dir: base directory to create temporary files in.
+    :return: list of unique present operators as provided by the grpc query
+    :rtype: list
+    :raises IIBError: if any of the commands fail.
+    """
+    # This is temporary solution till we refactor the code and move those functions to utils
+    from iib.workers.tasks.build import (
+        _get_index_database,
+        _serve_index_registry,
+    )
+
+    db_path = _get_index_database(from_index, base_dir)
+    port, rpc_proc = _serve_index_registry(db_path)
+
+    if endpoint not in ["api.Registry/ListPackages", "api.Registry/ListBundles"]:
+        raise IIBError(f"The endpoint '{endpoint}' is not allowed to be used")
+
+    result = run_cmd(
+        ['grpcurl', '-plaintext', f'localhost:{port}', endpoint],
+        exc_msg=f'Failed to get {endpoint} data from index image',
+    )
+    rpc_proc.kill()
+    return result

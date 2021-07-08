@@ -1790,3 +1790,137 @@ def test_merge_index_image_fail_on_invalid_params(
 
     assert rv.status_code == 400, rv.json
     assert rv.json == {'error': error_msg}
+
+
+@pytest.mark.parametrize(
+    ('from_index', 'binary_image', 'labels'),
+    (
+        ('some:thing', 'from:variable', None),
+        ('some:thing', 'binary:image', {'version': 'v4.6'}),
+        ('some:thing', 'binary:image', None),
+    ),
+)
+@mock.patch('iib.web.api_v1.handle_create_empty_index_request.apply_async')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_create_empty_index_success(
+    mock_smfsc, mock_hceir, db, auth_env, client, from_index, binary_image, labels
+):
+
+    data = {
+        'binary_image': binary_image,
+        'from_index': from_index,
+        'labels': labels,
+    }
+
+    response_json = {
+        'arches': [],
+        'batch': 1,
+        'batch_annotations': None,
+        'binary_image': binary_image,
+        'binary_image_resolved': None,
+        'from_index': from_index,
+        'from_index_resolved': None,
+        'distribution_scope': None,
+        'id': 1,
+        'index_image': None,
+        'index_image_resolved': None,
+        'request_type': 'create-empty-index',
+        'state': 'in_progress',
+        'labels': labels,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': '2020-02-12T17:03:00Z',
+            }
+        ],
+        'state_reason': 'The request was initiated',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': 'tbrady@DOMAIN.LOCAL',
+    }
+
+    rv = client.post('/api/v1/builds/create-empty-index', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['updated'] = '2020-02-12T17:03:00Z'
+    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
+    assert rv.status_code == 201
+    assert response_json == rv_json
+    assert 'overwrite_from_index_token' not in rv_json
+    mock_hceir.assert_called_once()
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {'from_index': 'pull:spec', 'binary_image': '', 'labels': ""},
+            'The value of "labels" must be a JSON object',
+        ),
+        (
+            {'from_index': 32, 'binary_image': 'binary:image'},
+            '"from_index" must be a non-empty string',
+        ),
+        (
+            {'from_index': 'pull:spec', 'binary_image': 33},
+            'The "binary_image" value must be a string',
+        ),
+        (
+            {'from_index': '', 'binary_image': 'binary:image'},
+            '"from_index" must be a non-empty string',
+        ),
+        ({'binary_image': 'binary:image'}, '"from_index" must be a specified'),
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'labels': {"version": 23}},
+            'The key and value of "version" must be a string',
+        ),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_create_empty_index_invalid_params_format(
+    mock_smfsc, data, error_msg, db, auth_env, client
+):
+    rv = client.post(f'/api/v1/builds/create-empty-index', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'overwrite_from_index': True,
+            },
+            f'The "overwrite_from_index" arg is invalid for the create-empty-index endpoint.',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'overwrite_from_index_token': "token",
+            },
+            f'The "overwrite_from_index_token" arg is invalid for the create-empty-index endpoint.',
+        ),
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['arch1']},
+            f'The "add_arches" arg is invalid for the create-empty-index endpoint.',
+        ),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_create_empty_index_not_allowed_params(mock_smfsc, data, error_msg, client, db):
+    rv = client.post(
+        f'/api/v1/builds/create-empty-index', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
+    )
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
