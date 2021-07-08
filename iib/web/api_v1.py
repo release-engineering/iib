@@ -27,6 +27,7 @@ from iib.web.models import (
     RequestStateMapping,
     get_request_query_options,
     RequestTypeMapping,
+    RequestCreateEmptyIndex,
 )
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
@@ -35,6 +36,7 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
 from iib.workers.tasks.build_merge_index_image import handle_merge_request
+from iib.workers.tasks.build_create_empty_index import handle_create_empty_index_request
 from iib.workers.tasks.general import failed_request_callback
 
 api_v1 = flask.Blueprint('api_v1', __name__)
@@ -699,6 +701,47 @@ def merge_index_image():
     try:
         handle_merge_request.apply_async(
             args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/create-empty-index', methods=['POST'])
+@login_required
+def create_empty_index():
+    """
+    Submit a request to create an index image without bundles.
+
+    Note: Any duplicate bundle will be removed from payload.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = RequestCreateEmptyIndex.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
+
+    args = [
+        payload['from_index'],
+        request.id,
+        payload.get('binary_image'),
+        payload.get('labels'),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+    ]
+    safe_args = _get_safe_args(args, payload)
+    error_callback = failed_request_callback.s(request.id)
+
+    try:
+        handle_create_empty_index_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)

@@ -363,7 +363,7 @@ def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
             except IIBError:
                 output = ''
 
-            if 'api.Registry.ListBundles' in output:
+            if 'api.Registry.ListBundles' in output or 'api.Registry.ListPackages' in output:
                 log.debug('Started the command "%s"', ' '.join(cmd))
                 log.info('Index registry service has been initialized.')
                 return rpc_proc

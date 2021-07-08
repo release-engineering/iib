@@ -966,3 +966,47 @@ def test_validate_distribution_scope(
 def test_get_binary_image_config_no_config_val():
     with pytest.raises(IIBError, match='IIB does not have a configured binary_image.+'):
         utils.get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
+
+
+@pytest.mark.parametrize(
+    'endpoint', ("api.Registry/ListPackages", "api.Registry/ListBundles",),
+)
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.build._serve_index_registry')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+def test_grpcurl_get_db_data_success(mock_gid, mock_sir, mock_run_cmd, tmpdir, endpoint):
+
+    mock_gid.return_value = tmpdir.join('index.db')
+    mock_popen = mock.MagicMock()
+    mock_sir.return_value = 50051, mock_popen
+    mock_run_cmd.side_effect = ['{\n"name": "package1"\n}\n{\n"name": "package2"\n}\n']
+    utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
+
+
+@pytest.mark.parametrize(
+    'endpoint, err_msg',
+    (
+        (
+            "api.Registry/GetPackages",
+            "The endpoint 'api.Registry/GetPackages' is not allowed to be used",
+        ),
+        ("something", "The endpoint 'something' is not allowed to be used"),
+    ),
+)
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.build._serve_index_registry')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+def test_grpcurl_get_db_data_wrong_endpoint(
+    mock_gid, mock_sir, mock_run_cmd, tmpdir, endpoint, err_msg
+):
+
+    mock_gid.return_value = tmpdir.join('index.db')
+    mock_popen = mock.MagicMock()
+    mock_sir.return_value = 50051, mock_popen
+
+    with pytest.raises(IIBError, match=err_msg):
+        utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
+
+    mock_sir.assert_called_once()
+    mock_gid.assert_called_once()
+    mock_run_cmd.assert_not_called()
