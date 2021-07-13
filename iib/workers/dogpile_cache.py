@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import functools
+import hashlib
 
 from dogpile.cache import make_region
 
@@ -48,7 +49,12 @@ def generate_cache_key(fn, *args, **kwargs):
     arguments = '|'.join(
         [str(arg) for arg in args] + [f'{kwarg}={kwargs[kwarg]}' for kwarg in kwargs]
     )
-    return f'{fn}|{arguments}'
+    key_str = f'{fn}|{arguments}'
+    try:
+        key = hashlib.sha256(key_str).hexdigest()
+    except TypeError:
+        key = hashlib.sha256(key_str.encode('utf-8')).hexdigest()
+    return key
 
 
 def create_dogpile_region():
