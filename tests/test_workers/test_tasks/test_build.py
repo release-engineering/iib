@@ -13,14 +13,28 @@ from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
 
 
+@pytest.mark.parametrize('arch', ('amd64', 'ppc64le', 's390x', 'spam'))
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_build_image(mock_run_cmd):
-    build._build_image('/some/dir', 'some.Dockerfile', 3, 'amd64')
+def test_build_image(mock_run_cmd, arch):
+    build._build_image('/some/dir', 'some.Dockerfile', 3, arch)
 
-    mock_run_cmd.assert_called_once()
-    build_args = mock_run_cmd.call_args[0][0]
-    assert build_args[0:2] == ['buildah', 'bud']
-    assert '/some/dir/some.Dockerfile' in build_args
+    mock_run_cmd.assert_called_once_with(
+        [
+            'buildah',
+            'bud',
+            '--no-cache',
+            '--override-arch',
+            arch,
+            '--arch',
+            arch,
+            '-t',
+            f'iib-build:3-{arch}',
+            '-f',
+            '/some/dir/some.Dockerfile',
+        ],
+        {'cwd': '/some/dir'},
+        exc_msg=mock.ANY,
+    )
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')

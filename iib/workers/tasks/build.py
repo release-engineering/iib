@@ -68,12 +68,16 @@ def _build_image(dockerfile_dir, dockerfile_name, request_id, arch):
         destination,
     )
     dockerfile_path = os.path.join(dockerfile_dir, dockerfile_name)
+    # NOTE: It's important to provide both --override-arch and --arch to ensure the metadata
+    # on the image, **and** on its config blob are set correctly.
     run_cmd(
         [
             'buildah',
             'bud',
             '--no-cache',
             '--override-arch',
+            arch,
+            '--arch',
             arch,
             '-t',
             destination,
