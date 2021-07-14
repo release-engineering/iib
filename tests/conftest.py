@@ -3,6 +3,8 @@ import os
 
 import flask_migrate
 import pytest
+import retry
+from unittest import mock
 
 from iib.web import models
 from iib.web.app import create_app, db as _db
@@ -169,3 +171,9 @@ def minimal_request_regenerate_bundle(db):
     db.session.add(request)
     db.session.commit()
     return request
+
+
+@pytest.fixture(scope='session', autouse=True)
+def patch_retry():
+    with mock.patch.object(retry.api.time, 'sleep'):
+        yield
