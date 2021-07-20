@@ -1352,7 +1352,7 @@ def test_regenerate_bundle_batch_success(
                     'registry.example.com/bundle-image:latest',
                     None,
                     1,
-                    {'auths': {'registry2.example.com': {'auth': 'dummy-auth'}}},
+                    {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
                 ],
                 argsrepr="['registry.example.com/bundle-image:latest', None, 1, '*****']",
                 link_error=mock.ANY,
