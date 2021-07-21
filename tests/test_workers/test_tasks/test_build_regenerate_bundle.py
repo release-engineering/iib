@@ -857,6 +857,7 @@ def test_replace_image_name_from_labels_invalid_labels(mock_gil, tmpdir):
         ('/image', 'company-pending', 'operator----image'),
         ('/image/foo/bar', 'operator', 'image----foo----bar'),
         ('/image', 'operator', 'image'),
+        ('-image', 'company-managed', 'operator-image'),
     ),
 )
 def test_apply_repo_enclosure(original_image, eclosure_namespace, expected_image, tmpdir):
