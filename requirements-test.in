@@ -1,19 +1,6 @@
-# The dependencies are duplcated from setup.py to avoid
-# confusing dependabot
-celery
+# Always use the already pinned versions of the runtime dependencies to
+# ensure the test environment is as similar as possible.
+-r requirements.txt
 coverage
-dogpile.cache
-flask
-flask-login
-flask-migrate
-flask-sqlalchemy
-operator-manifest
-psycopg2-binary
 pytest
 pytest-cov
-python-memcached
-python-qpid-proton
-requests
-requests-kerberos
-retry
-ruamel.yaml
