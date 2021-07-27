@@ -30,6 +30,7 @@ class Config(object):
     )
     iib_request_logs_level = 'DEBUG'
     iib_required_labels = {}
+    iib_request_related_bundles_dir = None
     # Configuration for dogpile.cache
     # Disabled by default (by using 'dogpile.cache.null').
     # To enable caching set 'dogpile.cache.memcached' as backend.
@@ -72,6 +73,7 @@ class DevelopmentConfig(Config):
     iib_log_level = 'DEBUG'
     iib_organization_customizations = {
         'company-marketplace': [
+            {'type': 'related_bundles'},
             {
                 'type': 'csv_annotations',
                 'annotations': {
@@ -112,6 +114,7 @@ class DevelopmentConfig(Config):
                     'quay.io': 'registry.koji.company.com',
                 },
             },
+            {'type': 'related_bundles'},
             {'type': 'image_name_from_labels', 'template': '{name}-{version}'},
             {'type': 'enclose_repo', 'enclosure_glue': '----', 'namespace': "company-pending"},
             {
@@ -122,6 +125,7 @@ class DevelopmentConfig(Config):
     }
     iib_registry = 'registry:8443'
     iib_request_logs_dir = '/var/log/iib/requests'
+    iib_request_related_bundles_dir = '/var/lib/requests/related_bundles'
     iib_dogpile_backend = 'dogpile.cache.memcached'
 
 
@@ -132,6 +136,7 @@ class TestingConfig(DevelopmentConfig):
     iib_greenwave_url = 'some_url'
     iib_omps_url = 'some_url'
     iib_request_logs_dir = None
+    iib_request_related_bundles_dir = None
     # disable dogpile cache for tests
     iib_dogpile_backend = 'dogpile.cache.null'
 
@@ -187,14 +192,13 @@ def validate_celery_config(conf, **kwargs):
 
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
 
-    iib_request_logs_dir = conf.get('iib_request_logs_dir')
-    if iib_request_logs_dir:
-        if not os.path.isdir(iib_request_logs_dir):
-            raise ConfigError(
-                f'iib_request_logs_dir, {iib_request_logs_dir}, must exist and be a directory'
-            )
-        if not os.access(iib_request_logs_dir, os.W_OK):
-            raise ConfigError(f'iib_request_logs_dir, {iib_request_logs_dir}, is not writable!')
+    for directory in ('iib_request_logs_dir', 'iib_request_related_bundles_dir'):
+        iib_request_temp_data_dir = conf.get(directory)
+        if iib_request_temp_data_dir:
+            if not os.path.isdir(iib_request_temp_data_dir):
+                raise ConfigError(f'{directory} must exist and be a directory')
+            if not os.access(iib_request_temp_data_dir, os.W_OK):
+                raise ConfigError(f'{directory}, is not writable!')
 
 
 def _validate_iib_org_customizations(iib_org_customizations):

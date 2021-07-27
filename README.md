@@ -184,10 +184,13 @@ The custom configuration options for the REST API are listed below:
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
 * `IIB_MAX_PER_PAGE` - the maximum number of build requests that can be shown on a single page.
   This defaults to `20`.
+* `IIB_REQUEST_DATA_DAYS_TO_LIVE` - the amount of days after which per request temmporary data is
+  considered to be expired and may be removed. This defaults to `3`.
 * `IIB_REQUEST_LOGS_DIR` - the directory to load the request specific log files. If `None`, per
   request log files information will not appear in the API response. This defaults to `None`.
-* `IIB_REQUEST_LOGS_DAYS_TO_LIVE` - the amount of days after which per request logs are considered
-  to be expired and may be removed. This defaults to `3`.
+* `IIB_REQUEST_RELATED_BUNDLES_DIR` - the directory to load the request specific related
+  bundles files. If `None`, per request related bundles files information will not appear in
+  the API response. This defaults to `None`.
 * `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
   This is useful in isolating the workload from certain users. Some celery tasks must execute
   serially, while others can execute in parallel. Add the prefix `SERIAL:` or `PARALLEL:` to the
@@ -294,6 +297,12 @@ The custom configuration options for the Celery workers are listed below:
     is a string which specifies the glue to replace ``/`` (forward slashes) in the pull spec
     name and repo. The key `namespace` value is also a string which specifies the new namespace
     for pull specs of the ClusterServiceVersion files.
+  * The `related_bundles` customization type is a dictionary with no additional arguments and
+    it essentially finds all the bundle image pull specifications in the CSV files of the operator
+    bundle image in question. If this customization is not specified in the config for an
+    organization, the `related_bundles` endpoint won't work for regenerate-bundle requests of that
+    organization. If no organization is specified, IIB will try to find `related_bundles` for all
+    regenerate-bundle requests.
 
   Here is an example that ties this all together:
 
@@ -324,6 +333,8 @@ The custom configuration options for the Celery workers are listed below:
     }
   ```
 
+* `iib_request_related_bundles_dir` - the directory to write the request specific related bundles
+  file. If `None`, per request related bundles files are not created. This defaults to `None`.
 * `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per
   request log files are not created. This defaults to `None`.
 * `iib_request_logs_format` - the format for the log messages of the request specific log files.

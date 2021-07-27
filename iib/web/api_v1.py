@@ -172,7 +172,7 @@ def get_build_logs(request_id):
     request = Request.query.get_or_404(request_id)
     log_file_path = os.path.join(request_log_dir, f'{request_id}.log')
     if not os.path.exists(log_file_path):
-        expired = request.logs_expiration < datetime.utcnow()
+        expired = request.temporary_data_expiration < datetime.utcnow()
         if expired:
             raise Gone(f'The logs for the build request {request_id} no longer exist')
         finalized = request.state.state_name in RequestStateMapping.get_final_states()
@@ -183,6 +183,51 @@ def get_build_logs(request_id):
 
     with open(log_file_path) as f:
         return flask.Response(f.read(), mimetype='text/plain')
+
+
+@api_v1.route('/builds/<int:request_id>/related_bundles')
+def get_related_bundles(request_id):
+    """
+    Retrieve the related bundle images from the bundle CSV for a regenerate-bundle request.
+
+    :param int request_id: the request ID that was passed in through the URL.
+    :rtype: flask.Response
+    :raise NotFound: if the request is not found or there are no related bundles for the request
+    :raise Gone: if the related bundles for the build request have been removed due to expiration
+    """
+    request_related_bundles_dir = flask.current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']
+    if not request_related_bundles_dir:
+        raise NotFound()
+
+    request = Request.query.get_or_404(request_id)
+    if request.type != RequestTypeMapping.regenerate_bundle.value:
+        raise ValidationError(
+            f'The request {request_id} is of type {request.type_name}. '
+            'This endpoint is only valid for requests of type regenerate-bundle.'
+        )
+
+    finalized = request.state.state_name in RequestStateMapping.get_final_states()
+    if not finalized:
+        raise ValidationError(
+            f'The request {request_id} is not complete yet.'
+            ' related_bundles will be available once the request is complete.'
+        )
+
+    related_bundles_file_path = os.path.join(
+        request_related_bundles_dir, f'{request_id}_related_bundles.json'
+    )
+    if not os.path.exists(related_bundles_file_path):
+        expired = request.temporary_data_expiration < datetime.utcnow()
+        if expired:
+            raise Gone(f'The related_bundles for the build request {request_id} no longer exist')
+        raise IIBError(
+            'IIB is done processing the request and cannot find related_bundles. Please make '
+            f'sure the iib_organizaiton_customizations for organization {request.organization}'
+            ' has related_bundles customization type set'
+        )
+
+    with open(related_bundles_file_path) as f:
+        return flask.Response(f.read(), mimetype='application/json')
 
 
 @api_v1.route('/builds')
