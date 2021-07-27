@@ -198,7 +198,7 @@ def test_get_build_logs(
 
     client.application.config['IIB_REQUEST_LOGS_DIR'] = str(tmpdir)
     if expired:
-        client.application.config['IIB_REQUEST_LOGS_DAYS_TO_LIVE'] = -1
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
     if finalized:
         minimal_request_add.add_state('complete', 'The request is complete')
         db.session.commit()
@@ -1019,6 +1019,8 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
 def test_patch_request_regenerate_bundle_success(
     mock_smfsc, db, minimal_request_regenerate_bundle, worker_auth_env, client
 ):
+    # Assume a timestamp to simplify the tests.
+    _expiration_timestamp = '2020-02-15T17:03:00Z'
     data = {
         'arches': ['arches'],
         'state': 'complete',
@@ -1040,6 +1042,10 @@ def test_patch_request_regenerate_bundle_success(
             'expiration': '2020-02-15T17:03:00Z',
         },
         'organization': None,
+        'related_bundles': {
+            'expiration': '2020-02-15T17:03:00Z',
+            'url': 'http://localhost/api/v1/builds/1/related_bundles',
+        },
         'request_type': 'regenerate-bundle',
         'state': 'complete',
         'state_history': [
@@ -1068,7 +1074,8 @@ def test_patch_request_regenerate_bundle_success(
     rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['state_history'][1]['updated'] = '2020-02-12T17:03:00Z'
     rv_json['updated'] = '2020-02-12T17:03:00Z'
-    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
+    rv_json['logs']['expiration'] = _expiration_timestamp
+    rv_json['related_bundles']['expiration'] = _expiration_timestamp
     assert rv_json == response_json
     mock_smfsc.assert_called_once_with(mock.ANY)
 
@@ -1212,6 +1219,7 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
 
     # Assume a timestamp to simplify tests
     _timestamp = '2020-02-12T17:03:00Z'
+    _expiration_timestamp = '2020-02-15T17:03:00Z'
 
     response_json = {
         'arches': [],
@@ -1225,6 +1233,10 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
             'expiration': '2020-02-15T17:03:00Z',
         },
         'organization': None,
+        'related_bundles': {
+            'expiration': '2020-02-15T17:03:00Z',
+            'url': 'http://localhost/api/v1/builds/1/related_bundles',
+        },
         'id': 1,
         'request_type': 'regenerate-bundle',
         'state': 'in_progress',
@@ -1245,7 +1257,8 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
     rv_json = rv.json
     rv_json['state_history'][0]['updated'] = _timestamp
     rv_json['updated'] = _timestamp
-    rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
+    rv_json['logs']['expiration'] = _expiration_timestamp
+    rv_json['related_bundles']['expiration'] = _expiration_timestamp
     assert response_json == rv_json
     mock_hrbr.apply_async.assert_called_once()
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
@@ -1935,3 +1948,96 @@ def test_create_empty_index_not_allowed_params(mock_smfsc, data, error_msg, clie
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('related_bundles_content', 'expired', 'finalized', 'expected'),
+    (
+        (
+            ['foobar'],
+            False,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            ['foobar'],
+            True,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            ['foobar'],
+            False,
+            True,
+            {'status': 200, 'mimetype': 'application/json', 'json': ['foobar']},
+        ),
+        (
+            [],
+            True,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            True,
+            {'status': 500, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            True,
+            True,
+            {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+    ),
+)
+def test_get_build_related_bundles(
+    client,
+    db,
+    minimal_request_regenerate_bundle,
+    tmpdir,
+    related_bundles_content,
+    expired,
+    finalized,
+    expected,
+):
+    minimal_request_regenerate_bundle.add_state('in_progress', 'Starting things up!')
+    db.session.commit()
+
+    client.application.config['IIB_REQUEST_RELATED_BUNDLES_DIR'] = str(tmpdir)
+    if expired:
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
+    if finalized:
+        minimal_request_regenerate_bundle.add_state('complete', 'The request is complete')
+        db.session.commit()
+    request_id = minimal_request_regenerate_bundle.id
+    related_bundles_file = tmpdir.join(f'{request_id}_related_bundles.json')
+    if related_bundles_content is not None:
+        with open(related_bundles_file, 'w') as output_file:
+            json.dump(related_bundles_content, output_file)
+    rv = client.get(f'/api/v1/builds/{request_id}/related_bundles')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    assert rv.json == expected['json']
+
+
+def test_get_build_related_bundles_not_configured(client, db, minimal_request_regenerate_bundle):
+    minimal_request_regenerate_bundle.add_state('in_progress', 'Starting things up!')
+    db.session.commit()
+
+    client.application.config['IIB_REQUEST_RELATED_BUNDLES_DIR'] = None
+    request_id = minimal_request_regenerate_bundle.id
+    rv = client.get(f'/api/v1/builds/{request_id}/related_bundles')
+    assert rv.status_code == 404
+    assert rv.mimetype == 'application/json'
+    assert rv.json == {'error': mock.ANY}
+
+    rv = client.get(f'/api/v1/builds/{request_id}')
+    assert rv.status_code == 200
+    assert 'related_bundles' not in rv.json

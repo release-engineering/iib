@@ -21,8 +21,9 @@ class Config(object):
     IIB_MESSAGING_DURABLE = True
     IIB_MESSAGING_KEY = '/etc/iib/messaging.key'
     IIB_MESSAGING_TIMEOUT = 30
+    IIB_REQUEST_DATA_DAYS_TO_LIVE = 3
     IIB_REQUEST_LOGS_DIR = None
-    IIB_REQUEST_LOGS_DAYS_TO_LIVE = 3
+    IIB_REQUEST_RELATED_BUNDLES_DIR = None
     IIB_USER_TO_QUEUE = {}
     IIB_WORKER_USERNAMES = []
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -43,6 +44,7 @@ class DevelopmentConfig(Config):
     IIB_MESSAGING_CA = '/etc/iib/messaging-ca.crt'
     IIB_MESSAGING_URLS = ['amqps://message-broker:5671']
     IIB_REQUEST_LOGS_DIR = '/var/log/iib/requests'
+    IIB_REQUEST_RELATED_BUNDLES_DIR = '/var/lib/requests/related_bundles'
     SQLALCHEMY_DATABASE_URI = 'postgresql+psycopg2://iib:iib@db:5432/iib'
     LOGIN_DISABLED = True
 

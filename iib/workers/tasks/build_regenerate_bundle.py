@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 import logging
 import os
 import tempfile
@@ -97,7 +98,7 @@ def handle_regenerate_bundle_request(
             metadata_path = os.path.join(temp_dir, 'metadata')
             _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
             new_labels = _adjust_operator_bundle(
-                manifests_path, metadata_path, organization, pinned_by_iib
+                manifests_path, metadata_path, request_id, organization, pinned_by_iib
             )
 
             with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
@@ -182,7 +183,9 @@ def _apply_package_name_suffix(metadata_path, package_name_suffix):
     )
 
 
-def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pinned_by_iib=False):
+def _adjust_operator_bundle(
+    manifests_path, metadata_path, request_id, organization=None, pinned_by_iib=False
+):
     """
     Apply modifications to the operator manifests at the given location.
 
@@ -197,6 +200,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
 
     :param str manifests_path: the full path to the directory containing the operator manifests.
     :param str metadata_path: the full path to the directory containing the bundle metadata files.
+    :param int request_id: the ID of the IIB build request.
     :param str organization: the organization this bundle is for. If no organization is provided,
         no custom behavior will be applied.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
@@ -216,6 +220,7 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
     organization_customizations = conf['iib_organization_customizations'].get(organization, [])
     if not organization_customizations:
         organization_customizations = [
+            {'type': 'related_bundles'},
             {'type': 'package_name_suffix'},
             {'type': 'registry_replacements'},
             {'type': 'image_name_from_labels'},
@@ -281,6 +286,12 @@ def _adjust_operator_bundle(manifests_path, metadata_path, organization=None, pi
                 _apply_repo_enclosure(
                     bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue
                 )
+        elif customization_type == 'related_bundles':
+            log.info('Applying related_bundles customization')
+            bundle_metadata = _get_bundle_metadata(
+                operator_manifest, pinned_by_iib, perform_sanity_checks=False
+            )
+            _write_related_bundles_file(bundle_metadata, request_id)
 
     return labels
 
@@ -529,3 +540,27 @@ def _apply_repo_enclosure(bundle_metadata, org_enclose_repo_namespace, org_enclo
         replacement_pullspecs[pullspec] = new_pullspec
 
     _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+
+
+def _write_related_bundles_file(bundle_metadata, request_id):
+    """
+    Get bundle images in the CSV files of the bundle being regenerated and store them in a file.
+
+    :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
+    :param int request_id: the ID of the IIB build request
+    """
+    worker_config = get_worker_config()
+    related_bundles_dir = worker_config['iib_request_related_bundles_dir']
+    related_bundles_file = os.path.join(related_bundles_dir, f'{request_id}_related_bundles.json')
+
+    related_bundle_images = []
+    for related_pullspec_obj in bundle_metadata['found_pullspecs']:
+        related_pullspec = related_pullspec_obj.to_str()
+        if yaml.load(
+            get_image_label(related_pullspec, 'com.redhat.delivery.operator.bundle') or 'false'
+        ):
+            related_bundle_images.append(related_pullspec)
+
+    log.debug('Writing related bundle images to %s', related_bundles_file)
+    with open(related_bundles_file, 'w') as output_file:
+        json.dump(related_bundle_images, output_file)

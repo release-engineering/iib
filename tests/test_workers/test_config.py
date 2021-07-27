@@ -196,9 +196,9 @@ def test_validate_celery_config_invalid_organization_customizations(config, erro
 @pytest.mark.parametrize(
     'file_type, access, error',
     (
-        ('file', True, 'iib_request_logs_dir, {logs_dir}, must exist and be a directory'),
-        (None, True, 'iib_request_logs_dir, {logs_dir}, must exist and be a directory'),
-        ('dir', False, 'iib_request_logs_dir, {logs_dir}, is not writable!'),
+        ('file', True, 'iib_request_logs_dir must exist and be a directory'),
+        (None, True, 'iib_request_logs_dir must exist and be a directory'),
+        ('dir', False, 'iib_request_logs_dir, is not writable!'),
     ),
 )
 def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type, access, error):

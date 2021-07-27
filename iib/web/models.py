@@ -424,7 +424,7 @@ class Request(db.Model):
             latest_state = states[0]
             if current_app.config['IIB_REQUEST_LOGS_DIR']:
                 rv['logs'] = {
-                    'expiration': self.logs_expiration.isoformat() + 'Z',
+                    'expiration': self.temporary_data_expiration.isoformat() + 'Z',
                     'url': url_for('.get_build_logs', request_id=self.id, _external=True),
                 }
         rv.update(latest_state or _state_to_json(self.state))
@@ -451,15 +451,15 @@ class Request(db.Model):
         return RequestTypeMapping.pretty(self.type)
 
     @property
-    def logs_expiration(self):
+    def temporary_data_expiration(self):
         """
-        Return the timestamp of when logs are considered expired.
+        Return the timestamp of when logs and related_bundles are considered expired.
 
-        :return: logs expiration timestamp
+        :return: temporary data expiration timestamp
         :rtype: str
         """
-        logs_lifetime = timedelta(days=current_app.config['IIB_REQUEST_LOGS_DAYS_TO_LIVE'])
-        return self.state.updated + logs_lifetime
+        data_lifetime = timedelta(days=current_app.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'])
+        return self.state.updated + data_lifetime
 
 
 class Batch(db.Model):
@@ -1131,6 +1131,11 @@ class RequestRegenerateBundle(Request):
             self.from_bundle_image_resolved, 'pull_specification', None
         )
         rv['organization'] = self.organization
+        if current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']:
+            rv['related_bundles'] = {
+                'expiration': self.temporary_data_expiration.isoformat() + 'Z',
+                'url': url_for('.get_related_bundles', request_id=self.id, _external=True),
+            }
 
         return rv
 
