@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.2.0
+- Add create-empty-index functionality
+- Replace custom retry with retry package and setting backoff interval for skopeo_inspect
+- Set --arch when building images
+- Bump pytest-cov from 2.12.0 to 2.12.1
+- Remove retry delay during tests
+- Request and urllib3 update
+- Use pinned runtime requirements in tests
+- Fix apply_repo_enclosure bug when namespace is None
+
 ## 4.1.0
 - removed support for privileged users
 - added retries for OMPS pushes

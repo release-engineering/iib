@@ -521,7 +521,7 @@ def _apply_repo_enclosure(bundle_metadata, org_enclose_repo_namespace, org_enclo
         new_pullspec = ImageName.parse(pullspec.to_str())
 
         repo_parts = new_pullspec.repo.split('/')
-        if org_enclose_repo_namespace != new_pullspec.namespace:
+        if new_pullspec.namespace and org_enclose_repo_namespace != new_pullspec.namespace:
             repo_parts.insert(0, new_pullspec.namespace)
 
         new_pullspec.namespace = org_enclose_repo_namespace
