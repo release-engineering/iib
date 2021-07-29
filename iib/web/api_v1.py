@@ -551,14 +551,18 @@ def regenerate_bundle_batch():
     build_and_requests = zip(payload['build_requests'], requests)
     try:
         for build_request, request in build_and_requests:
+            args = [
+                build_request['from_bundle_image'],
+                build_request.get('organization'),
+                request.id,
+                build_request.get('registry_auths'),
+            ]
+            safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
             handle_regenerate_bundle_request.apply_async(
-                args=[
-                    build_request['from_bundle_image'],
-                    build_request.get('organization'),
-                    request.id,
-                ],
+                args=args,
                 link_error=error_callback,
+                argsrepr=repr(safe_args),
                 queue=_get_user_queue(),
             )
 

@@ -1332,7 +1332,10 @@ def test_regenerate_bundle_batch_success(
 
     data = {
         'build_requests': [
-            {'from_bundle_image': 'registry.example.com/bundle-image:latest'},
+            {
+                'from_bundle_image': 'registry.example.com/bundle-image:latest',
+                'registry_auths': {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
+            },
             {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
         ]
     }
@@ -1345,17 +1348,25 @@ def test_regenerate_bundle_batch_success(
     mock_hrbr.apply_async.assert_has_calls(
         (
             mock.call(
-                args=['registry.example.com/bundle-image:latest', None, 1],
+                args=[
+                    'registry.example.com/bundle-image:latest',
+                    None,
+                    1,
+                    {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
+                ],
+                argsrepr="['registry.example.com/bundle-image:latest', None, 1, '*****']",
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),
             mock.call(
-                args=['registry.example.com/bundle-image2:latest', None, 2],
+                args=['registry.example.com/bundle-image2:latest', None, 2, None],
+                argsrepr="['registry.example.com/bundle-image2:latest', None, 2, None]",
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),
         )
     )
+    assert 'registry_auths' not in rv.json
     assert len(rv.json) == 2
     assert all(r['batch_annotations'] == annotations for r in rv.json)
 
