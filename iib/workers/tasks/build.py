@@ -18,11 +18,7 @@ from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
-from iib.workers.tasks.legacy import (
-    export_legacy_packages,
-    get_legacy_support_packages,
-    validate_legacy_params_and_config,
-)
+
 from iib.workers.tasks.utils import (
     chmod_recursively,
     deprecate_bundles,
@@ -823,11 +819,13 @@ def handle_add_request(
     :param list add_arches: the list of arches to build in addition to the arches ``from_index`` is
         currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
-    :param str cnr_token: the token required to push backported packages to the legacy
-        app registry via OMPS.
-    :param str organization: organization name in the legacy app registry to which the backported
-        packages should be pushed to.
-    :param bool force_backport: if True, always export packages to the legacy app registry via OMPS.
+    :param str cnr_token: (deprecated) legacy support was disabled.
+        the token required to push backported packages to the legacy app registry via OMPS.
+    :param str organization: (deprecated) legacy support was disabled.
+        organization name in the legacy app registry to which the backported packages
+        should be pushed to.
+    :param bool force_backport: (deprecated) legacy support was disabled.
+        if True, always export packages to the legacy app registry via OMPS.
     :param bool overwrite_from_index: if True, overwrite the input ``from_index`` with the built
         index image.
     :param str overwrite_from_index_token: the token used for overwriting the input
@@ -840,8 +838,7 @@ def handle_add_request(
         ``binary_image`` to use.
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
         to ``None``.
-    :raises IIBError: if the index image build fails or legacy support is required and one of
-        ``cnr_token`` or ``organization`` is not specified.
+    :raises IIBError: if the index image build fails.
     """
     _cleanup()
     # Resolve bundles to their digests
@@ -868,13 +865,10 @@ def handle_add_request(
     )
     from_index_resolved = prebuild_info['from_index_resolved']
 
-    log.info('Checking if interacting with the legacy app registry is required')
-    legacy_support_packages = get_legacy_support_packages(
-        resolved_bundles, request_id, prebuild_info['ocp_version'], force_backport=force_backport
-    )
-    if legacy_support_packages:
-        validate_legacy_params_and_config(
-            legacy_support_packages, resolved_bundles, cnr_token, organization
+    if (cnr_token and organization) or force_backport:
+        log.warning(
+            "Invalid legacy request. "
+            "Legacy support is disabled but cnr_token and organization was provided."
         )
 
     _update_index_image_build_state(request_id, prebuild_info)
@@ -996,10 +990,6 @@ def handle_add_request(
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches)
-    if legacy_support_packages:
-        export_legacy_packages(
-            legacy_support_packages, request_id, output_pull_spec, cnr_token, organization
-        )
 
     _update_index_image_pull_spec(
         output_pull_spec,

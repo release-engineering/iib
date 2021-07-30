@@ -418,12 +418,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build.export_legacy_packages')
 @mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
-@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
@@ -435,12 +432,9 @@ def test_handle_add_request(
     mock_alti,
     mock_grb,
     mock_gb,
-    mock_vlpc,
-    mock_glsp,
     mock_capml,
     mock_srs,
     mock_srs2,
-    mock_elp,
     mock_uiips,
     mock_vii,
     mock_pi,
@@ -470,8 +464,6 @@ def test_handle_add_request(
         'distribution_scope': distribution_scope,
     }
     mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
-    legacy_packages = {'some_package'}
-    mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
     mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
@@ -545,9 +537,6 @@ def test_handle_add_request(
     )
     mock_gb.assert_called_once()
     assert 2 == mock_alti.call_count
-    mock_glsp.assert_called_once_with(
-        ['some-bundle@sha', 'some-deprecation-bundle@sha'], 3, 'v4.5', force_backport=force_backport
-    )
 
     mock_oia.assert_called_once()
 
@@ -565,12 +554,6 @@ def test_handle_add_request(
         assert mock_bi.call_count == len(arches)
 
     assert mock_pi.call_count == len(arches)
-
-    mock_elp.assert_called_once()
-    export_args = mock_elp.call_args[0]
-    assert legacy_packages in export_args
-    assert cnr_token in export_args
-    assert organization in export_args
 
     mock_uiips.assert_called_once()
     mock_vii.assert_not_called()
@@ -602,11 +585,8 @@ def test_handle_add_request(
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build.export_legacy_packages')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
-@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
@@ -618,11 +598,8 @@ def test_handle_add_request_check_index_label_behavior(
     mock_alti,
     mock_grb,
     mock_gb,
-    mock_vlpc,
-    mock_glsp,
     mock_capml,
     mock_srs,
-    mock_elp,
     mock_uiips,
     mock_vii,
     mock_pi,
@@ -648,8 +625,6 @@ def test_handle_add_request_check_index_label_behavior(
         'distribution_scope': 'stage',
     }
     mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
-    legacy_packages = {'some_package'}
-    mock_glsp.return_value = legacy_packages
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
     mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
@@ -799,106 +774,6 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
     mock_cleanup.assert_called_once_with()
     mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
-
-
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build._serve_index_registry')
-@mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.utils.verify_labels')
-@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
-@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build._opm_index_add')
-@mock.patch('iib.workers.tasks.build._build_image')
-@mock.patch('iib.workers.tasks.build._push_image')
-@mock.patch('iib.workers.tasks.build._verify_index_image')
-@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build.export_legacy_packages')
-@mock.patch('iib.workers.tasks.build.set_request_state')
-@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
-@mock.patch('iib.workers.tasks.build.get_legacy_support_packages')
-@mock.patch('iib.workers.tasks.build.validate_legacy_params_and_config')
-@mock.patch('iib.workers.tasks.build.gate_bundles')
-@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
-@mock.patch('iib.workers.tasks.build._add_label_to_index')
-@mock.patch('iib.workers.tasks.build._get_present_bundles', return_value=[[], []])
-@mock.patch('iib.workers.tasks.build._get_missing_bundles')
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-def test_handle_add_request_backport_failure_no_overwrite(
-    mock_srt,
-    mock_gmb,
-    mock_gpb,
-    mock_aolti,
-    mock_grb,
-    mock_gb,
-    mock_vlpc,
-    mock_glsp,
-    mock_capml,
-    mock_srs,
-    mock_elp,
-    mock_uiips,
-    mock_vii,
-    mock_pi,
-    mock_bi,
-    mock_oia,
-    mock_uiibs,
-    mock_prfb,
-    mock_vl,
-    mock_cleanup,
-    mock_sir,
-    mock_run_cmd,
-):
-    error_msg = 'Backport failure!'
-    mock_elp.side_effect = IIBError(error_msg)
-    arches = {'amd64', 's390x'}
-    mock_prfb.return_value = {
-        'arches': arches,
-        'binary_image_resolved': 'binary-image@sha256:abcdef',
-        'from_index_resolved': 'from-index@sha256:bcdefg',
-        'ocp_version': 'v4.6',
-        'distribution_scope': 'prod',
-    }
-    mock_grb.return_value = ['some-bundle@sha']
-    legacy_packages = {'some_package'}
-    mock_glsp.return_value = legacy_packages
-    output_pull_spec = 'quay.io/namespace/some-image:3'
-    mock_capml.return_value = output_pull_spec
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_sir.return_value = (port, my_mock)
-    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
-        "bundlePath": "bundle1"\n}'
-
-    bundles = ['some-bundle:2.3-1']
-    cnr_token = 'token'
-    organization = 'org'
-    greenwave_config = {'some_key': 'other_value'}
-    with pytest.raises(IIBError, match=error_msg):
-        build.handle_add_request(
-            bundles,
-            'binary-image:latest',
-            3,
-            'from-index:latest',
-            ['s390x'],
-            cnr_token,
-            organization,
-            False,
-            None,
-            greenwave_config,
-        )
-
-    mock_sir.assert_called_once()
-
-    mock_run_cmd.assert_called_once()
-    mock_run_cmd.assert_has_calls(
-        [
-            mock.call(
-                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-                exc_msg=mock.ANY,
-            ),
-        ]
-    )
-    mock_elp.assert_called_once()
-    mock_uiips.assert_not_called()
 
 
 @pytest.mark.parametrize('binary_image', ('binary-image:latest', None))
