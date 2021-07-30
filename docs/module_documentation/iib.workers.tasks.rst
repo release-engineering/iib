@@ -31,15 +31,6 @@ iib.workers.tasks.general module
    :private-members:
    :show-inheritance:
 
-iib.workers.tasks.legacy module
--------------------------------
-
-.. automodule:: iib.workers.tasks.legacy
-   :ignore-module-all:
-   :members:
-   :private-members:
-   :show-inheritance:
-
 iib.workers.tasks.utils module
 ------------------------------
 
