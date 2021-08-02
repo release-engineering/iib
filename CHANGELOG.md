@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.3.0
+- fixed memcached key length error
+- fixed registry_auth in batch regenerate-bundle requests
+- added related_bundles api endpoint for regenerate-bundle requests
+
 ## 4.2.0
 - Add create-empty-index functionality
 - Replace custom retry with retry package and setting backoff interval for skopeo_inspect
