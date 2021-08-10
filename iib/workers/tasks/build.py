@@ -867,8 +867,8 @@ def handle_add_request(
 
     if (cnr_token and organization) or force_backport:
         log.warning(
-            "Invalid legacy request. "
-            "Legacy support is disabled but cnr_token and organization was provided."
+            "Legacy support is deprecated in IIB. "
+            "cnr_token, organization and force_backport parameters will be ignored."
         )
 
     _update_index_image_build_state(request_id, prebuild_info)

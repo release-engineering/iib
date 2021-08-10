@@ -749,7 +749,7 @@ components:
         cnr_token:
           type: string
           description: >
-            This token is required only if support for legacy app registry is
+            (deprecated) This token is required only if support for legacy app registry is
             required.
           example: token
         deprecation_list:
@@ -763,7 +763,7 @@ components:
         force_backport:
           type: boolean
           description: >
-            If True, always backport packages to the legacy app registry via OMPS. Requires
+            (deprecated) If True, always backport packages to the legacy app registry via OMPS. Requires
             cnr_token and organization to be set if True.
           default: false
         from_index:
@@ -774,7 +774,7 @@ components:
         organization:
           type: string
           description: >
-            The organization is required only if support for legacy app registry
+            (deprecated) The organization is required only if support for legacy app registry
             is required.
           example: openshift-operators
         overwrite_from_index:
