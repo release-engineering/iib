@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.4.0
+- deprecated legacy support for OMPS
+
 ## 4.3.0
 - fixed memcached key length error
 - fixed registry_auth in batch regenerate-bundle requests
