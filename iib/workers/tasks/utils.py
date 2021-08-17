@@ -814,18 +814,20 @@ def prepare_request_for_build(request_id, build_request_config):
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
     # and 'Rm' requests, but use the distribution_scope of the target_index as the resolved
     # distribution scope for `merge-index-image` requests.
-    resolved_distribution_scope = index_info['from_index']['resolved_distribution_scope']
+    request_index = index_info['from_index']
     if (
         hasattr(build_request_config, "source_from_index")
         and build_request_config.source_from_index
     ):
-        resolved_distribution_scope = index_info['target_index']['resolved_distribution_scope']
+        request_index = index_info['target_index']
+
+    resolved_distribution_scope = request_index['resolved_distribution_scope']
 
     distribution_scope = _validate_distribution_scope(
         resolved_distribution_scope, build_request_config.distribution_scope
     )
 
-    binary_image = build_request_config.binary_image(index_info['from_index'], distribution_scope)
+    binary_image = build_request_config.binary_image(request_index, distribution_scope)
 
     binary_image_resolved = get_resolved_image(binary_image)
     binary_image_arches = get_image_arches(binary_image_resolved)

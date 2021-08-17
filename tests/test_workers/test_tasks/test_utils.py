@@ -864,9 +864,9 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
 
     target_index_info = {
         'resolved_from_index': 'some_other_image@sha256',
-        'ocp_version': 'v4.6',
+        'ocp_version': 'v4.9',
         'arches': {'amd64'},
-        'resolved_distribution_scope': 'stage',
+        'resolved_distribution_scope': 'prod',
     }
     mock_giii.side_effect = [from_index_image_info, source_index_image_info, target_index_info]
     mock_gri.return_value = 'binary-image@sha256:12345'
@@ -888,11 +888,11 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
         'bundle_mapping': {},
         'from_index_resolved': None,
         'ocp_version': 'v4.5',
-        'distribution_scope': 'stage',
+        'distribution_scope': 'prod',
         'source_ocp_version': 'v4.5',
         'source_from_index_resolved': 'some_resolved_image@sha256',
         'target_index_resolved': 'some_other_image@sha256',
-        'target_ocp_version': 'v4.6',
+        'target_ocp_version': 'v4.9',
     }
 
 
