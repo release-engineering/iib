@@ -587,6 +587,7 @@ def testdeprecate_bundles(mock_srt, mock_run_cmd):
         from_index,
         '--bundles',
         ','.join(bundles),
+        '--allow-package-removal',
     ]
     utils.deprecate_bundles(bundles, 'some_dir', binary_image, from_index, '4.6')
     mock_run_cmd.assert_called_once_with(
