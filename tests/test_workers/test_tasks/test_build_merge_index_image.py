@@ -116,6 +116,7 @@ def test_handle_merge_request(
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
     assert mock_capml.call_count == 1
+    assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
 
@@ -201,6 +202,7 @@ def test_handle_merge_request_no_deprecate(
         mock_dep_b.assert_not_called()
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
+    assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
     mock_capml.assert_called_once()
     mock_uiips.assert_called_once()

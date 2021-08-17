@@ -246,6 +246,20 @@ def handle_merge_request(
                 overwrite_target_index_token,
             )
 
+        _add_label_to_index(
+            'com.redhat.index.delivery.version',
+            prebuild_info['target_ocp_version'],
+            temp_dir,
+            'index.Dockerfile',
+        )
+
+        _add_label_to_index(
+            'com.redhat.index.delivery.distribution_scope',
+            prebuild_info['distribution_scope'],
+            temp_dir,
+            'index.Dockerfile',
+        )
+
         for arch in sorted(prebuild_info['arches']):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
