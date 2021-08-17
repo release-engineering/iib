@@ -8,6 +8,7 @@ import kombu
 from flask_login import current_user, login_required
 from sqlalchemy.orm import with_polymorphic
 from sqlalchemy.sql import text
+from sqlalchemy import or_
 from werkzeug.exceptions import Forbidden, Gone, NotFound
 
 from iib.exceptions import IIBError, ValidationError
@@ -28,6 +29,7 @@ from iib.web.models import (
     get_request_query_options,
     RequestTypeMapping,
     RequestCreateEmptyIndex,
+    User,
 )
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
@@ -243,30 +245,67 @@ def get_builds():
     state = flask.request.args.get('state')
     verbose = str_to_bool(flask.request.args.get('verbose'))
     max_per_page = flask.current_app.config['IIB_MAX_PER_PAGE']
+    request_type = flask.request.args.get('request_type')
+    user = flask.request.args.get('user')
+    index_image = flask.request.args.get('index_image')
+
+    query_params = {}
 
     # Create an alias class to load the polymorphic classes
     poly_request = with_polymorphic(Request, '*')
     query = poly_request.query.options(*get_request_query_options(verbose=verbose))
     if state:
+        query_params['state'] = state
         RequestStateMapping.validate_state(state)
         state_int = RequestStateMapping.__members__[state].value
         query = query.join(Request.state)
         query = query.filter(RequestState.state == state_int)
 
     if batch_id is not None:
+        query_params['batch'] = batch_id
         batch_id = Batch.validate_batch(batch_id)
         query = query.filter_by(batch_id=batch_id)
 
+    if request_type:
+        query_params['request_type'] = request_type
+        RequestTypeMapping.validate_type(request_type)
+        request_type = request_type.replace('-', '_')
+        request_type_int = RequestTypeMapping.__members__[request_type].value
+        query = query.filter(Request.type == request_type_int)
+
+    if user:
+        # join with the user table and then filter on username
+        # request table only has the user_id
+        query_params['user'] = user
+        query = query.join(Request.user).filter(User.username == user)
+
+    if index_image:
+        query_params['index_image'] = index_image
+        # Get the image id of the image to be searched
+        image_result = Image.query.filter_by(pull_specification=index_image).first()
+        if image_result:
+            # join with the Request* tables to get the response as image_ids are stored there
+            query = (
+                query.outerjoin(RequestCreateEmptyIndex, Request.id == RequestCreateEmptyIndex.id)
+                .outerjoin(RequestAdd, Request.id == RequestAdd.id)
+                .outerjoin(RequestMergeIndexImage, Request.id == RequestMergeIndexImage.id)
+                .outerjoin(RequestRm, Request.id == RequestRm.id)
+            )
+
+            query = query.filter(
+                or_(
+                    RequestCreateEmptyIndex.index_image_id == image_result.id,
+                    RequestAdd.index_image_id == image_result.id,
+                    RequestMergeIndexImage.index_image_id == image_result.id,
+                    RequestRm.index_image_id == image_result.id,
+                )
+            )
+        # if index_image is not found in image table, then raise an error
+        else:
+            raise ValidationError(f'{index_image} is not a valid index image')
+
     pagination_query = query.order_by(Request.id.desc()).paginate(max_per_page=max_per_page)
     requests = pagination_query.items
-
-    query_params = {}
-    if state:
-        query_params['state'] = state
-    if verbose:
-        query_params['verbose'] = verbose
-    if batch_id:
-        query_params['batch'] = batch_id
 
     response = {
         'items': [request.to_json(verbose=verbose) for request in requests],
