@@ -203,6 +203,7 @@ def deprecate_bundles(
         from_index,
         '--bundles',
         ','.join(bundles),
+        '--allow-package-removal',
     ]
     if container_tool:
         cmd.append('--container-tool')
