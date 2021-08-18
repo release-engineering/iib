@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 4.4.1
+- fixed merge-index-image bugs
+- fixed deprecatetruncate command
+
 ## 4.4.0
 - deprecated legacy support for OMPS
 
