@@ -426,6 +426,58 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  '/builds/{id}/related_bundles':
+    get:
+      description: Return the related bundles for a specific regenerate bundle build request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve the related bundles for
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The related bundles for the build request
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
+        '403':
+          description: >
+            The related bundles are not available for this request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The request is not complete yet. The related bundles are not available.
+        '404':
+          description: Related bundles for build request are not available in IIB
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found
+        '410':
+          description: The logs for the build request has been removed due to expiration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The logs for the build request 1 no longer exist
   /builds/add-rm-batch:
     post:
       description: >
@@ -883,6 +935,20 @@ components:
             auths:
               registry.example.io:
                 auth: "my-secret-token-base-64-encoded"
+        related_bundles:
+          type: object
+          properties:
+            url:
+              type: string
+              description: URL to fetch the related bundles for the request
+            expiration:
+              type: string
+              description: >-
+                UTC timestamp in ISO format that indicates when the related bundles for the request are
+                considered to be expired and will be removed.
+          example:
+            url: https://iib.domain.local/api/v1/builds/1/related_bundles
+            expiration: '2019-09-19T19:35:15.722265Z'
       required:
         - from_bundle_image
     RegenerateBundleResponse:
