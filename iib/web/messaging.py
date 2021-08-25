@@ -243,7 +243,7 @@ def json_to_envelope(address, content, properties=None):
     :rtype: Envelope
     """
     message = proton.Message(body=json.dumps(content), properties=properties)
-    message.id = str(uuid.uuid4())
+    message.correlation_id = str(uuid.uuid4())
     message.content_type = 'application/json'
     message.durable = current_app.config['IIB_MESSAGING_DURABLE']
     return Envelope(address, message)
@@ -280,7 +280,9 @@ def send_messages(envelopes):
                 address_to_sender[envelope.address] = connection.create_sender(envelope.address)
 
             current_app.logger.info(
-                'Sending message %s to %s', envelope.message.id, envelope.address
+                'Sending message %s (correlation-id) to %s',
+                envelope.message.correlation_id,
+                envelope.address,
             )
             address_to_sender[envelope.address].send(
                 envelope.message, timeout=conf['IIB_MESSAGING_TIMEOUT']
