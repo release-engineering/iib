@@ -170,8 +170,9 @@ def test_json_to_envelope(mock_current_app, durable):
     envelope = messaging.json_to_envelope(address, content)
 
     assert envelope.address == address
-    # Verify that the ID is a UUID
-    assert len(envelope.message.id) == 36
+    # Verify that the Correlation ID is a UUID
+    assert len(envelope.message.correlation_id) == 36
+    assert envelope.message.id is None
     assert envelope.message.body == '{"han": "solo"}'
     assert envelope.message.content_type == 'application/json'
     assert envelope.message.durable is durable
