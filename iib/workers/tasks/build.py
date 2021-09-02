@@ -17,6 +17,7 @@ from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
+from iib.workers.tasks.dc_utils import is_image_dc
 
 from iib.workers.tasks.utils import (
     chmod_recursively,
@@ -858,6 +859,11 @@ def handle_add_request(
     present_bundles_pull_spec = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
+            if is_image_dc(from_index):
+                err_msg = 'Declarative config image type is not supported yet.'
+                log.error(err_msg)
+                raise IIBError(err_msg)
+
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
@@ -1041,6 +1047,11 @@ def handle_rm_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        if is_image_dc(from_index):
+            err_msg = 'Declarative config image type is not supported yet.'
+            log.error(err_msg)
+            raise IIBError(err_msg)
+
         _opm_index_rm(
             temp_dir,
             operators,
