@@ -4,6 +4,7 @@ import tempfile
 import json
 import re
 
+from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _add_label_to_index,
@@ -16,6 +17,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
+from iib.workers.tasks.dc_utils import is_image_dc
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -84,6 +86,10 @@ def handle_create_empty_index_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        if is_image_dc(from_index):
+            err_msg = 'Declarative config image type is not supported yet.'
+            log.error(err_msg)
+            raise IIBError(err_msg)
         set_request_state(request_id, 'in_progress', 'Checking operators present in index image')
 
         operators = _get_present_operators(from_index_resolved, temp_dir)

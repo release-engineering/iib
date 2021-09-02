@@ -449,7 +449,9 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.is_image_dc')
 def test_handle_add_request(
+    mock_iidc,
     mock_srt,
     mock_gpb,
     mock_alti,
@@ -478,6 +480,7 @@ def test_handle_add_request(
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    mock_iidc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': binary_image or 'some_image',
@@ -595,6 +598,30 @@ def test_handle_add_request(
         mock_dep_b.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build.is_image_dc')
+def test_handle_add_request_raises(mock_iidc, mock_runcmd, mock_c):
+    mock_iidc.return_value = True
+    with pytest.raises(IIBError):
+        build.handle_add_request(
+            bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
+            request_id=3,
+            binary_image='binary-image:latest',
+            from_index='from-index:latest',
+            add_arches=['s390x'],
+            cnr_token='token',
+            organization='org',
+            force_backport=True,
+            overwrite_from_index=False,
+            overwrite_from_index_token=None,
+            distribution_scope=None,
+            greenwave_config={'some_key': 'other_value'},
+            binary_image_config={'prod': {'v4.5': 'some_image'}},
+            deprecation_list=[],
+        )
+
+
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build._serve_index_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
@@ -615,7 +642,9 @@ def test_handle_add_request(
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.is_image_dc')
 def test_handle_add_request_check_index_label_behavior(
+    mock_iidc,
     mock_srt,
     mock_gpb,
     mock_alti,
@@ -639,6 +668,7 @@ def test_handle_add_request_check_index_label_behavior(
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    mock_iidc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': 'binary-image:latest',
@@ -812,7 +842,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
+@mock.patch('iib.workers.tasks.build.is_image_dc')
 def test_handle_rm_request(
+    mock_iidc,
     mock_alti,
     mock_uiips,
     mock_capml,
@@ -828,6 +860,7 @@ def test_handle_rm_request(
     binary_image,
 ):
     arches = {'amd64', 's390x'}
+    mock_iidc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': binary_image,
@@ -866,6 +899,21 @@ def test_handle_rm_request(
     mock_capml.assert_called_once()
     mock_uiips.assert_called_once()
     assert mock_srs.call_args[0][1] == 'complete'
+
+
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build.is_image_dc')
+def test_handle_rm_request_raises(mock_iidc, mock_runcmd, mock_c):
+    mock_iidc.return_value = True
+    with pytest.raises(IIBError):
+        build.handle_rm_request(
+            operators=['some-operator'],
+            request_id=3,
+            from_index='from-index:latest',
+            binary_image='binary-image:latest',
+            binary_image_config={'prod': {'v4.6': 'some_image'}},
+        )
 
 
 @mock.patch('iib.workers.tasks.build.set_registry_token')
