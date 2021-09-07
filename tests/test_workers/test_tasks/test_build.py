@@ -55,27 +55,50 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
     build._create_and_push_manifest_list(3, {'amd64', 's390x'})
 
-    expected_manifest = textwrap.dedent(
-        '''\
-        image: registry:8443/iib-build:3
-        manifests:
-        - image: registry:8443/iib-build:3-amd64
-          platform:
-            architecture: amd64
-            os: linux
-        - image: registry:8443/iib-build:3-s390x
-          platform:
-            architecture: s390x
-            os: linux
-        '''
-    )
-    manifest = os.path.join(tmp_path, 'manifest.yaml')
-    with open(manifest, 'r') as manifest_f:
-        assert manifest_f.read() == expected_manifest
-    mock_run_cmd.assert_called_once()
-    manifest_tool_args = mock_run_cmd.call_args[0][0]
-    assert manifest_tool_args[0] == 'manifest-tool'
-    assert manifest in manifest_tool_args
+    expected_calls = [
+        mock.call(
+            ['buildah', 'manifest', 'create', 'registry:8443/iib-build:3'],
+            exc_msg='Failed to create the manifest list locally: registry:8443/iib-build:3',
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'add',
+                'registry:8443/iib-build:3',
+                'docker://registry:8443/iib-build:3-amd64',
+            ],
+            exc_msg=(
+                'Failed to add docker://registry:8443/iib-build:3-amd64'
+                ' to the local manifest list: registry:8443/iib-build:3'
+            ),
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'add',
+                'registry:8443/iib-build:3',
+                'docker://registry:8443/iib-build:3-s390x',
+            ],
+            exc_msg=(
+                'Failed to add docker://registry:8443/iib-build:3-s390x'
+                ' to the local manifest list: registry:8443/iib-build:3'
+            ),
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'push',
+                '--all',
+                'registry:8443/iib-build:3',
+                'docker://registry:8443/iib-build:3',
+            ],
+            exc_msg='Failed to push the manifest list to registry:8443/iib-build:3',
+        ),
+    ]
+    assert mock_run_cmd.call_args_list == expected_calls
 
 
 @pytest.mark.parametrize(

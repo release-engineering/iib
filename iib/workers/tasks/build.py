@@ -8,7 +8,6 @@ import stat
 import subprocess
 import time
 import tempfile
-import textwrap
 
 from operator_manifest.operator import ImageName
 from retry import retry
@@ -116,47 +115,30 @@ def _create_and_push_manifest_list(request_id, arches):
     :rtype: str
     :raises IIBError: if creating or pushing the manifest list fails
     """
+    buildah_manifest_cmd = ['buildah', 'manifest']
     output_pull_spec = get_rebuilt_image_pull_spec(request_id)
-    log.info('Creating the manifest list %s', output_pull_spec)
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        manifest_yaml = os.path.abspath(os.path.join(temp_dir, 'manifest.yaml'))
-        with open(manifest_yaml, 'w+') as manifest_yaml_f:
-            manifest_yaml_f.write(
-                textwrap.dedent(
-                    f'''\
-                    image: {output_pull_spec}
-                    manifests:
-                    '''
-                )
-            )
-            for arch in sorted(arches):
-                arch_pull_spec = _get_external_arch_pull_spec(request_id, arch)
-                log.debug(
-                    'Adding the manifest %s to the manifest list %s',
-                    arch_pull_spec,
-                    output_pull_spec,
-                )
-                manifest_yaml_f.write(
-                    textwrap.dedent(
-                        f'''\
-                        - image: {arch_pull_spec}
-                          platform:
-                            architecture: {arch}
-                            os: linux
-                        '''
-                    )
-                )
-            # Return back to the beginning of the file to output it to the logs
-            manifest_yaml_f.seek(0)
-            log.debug(
-                'Created the manifest configuration with the following content:\n%s',
-                manifest_yaml_f.read(),
-            )
-
-        run_cmd(
-            ['manifest-tool', 'push', 'from-spec', manifest_yaml],
-            exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
+    log.info('Creating the manifest list %s locally', output_pull_spec)
+    run_cmd(
+        buildah_manifest_cmd + ['create', output_pull_spec],
+        exc_msg=f'Failed to create the manifest list locally: {output_pull_spec}',
+    )
+    for arch in sorted(arches):
+        arch_pull_spec = _get_external_arch_pull_spec(request_id, arch, include_transport=True)
+        log.debug(
+            'Adding the manifest %s to the manifest list %s', arch_pull_spec, output_pull_spec
         )
+        run_cmd(
+            buildah_manifest_cmd + ['add', output_pull_spec, arch_pull_spec],
+            exc_msg=(
+                f'Failed to add {arch_pull_spec} to the' f' local manifest list: {output_pull_spec}'
+            ),
+        )
+
+    log.debug('Pushing manifest list %s', output_pull_spec)
+    run_cmd(
+        buildah_manifest_cmd + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
+        exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
+    )
 
     return output_pull_spec
 
