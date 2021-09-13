@@ -135,7 +135,6 @@ def _add_bundles_missing_in_source(
     )
     _build_image(base_dir, 'index.Dockerfile', request_id, arch)
     _push_image(request_id, arch)
-    _create_and_push_manifest_list(request_id, [arch])
     log.info('New index image created')
 
     return (missing_bundles, invalid_bundles)

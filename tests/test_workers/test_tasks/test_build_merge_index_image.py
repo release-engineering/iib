@@ -115,7 +115,7 @@ def test_handle_merge_request(
     mock_set_registry_token.assert_called_once()
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
-    assert mock_capml.call_count == 1
+    mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'})
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
@@ -204,7 +204,7 @@ def test_handle_merge_request_no_deprecate(
     assert mock_pi.call_count == 2
     assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
-    mock_capml.assert_called_once()
+    mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'})
     mock_uiips.assert_called_once()
 
 
@@ -316,7 +316,7 @@ def test_add_bundles_missing_in_source(
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
-    mock_capml.assert_called_once()
+    mock_capml.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -511,7 +511,7 @@ def test_add_bundles_missing_in_source_none_missing(
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
-    mock_capml.assert_called_once()
+    mock_capml.assert_not_called()
 
 
 @pytest.mark.parametrize(
