@@ -2,7 +2,7 @@
 
 A REST API to manage operator index container images (and some bundle images).
 
-IIB is a recursive acronym.  IIB stands for IIB Image Builder.
+IIB is a recursive acronym. IIB stands for IIB Image Builder.
 
 Note: IIB was originally called "Index Image Build Service" but the name has been changed since
   its scope widened.
@@ -304,9 +304,9 @@ The custom configuration options for the Celery workers are listed below:
     organization. If no organization is specified, IIB will try to find `related_bundles` for all
     regenerate-bundle requests.
 
-  Here is an example that ties this all together:
+Here is an example that ties this all together:
 
-  ```python
+```python
   iib_organization_customizations = {
         'company-marketplace': [
             {
@@ -331,7 +331,7 @@ The custom configuration options for the Celery workers are listed below:
             {'type': 'enclose_repo', 'enclosure_glue': '----', 'namespace': "company-pending"},
         ]
     }
-  ```
+```
 
 * `iib_request_related_bundles_dir` - the directory to write the request specific related bundles
   file. If `None`, per request related bundles files are not created. This defaults to `None`.
