@@ -104,7 +104,7 @@ def _cleanup():
     reset_docker_config()
 
 
-@retry(exceptions=IIBError, tries=3, logger=log)
+@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
 def _create_and_push_manifest_list(request_id, arches):
     """
     Create and push the manifest list to the configured registry.
