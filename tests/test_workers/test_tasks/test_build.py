@@ -57,6 +57,10 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
 
     expected_calls = [
         mock.call(
+            ['buildah', 'rmi', '--all'],
+            exc_msg='Failed to cleanup all local images',
+        ),
+        mock.call(
             ['buildah', 'manifest', 'create', 'registry:8443/iib-build:3'],
             exc_msg='Failed to create the manifest list locally: registry:8443/iib-build:3',
         ),

@@ -115,6 +115,10 @@ def _create_and_push_manifest_list(request_id, arches):
     :rtype: str
     :raises IIBError: if creating or pushing the manifest list fails
     """
+    run_cmd(
+        ['buildah', 'rmi', '--all'],
+        exc_msg='Failed to cleanup all local images',
+    )
     buildah_manifest_cmd = ['buildah', 'manifest']
     output_pull_spec = get_rebuilt_image_pull_spec(request_id)
     log.info('Creating the manifest list %s locally', output_pull_spec)
