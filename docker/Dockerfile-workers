@@ -1,45 +1,3 @@
-FROM centos:8 AS builder
-
-RUN dnf -y install dnf-plugins-core \
-    && dnf -y install epel-release \
-    && dnf config-manager --set-enabled powertools
-
-RUN dnf -y install \
-    --setopt=deltarpm=0 \
-    --setopt=install_weak_deps=false \
-    --setopt=tsflags=nodocs \
-    git \
-    golang \
-    make \
-    git \
-    rpm-build \
-    redhat-rpm-config \
-    go-compilers-golang-compiler \
-    glib2-devel \
-    glibc-static \
-    gpgme-devel \
-    libassuan-devel \
-    libgpg-error-devel \
-    libseccomp-devel \
-    ostree-devel \
-    systemd-devel \
-    && dnf clean all
-
-ENV OPM_SRC="/src"
-ENV OPM_TAG="v1.17.0"
-
-RUN git clone https://github.com/operator-framework/operator-registry $OPM_SRC && \
-    (cd $OPM_SRC && git checkout $OPM_TAG && make build) && \
-    cp $OPM_SRC/bin/opm /usr/bin/opm
-
-# Version 1.9.3 not available due to https://bugs.centos.org/view.php?id=17786
-COPY ./docker/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm /tmp/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm
-COPY ./docker/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm /tmp/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm
-RUN rpmbuild --rebuild /tmp/golang-github-cpuguy83-go-md2man-1.0.7-13.module+el8.1.0+3342+b2bcedec.src.rpm \
-    && dnf install -y ~/rpmbuild/RPMS/x86_64/golang-github-cpuguy83-go-md2man-1.0.7-13.el8.x86_64.rpm
-RUN rpmbuild --rebuild /tmp/podman-1.9.3-2.module+el8.2.1+6867+366c07d6.src.rpm \
-    && cp ~/rpmbuild/RPMS/x86_64/podman-1.9.3-2.el8.x86_64.rpm /tmp/podman-1.9.3-2.el8.x86_64.rpm
-
 FROM centos:8
 LABEL maintainer="Red Hat - EXD"
 
@@ -57,16 +15,17 @@ RUN dnf -y install \
     runc \
     python3-devel \
     python3-pip \
+    python3-wheel \
     skopeo \
+    podman \
+    && dnf update -y \
     && dnf clean all
 
-COPY --from=builder /tmp/podman-1.9.3-2.el8.x86_64.rpm /tmp/podman-1.9.3-2.el8.x86_64.rpm
-RUN dnf -y install /tmp/podman-1.9.3-2.el8.x86_64.rpm
-
-COPY --from=builder /usr/bin/opm /usr/bin/opm
-ADD https://github.com/fullstorydev/grpcurl/releases/download/v1.7.0/grpcurl_1.7.0_linux_x86_64.tar.gz /src/grpcurl_1.7.0_linux_x86_64.tar.gz
-RUN cd /usr/bin && tar -xf /src/grpcurl_1.7.0_linux_x86_64.tar.gz grpcurl && rm -f /src/grpcurl_1.7.0_linux_x86_64.tar.gz
-ADD https://github.com/operator-framework/operator-sdk/releases/download/v1.9.0/operator-sdk_linux_amd64 /usr/bin/operator-sdk
+ADD https://github.com/operator-framework/operator-registry/releases/download/v1.18.0/linux-amd64-opm /usr/bin/opm
+RUN chmod +x /usr/bin/opm
+ADD https://github.com/fullstorydev/grpcurl/releases/download/v1.8.2/grpcurl_1.8.2_linux_x86_64.tar.gz /src/grpcurl_1.8.2_linux_x86_64.tar.gz
+RUN cd /usr/bin && tar -xf /src/grpcurl_1.8.2_linux_x86_64.tar.gz grpcurl && rm -f /src/grpcurl_1.8.2_linux_x86_64.tar.gz
+ADD https://github.com/operator-framework/operator-sdk/releases/download/v1.10.1/operator-sdk_linux_amd64 /usr/bin/operator-sdk
 RUN chmod +x /usr/bin/operator-sdk
 ADD https://github.com/release-engineering/dcm/releases/download/v0.1.1/dcm_linux_amd64 /usr/bin/dcm
 RUN chmod +x /usr/bin/dcm
@@ -76,6 +35,10 @@ RUN sed -i -e 's|^#mount_program|mount_program|g' /etc/containers/storage.conf
 COPY docker/libpod.conf /usr/share/containers/libpod.conf
 
 COPY . .
+
+# default python3-pip version for centos8 python3.6 is 9.0.3 and it can't be updated by dnf
+# we have to update it by pip to version above 21.0.0
+RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt --no-deps --require-hashes
 RUN pip3 install . --no-deps
 CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]
