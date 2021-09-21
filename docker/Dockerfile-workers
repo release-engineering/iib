@@ -1,8 +1,8 @@
-FROM centos:8
+FROM registry.redhat.io/ubi8/ubi:latest
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
-# https://bugzilla.redhat.com/show_bug.cgi?id=1801874
+
 RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
@@ -12,12 +12,15 @@ RUN dnf -y install \
     fuse-overlayfs \
     gcc \
     krb5-devel \
-    runc \
+    libffi-devel \
+    libpq-devel \
+    openssl-devel \
+    podman \
     python3-devel \
     python3-pip \
     python3-wheel \
+    runc \
     skopeo \
-    podman \
     && dnf update -y \
     && dnf clean all
 
@@ -36,7 +39,7 @@ COPY docker/libpod.conf /usr/share/containers/libpod.conf
 
 COPY . .
 
-# default python3-pip version for centos8 python3.6 is 9.0.3 and it can't be updated by dnf
+# default python3-pip version for rhel8 python3.6 is 9.0.3 and it can't be updated by dnf
 # we have to update it by pip to version above 21.0.0
 RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt --no-deps --require-hashes
