@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
+import tempfile
 from unittest import mock
 
 import pytest
 
-from iib.workers.tasks.dc_utils import is_image_dc
+from iib.workers.tasks.dc_utils import is_image_dc, dcm_migrate
 
 
 @pytest.mark.parametrize(
@@ -161,3 +163,18 @@ def test_is_image_dc(mock_si, skopeo_output, is_dc):
 
     mock_si.return_value = skopeo_output
     assert is_image_dc(image) is is_dc
+
+
+@mock.patch('iib.workers.tasks.dc_utils.run_cmd')
+def test_dc_migrate(mock_run_cmd):
+    image = 'some-image:latest'
+    with tempfile.TemporaryDirectory(prefix='iib_tests-') as temp_dir:
+        index_dir = os.path.join(temp_dir, 'index')
+        dcm_migrate(image, temp_dir)
+
+        mock_run_cmd.assert_has_calls(
+            [
+                mock.call(['dcm', 'migrate', image], params={'cwd': temp_dir}, exc_msg=mock.ANY,),
+                mock.call(['opm', 'alpha', 'generate', 'dockerfile', index_dir], exc_msg=mock.ANY,),
+            ]
+        )
