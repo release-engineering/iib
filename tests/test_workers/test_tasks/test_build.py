@@ -52,10 +52,23 @@ def test_cleanup(mock_rdc, mock_run_cmd):
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
     mock_td.return_value.__enter__.return_value = tmp_path
+    mock_run_cmd.side_effect = [
+        IIBError('Manifest list not found locally.'),
+        None,
+        None,
+        None,
+        None,
+    ]
 
     build._create_and_push_manifest_list(3, {'amd64', 's390x'})
 
     expected_calls = [
+        mock.call(
+            ['buildah', 'manifest', 'rm', 'registry:8443/iib-build:3'],
+            exc_msg=(
+                'Failed to remove local manifest list. registry:8443/iib-build:3 does not exist'
+            ),
+        ),
         mock.call(
             ['buildah', 'manifest', 'create', 'registry:8443/iib-build:3'],
             exc_msg='Failed to create the manifest list locally: registry:8443/iib-build:3',
@@ -99,6 +112,17 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
         ),
     ]
     assert mock_run_cmd.call_args_list == expected_calls
+
+
+@mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_create_and_push_manifest_list_failure_to_rm_manifest_list(mock_run_cmd, mock_td, tmp_path):
+    mock_td.return_value.__enter__.return_value = tmp_path
+    mock_run_cmd.side_effect = IIBError('Different error never seen before!')
+
+    error_msg = 'Error removing local manifest list: Different error never seen before!'
+    with pytest.raises(IIBError, match=error_msg):
+        build._create_and_push_manifest_list(3, {'amd64', 's390x'})
 
 
 @pytest.mark.parametrize(

@@ -118,6 +118,18 @@ def _create_and_push_manifest_list(request_id, arches):
     """
     buildah_manifest_cmd = ['buildah', 'manifest']
     output_pull_spec = get_rebuilt_image_pull_spec(request_id)
+
+    try:
+        run_cmd(
+            buildah_manifest_cmd + ['rm', output_pull_spec],
+            exc_msg=f'Failed to remove local manifest list. {output_pull_spec} does not exist',
+        )
+    except IIBError as e:
+        error_msg = str(e)
+        if 'Manifest list not found locally.' not in error_msg:
+            raise IIBError(f'Error removing local manifest list: {error_msg}')
+        log.debug('Manifest list cannot be removed. No manifest list %s found', output_pull_spec)
+
     log.info('Creating the manifest list %s locally', output_pull_spec)
     run_cmd(
         buildah_manifest_cmd + ['create', output_pull_spec],

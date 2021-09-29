@@ -520,6 +520,9 @@ def run_cmd(cmd, params=None, exc_msg=None, strict=True):
                 match = re.match(regex, msg)
                 if match:
                     raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+        if set(['buildah', 'manifest', 'rm']) <= set(cmd):
+            if 'image not known' in response.stderr:
+                raise IIBError('Manifest list not found locally.')
 
         raise IIBError(exc_msg)
 

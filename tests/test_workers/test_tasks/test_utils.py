@@ -271,6 +271,28 @@ def test_run_cmd_failed_opm(mock_sub_run):
     mock_sub_run.assert_called_once()
 
 
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_buildah_manifest_rm(mock_sub_run):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = textwrap.dedent(
+        '''
+        1 error occurred:
+            * something: image not known
+        '''  # noqa: E501
+    )
+    mock_sub_run.return_value = mock_rv
+
+    expected_exc = 'Manifest list not found locally.'
+    with pytest.raises(IIBError, match=expected_exc):
+        utils.run_cmd(
+            ['buildah', 'manifest', 'rm', 'something'],
+            exc_msg='Failed to remove local manifest list. something does not exist',
+        )
+
+    mock_sub_run.assert_called_once()
+
+
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_skopeo_inspect(mock_run_cmd):
     mock_run_cmd.return_value = '{"Name": "some-image"}'
