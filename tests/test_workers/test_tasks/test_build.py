@@ -121,7 +121,8 @@ def test_create_and_push_manifest_list(mock_open, mock_run_cmd, mock_td, tmp_pat
         ),
         mock.call(
             ['buildah', 'manifest', 'rm', 'registry:8443/iib-build:extra_build_tag1'],
-            exc_msg='Failed to remove local manifest list. registry:8443/iib-build:extra_build_tag1 does not exist',
+            exc_msg='Failed to remove local manifest list. '
+            'registry:8443/iib-build:extra_build_tag1 does not exist',
         ),
         mock.call(
             ['buildah', 'manifest', 'create', 'registry:8443/iib-build:extra_build_tag1'],
