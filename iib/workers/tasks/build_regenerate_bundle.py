@@ -119,7 +119,7 @@ def handle_regenerate_bundle_request(
                 _push_image(request_id, arch)
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, [])
 
     conf = get_worker_config()
     if conf['iib_index_image_output_registry']:

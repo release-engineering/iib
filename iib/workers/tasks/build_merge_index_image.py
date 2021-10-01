@@ -153,6 +153,7 @@ def handle_merge_request(
     overwrite_target_index_token=None,
     distribution_scope=None,
     binary_image_config=None,
+    build_tags=None,
 ):
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
@@ -172,6 +173,7 @@ def handle_merge_request(
         The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
+    :param build_tags: list of extra tag to use for intermetdiate index image
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
@@ -278,7 +280,9 @@ def handle_merge_request(
             file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
         )
 
-    output_pull_spec = _create_and_push_manifest_list(request_id, prebuild_info['arches'])
+    output_pull_spec = _create_and_push_manifest_list(
+        request_id, prebuild_info['arches'], build_tags
+    )
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,

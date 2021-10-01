@@ -50,7 +50,8 @@ def test_cleanup(mock_rdc, mock_run_cmd):
 
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
+@mock.patch('iib.workers.tasks.build.open')
+def test_create_and_push_manifest_list(mock_open, mock_run_cmd, mock_td, tmp_path):
     mock_td.return_value.__enter__.return_value = tmp_path
     mock_run_cmd.side_effect = [
         IIBError('Manifest list not found locally.'),
@@ -58,9 +59,17 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
         None,
         None,
         None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     ]
 
-    build._create_and_push_manifest_list(3, {'amd64', 's390x'})
+    output = []
+    mock_open().__enter__().write.side_effect = lambda x: output.append(x)
+    build._create_and_push_manifest_list(3, {'amd64', 's390x'}, ['extra_build_tag1'])
 
     expected_calls = [
         mock.call(
@@ -110,6 +119,53 @@ def test_create_and_push_manifest_list(mock_run_cmd, mock_td, tmp_path):
             ],
             exc_msg='Failed to push the manifest list to registry:8443/iib-build:3',
         ),
+        mock.call(
+            ['buildah', 'manifest', 'rm', 'registry:8443/iib-build:extra_build_tag1'],
+            exc_msg='Failed to remove local manifest list. '
+            'registry:8443/iib-build:extra_build_tag1 does not exist',
+        ),
+        mock.call(
+            ['buildah', 'manifest', 'create', 'registry:8443/iib-build:extra_build_tag1'],
+            exc_msg='Failed to create the manifest list locally: '
+            'registry:8443/iib-build:extra_build_tag1',
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'add',
+                'registry:8443/iib-build:extra_build_tag1',
+                'docker://registry:8443/iib-build:3-amd64',
+            ],
+            exc_msg=(
+                'Failed to add docker://registry:8443/iib-build:3-amd64'
+                ' to the local manifest list: registry:8443/iib-build:extra_build_tag1'
+            ),
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'add',
+                'registry:8443/iib-build:extra_build_tag1',
+                'docker://registry:8443/iib-build:3-s390x',
+            ],
+            exc_msg=(
+                'Failed to add docker://registry:8443/iib-build:3-s390x'
+                ' to the local manifest list: registry:8443/iib-build:extra_build_tag1'
+            ),
+        ),
+        mock.call(
+            [
+                'buildah',
+                'manifest',
+                'push',
+                '--all',
+                'registry:8443/iib-build:extra_build_tag1',
+                'docker://registry:8443/iib-build:extra_build_tag1',
+            ],
+            exc_msg='Failed to push the manifest list to registry:8443/iib-build:extra_build_tag1',
+        ),
     ]
     assert mock_run_cmd.call_args_list == expected_calls
 
@@ -122,7 +178,7 @@ def test_create_and_push_manifest_list_failure_to_rm_manifest_list(mock_run_cmd,
 
     error_msg = 'Error removing local manifest list: Different error never seen before!'
     with pytest.raises(IIBError, match=error_msg):
-        build._create_and_push_manifest_list(3, {'amd64', 's390x'})
+        build._create_and_push_manifest_list(3, {'amd64', 's390x'}, [])
 
 
 @pytest.mark.parametrize(
@@ -558,6 +614,7 @@ def test_handle_add_request(
         greenwave_config,
         binary_image_config=binary_image_config,
         deprecation_list=deprecation_list,
+        build_tags=["extra_tag1", "extra_tag2"],
     )
 
     mock_sir.assert_called_once()

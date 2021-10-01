@@ -106,54 +106,64 @@ def _cleanup():
 
 
 @retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
-def _create_and_push_manifest_list(request_id, arches):
+def _create_and_push_manifest_list(request_id, arches, build_tags):
     """
     Create and push the manifest list to the configured registry.
 
     :param int request_id: the ID of the IIB build request
     :param iter arches: an iterable of arches to create the manifest list for
+    :param build_tags: list of extra tag to use for intermediate index image
     :return: the pull specification of the manifest list
     :rtype: str
     :raises IIBError: if creating or pushing the manifest list fails
     """
     buildah_manifest_cmd = ['buildah', 'manifest']
-    output_pull_spec = get_rebuilt_image_pull_spec(request_id)
-
-    try:
+    _tags = [request_id]
+    if build_tags:
+        _tags += build_tags
+    conf = get_worker_config()
+    output_pull_specs = []
+    for tag in _tags:
+        output_pull_spec = conf['iib_image_push_template'].format(
+            registry=conf['iib_registry'], request_id=tag
+        )
+        output_pull_specs.append(output_pull_spec)
+        try:
+            run_cmd(
+                buildah_manifest_cmd + ['rm', output_pull_spec],
+                exc_msg=f'Failed to remove local manifest list. {output_pull_spec} does not exist',
+            )
+        except IIBError as e:
+            error_msg = str(e)
+            if 'Manifest list not found locally.' not in error_msg:
+                raise IIBError(f'Error removing local manifest list: {error_msg}')
+            log.debug(
+                'Manifest list cannot be removed. No manifest list %s found', output_pull_spec
+            )
+        log.info('Creating the manifest list %s locally', output_pull_spec)
         run_cmd(
-            buildah_manifest_cmd + ['rm', output_pull_spec],
-            exc_msg=f'Failed to remove local manifest list. {output_pull_spec} does not exist',
+            buildah_manifest_cmd + ['create', output_pull_spec],
+            exc_msg=f'Failed to create the manifest list locally: {output_pull_spec}',
         )
-    except IIBError as e:
-        error_msg = str(e)
-        if 'Manifest list not found locally.' not in error_msg:
-            raise IIBError(f'Error removing local manifest list: {error_msg}')
-        log.debug('Manifest list cannot be removed. No manifest list %s found', output_pull_spec)
+        for arch in sorted(arches):
+            arch_pull_spec = _get_external_arch_pull_spec(request_id, arch, include_transport=True)
+            run_cmd(
+                buildah_manifest_cmd + ['add', output_pull_spec, arch_pull_spec],
+                exc_msg=(
+                    f'Failed to add {arch_pull_spec} to the'
+                    f' local manifest list: {output_pull_spec}'
+                ),
+            )
 
-    log.info('Creating the manifest list %s locally', output_pull_spec)
-    run_cmd(
-        buildah_manifest_cmd + ['create', output_pull_spec],
-        exc_msg=f'Failed to create the manifest list locally: {output_pull_spec}',
-    )
-    for arch in sorted(arches):
-        arch_pull_spec = _get_external_arch_pull_spec(request_id, arch, include_transport=True)
-        log.debug(
-            'Adding the manifest %s to the manifest list %s', arch_pull_spec, output_pull_spec
-        )
+        log.debug('Pushing manifest list %s', output_pull_spec)
         run_cmd(
-            buildah_manifest_cmd + ['add', output_pull_spec, arch_pull_spec],
-            exc_msg=(
-                f'Failed to add {arch_pull_spec} to the' f' local manifest list: {output_pull_spec}'
-            ),
+            buildah_manifest_cmd
+            + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
+            exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
         )
 
-    log.debug('Pushing manifest list %s', output_pull_spec)
-    run_cmd(
-        buildah_manifest_cmd + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
-        exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
-    )
-
-    return output_pull_spec
+    # return 1st item as it holds production tag
+    return output_pull_specs[0]
 
 
 def _update_index_image_pull_spec(
@@ -800,6 +810,7 @@ def handle_add_request(
     greenwave_config=None,
     binary_image_config=None,
     deprecation_list=None,
+    build_tags=None,
 ):
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -833,6 +844,7 @@ def handle_add_request(
         ``binary_image`` to use.
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
         to ``None``.
+    :param list build_tags: List of tags which will be applied to intermediate index images.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
@@ -989,7 +1001,7 @@ def handle_add_request(
         )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
     _update_index_image_pull_spec(
         output_pull_spec,
@@ -1018,6 +1030,7 @@ def handle_rm_request(
     overwrite_from_index_token=None,
     distribution_scope=None,
     binary_image_config=None,
+    build_tags=None,
 ):
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -1040,6 +1053,7 @@ def handle_rm_request(
         ``None``.
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
+    :param list build_tags: List of tags which will be applied to intermediate index images.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
@@ -1092,7 +1106,7 @@ def handle_rm_request(
             _push_image(request_id, arch)
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
     _update_index_image_pull_spec(
         output_pull_spec,

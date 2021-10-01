@@ -775,6 +775,13 @@ components:
                 type: string
               example:
                 - prometheus-operator
+            build_tags:
+              description: >
+                Extra tags applied to intermediate index image
+              type: array
+              items:
+                type: string
+              example: ["v4.5-10-08-2021"]
     AddRequest:
       type: object
       properties:
@@ -847,6 +854,13 @@ components:
               This will determine what level of protection the addition will have.
           type: string
           example: 'prod'
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
       required:
         - bundles
     AddResponse:
@@ -899,6 +913,13 @@ components:
                 This will determine what level of protection the removal will have.
           type: string
           example: 'prod'
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
       required:
         - from_index
         - operators
@@ -1020,6 +1041,13 @@ components:
               This will determine what level of protection the addition will have.
           type: string
           example: 'prod'
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
       required:
         - source_from_index
     MergeIndexImageResponse:
@@ -1087,6 +1115,13 @@ components:
             type: string
           example:
             version: 'v4.6'
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
       required:
         - from_index
     ResponseCreateEmptyIndex:
@@ -1123,6 +1158,13 @@ components:
             request_type:
               type: string
               example: "create-empty-index"
+            build_tags:
+              description: >
+                Extra tags applied to intermediate index image
+              type: array
+              items:
+                type: string
+              example: ["v4.5-10-08-2021"]
     RequestUpdate:
       type: object
       properties:

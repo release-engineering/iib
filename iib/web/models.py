@@ -241,6 +241,25 @@ class Operator(db.Model):
         return operator
 
 
+class BuildTag(db.Model):
+    """Extra tag associated with built index image."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String, nullable=False, unique=False)
+
+
+class RequestBuildTag(db.Model):
+    """Association table for extra build tags and build request."""
+
+    request_id = db.Column(
+        db.Integer, db.ForeignKey('request.id'), index=True, nullable=False, primary_key=True
+    )
+    tag_id = db.Column(
+        db.Integer, db.ForeignKey('build_tag.id'), autoincrement=False, index=True, primary_key=True
+    )
+    __table_args__ = (db.UniqueConstraint('request_id', 'tag_id'),)
+
+
 class RequestRmOperator(db.Model):
     """An association table between rm requests and the operators they contain."""
 
@@ -305,6 +324,9 @@ class Request(db.Model):
         order_by='RequestState.updated',
     )
     user = db.relationship('User', back_populates='requests')
+    build_tags = db.relationship(
+        'BuildTag', order_by='BuildTag.name', secondary=RequestBuildTag.__table__
+    )
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['generic'].value,
@@ -359,6 +381,21 @@ class Request(db.Model):
         db.session.add(request_state)
         db.session.flush()
         self.request_state_id = request_state.id
+
+    def add_build_tag(self, name):
+        """
+        Add a RequestBuildTag associated with the current request.
+
+        :param str name: tag name
+        """
+        bt = db.session.query(BuildTag).filter_by(name=name).first()
+        if not bt:
+            bt = BuildTag(name=name)
+            db.session.add(bt)
+            db.session.flush()
+
+        if bt not in self.build_tags:
+            self.build_tags.append(bt)
 
     def add_architecture(self, arch_name):
         """
@@ -625,6 +662,7 @@ def get_request_query_options(verbose=False):
         joinedload(RequestAdd.from_index_resolved),
         joinedload(RequestAdd.index_image),
         joinedload(RequestAdd.index_image_resolved),
+        joinedload(RequestAdd.build_tags),
         joinedload(RequestRegenerateBundle.bundle_image),
         joinedload(RequestRegenerateBundle.from_bundle_image),
         joinedload(RequestRegenerateBundle.from_bundle_image_resolved),
@@ -635,6 +673,8 @@ def get_request_query_options(verbose=False):
         joinedload(RequestRm.index_image),
         joinedload(RequestRm.index_image_resolved),
         joinedload(RequestRm.operators),
+        joinedload(RequestRm.build_tags),
+        joinedload(RequestMergeIndexImage.build_tags),
     ]
     if verbose:
         query_options.append(joinedload(Request.states))
@@ -739,6 +779,7 @@ class RequestIndexImageMixin:
             'overwrite_from_index',
             'overwrite_from_index_token',
             'distribution_scope',
+            'build_tags',
         } | set(additional_optional_params or [])
 
         validate_request_params(
@@ -842,6 +883,7 @@ class RequestIndexImageMixin:
             'organization': None,
             'removed_operators': [],
             'distribution_scope': self.distribution_scope,
+            'build_tags': [tag.name for tag in self.build_tags],
         }
 
     def get_index_image_mutable_keys(self):
@@ -922,6 +964,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 'bundles',
                 'distribution_scope',
                 'deprecation_list',
+                'build_tags',
             ],
             batch=batch,
         )
@@ -930,8 +973,12 @@ class RequestAdd(Request, RequestIndexImageMixin):
             request_kwargs[key] = [
                 Image.get_or_create(pull_specification=item) for item in request_kwargs.get(key, [])
             ]
-
+        build_tags = request_kwargs.pop('build_tags', [])
         request = cls(**request_kwargs)
+
+        for bt in build_tags:
+            request.add_build_tag(bt)
+
         request.add_state('in_progress', 'The request was initiated')
         return request
 
@@ -1006,13 +1053,18 @@ class RequestRm(Request, RequestIndexImageMixin):
             raise ValidationError(f'"operators" should be a non-empty array of strings')
 
         cls._from_json(
-            request_kwargs, additional_required_params=['operators', 'from_index'], batch=batch
+            request_kwargs, additional_required_params=['operators', 'from_index'], batch=batch,
         )
 
         request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
 
+        build_tags = request_kwargs.pop('build_tags', [])
         request = cls(**request_kwargs)
         request.add_state('in_progress', 'The request was initiated')
+
+        for bt in build_tags:
+            request.add_build_tag(bt)
+
         return request
 
     def to_json(self, verbose=True):
@@ -1064,6 +1116,7 @@ class RequestRegenerateBundle(Request):
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value
     }
+    build_tags = None
 
     @classmethod
     def from_json(cls, kwargs, batch=None):
@@ -1264,6 +1317,13 @@ class RequestMergeIndexImage(Request):
                 )
             request_kwargs['distribution_scope'] = distribution_scope
 
+        if not isinstance(request_kwargs.get('build_tags', []), list) or any(
+            not item or not isinstance(item, str) for item in request_kwargs.get('build_tags', [])
+        ):
+            raise ValidationError(
+                f'"build_tags" should be either an empty array or an array of non-empty strings'
+            )
+
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
             request_kwargs['user'] = current_user
@@ -1274,6 +1334,12 @@ class RequestMergeIndexImage(Request):
         request_kwargs['batch'] = batch
 
         request = cls(**request_kwargs)
+
+        build_tags = request_kwargs.pop('build_tags', [])
+
+        for bt in build_tags:
+            request.add_build_tag(bt)
+
         request.add_state('in_progress', 'The request was initiated')
         return request
 
@@ -1301,6 +1367,7 @@ class RequestMergeIndexImage(Request):
             self.target_index_resolved, 'pull_specification', None
         )
         rv['distribution_scope'] = self.distribution_scope
+        rv['build_tags'] = [t.name for t in self.build_tags]
 
         return rv
 
@@ -1452,6 +1519,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['create_empty_index'].value
     }
+    build_tags = None
 
     @property
     def labels(self):
@@ -1495,7 +1563,12 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
                 if not isinstance(value, str) or not isinstance(key, str):
                     raise ValidationError(f'The key and value of "{key}" must be a string')
 
-        for arg in ('add_arches', 'overwrite_from_index', 'overwrite_from_index_token'):
+        for arg in (
+            'add_arches',
+            'overwrite_from_index',
+            'overwrite_from_index_token',
+            'build_tags',
+        ):
             if arg in request_kwargs:
                 raise ValidationError(
                     f'The "{arg}" arg is invalid for the create-empty-index endpoint.'
@@ -1528,6 +1601,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv.pop('organization')
         rv.pop('deprecation_list')
         rv.pop('removed_operators')
+        rv.pop('build_tags')
         rv['labels'] = self.labels
         return rv
 

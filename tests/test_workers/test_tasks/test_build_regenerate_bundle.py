@@ -120,7 +120,7 @@ def test_handle_regenerate_bundle_request(
         ]
     )
 
-    mock_capml.assert_called_once_with(request_id, list(arches))
+    mock_capml.assert_called_once_with(request_id, list(arches), [])
 
     assert mock_ur.call_count == 2
     mock_ur.assert_has_calls(

@@ -19,7 +19,6 @@ from iib.workers.tasks.utils import RequestConfigMerge
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
-@mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
@@ -36,9 +35,11 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
+@mock.patch('subprocess.run')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_dc')
 def test_handle_merge_request(
     mock_iidc,
+    mock_run,
     mock_set_registry_token,
     mock_add_label_to_index,
     mock_cleanup,
@@ -52,13 +53,13 @@ def test_handle_merge_request(
     mock_dep_b,
     mock_bi,
     mock_pi,
-    mock_capml,
     mock_vii,
     mock_uiips,
     target_index,
     target_index_resolved,
     binary_image,
 ):
+    mock_run.return_value.returncode = 0
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
         'binary_image': binary_image,
@@ -118,7 +119,6 @@ def test_handle_merge_request(
     mock_set_registry_token.assert_called_once()
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
-    mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'})
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
@@ -210,7 +210,7 @@ def test_handle_merge_request_no_deprecate(
     assert mock_pi.call_count == 2
     assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
-    mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'})
+    mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
     mock_uiips.assert_called_once()
 
 
