@@ -118,54 +118,49 @@ def _create_and_push_manifest_list(request_id, arches, build_tags):
     :raises IIBError: if creating or pushing the manifest list fails
     """
     buildah_manifest_cmd = ['buildah', 'manifest']
-    output_pull_specs = [get_rebuilt_image_pull_spec(request_id)]
     _tags = [request_id]
     if build_tags:
         _tags += build_tags
     conf = get_worker_config()
+    output_pull_specs = []
     for tag in _tags:
-        for output_pull_spec in output_pull_specs:
-            output_pull_spec = conf['iib_image_push_template'].format(
-                registry=conf['iib_registry'], request_id=tag
-            )
-            try:
-                run_cmd(
-                    buildah_manifest_cmd + ['rm', output_pull_spec],
-                    exc_msg=f'Failed to remove local manifest list. {output_pull_spec} does not exist',
-                )
-            except IIBError as e:
-                error_msg = str(e)
-                if 'Manifest list not found locally.' not in error_msg:
-                    raise IIBError(f'Error removing local manifest list: {error_msg}')
-                log.debug('Manifest list cannot be removed. No manifest list %s found', output_pull_spec)
-            log.info('Creating the manifest list %s locally', output_pull_spec)
+        output_pull_spec = conf['iib_image_push_template'].format(
+            registry=conf['iib_registry'], request_id=tag
+        )
+        output_pull_specs.append(output_pull_spec)
+        try:
             run_cmd(
-                buildah_manifest_cmd + ['create', output_pull_spec],
-                exc_msg=f'Failed to create the manifest list locally: {output_pull_spec}',
+                buildah_manifest_cmd + ['rm', output_pull_spec],
+                exc_msg=f'Failed to remove local manifest list. {output_pull_spec} does not exist',
             )
-            for arch in sorted(arches):
-                arch_pull_spec = _get_external_arch_pull_spec(
-                    request_id, arch, include_transport=True
-                )
-                log.debug(
-                    'Adding the manifest %s to the manifest list %s',
-                    arch_pull_spec,
-                    output_pull_spec,
-                )
-                run_cmd(
-                    buildah_manifest_cmd + ['add', output_pull_spec, arch_pull_spec],
-                    exc_msg=(
-                        f'Failed to add {arch_pull_spec} to the'
-                        f' local manifest list: {output_pull_spec}'
-                    ),
-                )
+        except IIBError as e:
+            error_msg = str(e)
+            if 'Manifest list not found locally.' not in error_msg:
+                raise IIBError(f'Error removing local manifest list: {error_msg}')
+            log.debug(
+                'Manifest list cannot be removed. No manifest list %s found', output_pull_spec
+            )
+        log.info('Creating the manifest list %s locally', output_pull_spec)
+        run_cmd(
+            buildah_manifest_cmd + ['create', output_pull_spec],
+            exc_msg=f'Failed to create the manifest list locally: {output_pull_spec}',
+        )
+        for arch in sorted(arches):
+            arch_pull_spec = _get_external_arch_pull_spec(request_id, arch, include_transport=True)
+            run_cmd(
+                buildah_manifest_cmd + ['add', output_pull_spec, arch_pull_spec],
+                exc_msg=(
+                    f'Failed to add {arch_pull_spec} to the'
+                    f' local manifest list: {output_pull_spec}'
+                ),
+            )
 
-            log.debug('Pushing manifest list %s', output_pull_spec)
-            run_cmd(
-                buildah_manifest_cmd
-                + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
-                exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
-            )
+        log.debug('Pushing manifest list %s', output_pull_spec)
+        run_cmd(
+            buildah_manifest_cmd
+            + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
+            exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
+        )
 
     # return 1st item as it holds production tag
     return output_pull_specs[0]
