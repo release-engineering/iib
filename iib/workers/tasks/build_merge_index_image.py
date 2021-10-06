@@ -22,6 +22,7 @@ from iib.workers.tasks.build import (
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.dc_utils import is_image_dc
 from iib.workers.tasks.utils import (
+    add_max_ocp_version_property,
     chmod_recursively,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
@@ -226,11 +227,11 @@ def handle_merge_request(
             distribution_scope=prebuild_info['distribution_scope'],
         )
 
+        missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
+        add_max_ocp_version_property(missing_bundle_paths, temp_dir)
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
-        intermediate_bundles = [
-            bundle['bundlePath'] for bundle in missing_bundles
-        ] + source_index_bundles_pull_spec
+        intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
         deprecation_bundles = get_bundles_from_deprecation_list(
             intermediate_bundles, deprecation_list
         )

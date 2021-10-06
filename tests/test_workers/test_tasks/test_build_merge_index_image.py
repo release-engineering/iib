@@ -17,6 +17,8 @@ from iib.workers.tasks.utils import RequestConfigMerge
         (None, None, None),
     ),
 )
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.serve_index_registry')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
@@ -55,6 +57,8 @@ def test_handle_merge_request(
     mock_pi,
     mock_vii,
     mock_uiips,
+    mock_sir,
+    mock_run_cmd,
     target_index,
     target_index_resolved,
     binary_image,
@@ -83,6 +87,12 @@ def test_handle_merge_request(
         os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
 
     mock_dep_b.side_effect = side_effect
+
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
+        "bundlePath": "bundle1"\n}'
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -122,8 +132,21 @@ def test_handle_merge_request(
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
+    mock_sir.assert_called_once()
+    mock_run_cmd.assert_called_once()
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(
+                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+                exc_msg=mock.ANY,
+            ),
+        ]
+    )
+
 
 @pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.serve_index_registry')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
@@ -159,6 +182,8 @@ def test_handle_merge_request_no_deprecate(
     mock_capml,
     mock_vii,
     mock_uiips,
+    mock_sir,
+    mock_run_cmd,
     invalid_bundles,
 ):
     prebuild_info = {
@@ -173,6 +198,12 @@ def test_handle_merge_request_no_deprecate(
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = []
     mock_abmis.return_value = ([], invalid_bundles)
+
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
+        "bundlePath": "bundle1"\n}'
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -212,6 +243,18 @@ def test_handle_merge_request_no_deprecate(
     mock_vii.assert_not_called()
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
     mock_uiips.assert_called_once()
+
+    mock_sir.assert_called_once()
+
+    mock_run_cmd.assert_called_once()
+    mock_run_cmd.assert_has_calls(
+        [
+            mock.call(
+                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+                exc_msg=mock.ANY,
+            ),
+        ]
+    )
 
 
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
