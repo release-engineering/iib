@@ -508,8 +508,8 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build._serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.serve_index_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -703,8 +703,9 @@ def test_handle_add_request_raises(mock_iidc, mock_runcmd, mock_c):
         )
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build._serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.sqlite3.connect')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.serve_index_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -746,6 +747,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_dep_b,
     mock_sir,
     mock_run_cmd,
+    mock_sqlite,
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
@@ -787,8 +789,12 @@ def test_handle_add_request_check_index_label_behavior(
     port = 0
     my_mock = mock.MagicMock()
     mock_sir.return_value = (port, my_mock)
-    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
-        "bundlePath": "bundle1"\n}'
+    mock_run_cmd.side_effect = [
+        '{"packageName": "package1", "version": "v1.0", "csvName": "random-csv", \
+        "bundlePath": "some-bundle@sha"\n}',
+        '{"passed":false, "outputs": [{"message": "olm.maxOpenShiftVersion not present"}]}',
+    ]
+    mock_sqlite.execute.return_value = 200
 
     build.handle_add_request(
         bundles,
@@ -808,12 +814,27 @@ def test_handle_add_request_check_index_label_behavior(
     )
 
     mock_sir.assert_called_once()
-    mock_run_cmd.assert_called_once()
+    assert mock_run_cmd.call_count == 2
+
     mock_run_cmd.assert_has_calls(
         [
             mock.call(
                 ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
                 exc_msg=mock.ANY,
+            ),
+            mock.call(
+                [
+                    'operator-sdk',
+                    'bundle',
+                    'validate',
+                    'some-bundle@sha',
+                    '--select-optional',
+                    'name=community',
+                    '--output=json-alpha1',
+                    '--image-builder',
+                    'none',
+                ],
+                strict=False,
             ),
         ]
     )
@@ -1120,18 +1141,21 @@ def test_get_missing_bundles_match_hash():
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
-def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
+def test_get_present_bundles(
+    mock_gil, mock_copy, mock_serve_index_registry_cmd, mock_run_cmd, mock_popen, mock_sleep, tmpdir
+):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_gil.return_value = 'some-path'
-    mock_run_cmd.side_effect = [
-        'api.Registry.ListBundles',
+    mock_serve_index_registry_cmd.return_value = 'api.Registry.ListBundles'
+    mock_run_cmd.return_value = (
         '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
         '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
-        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
-    ]
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
+    )
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.stderr.read.return_value = 'address already in use'
@@ -1142,19 +1166,24 @@ def test_get_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock
         {'packageName': 'package2', 'version': 'v2.0', 'bundlePath': 'bundle2'},
     ]
     assert bundles_pull_spec == ['bundle1', 'bundle2']
-    assert mock_run_cmd.call_count == 2
+    mock_run_cmd.assert_called_once()
+    mock_serve_index_registry_cmd.assert_called_once()
 
 
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
-def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, tmpdir):
+def test_get_no_present_bundles(
+    mock_gil, mock_copy, mock_serve_index_registry_cmd, mock_run_cmd, mock_popen, mock_sleep, tmpdir
+):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_gil.return_value = 'some-path'
-    mock_run_cmd.side_effect = ['api.Registry.ListBundles', '']
+    mock_serve_index_registry_cmd.return_value = 'api.Registry.ListBundles'
+    mock_run_cmd.return_value = ''
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.stderr.read.return_value = 'address already in use'
@@ -1162,14 +1191,15 @@ def test_get_no_present_bundles(mock_gil, mock_copy, mock_run_cmd, mock_popen, m
     bundle, bundle_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
     assert bundle == []
     assert bundle_pull_spec == []
-    assert mock_run_cmd.call_count == 2
+    mock_run_cmd.assert_called_once()
+    mock_serve_index_registry_cmd.assert_called_once()
 
 
 @mock.patch('time.time')
 @mock.patch('os.remove')
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_not_initialize(
@@ -1193,16 +1223,25 @@ def test_get_present_bundles_grpc_not_initialize(
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_delayed_initialize(
-    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir
+    mock_gil,
+    mock_copy,
+    mock_serve_index_registry_cmd,
+    mock_run_cmd,
+    mock_popen,
+    mock_sleep,
+    mock_remove,
+    mock_time,
+    tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_time.side_effect = [i * 0.5 for i in range(1, 80)]
     mock_gil.return_value = 'some-path'
-    mock_run_cmd.side_effect = [
+    mock_serve_index_registry_cmd.side_effect = [
         '',
         '',
         '',
@@ -1210,10 +1249,12 @@ def test_get_present_bundles_grpc_delayed_initialize(
         '',
         '',
         'api.Registry.ListBundles',
+    ]
+    mock_run_cmd.return_value = (
         '{"packageName": "package1", "version": "v1.0", "bundlePath": "bundle1"\n}'
         '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"}'
-        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"}',
-    ]
+        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"}'
+    )
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.poll.return_value = None
@@ -1223,41 +1264,5 @@ def test_get_present_bundles_grpc_delayed_initialize(
         {'packageName': 'package2', 'version': 'v2.0', 'bundlePath': 'bundle2'},
     ]
     assert bundles_pull_spec == ['bundle1', 'bundle2']
-    assert mock_run_cmd.call_count == 8
-
-
-@mock.patch('time.sleep')
-@mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_serve_image_registry(mock_run_cmd, mock_popen, mock_sleep, tmpdir):
-    my_mock = mock.MagicMock()
-    mock_popen.return_value = my_mock
-    my_mock.stderr.read.side_effect = ['address already in use', 'address already in use']
-    mock_run_cmd.return_value = 'api.Registry.ListBundles'
-    my_mock.poll.side_effect = [1, 1, None]
-    port, _ = build._serve_index_registry('some_path.db')
-    assert port == 50053
-    assert my_mock.poll.call_count == 3
-
-
-@mock.patch('iib.workers.tasks.build.get_worker_config')
-@mock.patch('time.sleep')
-@mock.patch('subprocess.Popen')
-def test_serve_image_registry_no_ports(mock_popen, mock_sleep, mock_config, tmpdir):
-    my_mock = mock.MagicMock()
-    mock_popen.return_value = my_mock
-    my_mock.stderr.read.side_effect = [
-        'address already in use',
-        'address already in use',
-        'address already in use',
-    ]
-    my_mock.poll.side_effect = [1, 1, 1, None]
-    mock_config.return_value = {
-        'iib_grpc_start_port': 50051,
-        'iib_grpc_init_wait_time': 1,
-        'iib_grpc_max_port_tries': 3,
-        'iib_grpc_max_tries': 3,
-    }
-    with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
-        build._serve_index_registry('some_path.db')
-    assert my_mock.poll.call_count == 3
+    mock_run_cmd.assert_called_once()
+    assert mock_serve_index_registry_cmd.call_count == 7

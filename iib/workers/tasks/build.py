@@ -1,18 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import json
 import logging
 import os
-import re
-import sqlite3
 import stat
-import subprocess
-import time
 import tempfile
 
 from operator_manifest.operator import ImageName
 from retry import retry
 
-from iib.exceptions import IIBError, AddressAlreadyInUse
+from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
@@ -20,9 +15,11 @@ from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.dc_utils import is_image_dc
 
 from iib.workers.tasks.utils import (
+    add_max_ocp_version_property,
     chmod_recursively,
     deprecate_bundles,
     get_bundles_from_deprecation_list,
+    get_bundle_json,
     get_resolved_bundles,
     get_resolved_image,
     podman_pull,
@@ -30,6 +27,7 @@ from iib.workers.tasks.utils import (
     reset_docker_config,
     run_cmd,
     set_registry_token,
+    serve_index_registry,
     skopeo_inspect,
     RequestConfigAddRm,
     get_image_label,
@@ -293,91 +291,6 @@ def _get_index_database(from_index, base_dir):
     return local_path
 
 
-def _serve_index_registry(db_path):
-    """
-    Locally start OPM registry service, which can be communicated with using gRPC queries.
-
-    Due to IIB's paralellism, the service can run multiple times, which could lead to port
-    binding conflicts. Resolution of port conflicts is handled in this function as well.
-
-    :param str db_path: path to index database containing the registry data.
-    :return: tuple containing port number of the running service and the running Popen object.
-    :rtype: (int, Popen)
-    :raises IIBError: if all tried ports are in use, or the command failed for another reason.
-    """
-    conf = get_worker_config()
-    port_start = conf['iib_grpc_start_port']
-    port_end = port_start + conf['iib_grpc_max_port_tries']
-
-    for port in range(port_start, port_end):
-        try:
-            return (
-                port,
-                _serve_index_registry_at_port(
-                    db_path, port, conf['iib_grpc_max_tries'], conf['iib_grpc_init_wait_time']
-                ),
-            )
-        except AddressAlreadyInUse:
-            log.info('Port %d is in use, trying another.', port)
-
-    err_msg = f'No free port has been found after {conf.get("iib_grpc_max_port_tries")} attempts.'
-    log.error(err_msg)
-    raise IIBError(err_msg)
-
-
-@retry(exceptions=IIBError, tries=2, logger=log)
-def _serve_index_registry_at_port(db_path, port, max_tries, wait_time):
-    """
-    Start an image registry service at a specified port.
-
-    :param str db_path: path to index database containing the registry data.
-    :param str int port: port to start the service on.
-    :param max_tries: how many times to try to start the service before giving up.
-    :param wait_time: time to wait before checking if the service is initialized.
-    :return: object of the running Popen process.
-    :rtype: Popen
-    :raises IIBError: if the process has failed to initialize too many times, or an unexpected
-        error occured.
-    :raises AddressAlreadyInUse: if the specified port is already being used by another service.
-    """
-    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
-    for attempt in range(max_tries):
-        rpc_proc = subprocess.Popen(
-            cmd,
-            cwd=os.path.dirname(db_path),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        start_time = time.time()
-        while time.time() - start_time < wait_time:
-            time.sleep(1)
-            ret = rpc_proc.poll()
-            # process has terminated
-            if ret is not None:
-                stderr = rpc_proc.stderr.read()
-                if 'address already in use' in stderr:
-                    raise AddressAlreadyInUse(f'Port {port} is already used by a different service')
-                raise IIBError(f'Command "{" ".join(cmd)}" has failed with error "{stderr}"')
-
-            # query the service to see if it has started
-            try:
-                output = run_cmd(
-                    ['grpcurl', '-plaintext', f'localhost:{port}', 'list', 'api.Registry']
-                )
-            except IIBError:
-                output = ''
-
-            if 'api.Registry.ListBundles' in output or 'api.Registry.ListPackages' in output:
-                log.debug('Started the command "%s"', ' '.join(cmd))
-                log.info('Index registry service has been initialized.')
-                return rpc_proc
-
-        rpc_proc.kill()
-
-    raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
-
-
 def _get_present_bundles(from_index, base_dir):
     """
     Get a list of bundles already present in the index image.
@@ -390,7 +303,7 @@ def _get_present_bundles(from_index, base_dir):
     :raises IIBError: if any of the commands fail.
     """
     db_path = _get_index_database(from_index, base_dir)
-    port, rpc_proc = _serve_index_registry(db_path)
+    port, rpc_proc = serve_index_registry(db_path)
 
     bundles = run_cmd(
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
@@ -405,7 +318,7 @@ def _get_present_bundles(from_index, base_dir):
     # Transform returned data to parsable json
     unique_present_bundles = []
     unique_present_bundles_pull_spec = []
-    present_bundles = _get_bundle_json(bundles)
+    present_bundles = get_bundle_json(bundles)
 
     for bundle in present_bundles:
         bundle_path = bundle['bundlePath']
@@ -415,10 +328,6 @@ def _get_present_bundles(from_index, base_dir):
         unique_present_bundles_pull_spec.append(bundle_path)
 
     return unique_present_bundles, unique_present_bundles_pull_spec
-
-
-def _get_bundle_json(bundles):
-    return [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
 
 
 def _get_missing_bundles(present_bundles, bundles):
@@ -730,69 +639,6 @@ def _verify_index_image(
         )
 
 
-def _add_property_to_index(db_path, property):
-    """
-    Add a property to the index.
-
-    :param str db_path: path to the index database
-    :param dict property: a dict representing a property to be added to the index.db
-    """
-    insert = (
-        'INSERT INTO properties '
-        '(type, value, operatorbundle_name, operatorbundle_version, operatorbundle_path) '
-        'VALUES (?, ?, ?, ?, ?);'
-    )
-    con = sqlite3.connect(db_path)
-    # Insert property
-    con.execute(
-        insert,
-        (
-            property['type'],
-            property['value'],
-            property['operatorbundle_name'],
-            property['operatorbundle_version'],
-            property['operatorbundle_path'],
-        ),
-    )
-    con.commit()
-    con.close()
-
-
-def _requires_max_ocp_version(bundle):
-    """
-    Check if the bundle requires the olm.maxOpenShiftVersion property.
-
-    This property is required for bundles using deprecated APIs that don't already
-    have the olm.maxOpenShiftVersion property set.
-
-    :param str bundle: a string representing the bundle pull specification
-    :returns bool:
-    """
-    cmd = [
-        'operator-sdk',
-        'bundle',
-        'validate',
-        bundle,
-        '--select-optional',
-        'name=community',
-        '--output=json-alpha1',
-        '--image-builder',
-        'none',
-    ]
-    result = run_cmd(cmd, strict=False)
-    if result:
-        output = json.loads(result)
-        # check if the bundle validation failed
-        if not output['passed']:
-            # check if the failure is due to the presence of deprecated APIs
-            # and absence of the 'olm.maxOpenShiftVersion' property
-            # Note: there is no other error in the sdk that mentions this field
-            for msg in output['outputs']:
-                if 'olm.maxOpenShiftVersion' in msg['message']:
-                    return True
-    return False
-
-
 @app.task
 @request_logger
 def handle_add_request(
@@ -922,34 +768,7 @@ def handle_add_request(
         # We need to ensure that any bundle which has deprecated/removed API(s) in 1.22/ocp 4.9
         # will have this property to prevent users from upgrading clusters to 4.9 before upgrading
         # the operator installed to a version that is compatible with 4.9
-
-        # Get the CSV name and version (not just the bundle path)
-        db_path = temp_dir + "/database/index.db"
-        port, rpc_proc = _serve_index_registry(db_path)
-
-        raw_bundles = run_cmd(
-            ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-            exc_msg='Failed to get bundle data from index image',
-        )
-        rpc_proc.kill()
-
-        # Get bundle json for bundles in the request
-        updated_bundles = list(
-            filter(lambda b: b['bundlePath'] in resolved_bundles, _get_bundle_json(raw_bundles))
-        )
-
-        for bundle in updated_bundles:
-            if _requires_max_ocp_version(bundle['bundlePath']):
-                log.info('adding property for %s', bundle['bundlePath'])
-                max_openshift_version_property = {
-                    'type': 'olm.maxOpenShiftVersion',
-                    'value': '4.8',
-                    'operatorbundle_name': bundle['csvName'],
-                    'operatorbundle_version': bundle['version'],
-                    'operatorbundle_path': bundle['bundlePath'],
-                }
-                _add_property_to_index(db_path, max_openshift_version_property)
-                log.info('property added for %s', bundle['bundlePath'])
+        add_max_ocp_version_property(resolved_bundles, temp_dir)
 
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list or []
