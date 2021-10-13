@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+## 4.6.0
+- added build and push iib-worker and iib-api images to quay.io
+- fixed bug to clean local manifest lists before creating a new one
+- used ubi8 as base images for api and worker
+- fixed merge-index-image bug that created the same manifest list twice
+- added setting OcpMaxVersion property in merge-index-image
+- added new attribute 'build_tags' for index_image operations
+- bumped pytest-cov from 2.12.1 to 3.0.0
+- bumped coverage from 5.5 to 6.0.1
 
 ## 4.5.0
 - replaced manifest-tool with buildah to build manifest lists
