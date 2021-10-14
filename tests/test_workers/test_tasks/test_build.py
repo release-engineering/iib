@@ -664,7 +664,7 @@ def test_handle_add_request(
 
     mock_uiips.assert_called_once()
     mock_vii.assert_not_called()
-    mock_capml.assert_called_once()
+    mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, ["extra_tag1", "extra_tag2"])
     assert mock_srs.call_count == 4
     if deprecate_bundles:
         mock_dep_b.assert_called_once_with(
@@ -998,7 +998,7 @@ def test_handle_rm_request(
     assert mock_pi.call_count == len(arches)
     mock_vii.assert_not_called()
     assert mock_srs.call_count == 2
-    mock_capml.assert_called_once()
+    mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, None)
     mock_uiips.assert_called_once()
     assert mock_srs.call_args[0][1] == 'complete'
 
