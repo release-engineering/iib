@@ -107,7 +107,7 @@ def test_handle_create_empty_index_request(
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
 
-    mock_capml.assert_called_once()
+    mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, [])
     mock_uiips.assert_called_once_with(
         output_pull_spec=output_pull_spec,
         request_id=3,
