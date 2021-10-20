@@ -212,7 +212,7 @@ def handle_merge_request(
                 target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
 
         arches = list(prebuild_info['arches'])
-        arch = 'amd64' if 'amd64' in arches else arches[0]
+        arch = sorted(arches)[0]
 
         missing_bundles, invalid_version_bundles = _add_bundles_missing_in_source(
             source_index_bundles,
