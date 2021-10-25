@@ -194,7 +194,7 @@ def handle_merge_request(
     target_index_resolved = prebuild_info['target_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(source_from_index):
+        if is_image_dc(source_from_index_resolved):
             err_msg = 'Declarative config image type is not supported yet.'
             log.error(err_msg)
             raise IIBError(err_msg)

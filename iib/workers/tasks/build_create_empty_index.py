@@ -86,7 +86,7 @@ def handle_create_empty_index_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(from_index):
+        if is_image_dc(from_index_resolved):
             err_msg = 'Declarative config image type is not supported yet.'
             log.error(err_msg)
             raise IIBError(err_msg)
