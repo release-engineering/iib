@@ -652,7 +652,7 @@ def test_handle_add_request(
     else:
         assert not mock_oia.call_args[0][5]
 
-    mock_srt.assert_called_once()
+    mock_srt.call_count == 2
 
     if deprecate_bundles:
         # Take into account the temporarily created index image

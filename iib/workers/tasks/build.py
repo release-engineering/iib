@@ -729,10 +729,11 @@ def handle_add_request(
     present_bundles_pull_spec = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
-            if is_image_dc(from_index):
-                err_msg = 'Declarative config image type is not supported yet.'
-                log.error(err_msg)
-                raise IIBError(err_msg)
+            with set_registry_token(overwrite_from_index_token, from_index_resolved):
+                if is_image_dc(from_index_resolved):
+                    err_msg = 'Declarative config image type is not supported yet.'
+                    log.error(err_msg)
+                    raise IIBError(err_msg)
 
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
@@ -892,10 +893,11 @@ def handle_rm_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(from_index):
-            err_msg = 'Declarative config image type is not supported yet.'
-            log.error(err_msg)
-            raise IIBError(err_msg)
+        with set_registry_token(overwrite_from_index_token, from_index_resolved):
+            if is_image_dc(from_index_resolved):
+                err_msg = 'Declarative config image type is not supported yet.'
+                log.error(err_msg)
+                raise IIBError(err_msg)
 
         _opm_index_rm(
             temp_dir,
