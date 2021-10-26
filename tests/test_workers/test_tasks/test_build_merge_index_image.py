@@ -247,17 +247,8 @@ def test_handle_merge_request_no_deprecate(
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
     mock_uiips.assert_called_once()
 
-    mock_sir.assert_called_once()
-
-    mock_run_cmd.assert_called_once()
-    mock_run_cmd.assert_has_calls(
-        [
-            mock.call(
-                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-                exc_msg=mock.ANY,
-            ),
-        ]
-    )
+    mock_sir.assert_not_called()
+    mock_run_cmd.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
