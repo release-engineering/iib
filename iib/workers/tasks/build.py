@@ -769,7 +769,8 @@ def handle_add_request(
         # We need to ensure that any bundle which has deprecated/removed API(s) in 1.22/ocp 4.9
         # will have this property to prevent users from upgrading clusters to 4.9 before upgrading
         # the operator installed to a version that is compatible with 4.9
-        add_max_ocp_version_property(resolved_bundles, temp_dir)
+        if resolved_bundles:
+            add_max_ocp_version_property(resolved_bundles, temp_dir)
 
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list or []
