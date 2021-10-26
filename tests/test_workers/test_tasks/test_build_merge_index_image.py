@@ -28,7 +28,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
 @mock.patch(
     'iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source',
-    return_value=([], []),
+    return_value=([{'bundlePath': 'some_bundle'}], []),
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles', return_value=[[], []])
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
@@ -156,7 +156,10 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source')
-@mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles', return_value=[[], []])
+@mock.patch(
+    'iib.workers.tasks.build_merge_index_image._get_present_bundles',
+    return_value=[[{'bundlePath': 'some_bundle'}], []],
+)
 @mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')

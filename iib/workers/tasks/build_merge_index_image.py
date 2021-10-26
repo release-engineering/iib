@@ -228,7 +228,8 @@ def handle_merge_request(
         )
 
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
-        add_max_ocp_version_property(missing_bundle_paths, temp_dir)
+        if missing_bundle_paths:
+            add_max_ocp_version_property(missing_bundle_paths, temp_dir)
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
