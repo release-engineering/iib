@@ -1056,3 +1056,19 @@ def test_serve_image_registry_no_ports(mock_popen, mock_sleep, mock_config, tmpd
     with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
         utils.serve_index_registry('some_path.db')
     assert my_mock.poll.call_count == 3
+
+
+@mock.patch('iib.workers.tasks.utils.serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.get_bundle_json')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils._add_property_to_index')
+def test_add_max_ocp_version_property_empty_index(mock_apti, mock_cmd, mock_gbj, mock_sir, tmpdir):
+    port = 0
+    my_mock = mock.MagicMock()
+    mock_sir.return_value = (port, my_mock)
+    mock_cmd.return_value = None
+
+    utils.add_max_ocp_version_property([], tmpdir)
+
+    mock_gbj.assert_not_called()
+    mock_apti.assert_not_called()

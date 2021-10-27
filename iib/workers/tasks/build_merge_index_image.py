@@ -194,7 +194,7 @@ def handle_merge_request(
     target_index_resolved = prebuild_info['target_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(source_from_index):
+        if is_image_dc(source_from_index_resolved):
             err_msg = 'Declarative config image type is not supported yet.'
             log.error(err_msg)
             raise IIBError(err_msg)
@@ -228,7 +228,8 @@ def handle_merge_request(
         )
 
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
-        add_max_ocp_version_property(missing_bundle_paths, temp_dir)
+        if missing_bundle_paths:
+            add_max_ocp_version_property(missing_bundle_paths, temp_dir)
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec

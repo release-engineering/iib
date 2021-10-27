@@ -79,6 +79,15 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
     )
     rpc_proc.kill()
 
+    # This branch is hit when `bundles` attribute is empty and the index image is empty.
+    # Ideally the code should not reach here if the bundles attribute is empty but adding
+    # this here as a failsafe if it's called from some other place. Also, if the bundles
+    # attribute is not empty, the index image cannot be empty here because we add the
+    # bundle to the index before adding the maxOpenShiftVersion property
+    if not raw_bundles:
+        log.info('No bundles found in the index image')
+        return
+
     # Filter index image bundles to get pull spec for bundles in the request
     updated_bundles = list(
         filter(lambda b: b['bundlePath'] in resolved_bundles, get_bundle_json(raw_bundles))
