@@ -3,10 +3,10 @@ import json
 from unittest import mock
 
 import pytest
-from sqlalchemy.exc import DisconnectionError
 
 from iib.web.api_v1 import _get_unique_bundles
 from iib.web.models import Image, RequestAdd, RequestRm, RequestCreateEmptyIndex
+from iib.exceptions import IIBError
 
 
 def test_get_build(app, auth_env, client, db):
@@ -197,20 +197,6 @@ def test_get_builds_invalid_batch(batch, app, client, db):
     rv = client.get(f'/api/v1/builds?batch={batch}')
     assert rv.status_code == 400
     assert rv.json == {'error': 'The batch must be a positive integer'}
-
-
-@mock.patch('sqlalchemy.engine.base.Engine.execute')
-def test_get_healthcheck_db_fail(mock_db_execute, app, client, db):
-    mock_db_execute.side_effect = DisconnectionError('DB failed')
-    rv = client.get('/api/v1/healthcheck')
-    assert rv.status_code == 500
-    assert rv.json == {'error': 'Database health check failed.'}
-
-
-def test_get_healthcheck_ok(app, client, db):
-    rv = client.get('/api/v1/healthcheck')
-    assert rv.status_code == 200
-    assert rv.json == {'status': 'Health check OK'}
 
 
 @pytest.mark.parametrize(
@@ -2103,3 +2089,27 @@ def test_get_build_related_bundles_not_configured(client, db, minimal_request_re
     rv = client.get(f'/api/v1/builds/{request_id}')
     assert rv.status_code == 200
     assert 'related_bundles' not in rv.json
+
+
+@mock.patch('iib.web.api_v1.status')
+def test_get_status(mock_status, client):
+    mock_status.return_value = {'services': {}, 'workers': []}
+    rv = client.get('/api/v1/healthcheck/details')
+    assert rv.status_code == 200
+    assert rv.json == mock_status.return_value
+    mock_status.assert_called_once()
+
+
+@pytest.mark.parametrize('error', [None, 'something is wrong'])
+@mock.patch('iib.web.api_v1.status')
+def test_get_status_short(mock_status, error, client):
+    if error:
+        mock_status.side_effect = [IIBError(error)]
+    rv = client.get('/api/v1/healthcheck')
+
+    if error:
+        assert rv.json == {'status': 'Health check failed', 'error': error}
+        assert rv.status_code == 503
+    else:
+        assert rv.json == {'status': 'Health check OK'}
+        assert rv.status_code == 200

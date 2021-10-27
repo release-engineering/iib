@@ -7,7 +7,6 @@ import flask
 import kombu
 from flask_login import current_user, login_required
 from sqlalchemy.orm import with_polymorphic
-from sqlalchemy.sql import text
 from sqlalchemy import or_
 from werkzeug.exceptions import Forbidden, Gone, NotFound
 
@@ -32,6 +31,7 @@ from iib.web.models import (
     User,
 )
 from iib.web.utils import pagination_metadata, str_to_bool
+from iib.web.healthcheck import status
 from iib.workers.tasks.build import (
     handle_add_request,
     handle_rm_request,
@@ -314,23 +314,35 @@ def get_builds():
     return flask.jsonify(response)
 
 
-@api_v1.route('/healthcheck')
-def get_healthcheck():
+@api_v1.route('/healthcheck/details', methods=['GET'])
+def get_status():
     """
-    Respond to a health check.
+    Return status of IIB workers and services that IIB depends on.
+
+    :return: json object representing the status of the services.
+    :rtype: flask.Response
+    """
+    return flask.jsonify(status())
+
+
+@api_v1.route('/healthcheck', methods=['GET'])
+def get_status_short():
+    """
+    Return 200 if all workers and services seem to be ok, 503 otherwise.
 
     :rtype: flask.Response
-    :return: json object representing the health of IIB
-    :raises IIBError: if the database connection fails
+    :return: json object representing the status of IIB services.
+    :raise IIBError: if a problem is found while retrieving the status.
     """
-    # Test DB connection
+    retval = {'status': 'Health check OK'}
+    ret_status = 200
     try:
-        db.engine.execute(text('SELECT 1'))
-    except Exception:
-        flask.current_app.logger.exception('DB test failed.')
-        raise IIBError('Database health check failed.')
+        status(short=True)
+    except IIBError as error:
+        retval = {'status': 'Health check failed', 'error': str(error)}
+        ret_status = 503
 
-    return flask.jsonify({'status': 'Health check OK'})
+    return flask.jsonify(retval), ret_status
 
 
 def _get_user_queue(serial=False):

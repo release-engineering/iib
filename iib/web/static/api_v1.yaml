@@ -210,30 +210,77 @@ paths:
               $ref: '#/components/schemas/RequestUpdate'
       security:
         - Kerberos Authentication: []
-  /healthcheck:
+  /healthcheck/details:
     get:
-      description: Perform a health check of the service
+      description: Get the status of the services IIB depends on
       responses:
         '200':
-          description: The health check OK message
+          description: services status information
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: Health check OK
-        '500':
-          description: Health check failed
+                  services:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Name of a service
+                          example: database
+                        available:
+                          type: boolean
+                          description: indicator that service is running fine.
+                          example: false
+                        reason:
+                          type: string
+                          description: Reason why service is not running.
+                          example: Database connection failed
+                    required:
+                      - name
+                      - available
+                  workers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Name of a worker
+                          example: celery@025f84b0154f
+                        available:
+                          type: boolean
+                          description: indicator that worker is available.
+                          example: false
+                        reason:
+                          type: string
+                          description: Reason why worker is not available.
+                          example: worker didn't respond to ping
+                    required:
+                      - name
+                      - available
+            required:
+              - services
+              - workers
+  /healthcheck:
+    get:
+      summary: Get a short IIB service status
+      description: >
+        if services including RabbitMQ, database, and workers
+        are working properly, return 200.
+      responses:
+        '200':
+          description: services and workers are working as expected.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: Database health check failed
+              example: {'status': 'Health check OK'}
+        '503':
+          description: one or more service/s are reporting an issue
+          content:
+            application/json:
+              example: {'status': 'Health check failed', 'error': 'DATABASE unavailable: Database connection failed'}
   '/builds/{id}/logs':
     get:
       description: Return the logs for a specific build request
