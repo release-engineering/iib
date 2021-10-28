@@ -193,7 +193,8 @@ def _adjust_operator_bundle(
     tags with pinned digests, e.g. `image:latest` becomes `image@sha256:...`.
 
     If spec.relatedImages is not set, it will be set with the pinned digests. If it is set but
-    there are also RELATED_IMAGE_* environment variables set, an exception will be raised.
+    there are also RELATED_IMAGE_* environment variables set, the relatedImages will be regenerated
+    and the digests will be pinned again.
 
     This method relies on the OperatorManifest class to properly identify and apply the
     modifications as needed.
@@ -253,9 +254,7 @@ def _adjust_operator_bundle(
             registry_replacements = customization.get('replacements', {})
             if registry_replacements:
                 log.info('Applying registry replacements')
-                bundle_metadata = _get_bundle_metadata(
-                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
-                )
+                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _apply_registry_replacements(bundle_metadata, registry_replacements)
         elif customization_type == 'csv_annotations' and organization:
             org_csv_annotations = customization.get('annotations')
@@ -265,9 +264,7 @@ def _adjust_operator_bundle(
         elif customization_type == 'image_name_from_labels':
             org_image_name_template = customization.get('template', '')
             if org_image_name_template:
-                bundle_metadata = _get_bundle_metadata(
-                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
-                )
+                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _replace_image_name_from_labels(bundle_metadata, org_image_name_template)
         elif customization_type == 'enclose_repo':
             org_enclose_repo_namespace = customization.get('namespace')
@@ -280,62 +277,44 @@ def _adjust_operator_bundle(
                     org_enclose_repo_glue,
                     organization,
                 )
-                bundle_metadata = _get_bundle_metadata(
-                    operator_manifest, pinned_by_iib, perform_sanity_checks=False
-                )
+                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _apply_repo_enclosure(
                     bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue
                 )
         elif customization_type == 'related_bundles':
             log.info('Applying related_bundles customization')
-            bundle_metadata = _get_bundle_metadata(
-                operator_manifest, pinned_by_iib, perform_sanity_checks=False
-            )
+            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
             _write_related_bundles_file(bundle_metadata, request_id)
 
     return labels
 
 
-def _get_bundle_metadata(operator_manifest, pinned_by_iib, perform_sanity_checks=True):
+def _get_bundle_metadata(operator_manifest, pinned_by_iib):
     """
     Get bundle metadata i.e. CSV's and all relatedImages pull specifications.
+
+    If the bundle is already pinned by IIB, it will be pinned again and the relatedImages will
+    be regenerated.
 
     :param operator_manifest.operator.OperatorManifest operator_manifest: the operator manifest
         object.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
         IIB to perform image pinning of related images.
-    :param bool ignore_sanity_check: boolean specifying if sanity checks should be skipped.
-        defaults to ``True``
     :raises IIBError: if the operator manifest has invalid entries
     :return: a dictionary of CSV's and relatedImages pull specifications
     :rtype: dict
     """
     bundle_metadata = {'found_pullspecs': set(), 'operator_csvs': []}
     for operator_csv in operator_manifest.files:
-        if perform_sanity_checks:
-            if pinned_by_iib:
-                # If the bundle image has already been previously pinned by IIB, the relatedImages
-                # section will be populated and there may be related image environment variables.
-                # However, we still want to process the image to apply any of the other possible
-                # changes.
-                log.info(
-                    'Pinning will be skipped because related images have already been pinned by IIB'
-                )
-            elif operator_csv.has_related_images():
-                csv_file_name = os.path.basename(operator_csv.path)
-                if operator_csv.has_related_image_envs():
-                    raise IIBError(
-                        f'The ClusterServiceVersion file {csv_file_name} has entries in '
-                        'spec.relatedImages and one or more containers have RELATED_IMAGE_* '
-                        'environment variables set. This is not allowed for bundles '
-                        'regenerated with IIB.'
-                    )
-                log.debug(
-                    'Skipping pinning since the ClusterServiceVersion file %s has entries in '
-                    'spec.relatedImages',
-                    csv_file_name,
-                )
-                continue
+        if pinned_by_iib:
+            # If the bundle image has already been previously pinned by IIB, the relatedImages
+            # section will be populated and there may be related image environment variables.
+            # This behavior is now valid and the images will be pinned again and the relatedImages
+            # will be regenerated.
+            log.info(
+                'Bundle has been pinned by IIB. '
+                'Pinning will be done again and relatedImages will be regenerated'
+            )
 
         bundle_metadata['operator_csvs'].append(operator_csv)
 
