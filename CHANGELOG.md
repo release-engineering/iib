@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+## 4.7.0
+- having relatedImages and RELATED_IMAGES_* in the bundle image is now valid for regeneration
+- fixed inconsistencies in arch selection code for different endpoints
+
 ## 4.6.2
 - Attempt adding maxOpenshiftVersion property only when adding bundles to index
 
