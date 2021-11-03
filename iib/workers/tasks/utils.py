@@ -723,6 +723,13 @@ def run_cmd(cmd, params=None, exc_msg=None, strict=True):
     if strict and response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         if cmd[0] == 'opm':
+            # The new OPM shows the error at the beginning, let's try with this first
+            regex = r'^(?:Error: )(.+)'
+            match = re.match(regex, response.stderr)
+            if match:
+                raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+            # If we didn't find the message at the beginning, let's look for it at the end
+            # after the help message
             # Capture the error message right before the help display
             regex = r'^(?:Error: )(.+)$'
             # Start from the last log message since the failure occurs near the bottom
