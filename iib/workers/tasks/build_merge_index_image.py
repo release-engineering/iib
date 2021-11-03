@@ -20,7 +20,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.dc_utils import is_image_dc
+from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
@@ -194,8 +194,8 @@ def handle_merge_request(
     target_index_resolved = prebuild_info['target_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(source_from_index_resolved):
-            err_msg = 'Declarative config image type is not supported yet.'
+        if is_image_fbc(source_from_index_resolved):
+            err_msg = 'File-Based catalog image type is not supported yet.'
             log.error(err_msg)
             raise IIBError(err_msg)
 

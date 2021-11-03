@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+# This file contains functions that are common for File-Based Catalog image type
 
 from iib.workers.tasks.utils import skopeo_inspect
 
 
-def is_image_dc(image):
+def is_image_fbc(image):
     """
-    Detect declarative config image.
+    Detect File-Based catalog image.
 
-    We can have two types of image - SQLite and Declarative Config
+    We can have two types of image - SQLite and FBC
     Those can be distinguished by LABELS.
-    Declarative config will have defined this LABEL: operators.operatorframework.io.index.configs.v1
+    Image with File-Based catalog will have defined this LABEL:
+    "operators.operatorframework.io.index.configs.v1"
 
     :param str image: the pull specification of the container image (usually from_image)
-    :return: True if image is declarative config type, False otherwise
+    :return: True if image is FBC type, False otherwise (SQLite)
     :rtype: bool
     """
     skopeo_output = skopeo_inspect(f'docker://{image}')

@@ -17,7 +17,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.dc_utils import is_image_dc
+from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -86,8 +86,8 @@ def handle_create_empty_index_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_dc(from_index_resolved):
-            err_msg = 'Declarative config image type is not supported yet.'
+        if is_image_fbc(from_index_resolved):
+            err_msg = 'File-Based catalog image type is not supported yet.'
             log.error(err_msg)
             raise IIBError(err_msg)
         set_request_state(request_id, 'in_progress', 'Checking operators present in index image')
