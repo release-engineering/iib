@@ -38,9 +38,9 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
 @mock.patch('subprocess.run')
-@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_dc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 def test_handle_merge_request(
-    mock_iidc,
+    mock_iifbc,
     mock_run,
     mock_set_registry_token,
     mock_add_label_to_index,
@@ -72,7 +72,7 @@ def test_handle_merge_request(
         'target_index_resolved': target_index_resolved,
         'distribution_scope': 'stage',
     }
-    mock_iidc.return_value = False
+    mock_iifbc.return_value = False
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
     binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
@@ -166,9 +166,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
-@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_dc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 def test_handle_merge_request_no_deprecate(
-    mock_iidc,
+    mock_iifbc,
     mock_add_label_to_index,
     mock_cleanup,
     mock_prfb,
@@ -197,7 +197,7 @@ def test_handle_merge_request_no_deprecate(
         'target_index_resolved': 'target-index@sha256:resolved',
         'distribution_scope': 'stage',
     }
-    mock_iidc.return_value = False
+    mock_iifbc.return_value = False
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = []
     mock_abmis.return_value = ([], invalid_bundles)
@@ -586,9 +586,9 @@ def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
 
 
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
-@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_dc')
-def test_handle_merge_request_raises(mock_iidc, mock_c):
-    mock_iidc.return_value = True
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+def test_handle_merge_request_raises(mock_iifbc, mock_c):
+    mock_iifbc.return_value = True
     with pytest.raises(IIBError):
         build_merge_index_image.handle_merge_request(
             source_from_index='source-from-index:1.0',

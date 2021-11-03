@@ -3,11 +3,11 @@ from unittest import mock
 
 import pytest
 
-from iib.workers.tasks.dc_utils import is_image_dc
+from iib.workers.tasks.fbc_utils import is_image_fbc
 
 
 @pytest.mark.parametrize(
-    "skopeo_output,is_dc",
+    "skopeo_output,is_fbc",
     [
         (
             {
@@ -155,9 +155,9 @@ from iib.workers.tasks.dc_utils import is_image_dc
         ),
     ],
 )
-@mock.patch('iib.workers.tasks.dc_utils.skopeo_inspect')
-def test_is_image_dc(mock_si, skopeo_output, is_dc):
+@mock.patch('iib.workers.tasks.fbc_utils.skopeo_inspect')
+def test_is_image_fbc(mock_si, skopeo_output, is_fbc):
     image = 'some-image:latest'
 
     mock_si.return_value = skopeo_output
-    assert is_image_dc(image) is is_dc
+    assert is_image_fbc(image) is is_fbc
