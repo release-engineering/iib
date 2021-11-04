@@ -83,6 +83,24 @@ class RequestTypeMapping(BaseEnum):
         """
         return cls(num).name.replace('_', '-')
 
+    @classmethod
+    def validate_type(cls, request_type):
+        """
+        Verify that the input request_type is valid.
+
+        :param str type: the request_type to validate
+        :raises iib.exceptions.ValidationError: if the request_type is invalid
+        """
+        prettified_request_types = [
+            RequestTypeMapping.pretty(request_type.value) for request_type in RequestTypeMapping
+        ]
+        if request_type not in prettified_request_types:
+            valid_request_types = ', '.join(prettified_request_types)
+            raise ValidationError(
+                f'{request_type} is not a valid build request type. Valid request_types'
+                f' are: {valid_request_types}'
+            )
+
 
 class RequestMergeBundleDeprecation(db.Model):
     """An association table between index merge requests and bundle images which they deprecate."""

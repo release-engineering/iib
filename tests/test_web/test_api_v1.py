@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import DisconnectionError
 
 from iib.web.api_v1 import _get_unique_bundles
-from iib.web.models import Image, RequestAdd, RequestRm
+from iib.web.models import Image, RequestAdd, RequestRm, RequestCreateEmptyIndex
 
 
 def test_get_build(app, auth_env, client, db):
@@ -84,10 +84,12 @@ def test_get_build(app, auth_env, client, db):
 
 
 def test_get_builds(app, auth_env, client, db):
-    total_requests = 50
+    total_create_requests = 5
+    total_add_requests = 50
+    total_requests = total_create_requests + total_add_requests
     # flask_login.current_user is used in RequestAdd.from_json, which requires a request context
     with app.test_request_context(environ_base=auth_env):
-        for i in range(total_requests):
+        for i in range(total_add_requests):
             data = {
                 'binary_image': 'quay.io/namespace/binary_image:latest',
                 'bundles': [f'quay.io/namespace/bundle:{i}'],
@@ -97,6 +99,13 @@ def test_get_builds(app, auth_env, client, db):
             if i % 5 == 0:
                 request.add_state('failed', 'Failed due to an unknown error')
             db.session.add(request)
+        for i in range(total_create_requests):
+            data = {
+                'binary_image': 'quay.io/namespace/binary_image:latest',
+                'from_index': f'quay.io/namespace/repo:{i}',
+            }
+            request2 = RequestCreateEmptyIndex.from_json(data)
+            db.session.add(request2)
         db.session.commit()
 
     rv_json = client.get('/api/v1/builds?page=2').json
@@ -111,7 +120,7 @@ def test_get_builds(app, auth_env, client, db):
     assert rv_json['meta']['total'] == total_requests
 
     rv_json = client.get('/api/v1/builds?state=failed&per_page=5').json
-    total_failed_requests = total_requests // 5
+    total_failed_requests = total_add_requests // 5
     assert len(rv_json['items']) == 5
     assert 'state=failed' in rv_json['meta']['next']
     assert rv_json['meta']['page'] == 1
@@ -128,6 +137,38 @@ def test_get_builds(app, auth_env, client, db):
     # This key is only present the verbose=true
     assert 'state_history' in rv_json['items'][0]
 
+    rv_json = client.get('/api/v1/builds?request_type=add').json
+    assert rv_json['meta']['total'] == total_add_requests
+    assert rv_json['items'][0]['request_type'] == 'add'
+
+    rv_json = client.get('/api/v1/builds?request_type=create-empty-index').json
+    assert rv_json['meta']['total'] == total_create_requests
+    assert rv_json['items'][0]['request_type'] == 'create-empty-index'
+
+    rv_json = client.get('/api/v1/builds?user=tbrady@DOMAIN.LOCAL').json
+    assert rv_json['meta']['total'] == total_requests
+    assert rv_json['items'][0]['user'] == 'tbrady@DOMAIN.LOCAL'
+
+
+def test_index_image_filter(app, client, db, minimal_request_add, minimal_request_rm):
+    minimal_request_add.add_state('in_progress', 'Starting things up!')
+    minimal_request_add.index_image = Image.get_or_create('quay.io/namespace/index@sha256:fghijk')
+    minimal_request_add.add_state('complete', 'The request is complete')
+
+    minimal_request_rm.add_state('in_progress', 'Starting things up!')
+    minimal_request_rm.index_image = Image.get_or_create('quay.io/namespace/index@sha256:123456')
+    minimal_request_rm.add_state('complete', 'The request is complete')
+    db.session.commit()
+
+    rv_json = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:fghijk').json
+    assert rv_json['meta']['total'] == 1
+
+    rv_json = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:123456').json
+    assert rv_json['meta']['total'] == 1
+
+    rv = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:abc')
+    assert rv.json == {'error': ('quay.io/namespace/index@sha256:abc is not a valid index image')}
+
 
 def test_get_builds_invalid_state(app, client, db):
     rv = client.get('/api/v1/builds?state=is_it_lunch_yet%3F')
@@ -136,6 +177,17 @@ def test_get_builds_invalid_state(app, client, db):
         'error': (
             'is_it_lunch_yet? is not a valid build request state. Valid states are: complete, '
             'failed, in_progress'
+        )
+    }
+
+
+def test_get_builds_invalid_type(app, client, db):
+    rv = client.get('/api/v1/builds?request_type=wrong-type')
+    assert rv.status_code == 400
+    assert rv.json == {
+        'error': (
+            'wrong-type is not a valid build request type. Valid request_types are: '
+            'generic, add, rm, regenerate-bundle, merge-index-image, create-empty-index'
         )
     }
 
