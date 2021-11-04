@@ -303,12 +303,18 @@ The custom configuration options for the Celery workers are listed below:
     organization, the `related_bundles` endpoint won't work for regenerate-bundle requests of that
     organization. If no organization is specified, IIB will try to find `related_bundles` for all
     regenerate-bundle requests.
+  * The `resolve_image_pullspecs` customization type is a dictionary with no additional arguments
+    and it basically pins all the pull specs in the CSV files of the operator bundle image in
+    question to their digests. If this customization is not specified in the config for an
+    organization, the pinning will not be done. If no organization is specified, IIB will try and
+    pin the pull specs in the CSV files to their digests.
 
   Here is an example that ties this all together:
 
   ```python
   iib_organization_customizations = {
         'company-marketplace': [
+            {'type': 'resolve_image_pullspecs'},
             {
                 'type': 'csv_annotations',
                 'annotations': {

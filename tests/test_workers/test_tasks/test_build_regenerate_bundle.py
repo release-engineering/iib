@@ -978,13 +978,13 @@ def test_apply_repo_enclosure(original_image, eclosure_namespace, expected_image
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_labels')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle._write_related_bundles_file')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._resolve_image_pull_specs')
 def test_adjust_operator_bundle_duplicate_customizations_ordered(
-    mock_grbi, mock_gil, mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir
+    mock_rips, mock_grbi, mock_gil, mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir
 ):
     manager = MagicMock()
     manager.attach_mock(mock_gpa, 'mock_gpa')
     manager.attach_mock(mock_apns, 'mock_apns')
-    manager.attach_mock(mock_gri, 'mock_gri')
     manager.attach_mock(mock_aca, 'mock_aca')
     manager.attach_mock(mock_gil, 'mock_gil')
     manager.attach_mock(mock_grbi, 'mock_grbi')
@@ -1042,7 +1042,7 @@ def test_adjust_operator_bundle_duplicate_customizations_ordered(
             registry='quay.io',
             operator='operator',
             image='/image',
-            ref=':v1',
+            ref='@sha256:654322',
             related_name=f'image-{image_digest}-annotation',
             related_ref='@sha256:749327',
         )
@@ -1054,29 +1054,18 @@ def test_adjust_operator_bundle_duplicate_customizations_ordered(
     )
     csv3.write(
         csv_template.format(
-            registry='registry.access.company.com', operator='operator', image='/image', ref=':v2'
+            registry='registry.access.company.com',
+            operator='operator',
+            image='/image',
+            ref='@sha256:654321',
         )
     )
-
-    def get_resolved_image(image):
-        return {
-            'quay.io/operator/image:v1': 'quay.io/operator/image@sha256:654322',
-            'quay.io/operator/image:v2': 'quay.io/operator/image@sha256:654321',
-            'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:654321',
-            'quay.io/operator/image@sha256:749327': 'quay.io/operator/image@sha256:749327',
-            'registry.access.company.com/operator/image:v2': (
-                'registry.access.company.com/operator/image@sha256:654321'
-            ),
-        }[image]
-
-    mock_gri.side_effect = get_resolved_image
 
     labels = build_regenerate_bundle._adjust_operator_bundle(
         str(manifests_dir), str(metadata_dir), 1, 'company-managed'
     )
 
     assert labels == {
-        'com.redhat.iib.pinned': 'true',
         'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp',
     }
     # Verify that the relatedImages are not modified if they were already set and that images were
@@ -1110,10 +1099,6 @@ def test_adjust_operator_bundle_duplicate_customizations_ordered(
 
     expected_calls = [
         call.mock_gpa(mock.ANY),
-        call.mock_gri(mock.ANY),
-        call.mock_gri(mock.ANY),
-        call.mock_gri(mock.ANY),
-        call.mock_gri(mock.ANY),
         call.mock_apns(mock.ANY, '-cmp'),
         call.mock_aca(mock.ANY, 'amqstreams', annotations),
         call.mock_grbi(mock.ANY, 1),
@@ -1122,6 +1107,8 @@ def test_adjust_operator_bundle_duplicate_customizations_ordered(
         call.mock_gil(mock.ANY),
     ]
     assert manager.mock_calls == expected_calls
+    mock_rips.assert_not_called()
+    mock_gri.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_label')
