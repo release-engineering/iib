@@ -221,6 +221,7 @@ def _adjust_operator_bundle(
     organization_customizations = conf['iib_organization_customizations'].get(organization, [])
     if not organization_customizations:
         organization_customizations = [
+            {'type': 'resolve_image_pullspecs'},
             {'type': 'related_bundles'},
             {'type': 'package_name_suffix'},
             {'type': 'registry_replacements'},
@@ -234,10 +235,6 @@ def _adjust_operator_bundle(
         'operators.operatorframework.io.bundle.package.v1'
     ]
     labels = {}
-
-    log.info('Resolving image pull specs')
-    bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
-    _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib)
 
     # Perform the customizations in order
     for customization in organization_customizations:
@@ -285,6 +282,10 @@ def _adjust_operator_bundle(
             log.info('Applying related_bundles customization')
             bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
             _write_related_bundles_file(bundle_metadata, request_id)
+        elif customization_type == 'resolve_image_pullspecs':
+            log.info('Resolving image pull specs')
+            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib)
 
     return labels
 

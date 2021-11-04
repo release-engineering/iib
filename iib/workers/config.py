@@ -73,6 +73,7 @@ class DevelopmentConfig(Config):
     iib_log_level = 'DEBUG'
     iib_organization_customizations = {
         'company-marketplace': [
+            {'type': 'resolve_image_pullspecs'},
             {'type': 'related_bundles'},
             {
                 'type': 'csv_annotations',
