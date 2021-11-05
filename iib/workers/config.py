@@ -46,6 +46,8 @@ class Config(object):
         'iib.workers.tasks.build_create_empty_index',
         'iib.workers.tasks.general',
     ]
+    # Path to hidden location of SQLite database
+    hidden_index_db_path = '/var/lib/iib/_hidden/do.not.edit.db'
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
