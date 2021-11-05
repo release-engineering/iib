@@ -2,6 +2,7 @@
 import logging
 import os
 import stat
+import tempfile
 import textwrap
 from unittest import mock
 
@@ -981,13 +982,13 @@ def test_get_binary_image_config_no_config_val():
     'endpoint', ("api.Registry/ListPackages", "api.Registry/ListBundles",),
 )
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.build.serve_index_registry')
+@mock.patch('iib.workers.tasks.build.serve_registry')
 @mock.patch('iib.workers.tasks.build._get_index_database')
-def test_grpcurl_get_db_data_success(mock_gid, mock_sir, mock_run_cmd, tmpdir, endpoint):
+def test_grpcurl_get_db_data_success(mock_gid, mock_sr, mock_run_cmd, tmpdir, endpoint):
 
     mock_gid.return_value = tmpdir.join('index.db')
     mock_popen = mock.MagicMock()
-    mock_sir.return_value = 50051, mock_popen
+    mock_sr.return_value = 50051, mock_popen
     mock_run_cmd.side_effect = ['{\n"name": "package1"\n}\n{\n"name": "package2"\n}\n']
     utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
 
@@ -1003,21 +1004,15 @@ def test_grpcurl_get_db_data_success(mock_gid, mock_sir, mock_run_cmd, tmpdir, e
     ),
 )
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.build.serve_index_registry')
-@mock.patch('iib.workers.tasks.build._get_index_database')
-def test_grpcurl_get_db_data_wrong_endpoint(
-    mock_gid, mock_sir, mock_run_cmd, tmpdir, endpoint, err_msg
-):
-
-    mock_gid.return_value = tmpdir.join('index.db')
+@mock.patch('iib.workers.tasks.build.serve_registry')
+def test_grpcurl_get_db_data_wrong_endpoint(mock_sr, mock_run_cmd, tmpdir, endpoint, err_msg):
     mock_popen = mock.MagicMock()
-    mock_sir.return_value = 50051, mock_popen
+    mock_sr.return_value = 50051, mock_popen
 
     with pytest.raises(IIBError, match=err_msg):
         utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
 
-    mock_sir.assert_called_once()
-    mock_gid.assert_called_once()
+    mock_sr.assert_called_once()
     mock_run_cmd.assert_not_called()
 
 
@@ -1030,9 +1025,10 @@ def test_serve_image_registry(mock_run_cmd, mock_popen, mock_sleep, tmpdir):
     my_mock.stderr.read.side_effect = ['address already in use', 'address already in use']
     mock_run_cmd.return_value = 'api.Registry.ListBundles'
     my_mock.poll.side_effect = [1, 1, None]
-    port, _ = utils.serve_index_registry('some_path.db')
-    assert port == 50053
-    assert my_mock.poll.call_count == 3
+    with tempfile.TemporaryDirectory() as temp_dir:
+        port, _ = utils.serve_registry(temp_dir, db_path='some_path.db')
+        assert port == 50053
+        assert my_mock.poll.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.utils.get_worker_config')
@@ -1054,18 +1050,19 @@ def test_serve_image_registry_no_ports(mock_popen, mock_sleep, mock_config, tmpd
         'iib_grpc_max_tries': 3,
     }
     with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
-        utils.serve_index_registry('some_path.db')
+        with tempfile.TemporaryDirectory() as temp_dir:
+            utils.serve_registry(temp_dir, db_path='some_path.db')
     assert my_mock.poll.call_count == 3
 
 
-@mock.patch('iib.workers.tasks.utils.serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.serve_registry')
 @mock.patch('iib.workers.tasks.utils.get_bundle_json')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils._add_property_to_index')
-def test_add_max_ocp_version_property_empty_index(mock_apti, mock_cmd, mock_gbj, mock_sir, tmpdir):
+def test_add_max_ocp_version_property_empty_index(mock_apti, mock_cmd, mock_gbj, mock_sr, tmpdir):
     port = 0
     my_mock = mock.MagicMock()
-    mock_sir.return_value = (port, my_mock)
+    mock_sr.return_value = (port, my_mock)
     mock_cmd.return_value = None
 
     utils.add_max_ocp_version_property([], tmpdir)

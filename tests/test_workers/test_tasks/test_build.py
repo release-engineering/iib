@@ -509,7 +509,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.serve_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -551,7 +551,7 @@ def test_handle_add_request(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
-    mock_sir,
+    mock_sr,
     mock_run_cmd,
     force_backport,
     binary_image,
@@ -595,7 +595,7 @@ def test_handle_add_request(
 
     port = 0
     my_mock = mock.MagicMock()
-    mock_sir.return_value = (port, my_mock)
+    mock_sr.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
 
@@ -617,7 +617,7 @@ def test_handle_add_request(
         build_tags=["extra_tag1", "extra_tag2"],
     )
 
-    mock_sir.assert_called_once()
+    mock_sr.assert_called_once()
     mock_run_cmd.assert_called_once()
     mock_run_cmd.assert_has_calls(
         [
@@ -705,7 +705,7 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 
 @mock.patch('iib.workers.tasks.utils.sqlite3.connect')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.serve_index_registry')
+@mock.patch('iib.workers.tasks.utils.serve_registry')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -745,7 +745,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
-    mock_sir,
+    mock_sr,
     mock_run_cmd,
     mock_sqlite,
 ):
@@ -788,7 +788,7 @@ def test_handle_add_request_check_index_label_behavior(
 
     port = 0
     my_mock = mock.MagicMock()
-    mock_sir.return_value = (port, my_mock)
+    mock_sr.return_value = (port, my_mock)
     mock_run_cmd.side_effect = [
         '{"packageName": "package1", "version": "v1.0", "csvName": "random-csv", \
         "bundlePath": "some-bundle@sha"\n}',
@@ -813,7 +813,7 @@ def test_handle_add_request_check_index_label_behavior(
         deprecation_list=deprecation_list,
     )
 
-    mock_sir.assert_called_once()
+    mock_sr.assert_called_once()
     assert mock_run_cmd.call_count == 2
 
     mock_run_cmd.assert_has_calls(
@@ -1142,15 +1142,24 @@ def test_get_missing_bundles_match_hash():
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.is_image_fbc')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles(
-    mock_gil, mock_copy, mock_serve_index_registry_cmd, mock_run_cmd, mock_popen, mock_sleep, tmpdir
+    mock_gil,
+    mock_copy,
+    moc_ifbc,
+    mock_serve_registry_cmd,
+    mock_run_cmd,
+    mock_popen,
+    mock_sleep,
+    tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_gil.return_value = 'some-path'
-    mock_serve_index_registry_cmd.return_value = 'api.Registry.ListBundles'
+    moc_ifbc.return_value = False
+    mock_serve_registry_cmd.return_value = 'api.Registry.ListBundles'
     mock_run_cmd.return_value = (
         '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
         '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
@@ -1167,21 +1176,30 @@ def test_get_present_bundles(
     ]
     assert bundles_pull_spec == ['bundle1', 'bundle2']
     mock_run_cmd.assert_called_once()
-    mock_serve_index_registry_cmd.assert_called_once()
+    mock_serve_registry_cmd.assert_called_once()
 
 
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.is_image_fbc')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_no_present_bundles(
-    mock_gil, mock_copy, mock_serve_index_registry_cmd, mock_run_cmd, mock_popen, mock_sleep, tmpdir
+    mock_gil,
+    mock_copy,
+    moc_ifbc,
+    mock_serve_index_registry_cmd,
+    mock_run_cmd,
+    mock_popen,
+    mock_sleep,
+    tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_gil.return_value = 'some-path'
+    moc_ifbc.return_value = False
     mock_serve_index_registry_cmd.return_value = 'api.Registry.ListBundles'
     mock_run_cmd.return_value = ''
     my_mock = mock.MagicMock()
@@ -1200,16 +1218,26 @@ def test_get_no_present_bundles(
 @mock.patch('time.sleep')
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.is_image_fbc')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_not_initialize(
-    mock_gil, mock_copy, mock_run_cmd, mock_popen, mock_sleep, mock_remove, mock_time, tmpdir
+    mock_gil,
+    mock_copy,
+    moc_ifbc,
+    mock_run_cmd,
+    mock_popen,
+    mock_sleep,
+    mock_remove,
+    mock_time,
+    tmpdir,
 ):
     with open(tmpdir.join('cidfile.txt'), 'w+') as f:
         f.write('container_id')
     mock_run_cmd.side_effect = ['', '', '', '', ''] * 4
     mock_time.side_effect = list(range(1, 80))
     mock_gil.return_value = 'some-path'
+    moc_ifbc.return_value = False
     my_mock = mock.MagicMock()
     mock_popen.return_value = my_mock
     my_mock.poll.return_value = None
@@ -1224,11 +1252,13 @@ def test_get_present_bundles_grpc_not_initialize(
 @mock.patch('subprocess.Popen')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.is_image_fbc')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_get_present_bundles_grpc_delayed_initialize(
     mock_gil,
     mock_copy,
+    moc_ifbc,
     mock_serve_index_registry_cmd,
     mock_run_cmd,
     mock_popen,
@@ -1241,6 +1271,7 @@ def test_get_present_bundles_grpc_delayed_initialize(
         f.write('container_id')
     mock_time.side_effect = [i * 0.5 for i in range(1, 80)]
     mock_gil.return_value = 'some-path'
+    moc_ifbc.return_value = False
     mock_serve_index_registry_cmd.side_effect = [
         '',
         '',

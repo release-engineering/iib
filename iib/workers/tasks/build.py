@@ -27,7 +27,7 @@ from iib.workers.tasks.utils import (
     reset_docker_config,
     run_cmd,
     set_registry_token,
-    serve_index_registry,
+    serve_registry,
     skopeo_inspect,
     RequestConfigAddRm,
     get_image_label,
@@ -302,8 +302,7 @@ def _get_present_bundles(from_index, base_dir):
     :rtype: list, list
     :raises IIBError: if any of the commands fail.
     """
-    db_path = _get_index_database(from_index, base_dir)
-    port, rpc_proc = serve_index_registry(db_path)
+    port, rpc_proc = serve_registry(base_dir, from_index=from_index)
 
     bundles = run_cmd(
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
