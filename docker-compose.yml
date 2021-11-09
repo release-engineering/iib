@@ -1,21 +1,39 @@
 ---
 version: '3'
 services:
+  # This "service" generates the certificate for the registry. Then,
+  # it exits with status code 0.
+  minica:
+    image: registry.access.redhat.com/ubi8/go-toolset:latest
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        go get github.com/jsha/minica &&
+        cd /opt/app-root/certs &&
+        /opt/app-root/src/bin/minica --domains registry
+    environment:
+      GOPATH: /opt/app-root/src
+    volumes:
+      - registry-certs-volume:/opt/app-root/certs:z
+
   registry:
     image: registry:2
     ports:
       - 8443:8443
     environment:
       REGISTRY_HTTP_ADDR: 0.0.0.0:8443
-      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/registry.crt
-      REGISTRY_HTTP_TLS_KEY: /certs/registry.key
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/registry/cert.pem
+      REGISTRY_HTTP_TLS_KEY: /certs/registry/key.pem
       REGISTRY_AUTH: htpasswd
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
     volumes:
       - ./iib_data/registry:/var/lib/registry:z
-      - ./docker/registry/certs:/certs:z
+      - registry-certs-volume:/certs:z
       - ./docker/registry/auth:/auth:z
+    depends_on:
+      - minica
 
   db:
     image: postgres:9.6
@@ -87,7 +105,7 @@ services:
       - -c
       - >-
         cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
-        cat /registry-certs/root_ca.crt >> /etc/pki/tls/certs/ca-bundle.crt &&
+        cat /registry-certs/minica.pem >> /etc/pki/tls/certs/ca-bundle.crt &&
         podman login --authfile ~/.docker/config.json.template -u iib \
           -p iibpassword registry:8443 &&
         pip3 install watchdog[watchmedo] &&
@@ -101,13 +119,14 @@ services:
     volumes:
       - ./:/src:z
       - worker_container_storage:/var/lib/containers:z
-      - ./docker/registry/certs:/registry-certs:ro,z
+      - registry-certs-volume:/registry-certs:ro,z
       - ./ca-bundle.crt:/host-ca-bundle.crt:ro
       - request-logs-volume:/var/log/iib/requests:z
       - request-related-bundles-volume:/var/lib/requests/related_bundles:z
     depends_on:
       - rabbitmq
       - registry
+      - minica
       - memcached
 
   # This is an external message broker used to publish messages about state changes
@@ -124,6 +143,7 @@ services:
       - 8161:8161   # web console
 
 volumes:
+  registry-certs-volume:
   message-broker-volume:
   request-logs-volume:
   request-related-bundles-volume:
