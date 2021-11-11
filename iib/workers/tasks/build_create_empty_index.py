@@ -106,7 +106,8 @@ def handle_create_empty_index_request(
             'com.redhat.index.delivery.distribution_scope': prebuild_info['distribution_scope'],
         }
 
-        iib_labels.update(labels)
+        if labels:
+            iib_labels.update(labels)
         for index_label, value in iib_labels.items():
             _add_label_to_index(index_label, value, temp_dir, 'index.Dockerfile')
 
