@@ -28,8 +28,8 @@ def is_image_fbc(image):
     from iib.workers.tasks.utils import skopeo_inspect
 
     skopeo_output = skopeo_inspect(f'docker://{image}')
-    dc_image_label = 'operators.operatorframework.io.index.configs.v1'
-    return dc_image_label in skopeo_output['Labels']
+    fbc_image_label = 'operators.operatorframework.io.index.configs.v1'
+    return fbc_image_label in skopeo_output['Labels']
 
 
 def get_index_fbc_dir(from_index, base_dir):
