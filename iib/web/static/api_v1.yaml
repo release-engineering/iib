@@ -275,11 +275,15 @@ paths:
           description: services and workers are working as expected.
           content:
             application/json:
+              schema:
+                type: object
               example: {'status': 'Health check OK'}
         '503':
           description: one or more service/s are reporting an issue
           content:
             application/json:
+              schema:
+                type: object
               example: {'status': 'Health check failed', 'error': 'DATABASE unavailable: Database connection failed'}
   '/builds/{id}/logs':
     get:
