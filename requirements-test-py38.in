@@ -1,0 +1,6 @@
+# Always use the already pinned versions of the runtime dependencies to
+# ensure the test environment is as similar as possible.
+-r requirements-py38.txt
+coverage
+pytest
+pytest-cov

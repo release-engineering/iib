@@ -16,9 +16,9 @@ RUN dnf -y install \
     libpq-devel \
     openssl-devel \
     podman \
-    python3-devel \
-    python3-pip \
-    python3-wheel \
+    python38-devel \
+    python38-pip \
+    python38-wheel \
     runc \
     skopeo \
     && dnf update -y \
@@ -33,6 +33,8 @@ RUN chmod +x /usr/bin/operator-sdk
 ADD https://github.com/release-engineering/dcm/releases/download/v0.1.1/dcm_linux_amd64 /usr/bin/dcm
 RUN chmod +x /usr/bin/dcm
 
+RUN update-alternatives --set python3 $(which python3.8)
+
 # Adjust storage.conf to enable Fuse storage.
 RUN sed -i -e 's|^#mount_program|mount_program|g' /etc/containers/storage.conf
 COPY docker/libpod.conf /usr/share/containers/libpod.conf
@@ -42,6 +44,6 @@ COPY . .
 # default python3-pip version for rhel8 python3.6 is 9.0.3 and it can't be updated by dnf
 # we have to update it by pip to version above 21.0.0
 RUN pip3 install --upgrade pip
-RUN pip3 install -r requirements.txt --no-deps --require-hashes
+RUN pip3 install -r requirements-py38.txt --no-deps --require-hashes
 RUN pip3 install . --no-deps
 CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]

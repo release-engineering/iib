@@ -145,15 +145,16 @@ def test_get_ssl_domain_files_missing(mock_exists, cert_exists, key_exists, ca_e
     'missing_key', ('IIB_MESSAGING_CERT', 'IIB_MESSAGING_KEY', 'IIB_MESSAGING_CA')
 )
 @mock.patch('iib.web.messaging.os.path.exists')
-@mock.patch('iib.web.messaging.current_app')
-def test_get_ssl_domain_cert_config_not_set(mock_current_app, mock_exists, missing_key):
+def test_get_ssl_domain_cert_config_not_set(mock_exists, missing_key, app):
     mock_exists.return_value = True
-    mock_current_app.config = {
-        'IIB_MESSAGING_CERT': '/etc/iib/messaging.crt',
-        'IIB_MESSAGING_KEY': '/etc/iib/messaging.key',
-        'IIB_MESSAGING_CA': '/etc/iib/messaging.ca',
-    }
-    mock_current_app.config.pop(missing_key)
+    app.config.update(
+        {
+            'IIB_MESSAGING_CERT': '/etc/iib/messaging.crt',
+            'IIB_MESSAGING_KEY': '/etc/iib/messaging.key',
+            'IIB_MESSAGING_CA': '/etc/iib/messaging.ca',
+        }
+    )
+    app.config.pop(missing_key)
 
     ssl_domain = messaging._get_ssl_domain()
 
@@ -161,9 +162,8 @@ def test_get_ssl_domain_cert_config_not_set(mock_current_app, mock_exists, missi
 
 
 @pytest.mark.parametrize('durable', (True, False))
-@mock.patch('iib.web.messaging.current_app')
-def test_json_to_envelope(mock_current_app, durable):
-    mock_current_app.config = {'IIB_MESSAGING_DURABLE': durable}
+def test_json_to_envelope(durable, app):
+    app.config.update({'IIB_MESSAGING_DURABLE': durable})
 
     address = 'topic://VirtualTopic.eng.iib.build.state'
     content = {'han': 'solo'}
