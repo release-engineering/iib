@@ -16,18 +16,19 @@ RUN dnf -y install \
     mod_ssl \
     python3-mod_wsgi \
     openssl-devel \
-    python3-devel \
-    python3-pip \
-    python3-wheel \
+    python38-devel \
+    python38-pip \
+    python38-wheel \
     && dnf update -y \
     && dnf clean all
+RUN update-alternatives --set python3 $(which python3.8)
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
 
-# default python3-pip version for rhel8 python3.6 is 9.0.3 and it can't be updated by dnf
+# default python3-pip version for rhel8 python3.8 is 19.3.1 and it can't be updated by dnf
 # we have to update it by pip to version above 21.0.0
 RUN pip3 install --upgrade pip
-RUN pip3 install -r requirements.txt --no-deps --require-hashes
+RUN pip3 install -r requirements-py38.txt --no-deps --require-hashes
 RUN pip3 install . --no-deps
 EXPOSE 8080
 CMD ["/usr/sbin/httpd", "-DFOREGROUND"]
