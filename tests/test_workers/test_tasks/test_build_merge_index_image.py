@@ -558,21 +558,22 @@ def test_add_bundles_missing_in_source_none_missing(
 
 
 @pytest.mark.parametrize(
-    'version_label, result',
+    'version_label, ocp_version, result',
     (
-        ('=v4.5', False),
-        ('v4.5-v4.7', True),
-        ('v4.6', True),
-        ('v=4.6', False),
-        ('v4.5,v4.6', True),
-        ('v4.6,v4.5', True),
-        ('tom_brady', False),
+        ('=v4.5', 'v4.6', False),
+        ('v4.5-v4.7', 'v4.6', True),
+        ('v4.5-v4.7', 'v4.8', False),
+        ('v4.6', 'v4.6', True),
+        ('v=4.6', 'v4.6', False),
+        ('v4.5,v4.6', 'v4.6', True),
+        ('v4.6,v4.5', 'v4.10', True),
+        ('tom_brady', 'v4.6', False),
     ),
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
-def test_is_bundle_version_valid(mock_gil, version_label, result):
+def test_is_bundle_version_valid(mock_gil, version_label, ocp_version, result):
     mock_gil.return_value = version_label
-    is_valid = build_merge_index_image.is_bundle_version_valid('some_bundle', 'v4.6')
+    is_valid = build_merge_index_image.is_bundle_version_valid('some_bundle', ocp_version)
     assert is_valid == result
 
 

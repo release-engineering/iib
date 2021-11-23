@@ -915,6 +915,7 @@ def get_all_index_images_info(build_request_config, index_version_map):
     """
     infos = {}
     for (index, version) in index_version_map:
+        log.debug(f'Get index image info {index} for version {version}')
         if not hasattr(build_request_config, index):
             from_index = None
         else:
@@ -1003,6 +1004,7 @@ def prepare_request_for_build(request_id, build_request_config):
     :raises IIBError: if the container image resolution fails or the architectures couldn't be
     detected.
     """
+    log.info(f'Prepare request for build with parameters {build_request_config}')
     bundles = None
     if hasattr(build_request_config, "bundles"):
         bundles = build_request_config.bundles
