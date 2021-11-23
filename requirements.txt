@@ -192,6 +192,10 @@ markupsafe==1.1.1 \
 operator-manifest==0.0.5 \
     --hash=sha256:8e1dfc47fc133947ed575f947f0d51d7c5efb4beb0f5de5202214bea257c26b5
     # via iib (setup.py)
+packaging==21.3 \
+    --hash=sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb \
+    --hash=sha256:ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522
+    # via iib (setup.py)
 pbr==5.4.5 \
     --hash=sha256:07f558fece33b05caf857474a366dfcc00562bca13dd8b47b2b3e22d9f9bf55c \
     --hash=sha256:579170e23f8e0c2f24b0de612f71f648eccb79fb1322c814ae6b3c07b5ba23e8
@@ -240,6 +244,10 @@ pycparser==2.19 \
 pykerberos==1.2.1 \
     --hash=sha256:4f2dca8df5f84a3be039c026893850d731a8bb38395292e1610ffb0a08ba876c
     # via requests-kerberos
+pyparsing==3.0.6 \
+    --hash=sha256:04ff808a5b90911829c55c4e26f75fa5ca8a2f5f36aa3a51f68e27033341d3e4 \
+    --hash=sha256:d9bdec0013ef1eb5a84ab39a3b3868911598afa494f5faa038647101504e2b81
+    # via packaging
 python-dateutil==2.8.1 \
     --hash=sha256:73ebfe9dbf22e832286dafa60473e4cd239f8592f699aa5adaf10050e6e1823c \
     --hash=sha256:75bb3f31ea686f1197762692a9ee6a7550b59fc6ca3a1f4b5d7e32fb98e2da2a

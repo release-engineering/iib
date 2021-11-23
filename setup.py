@@ -23,6 +23,7 @@ setup(
         'requests-kerberos',
         'retry',
         'ruamel.yaml',
+        'packaging',
     ],
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
