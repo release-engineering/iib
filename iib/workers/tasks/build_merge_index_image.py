@@ -4,6 +4,8 @@ import logging
 import stat
 import tempfile
 
+from packaging.version import Version
+
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
@@ -308,33 +310,36 @@ def is_bundle_version_valid(bundle_path, valid_ocp_version):
     :return: a boolean indicating if the bundle_path satisfies the index ocp_version
     :rtype: bool
 
-           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7" | "v4.5,v4.6"  | "v4.6,v4.5"
+           |  "v4.5"   |   "=v4.6"    | "v4.5-v4.7"  | "v4.5,v4.6" | "v4.6,v4.5"
     -------------------------------------------------------------------------------
-    v4.5   | included  | NOT included |  included   |  included    |  NOT included
+    v4.5   | included  | NOT included |   included   |  included   |  NOT included
     -------------------------------------------------------------------------------
-    v4.6   | included  |   included   |  included   |  included    |  included
+    v4.6   | included  |   included   |   included   |  included   |  included
     -------------------------------------------------------------------------------
-    v4.7   | included  | NOT included |  included   |  included    |  included
+    v4.7   | included  | NOT included |   included   |  included   |  included
+    -------------------------------------------------------------------------------
+    v4.8   | included  | NOT included | NOT included |  included   |  included
     """
     try:
-        float_valid_ocp_version = float(valid_ocp_version.replace('v', ''))
+        ocp_version = Version(valid_ocp_version.replace('v', ''))
     except ValueError:
         raise IIBError(f'Invalid OCP version, "{valid_ocp_version}", specified in Index Image')
     try:
         bundle_version_label = get_image_label(bundle_path, 'com.redhat.openshift.versions')
         bundle_version = bundle_version_label.replace('v', '')
+        log.debug(f'Bundle version {bundle_version}, Index image version {valid_ocp_version}')
         if bundle_version_label.startswith('='):
-            if float(bundle_version.strip('=')) == float_valid_ocp_version:
+            if Version(bundle_version.strip('=')) == ocp_version:
                 return True
         elif '-' in bundle_version_label:
-            min_version, max_version = [float(version) for version in bundle_version.split('-')]
-            if min_version <= float_valid_ocp_version <= max_version:
+            min_version, max_version = [Version(version) for version in bundle_version.split('-')]
+            if min_version <= ocp_version <= max_version:
                 return True
         elif "," in bundle_version_label:
-            versions = [float(version) for version in bundle_version.split(",")]
-            if float_valid_ocp_version >= versions[0]:
+            versions = [Version(version) for version in bundle_version.split(",")]
+            if versions[0] <= ocp_version:
                 return True
-        elif float_valid_ocp_version >= float(bundle_version):
+        elif Version(bundle_version) <= ocp_version:
             return True
     except ValueError:
         log.warning(
