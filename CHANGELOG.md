@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+
+## 4.9.0
+ - Fix the comparison of index image and bundle
+ - Avoid failing to create-empty-index when labels are not set
+ - Generate registry certificates automatically for dev env
+ - Remove x509ignoreCN workaround
+ - Update OPM, grpcurl and operator-sdk in dev-env
+
 ## 4.8.0
 - pinning is now a customization. If customization is used for an organization, it will not be
   done automatically unless explicitly specified
