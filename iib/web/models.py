@@ -833,6 +833,11 @@ class RequestIndexImageMixin:
                 )
             request_kwargs['distribution_scope'] = distribution_scope
 
+        # Prevent duplicated items in "deprecation_list"
+        deprecation_list = request_kwargs.pop('deprecation_list', None)
+        if deprecation_list:
+            request_kwargs['deprecation_list'] = list(set(deprecation_list))
+
         # Verify the user is authorized to use overwrite_from_index
         # current_user.is_authenticated is only ever False when auth is disabled
         if current_user.is_authenticated:
