@@ -24,7 +24,7 @@ from operator_manifest.operator import ImageName
 from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.config import get_worker_config
 from iib.workers.api_utils import set_request_state
-from iib.workers.tasks.fbc_utils import is_image_fbc, get_index_fbc_dir
+from iib.workers.tasks.fbc_utils import is_image_fbc, get_index_fbc_dir, TEMP_INDEX_DB_PATH
 
 log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
@@ -71,7 +71,7 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
     :param str temp_dir: directory location of the index image
     """
     # Get the CSV name and version (not just the bundle path)
-    db_path = temp_dir + "/database/index.db"
+    db_path = os.path.join(temp_dir, TEMP_INDEX_DB_PATH)
     port, rpc_proc = serve_registry(os.path.dirname(db_path), db_path=db_path)
 
     raw_bundles = run_cmd(
