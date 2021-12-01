@@ -23,11 +23,9 @@ def is_image_fbc(image):
     :return: True if image is FBC type, False otherwise (SQLite)
     :rtype: bool
     """
-    from iib.workers.tasks.utils import skopeo_inspect
+    from iib.workers.tasks.utils import get_image_label
 
-    skopeo_output = skopeo_inspect(f'docker://{image}')
-    fbc_image_label = 'operators.operatorframework.io.index.configs.v1'
-    return fbc_image_label in skopeo_output['Labels']
+    return bool(get_image_label(image, 'operators.operatorframework.io.index.configs.v1'))
 
 
 def get_catalog_dir(from_index, base_dir):
