@@ -330,7 +330,9 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_skopeo_timeout` - the command timeout for skopeo commands run by IIB. This defaults to
   `30s` (30 seconds).
 * `iib_total_attempts` - the total number of attempts to make at trying a function relating to the
-  container registry before erroring out. This defaults to `5`.
+  container registry before erroring out. This defaults to `5`. It's also used as the max number of attempts to buildah when receiving HTTP 50X errors.
+* `iib_retry_delay` - the delay in seconds between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `4`.
+* `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `2`.
 
 ## Regenerating Bundle Images
 

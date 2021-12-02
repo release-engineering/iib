@@ -7,7 +7,7 @@ import tempfile
 from operator_manifest.operator import ImageName
 from retry import retry
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
@@ -42,6 +42,13 @@ __all__ = ['handle_add_request', 'handle_rm_request']
 log = logging.getLogger(__name__)
 
 
+@retry(
+    exceptions=ExternalServiceError,
+    tries=get_worker_config().iib_total_attempts,
+    delay=get_worker_config().iib_retry_delay,
+    jitter=get_worker_config().iib_retry_jitter,
+    logger=log,
+)
 def _build_image(dockerfile_dir, dockerfile_name, request_id, arch):
     """
     Build the index image for the specified architecture.

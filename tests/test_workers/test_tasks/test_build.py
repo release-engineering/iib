@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
 
@@ -500,6 +500,15 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
     destination = 'some_destination'
     with pytest.raises(IIBError, match=match_str):
         build._skopeo_copy(destination, destination)
+        assert mock_run_cmd.call_count == 5
+
+
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_buildah_fail_max_retries(mock_run_cmd):
+    match_str = 'unexpected HTTP status: 503 Service Unavailable'
+    mock_run_cmd.side_effect = ExternalServiceError(match_str)
+    with pytest.raises(ExternalServiceError, match=match_str):
+        build._build_image("foo", "bar", 1, "amd64")
         assert mock_run_cmd.call_count == 5
 
 
