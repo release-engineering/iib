@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks import utils
 
@@ -288,6 +288,42 @@ def test_run_cmd_failed_buildah_manifest_rm(mock_sub_run):
         utils.run_cmd(
             ['buildah', 'manifest', 'rm', 'something'],
             exc_msg='Failed to remove local manifest list. something does not exist',
+        )
+
+    mock_sub_run.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = textwrap.dedent(
+        '''
+        error creating build container: 
+        Error determining manifest MIME type for docker://registry.redhat.io/openshift4/ose-operator-registry@sha256:8f3d471eccaad18e61fe6326c544cfcfaff35c012c6d5c4da01cbe887e03b904: 
+        Error reading manifest sha256:db6fd9f033865da55ab2e4647ae283a51556cd11ef4241361ac04cb05b5ef795 in registry.redhat.io/openshift4/ose-operator-registry: 
+        received unexpected HTTP status: 503 Service Unavailable
+        '''  # noqa: E501 W291
+    ).replace('\n', '')
+    mock_sub_run.return_value = mock_rv
+
+    expected_exc = 'error creating build container: 503 Service Unavailable'
+    with pytest.raises(ExternalServiceError, match=expected_exc):
+        utils.run_cmd(
+            [
+                'buildah',
+                'bud',
+                '--no-cache',
+                '--override-arch',
+                'amd64',
+                '--arch',
+                'amd64',
+                '-t',
+                'foo',
+                '-f',
+                'bar',
+            ],
+            exc_msg=f'Failed to build the container image on the arch amd64',
         )
 
     mock_sub_run.assert_called_once()

@@ -19,3 +19,7 @@ class ValidationError(BaseException):
 
 class AddressAlreadyInUse(BaseException):
     """Adress is already used by other service."""
+
+
+class ExternalServiceError(IIBError):
+    """An external service error occurred with HTTP 50X."""

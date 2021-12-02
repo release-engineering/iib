@@ -20,7 +20,7 @@ from iib.workers.dogpile_cache import (
 )
 from operator_manifest.operator import ImageName
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.config import get_worker_config
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.opm_operations import opm_registry_serve, opm_serve_from_index
@@ -646,6 +646,12 @@ def run_cmd(cmd, params=None, exc_msg=None, strict=True):
                 match = re.match(regex, msg)
                 if match:
                     raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+        elif cmd[0] == 'buildah':
+            # Check for HTTP 50X errors on buildah
+            regex = r'.*(error creating build container).*(50[0-9]\s.*$)'
+            match = re.match(regex, response.stderr)
+            if match:
+                raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
         if set(['buildah', 'manifest', 'rm']) <= set(cmd):
             if 'image not known' in response.stderr:
                 raise IIBError('Manifest list not found locally.')
