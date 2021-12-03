@@ -6,8 +6,6 @@ import logging
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 
-# path to index.db in our temp directories used in IIB code
-TEMP_INDEX_DB_PATH = 'database/index.db'
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +30,7 @@ def is_image_fbc(image):
     return fbc_image_label in skopeo_output['Labels']
 
 
-def get_index_fbc_dir(from_index, base_dir):
+def get_catalog_dir(from_index, base_dir):
     """
     Get file-based catalog directory from the specified index image and save it locally.
 
@@ -45,6 +43,7 @@ def get_index_fbc_dir(from_index, base_dir):
     from iib.workers.tasks.build import _copy_files_from_image
     from iib.workers.tasks.utils import get_image_label
 
+    log.info("Store file-based catalog directory from %s", from_index)
     fbc_dir_path = get_image_label(from_index, 'operators.operatorframework.io.index.configs.v1')
     if not fbc_dir_path:
         error_msg = f'Index image {from_index} does not contain file-based catalog.'
@@ -66,8 +65,9 @@ def get_hidden_index_database(from_index, base_dir):
     """
     from iib.workers.tasks.build import _copy_files_from_image
 
-    db_path = get_worker_config()['hidden_index_db_path']
-    base_db_file = os.path.join(base_dir, TEMP_INDEX_DB_PATH)
+    log.info("Store hidden index.db from %s", from_index)
+    conf = get_worker_config()
+    base_db_file = os.path.join(base_dir, conf['temp_index_db_path'])
     os.makedirs(os.path.dirname(base_db_file), exist_ok=True)
-    _copy_files_from_image(from_index, db_path, base_db_file)
+    _copy_files_from_image(from_index, conf['hidden_index_db_path'], base_db_file)
     return base_db_file

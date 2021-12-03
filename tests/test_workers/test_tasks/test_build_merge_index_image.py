@@ -18,7 +18,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
     ),
 )
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.serve_registry')
+@mock.patch('iib.workers.tasks.utils.opm_registry_serve')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
@@ -57,7 +57,7 @@ def test_handle_merge_request(
     mock_pi,
     mock_vii,
     mock_uiips,
-    mock_sr,
+    mock_ors,
     mock_run_cmd,
     target_index,
     target_index_resolved,
@@ -90,7 +90,7 @@ def test_handle_merge_request(
 
     port = 0
     my_mock = mock.MagicMock()
-    mock_sr.return_value = (port, my_mock)
+    mock_ors.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
 
@@ -132,7 +132,7 @@ def test_handle_merge_request(
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
-    mock_sr.assert_called_once()
+    mock_ors.assert_called_once()
     mock_run_cmd.assert_called_once()
     mock_run_cmd.assert_has_calls(
         [
@@ -146,7 +146,7 @@ def test_handle_merge_request(
 
 @pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.serve_registry')
+@mock.patch('iib.workers.tasks.utils.opm_serve_from_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
@@ -185,7 +185,7 @@ def test_handle_merge_request_no_deprecate(
     mock_capml,
     mock_vii,
     mock_uiips,
-    mock_sr,
+    mock_osfi,
     mock_run_cmd,
     invalid_bundles,
 ):
@@ -204,7 +204,7 @@ def test_handle_merge_request_no_deprecate(
 
     port = 0
     my_mock = mock.MagicMock()
-    mock_sr.return_value = (port, my_mock)
+    mock_osfi.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
 
@@ -247,7 +247,7 @@ def test_handle_merge_request_no_deprecate(
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
     mock_uiips.assert_called_once()
 
-    mock_sr.assert_not_called()
+    mock_osfi.assert_not_called()
     mock_run_cmd.assert_not_called()
 
 

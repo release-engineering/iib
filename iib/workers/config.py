@@ -56,6 +56,8 @@ class Config(object):
     task_default_routing_key = 'iib'
     # Requeue the message if the worker abruptly exits or is signaled
     task_reject_on_worker_lost = True
+    # Path to index.db in our temp directories used in IIB code
+    temp_index_db_path = 'database/index.db'
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency = 1
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
@@ -142,7 +144,6 @@ class TestingConfig(DevelopmentConfig):
     iib_request_related_bundles_dir = None
     # disable dogpile cache for tests
     iib_dogpile_backend = 'dogpile.cache.null'
-    iib_grpc_init_wait_time = 3
 
 
 def configure_celery(celery_app):
