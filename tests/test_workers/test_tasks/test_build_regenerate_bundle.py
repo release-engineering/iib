@@ -1113,9 +1113,13 @@ def test_adjust_operator_bundle_duplicate_customizations_ordered(
 
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_label')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_worker_config')
-def test_write_related_bundles_file(mock_gwc, mock_gil, tmpdir):
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.upload_file_to_s3_bucket')
+def test_write_related_bundles_file(mock_ufts3b, mock_gwc, mock_gil, tmpdir):
     related_bundles_dir = tmpdir.mkdir('related_bundles')
-    mock_gwc.return_value = {'iib_request_related_bundles_dir': related_bundles_dir}
+    mock_gwc.return_value = {
+        'iib_request_related_bundles_dir': related_bundles_dir,
+        'iib_aws_s3_bucket_name': 's3-bucket',
+    }
     mock_gil.side_effect = ['true', 'false', None]
     related_bundles = related_bundles_dir.join('1_related_bundles.json')
     bundle_metadata = {
@@ -1128,13 +1132,21 @@ def test_write_related_bundles_file(mock_gwc, mock_gil, tmpdir):
     build_regenerate_bundle._write_related_bundles_file(bundle_metadata, 1)
     assert json.load(related_bundles) == ['bundle1:not_latest']
     assert mock_gil.call_count == 3
+    mock_ufts3b.assert_called_once_with(
+        f'{tmpdir}/related_bundles/1_related_bundles.json',
+        'related_bundles',
+        '1_related_bundles.json',
+    )
 
 
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_label')
 @mock.patch('iib.workers.tasks.build_regenerate_bundle.get_worker_config')
 def test_write_related_bundles_file_already_present(mock_gwc, mock_gil, tmpdir):
     related_bundles_dir = tmpdir.mkdir('related_bundles')
-    mock_gwc.return_value = {'iib_request_related_bundles_dir': related_bundles_dir}
+    mock_gwc.return_value = {
+        'iib_request_related_bundles_dir': related_bundles_dir,
+        'iib_aws_s3_bucket_name': None,
+    }
     related_bundles = related_bundles_dir.join('1_related_bundles.json')
     related_bundles.write('random text')
     bundle_metadata = {

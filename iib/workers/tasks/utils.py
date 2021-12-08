@@ -23,6 +23,7 @@ from operator_manifest.operator import ImageName
 
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.config import get_worker_config
+from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.opm_operations import opm_registry_serve, opm_serve_from_index
 
@@ -704,6 +705,9 @@ def request_logger(func):
         finally:
             if request_log_handler:
                 logger.removeHandler(request_log_handler)
+                request_log_handler.flush()
+                if worker_config['iib_aws_s3_bucket_name']:
+                    upload_file_to_s3_bucket(log_file_path, 'request_logs', f'{request_id}.log')
 
     return wrapper
 

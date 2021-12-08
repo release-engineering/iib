@@ -25,6 +25,17 @@ billiard==3.6.4.0 \
     # via
     #   -r requirements.txt
     #   celery
+boto3==1.20.20 \
+    --hash=sha256:2c5377b6ab74eeccccd16f0f21537ede87b05c8322b0ccc852a68f36ea6c16c9 \
+    --hash=sha256:6c173ffaf0604e34d6865edf7a9a71e1b3e79bd441b8b465ca4b2d44f840806d
+    # via -r requirements.txt
+botocore==1.23.20 \
+    --hash=sha256:22e1c7b4b2b8b11d7001ca5ef2b41bda9a8be46fb3cb994a2948462666ac5ef1 \
+    --hash=sha256:98275e47c941cada6507089ecfe91e420972209b1deeceaf55a89ea50d046347
+    # via
+    #   -r requirements.txt
+    #   boto3
+    #   s3transfer
 cached-property==1.5.2 \
     --hash=sha256:9fa5755838eecbb2d234c3aa390bd80fbd3ac6b6869109bfc1b499f7bd89a130 \
     --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
@@ -231,6 +242,13 @@ jinja2==3.0.3 \
     # via
     #   -r requirements.txt
     #   flask
+jmespath==0.10.0 \
+    --hash=sha256:b85d0567b8666149a93172712e68920734333c0ce7e89b78b3e987f71e5ed4f9 \
+    --hash=sha256:cdf6525904cc597730141d61b36f2e4b8ecc257c420fa2f4549bac2c2d0cb72f
+    # via
+    #   -r requirements.txt
+    #   boto3
+    #   botocore
 kombu==5.1.0 \
     --hash=sha256:01481d99f4606f6939cdc9b637264ed353ee9e3e4f62cfb582324142c41a572d \
     --hash=sha256:e2dedd8a86c9077c350555153825a31e456a0dc20c15d5751f00137ec9c75f0a
@@ -414,6 +432,7 @@ python-dateutil==2.8.1 \
     # via
     #   -r requirements.txt
     #   alembic
+    #   botocore
 python-editor==1.0.4 \
     --hash=sha256:1bf6e860a8ad52a14c3ee1252d5dc25b2030618ed80c022598f00176adc8367d \
     --hash=sha256:51fda6bcc5ddbbb7063b2af7509e43bd84bfc32a4ff71349ec7847713882327b \
@@ -477,6 +496,12 @@ ruamel.yaml.clib==0.2.0 \
     # via
     #   -r requirements.txt
     #   ruamel.yaml
+s3transfer==0.5.0 \
+    --hash=sha256:50ed823e1dc5868ad40c8dc92072f757aa0e653a192845c94a3b676f4a62da4c \
+    --hash=sha256:9c1dc369814391a6bda20ebbf4b70a0f34630592c9aa520856bf384916af2803
+    # via
+    #   -r requirements.txt
+    #   boto3
 six==1.14.0 \
     --hash=sha256:236bdbdce46e6e6a3d61a337c0f8b763ca1e8717c03b369e87a7ec7ce1319c0a \
     --hash=sha256:8f3cd2e254d8f793e7f3d6d9df77b92252b52637291d0f0da013c76ea2724b6c
@@ -510,6 +535,7 @@ urllib3==1.26.6 \
     --hash=sha256:f57b4c16c62fa2760b7e3d97c35b255512fb6b59a259730f36ba32ce9f8e342f
     # via
     #   -r requirements.txt
+    #   botocore
     #   requests
 vine==5.0.0 \
     --hash=sha256:4c9dceab6f76ed92105027c49c823800dd33cacce13bdedc5b914e3514b7fb30 \

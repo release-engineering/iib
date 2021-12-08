@@ -150,6 +150,11 @@ The custom configuration options for the REST API are listed below:
 
 * `IIB_ADDITIONAL_LOGGERS` - a list of Python loggers that should have the same log level that is
   set for `IIB_LOG_LEVEL`. This defaults to `[]`.
+* `IIB_AWS_S3_BUCKET_NAME` - the name of the AWS S3 bucket used to fetch artifact files like logs
+  and related_bundles from if specified. This defaults to `None` which means IIB will try to get
+  the files locally if `IIB_REQUEST_LOGS_DIR` and `IIB_REQUEST_RELATED_BUNDLES_DIR` are configured.
+  For the REST API, if `IIB_AWS_S3_BUCKET_NAME` is specified, you cannot specify `IIB_REQUEST_LOGS_DIR`
+  and `IIB_REQUEST_RELATED_BUNDLES_DIR`.
 * `IIB_BINARY_IMAGE_CONFIG` - the mapping, `dict(<str>: dict(<str>:<str>))`, of distribution scope
   to another dictionary mapping ocp_version label to a binary image pull specification.
   This is useful in setting up customized binary image for different index image images thus
@@ -209,6 +214,15 @@ The custom configuration options for AMQP 1.0 messaging are listed below:
 * `IIB_MESSAGING_URLS` - a list of AMQP(S) URLs to use when connecting to the AMQP 1.0 broker. This
   must be set if messaging is enabled.
 
+If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
+must be set along with `IIB_AWS_S3_BUCKET_NAME` config variable:
+
+* `AWS_ACCESS_KEY_ID` - the secret access key ID used to access the AWS S3 bucket.
+* `AWS_SECRET_ACCESS_KEY` - the secret access key used to access the AWS S3 bucket.
+* `AWS_DEFAULT_REGION` - the default region of the AWS S3 bucket
+
+More info on these environment variables can be found in the [AWS User Guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
+
 ## Configuring the Worker(s)
 
 To configure an IIB Celery worker, create a Python file at `/etc/iib/celery.py`. The location
@@ -226,6 +240,10 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
   `30` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
+* `iib_aws_s3_bucket_name` - the name of the AWS S3 bucket used to store artifact files like logs
+  and related_bundles if specified. `iib_request_logs_dir` and `iib_request_related_bundles_dir`
+  are required when this variable is specified. This defaults to `None` which means IIB will try to store
+  the files locally if `iib_request_logs_dir` and `iib_request_related_bundles_dir` are configured.
 * `iib_docker_config_template` - the path to the Docker config.json file for IIB to use as a
   template. IIB will symlink this file to `~/.docker/config.json` at the beginning of every request.
   Additionally, it will use this file as a base and set the `overwrite_from_index_token` for the
@@ -333,6 +351,15 @@ The custom configuration options for the Celery workers are listed below:
   container registry before erroring out. This defaults to `5`. It's also used as the max number of attempts to buildah when receiving HTTP 50X errors.
 * `iib_retry_delay` - the delay in seconds between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `4`.
 * `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `2`.
+
+If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
+must be set along with `iib_aws_s3_bucket_name` config variable:
+
+* `AWS_ACCESS_KEY_ID` - the secret access key ID used to access the AWS S3 bucket.
+* `AWS_SECRET_ACCESS_KEY` - the secret access key used to access the AWS S3 bucket.
+* `AWS_DEFAULT_REGION` - the default region of the AWS S3 bucket
+
+More info on these environment variables can be found in the [AWS User Guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
 
 ## Regenerating Bundle Images
 

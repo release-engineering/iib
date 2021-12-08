@@ -231,3 +231,55 @@ def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type
     error = error.format(logs_dir=iib_request_logs_dir)
     with pytest.raises(ConfigError, match=error):
         validate_celery_config(conf)
+
+
+@pytest.mark.parametrize(
+    'config, error',
+    (
+        (
+            {'iib_aws_s3_bucket_name': 'bucket'},
+            (
+                '"iib_request_logs_dir" and "iib_request_related_bundles_dir" '
+                'must be set when iib_aws_s3_bucket_name is set.'
+            ),
+        ),
+        (
+            {'iib_aws_s3_bucket_name': 123, 'iib_request_logs_dir': 'some-dir'},
+            (
+                '"iib_aws_s3_bucket_name" must be set to a valid string. '
+                'This is used for read/write access to the s3 bucket by IIB'
+            ),
+        ),
+    ),
+)
+def test_validate_celery_config_invalid_s3_config(config, error):
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+        'iib_organization_customizations': {},
+    }
+    worker_config = {**conf, **config}
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(worker_config)
+
+
+@patch.dict(os.environ, {'AWS_ACCESS_KEY_ID': 'some_key', 'AWS_SECRET_ACCESS_KEY': 'some_secret'})
+def test_validate_celery_config_invalid_s3_env_vars():
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+        'iib_organization_customizations': {},
+        'iib_aws_s3_bucket_name': 'bucket',
+        'iib_request_logs_dir': 'some-dir',
+        'iib_request_related_bundles_dir': 'some-other-dir',
+    }
+    error = (
+        '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
+        'environment variables must be set to valid strings when'
+        '"iib_aws_s3_bucket_name" is set. '
+        'These are used for read/write access to the s3 bucket by IIB'
+    )
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(conf)

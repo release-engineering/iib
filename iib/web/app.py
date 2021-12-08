@@ -106,6 +106,33 @@ def validate_api_config(config):
                 if not isinstance(ocp_version, str) or not isinstance(binary_image_value, str):
                     raise ConfigError('All ocp_version and binary_image values must be strings.')
 
+    if config['IIB_AWS_S3_BUCKET_NAME'] and (
+        config['IIB_REQUEST_LOGS_DIR'] or config['IIB_REQUEST_RELATED_BUNDLES_DIR']
+    ):
+        raise ConfigError(
+            'S3 bucket and local artifacts directories cannot be set together.'
+            ' Either S3 bucket should be configured or "IIB_REQUEST_LOGS_DIR" and '
+            '"IIB_REQUEST_RELATED_BUNDLES_DIR" must be set. Or "IIB_AWS_S3_BUCKET_NAME"'
+            '"IIB_REQUEST_LOGS_DIR" and "IIB_REQUEST_RELATED_BUNDLES_DIR" must not be set'
+        )
+    if config['IIB_AWS_S3_BUCKET_NAME']:
+        if not isinstance(config['IIB_AWS_S3_BUCKET_NAME'], str):
+            raise ConfigError(
+                '"IIB_AWS_S3_BUCKET_NAME" must be set to a valid string. '
+                'This is used for read/write access to the s3 bucket by IIB'
+            )
+        if (
+            not os.getenv('AWS_ACCESS_KEY_ID')
+            or not os.getenv('AWS_SECRET_ACCESS_KEY')
+            or not os.getenv('AWS_DEFAULT_REGION')
+        ):
+            raise ConfigError(
+                '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
+                'environment variables must be set to valid strings when'
+                '"IIB_AWS_S3_BUCKET_NAME" is set. '
+                'These are used for read/write access to the s3 bucket by IIB'
+            )
+
 
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/
