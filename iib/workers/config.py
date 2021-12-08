@@ -13,6 +13,7 @@ class Config(object):
     broker_transport_options = {'max_retries': 10}
     # Avoid infinite Celery retries when the broker is offline.
     broker_connection_max_retries: int = 10
+    iib_aws_s3_bucket_name = None
     iib_api_timeout = 30
     iib_docker_config_template = os.path.join(
         os.path.expanduser('~'), '.docker', 'config.json.template'
@@ -200,6 +201,29 @@ def validate_celery_config(conf, **kwargs):
         raise ConfigError('iib_required_labels must be a dictionary')
 
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
+
+    if conf.get('iib_aws_s3_bucket_name'):
+        if not isinstance(conf['iib_aws_s3_bucket_name'], str):
+            raise ConfigError(
+                '"iib_aws_s3_bucket_name" must be set to a valid string. '
+                'This is used for read/write access to the s3 bucket by IIB'
+            )
+        if not conf.get('iib_request_logs_dir') or not conf.get('iib_request_related_bundles_dir'):
+            raise ConfigError(
+                '"iib_request_logs_dir" and "iib_request_related_bundles_dir" '
+                'must be set when iib_aws_s3_bucket_name is set.'
+            )
+        if (
+            not os.getenv('AWS_ACCESS_KEY_ID')
+            or not os.getenv('AWS_SECRET_ACCESS_KEY')
+            or not os.getenv('AWS_DEFAULT_REGION')
+        ):
+            raise ConfigError(
+                '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
+                'environment variables must be set to valid strings when'
+                '"iib_aws_s3_bucket_name" is set. '
+                'These are used for read/write access to the s3 bucket by IIB'
+            )
 
     for directory in ('iib_request_logs_dir', 'iib_request_related_bundles_dir'):
         iib_request_temp_data_dir = conf.get(directory)

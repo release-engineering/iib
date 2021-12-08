@@ -31,6 +31,7 @@ from iib.web.models import (
     RequestCreateEmptyIndex,
     User,
 )
+from iib.web.s3_utils import get_object_from_s3_bucket
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
     handle_add_request,
@@ -115,6 +116,33 @@ def _get_safe_args(args, payload):
     return safe_args
 
 
+def _get_artifact_file_from_s3_bucket(
+    s3_key_prefix, s3_file_name, request_id, request_temp_data_expiration_date, s3_bucket_name
+):
+    """
+    Helper function to get artifact file from S3 bucket.
+
+    :param str s3_key_prefix: the logical location of the file in the S3 bucket
+    :param str s3_file_name: the name of the file in S3 bucket
+    :param int request_id: the request ID of the request in question
+    :param str request_temp_data_expiration_date: expiration date of the temporary data
+        for the request in question
+    :param str s3_bucket_name: the name of the S3 bucket in AWS
+    :raise NotFound: if the request is not found or there are no logs for the request
+    :raise Gone: if the logs for the build request have been removed due to expiration
+    :rtype: botocore.response.StreamingBody
+    :return: streaming body of the file fetched from AWS S3 bucket
+    """
+    artifact_file = get_object_from_s3_bucket(s3_key_prefix, s3_file_name, s3_bucket_name)
+    if artifact_file:
+        return artifact_file
+
+    expired = request_temp_data_expiration_date < datetime.utcnow()
+    if expired:
+        raise Gone(f'The data for the build request {request_id} no longer exist')
+    raise NotFound()
+
+
 def _get_unique_bundles(bundles):
     """
     Return list with unique bundles.
@@ -168,24 +196,47 @@ def get_build_logs(request_id):
     :rtype: flask.Response
     :raise NotFound: if the request is not found or there are no logs for the request
     :raise Gone: if the logs for the build request have been removed due to expiration
+    :raise ValidationError: if the request has not completed yet
     """
     request_log_dir = flask.current_app.config['IIB_REQUEST_LOGS_DIR']
-    if not request_log_dir:
+    s3_bucket_name = flask.current_app.config['IIB_AWS_S3_BUCKET_NAME']
+    if not s3_bucket_name and not request_log_dir:
         raise NotFound()
 
     request = Request.query.get_or_404(request_id)
-    log_file_path = os.path.join(request_log_dir, f'{request_id}.log')
-    if not os.path.exists(log_file_path):
+
+    finalized = request.state.state_name in RequestStateMapping.get_final_states()
+    if not finalized:
+        raise ValidationError(
+            f'The request {request_id} is not complete yet.'
+            ' logs will be available once the request is complete.'
+        )
+
+    # If S3 bucket is configured, fetch the log file from the S3 bucket.
+    # Else, check if logs are stored on the system itself and return them.
+    # Otherwise, raise an IIBError.
+    if s3_bucket_name:
+        log_file = _get_artifact_file_from_s3_bucket(
+            'request_logs',
+            f'{request_id}.log',
+            request_id,
+            request.temporary_data_expiration,
+            s3_bucket_name,
+        )
+        return flask.Response(log_file.read(), mimetype='text/plain')
+
+    local_log_file_path = os.path.join(request_log_dir, f'{request_id}.log')
+    if not os.path.exists(local_log_file_path):
         expired = request.temporary_data_expiration < datetime.utcnow()
         if expired:
             raise Gone(f'The logs for the build request {request_id} no longer exist')
-        finalized = request.state.state_name in RequestStateMapping.get_final_states()
-        if finalized:
-            raise NotFound()
-        # The request may not have been initiated yet. Return empty logs until it's processed.
-        return flask.Response('', mimetype='text/plain')
+        flask.current_app.logger.warning(
+            ' Please make sure either an S3 bucket is configured or the logs are'
+            ' stored locally in a directory by specifying IIB_REQUEST_LOGS_DIR'
+        )
+        raise IIBError('IIB is done processing the request and could not find logs.')
 
-    with open(log_file_path) as f:
+    with open(local_log_file_path) as f:
         return flask.Response(f.read(), mimetype='text/plain')
 
 
@@ -198,9 +249,11 @@ def get_related_bundles(request_id):
     :rtype: flask.Response
     :raise NotFound: if the request is not found or there are no related bundles for the request
     :raise Gone: if the related bundles for the build request have been removed due to expiration
+    :raise ValidationError: if the request is of invalid type or is not completed yet
     """
     request_related_bundles_dir = flask.current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']
-    if not request_related_bundles_dir:
+    s3_bucket_name = flask.current_app.config['IIB_AWS_S3_BUCKET_NAME']
+    if not s3_bucket_name and not request_related_bundles_dir:
         raise NotFound()
 
     request = Request.query.get_or_404(request_id)
@@ -217,6 +270,19 @@ def get_related_bundles(request_id):
             ' related_bundles will be available once the request is complete.'
         )
 
+    # If S3 bucket is configured, fetch the related bundles file from the S3 bucket.
+    # Else, check if related bundles are stored on the system itself and return them.
+    # Otherwise, raise an IIBError.
+    if s3_bucket_name:
+        log_file = _get_artifact_file_from_s3_bucket(
+            'related_bundles',
+            f'{request_id}_related_bundles.json',
+            request_id,
+            request.temporary_data_expiration,
+            s3_bucket_name,
+        )
+        return flask.Response(log_file.read(), mimetype='application/json')
+
     related_bundles_file_path = os.path.join(
         request_related_bundles_dir, f'{request_id}_related_bundles.json'
     )
@@ -224,11 +290,17 @@ def get_related_bundles(request_id):
         expired = request.temporary_data_expiration < datetime.utcnow()
         if expired:
             raise Gone(f'The related_bundles for the build request {request_id} no longer exist')
-        raise IIBError(
-            'IIB is done processing the request and cannot find related_bundles. Please make '
-            f'sure the iib_organizaiton_customizations for organization {request.organization}'
-            ' has related_bundles customization type set'
+        if request.organization:
+            raise IIBError(
+                'IIB is done processing the request and cannot find related_bundles. Please make '
+                f'sure the iib_organization_customizations for organization {request.organization}'
+                ' has related_bundles customization type set'
+            )
+        flask.current_app.logger.warning(
+            ' Please make sure either an S3 bucket is configured or the logs are'
+            ' stored locally in a directory by specifying IIB_REQUEST_LOGS_DIR'
         )
+        raise IIBError('IIB is done processing the request and could not find related_bundles.')
 
     with open(related_bundles_file_path) as f:
         return flask.Response(f.read(), mimetype='application/json')

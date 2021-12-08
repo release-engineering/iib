@@ -349,7 +349,8 @@ def test_podman_pull(mock_run_cmd):
     mock_run_cmd.assert_called_once_with(['podman', 'pull', image], exc_msg=mock.ANY)
 
 
-def test_request_logger(tmpdir):
+@mock.patch('iib.workers.tasks.utils.upload_file_to_s3_bucket')
+def test_request_logger(mock_ufts3b, tmpdir):
     # Setting the logging level via caplog.set_level is not sufficient. The flask
     # related settings from previous tests interfere with this.
     utils_logger = logging.getLogger('iib.workers.tasks.utils')
@@ -358,7 +359,9 @@ def test_request_logger(tmpdir):
 
     logs_dir = tmpdir.join('logs')
     logs_dir.mkdir()
-    get_worker_config().iib_request_logs_dir = str(logs_dir)
+    config = get_worker_config()
+    config.iib_request_logs_dir = str(logs_dir)
+    config.iib_aws_s3_bucket_name = 's3-bucket'
 
     original_handlers_count = len(logging.getLogger().handlers)
 
@@ -371,10 +374,14 @@ def test_request_logger(tmpdir):
     mock_handler('spam', 'eggs', 123, 'bacon')
     assert logs_dir.join('123.log').read().endswith(expected_message)
     assert original_handlers_count == len(logging.getLogger().handlers)
+    mock_ufts3b.assert_called_with(f'{logs_dir}/123.log', 'request_logs', '123.log')
 
     mock_handler('spam', 'eggs', bacon='bacon', request_id=321)
     assert logs_dir.join('321.log').read().endswith(expected_message)
     assert original_handlers_count == len(logging.getLogger().handlers)
+    mock_ufts3b.assert_called_with(f'{logs_dir}/321.log', 'request_logs', '321.log')
+
+    assert mock_ufts3b.call_count == 2
 
 
 def test_request_logger_no_request_id(tmpdir):

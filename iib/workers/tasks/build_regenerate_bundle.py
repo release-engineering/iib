@@ -9,6 +9,7 @@ from operator_manifest.operator import ImageName, OperatorManifest
 import ruamel.yaml
 
 from iib.exceptions import IIBError
+from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.tasks.build import (
     _cleanup,
@@ -544,3 +545,8 @@ def _write_related_bundles_file(bundle_metadata, request_id):
     log.debug('Writing related bundle images to %s', related_bundles_file)
     with open(related_bundles_file, 'w') as output_file:
         json.dump(related_bundle_images, output_file)
+
+    if worker_config['iib_aws_s3_bucket_name']:
+        upload_file_to_s3_bucket(
+            related_bundles_file, 'related_bundles', f'{request_id}_related_bundles.json'
+        )

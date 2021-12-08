@@ -2,6 +2,8 @@
 import json
 from unittest import mock
 
+from botocore.response import StreamingBody
+from io import StringIO
 import pytest
 from sqlalchemy.exc import DisconnectionError
 
@@ -225,22 +227,27 @@ def test_get_unique_bundles(bundles, exp_bundles, app):
 @pytest.mark.parametrize(
     ('logs_content', 'expired', 'finalized', 'expected'),
     (
-        ('foobar', False, False, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
-        ('foobar', True, False, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
-        ('', False, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
-        ('', True, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
-        (None, False, False, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
+        ('foobar', False, True, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
+        ('foobar', True, True, {'status': 200, 'mimetype': 'text/plain', 'data': 'foobar'}),
+        ('', False, True, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
+        ('', True, True, {'status': 200, 'mimetype': 'text/plain', 'data': ''}),
         (
             None,
             True,
-            False,
+            True,
             {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
         ),
         (
             None,
             False,
             True,
-            {'status': 404, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+            {'status': 500, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
         ),
     ),
 )
@@ -269,7 +276,7 @@ def test_get_build_logs(
 
 
 def test_get_build_logs_not_configured(client, db, minimal_request_add):
-    minimal_request_add.add_state('in_progress', 'Starting things up!')
+    minimal_request_add.add_state('complete', 'Wrapping things up!')
     db.session.commit()
 
     client.application.config['IIB_REQUEST_LOGS_DIR'] = None
@@ -282,6 +289,41 @@ def test_get_build_logs_not_configured(client, db, minimal_request_add):
     rv = client.get(f'/api/v1/builds/{request_id}')
     assert rv.status_code == 200
     assert 'logs' not in rv.json
+
+
+@pytest.mark.parametrize(
+    ('logs_content', 'expired', 'expected'),
+    (
+        (
+            None,
+            False,
+            {'status': 404, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (None, True, {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}}),
+        ('foobar', False, {'status': 200, 'mimetype': 'application/json', 'data': 'foobar'}),
+    ),
+)
+@mock.patch('iib.web.api_v1.get_object_from_s3_bucket')
+def test_get_build_logs_s3_configured(
+    mock_gofs3b, logs_content, expired, expected, client, db, minimal_request_regenerate_bundle
+):
+    minimal_request_regenerate_bundle.add_state('complete', 'The request is complete')
+    db.session.commit()
+    mock_gofs3b.return_value = None
+    if logs_content:
+        response_body = StreamingBody(StringIO(logs_content), len(logs_content))
+        mock_gofs3b.return_value = response_body
+    client.application.config['IIB_AWS_S3_BUCKET_NAME'] = 's3-bucket'
+    if expired:
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
+    request_id = minimal_request_regenerate_bundle.id
+    rv = client.get(f'/api/v1/builds/{request_id}/related_bundles')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    if 'data' in expected:
+        assert rv.data.decode('utf-8') == expected['data']
+    if 'json' in expected:
+        assert rv.json == expected['json']
 
 
 @pytest.mark.parametrize(
@@ -2103,3 +2145,42 @@ def test_get_build_related_bundles_not_configured(client, db, minimal_request_re
     rv = client.get(f'/api/v1/builds/{request_id}')
     assert rv.status_code == 200
     assert 'related_bundles' not in rv.json
+
+
+@pytest.mark.parametrize(
+    ('related_bundles_content', 'expired', 'expected'),
+    (
+        (
+            None,
+            False,
+            {'status': 404, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (None, True, {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}}),
+        (['foobar'], False, {'status': 200, 'mimetype': 'application/json', 'json': ['foobar']}),
+    ),
+)
+@mock.patch('iib.web.api_v1.get_object_from_s3_bucket')
+def test_get_build_related_bundles_s3_configured(
+    mock_gofs3b,
+    related_bundles_content,
+    expired,
+    expected,
+    client,
+    db,
+    minimal_request_regenerate_bundle,
+):
+    minimal_request_regenerate_bundle.add_state('complete', 'The request is complete')
+    db.session.commit()
+    mock_gofs3b.return_value = None
+    if related_bundles_content:
+        content = json.dumps(related_bundles_content)
+        response_body = StreamingBody(StringIO(content), len(content))
+        mock_gofs3b.return_value = response_body
+    client.application.config['IIB_AWS_S3_BUCKET_NAME'] = 's3-bucket'
+    if expired:
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
+    request_id = minimal_request_regenerate_bundle.id
+    rv = client.get(f'/api/v1/builds/{request_id}/related_bundles')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    assert rv.json == expected['json']

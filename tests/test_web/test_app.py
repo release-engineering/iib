@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
 from unittest import mock
 
 import pytest
@@ -125,5 +126,64 @@ def test_validate_api_config_failure_greenwave_params(config, error_msg):
     ),
 )
 def test_validate_api_config_failure_binary_image_params(config, error_msg):
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
+@pytest.mark.parametrize(
+    'config, error_msg',
+    (
+        (
+            {
+                'IIB_AWS_S3_BUCKET_NAME': 's3-bucket',
+                'IIB_REQUEST_LOGS_DIR': 'some-dir',
+                'IIB_REQUEST_RELATED_BUNDLES_DIR': 'some-other-dir',
+                'IIB_GREENWAVE_CONFIG': {},
+                'IIB_BINARY_IMAGE_CONFIG': {},
+            },
+            (
+                'S3 bucket and local artifacts directories cannot be set together.'
+                ' Either S3 bucket should be configured or "IIB_REQUEST_LOGS_DIR" and '
+                '"IIB_REQUEST_RELATED_BUNDLES_DIR" must be set. Or "IIB_AWS_S3_BUCKET_NAME"'
+                '"IIB_REQUEST_LOGS_DIR" and "IIB_REQUEST_RELATED_BUNDLES_DIR" must not be set'
+            ),
+        ),
+        (
+            {
+                'IIB_AWS_S3_BUCKET_NAME': 123456,
+                'IIB_REQUEST_LOGS_DIR': None,
+                'IIB_REQUEST_RELATED_BUNDLES_DIR': None,
+                'IIB_GREENWAVE_CONFIG': {},
+                'IIB_BINARY_IMAGE_CONFIG': {},
+            },
+            (
+                '"IIB_AWS_S3_BUCKET_NAME" must be set to a valid string. '
+                'This is used for read/write access to the s3 bucket by IIB'
+            ),
+        ),
+    ),
+)
+def test_validate_api_config_failure_aws_s3_params(config, error_msg):
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
+@mock.patch.dict(
+    os.environ, {'AWS_ACCESS_KEY_ID': 'some_key', 'AWS_SECRET_ACCESS_KEY': 'some_secret'}
+)
+def test_validate_api_config_failure_aws_s3_env_vars():
+    config = {
+        'IIB_AWS_S3_BUCKET_NAME': 's3-bucket',
+        'IIB_REQUEST_LOGS_DIR': None,
+        'IIB_REQUEST_RELATED_BUNDLES_DIR': None,
+        'IIB_GREENWAVE_CONFIG': {},
+        'IIB_BINARY_IMAGE_CONFIG': {},
+    }
+    error_msg = (
+        '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
+        'environment variables must be set to valid strings when'
+        '"IIB_AWS_S3_BUCKET_NAME" is set. '
+        'These are used for read/write access to the s3 bucket by IIB'
+    )
     with pytest.raises(ConfigError, match=error_msg):
         validate_api_config(config)
