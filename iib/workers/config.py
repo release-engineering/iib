@@ -16,7 +16,7 @@ class Config(object):
         os.path.expanduser('~'), '.docker', 'config.json.template'
     )
     iib_greenwave_url = None
-    iib_grpc_init_wait_time = 3
+    iib_grpc_init_wait_time = 10
     iib_grpc_max_port_tries = 100
     iib_grpc_max_tries = 5
     iib_grpc_start_port = 50051
@@ -46,6 +46,8 @@ class Config(object):
         'iib.workers.tasks.build_create_empty_index',
         'iib.workers.tasks.general',
     ]
+    # Path to hidden location of SQLite database
+    hidden_index_db_path = '/var/lib/iib/_hidden/do.not.edit.db'
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late = True
@@ -54,6 +56,8 @@ class Config(object):
     task_default_routing_key = 'iib'
     # Requeue the message if the worker abruptly exits or is signaled
     task_reject_on_worker_lost = True
+    # Path to index.db in our temp directories used in IIB code
+    temp_index_db_path = 'database/index.db'
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency = 1
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that

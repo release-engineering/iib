@@ -10,7 +10,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import time
 
 from retry import retry
 
@@ -21,9 +20,10 @@ from iib.workers.dogpile_cache import (
 )
 from operator_manifest.operator import ImageName
 
-from iib.exceptions import IIBError, AddressAlreadyInUse
+from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 from iib.workers.api_utils import set_request_state
+from iib.workers.tasks.opm_operations import opm_registry_serve, opm_serve_from_index
 
 log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
@@ -70,8 +70,9 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
     :param str temp_dir: directory location of the index image
     """
     # Get the CSV name and version (not just the bundle path)
-    db_path = temp_dir + "/database/index.db"
-    port, rpc_proc = serve_index_registry(db_path)
+    temp_index_db_path = get_worker_config()['temp_index_db_path']
+    db_path = os.path.join(temp_dir, temp_index_db_path)
+    port, rpc_proc = opm_registry_serve(db_path=db_path)
 
     raw_bundles = run_cmd(
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
@@ -173,91 +174,6 @@ def _requires_max_ocp_version(bundle):
                 if 'olm.maxOpenShiftVersion' in msg['message']:
                     return True
     return False
-
-
-def serve_index_registry(db_path):
-    """
-    Locally start OPM registry service, which can be communicated with using gRPC queries.
-
-    Due to IIB's paralellism, the service can run multiple times, which could lead to port
-    binding conflicts. Resolution of port conflicts is handled in this function as well.
-
-    :param str db_path: path to index database containing the registry data.
-    :return: tuple containing port number of the running service and the running Popen object.
-    :rtype: (int, Popen)
-    :raises IIBError: if all tried ports are in use, or the command failed for another reason.
-    """
-    conf = get_worker_config()
-    port_start = conf['iib_grpc_start_port']
-    port_end = port_start + conf['iib_grpc_max_port_tries']
-
-    for port in range(port_start, port_end):
-        try:
-            return (
-                port,
-                serve_index_registry_at_port(
-                    db_path, port, conf['iib_grpc_max_tries'], conf['iib_grpc_init_wait_time']
-                ),
-            )
-        except AddressAlreadyInUse:
-            log.info('Port %d is in use, trying another.', port)
-
-    err_msg = f'No free port has been found after {conf.get("iib_grpc_max_port_tries")} attempts.'
-    log.error(err_msg)
-    raise IIBError(err_msg)
-
-
-@retry(exceptions=IIBError, tries=2, logger=log)
-def serve_index_registry_at_port(db_path, port, max_tries, wait_time):
-    """
-    Start an image registry service at a specified port.
-
-    :param str db_path: path to index database containing the registry data.
-    :param str int port: port to start the service on.
-    :param max_tries: how many times to try to start the service before giving up.
-    :param wait_time: time to wait before checking if the service is initialized.
-    :return: object of the running Popen process.
-    :rtype: Popen
-    :raises IIBError: if the process has failed to initialize too many times, or an unexpected
-        error occured.
-    :raises AddressAlreadyInUse: if the specified port is already being used by another service.
-    """
-    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
-    for attempt in range(max_tries):
-        rpc_proc = subprocess.Popen(
-            cmd,
-            cwd=os.path.dirname(db_path),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
-        )
-        start_time = time.time()
-        while time.time() - start_time < wait_time:
-            time.sleep(1)
-            ret = rpc_proc.poll()
-            # process has terminated
-            if ret is not None:
-                stderr = rpc_proc.stderr.read()
-                if 'address already in use' in stderr:
-                    raise AddressAlreadyInUse(f'Port {port} is already used by a different service')
-                raise IIBError(f'Command "{" ".join(cmd)}" has failed with error "{stderr}"')
-
-            # query the service to see if it has started
-            try:
-                output = run_cmd(
-                    ['grpcurl', '-plaintext', f'localhost:{port}', 'list', 'api.Registry']
-                )
-            except IIBError:
-                output = ''
-
-            if 'api.Registry.ListBundles' in output or 'api.Registry.ListPackages' in output:
-                log.debug('Started the command "%s"', ' '.join(cmd))
-                log.info('Index registry service has been initialized.')
-                return rpc_proc
-
-        rpc_proc.kill()
-
-    raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
 
 
 class RequestConfig:
@@ -1084,14 +1000,7 @@ def grpcurl_get_db_data(from_index, base_dir, endpoint):
     :rtype: list
     :raises IIBError: if any of the commands fail.
     """
-    # This is temporary solution till we refactor the code and move those functions to utils
-    from iib.workers.tasks.build import (
-        _get_index_database,
-        serve_index_registry,
-    )
-
-    db_path = _get_index_database(from_index, base_dir)
-    port, rpc_proc = serve_index_registry(db_path)
+    port, rpc_proc = opm_serve_from_index(base_dir, from_index=from_index)
 
     if endpoint not in ["api.Registry/ListPackages", "api.Registry/ListBundles"]:
         raise IIBError(f"The endpoint '{endpoint}' is not allowed to be used")

@@ -153,7 +153,7 @@ from iib.workers.tasks.fbc_utils import is_image_fbc
         ),
     ],
 )
-@mock.patch('iib.workers.tasks.fbc_utils.skopeo_inspect')
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
 def test_is_image_fbc(mock_si, skopeo_output, is_fbc):
     image = 'some-image:latest'
 

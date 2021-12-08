@@ -13,6 +13,7 @@ from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc
+from iib.workers.tasks.opm_operations import opm_serve_from_index
 
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -27,7 +28,6 @@ from iib.workers.tasks.utils import (
     reset_docker_config,
     run_cmd,
     set_registry_token,
-    serve_index_registry,
     skopeo_inspect,
     RequestConfigAddRm,
     get_image_label,
@@ -302,8 +302,7 @@ def _get_present_bundles(from_index, base_dir):
     :rtype: list, list
     :raises IIBError: if any of the commands fail.
     """
-    db_path = _get_index_database(from_index, base_dir)
-    port, rpc_proc = serve_index_registry(db_path)
+    port, rpc_proc = opm_serve_from_index(base_dir, from_index=from_index)
 
     bundles = run_cmd(
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
