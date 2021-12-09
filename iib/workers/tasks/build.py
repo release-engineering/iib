@@ -13,7 +13,12 @@ from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_serve_from_index, opm_registry_add_fbc, opm_migrate
+from iib.workers.tasks.opm_operations import (
+    opm_serve_from_index,
+    opm_registry_add_fbc,
+    opm_migrate,
+    opm_registry_rm_fbc,
+)
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
@@ -929,17 +934,22 @@ def handle_rm_request(
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         with set_registry_token(overwrite_from_index_token, from_index_resolved):
             if is_image_fbc(from_index_resolved):
-                err_msg = 'File-Based catalog image type is not supported yet.'
-                log.error(err_msg)
-                raise IIBError(err_msg)
+                log.info("Processing File-Based Catalog image")
+                opm_registry_rm_fbc(
+                    base_dir=temp_dir,
+                    from_index=from_index_resolved,
+                    operators=operators,
+                    binary_image=prebuild_info['binary_image'],
+                )
 
-        _opm_index_rm(
-            temp_dir,
-            operators,
-            prebuild_info['binary_image'],
-            from_index_resolved,
-            overwrite_from_index_token,
-        )
+            else:
+                _opm_index_rm(
+                    base_dir=temp_dir,
+                    operators=operators,
+                    binary_image=prebuild_info['binary_image'],
+                    from_index=from_index_resolved,
+                    overwrite_from_index_token=overwrite_from_index_token,
+                )
 
         _add_label_to_index(
             'com.redhat.index.delivery.version',

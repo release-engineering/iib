@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os.path
-from unittest import mock
-
 import pytest
+
+from unittest import mock
 
 from iib.exceptions import IIBError
 from iib.workers.tasks import opm_operations
@@ -328,3 +328,48 @@ def test_opm_registry_add_fbc(
         binary_image="some:image",
         dockerfile_name='index.Dockerfile',
     )
+
+
+@pytest.mark.parametrize('operators', (['abc-operator', 'xyz-operator'], []))
+@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
+@mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+def test_opm_registry_rm_fbc(
+    mock_ghid, mock_orr, mock_om, mock_ogd, tmpdir, operators,
+):
+    from_index = 'some_index:latest'
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    mock_ghid.return_value = index_db_file
+    mock_om.return_value = fbc_dir
+
+    opm_operations.opm_registry_rm_fbc(
+        tmpdir, from_index, operators, 'some:image',
+    )
+
+    mock_orr.assert_called_once_with(
+        index_db_file, operators, tmpdir,
+    )
+
+    mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)
+    mock_ogd.assert_called_once_with(
+        fbc_dir=fbc_dir,
+        base_dir=tmpdir,
+        index_db=index_db_file,
+        binary_image='some:image',
+        dockerfile_name='index.Dockerfile',
+    )
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_opm_registry_rm(mock_run_cmd):
+    packages = ['abc-operator', 'xyz-operator']
+    opm_operations._opm_registry_rm(
+        '/tmp/somedir/some.db', packages, '/tmp/somedir',
+    )
+
+    mock_run_cmd.assert_called_once()
+    opm_args = mock_run_cmd.call_args[0][0]
+    assert opm_args[:3] == ['opm', 'registry', 'rm']
+    assert ','.join(packages) in opm_args
