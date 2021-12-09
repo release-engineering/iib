@@ -5,6 +5,7 @@ import pytest
 from unittest import mock
 
 from iib.exceptions import IIBError
+from iib.workers.config import get_worker_config
 from iib.workers.tasks import opm_operations
 
 
@@ -411,3 +412,81 @@ def test_opm_create_empty_fbc(
         mock_orr.assert_called_once_with(
             index_db_path=index_db_file, operators=operators, base_dir=tmpdir
         )
+
+
+@pytest.mark.parametrize("from_index", (None, "image:latest"))
+@pytest.mark.parametrize("db_exist", (True, False))
+@mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+def test_get_or_create_temp_index_db_file(mock_ghid, mock_iifbc, db_exist, from_index, tmpdir):
+    def create_index_db(*args, **kwargs):
+        db_file = os.path.join(tmpdir, get_worker_config()['temp_index_db_path'])
+        os.makedirs(os.path.dirname(db_file), exist_ok=True)
+        with open(db_file, 'w'):
+            pass
+        return db_file
+
+    mock_ghid.side_effect = create_index_db
+    mock_iifbc.return_value = True
+
+    if db_exist:
+        create_index_db()
+
+    index_db_file = opm_operations._get_or_create_temp_index_db_file(
+        base_dir=tmpdir, from_index=from_index
+    )
+    assert os.path.isfile(index_db_file)
+
+
+@pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_opm_registry_deprecatetruncate(mock_run_cmd, bundles):
+    index_db_file = '/tmp/test_file.db'
+    cmd = [
+        'opm',
+        'registry',
+        'deprecatetruncate',
+        '--database',
+        index_db_file,
+        '--bundle-images',
+        ','.join(bundles),
+        '--allow-package-removal',
+    ]
+
+    opm_operations.opm_registry_deprecatetruncate(
+        base_dir='/tmp', index_db=index_db_file, bundles=bundles,
+    )
+
+    mock_run_cmd.assert_called_once_with(
+        cmd, {'cwd': '/tmp'}, exc_msg=f'Failed to deprecate the bundles on {index_db_file}'
+    )
+
+
+@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
+@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.opm_registry_deprecatetruncate')
+@mock.patch('iib.workers.tasks.opm_operations._get_or_create_temp_index_db_file')
+def test_deprecate_bundles_fbc(
+    mock_gtidf, mock_ord, mock_om, mock_ogd, from_index, bundles, tmpdir,
+):
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    mock_gtidf.return_value = index_db_file
+    mock_om.return_value = fbc_dir
+
+    opm_operations.deprecate_bundles_fbc(
+        bundles=bundles, base_dir=tmpdir, binary_image="some:image", from_index=from_index,
+    )
+
+    mock_ord.assert_called_once_with(base_dir=tmpdir, index_db=index_db_file, bundles=bundles)
+
+    mock_om.assert_called_once_with(index_db_file, tmpdir)
+    mock_ogd.assert_called_once_with(
+        fbc_dir=fbc_dir,
+        base_dir=tmpdir,
+        index_db=index_db_file,
+        binary_image="some:image",
+        dockerfile_name='index.Dockerfile',
+    )
