@@ -11,6 +11,8 @@ class Config(object):
 
     # When publishing a message, don't continuously retry or else the HTTP connection times out
     broker_transport_options = {'max_retries': 10}
+    # Avoid infinite Celery retries when the broker is offline.
+    broker_connection_max_retries: int = 10
     iib_api_timeout = 30
     iib_docker_config_template = os.path.join(
         os.path.expanduser('~'), '.docker', 'config.json.template'
