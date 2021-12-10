@@ -17,6 +17,7 @@ def test_configure_celery_with_classes(mock_isfile):
     assert celery_app.conf.task_default_queue == 'celery'
     configure_celery(celery_app)
     assert celery_app.conf.task_default_queue == 'iib'
+    assert celery_app.conf.broker_connection_max_retries == 10
 
 
 @patch('os.getenv')
@@ -33,6 +34,7 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     configure_celery(celery_app)
     assert celery_app.conf.task_default_queue == 'not-iib'
     assert celery_app.conf.timezone == 'America/New_York'
+    assert celery_app.conf.broker_connection_max_retries == 10
 
 
 def test_validate_celery_config():
