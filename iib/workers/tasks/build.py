@@ -18,6 +18,7 @@ from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
     opm_migrate,
     opm_registry_rm_fbc,
+    deprecate_bundles_fbc,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -40,7 +41,6 @@ from iib.workers.tasks.utils import (
 )
 
 __all__ = ['handle_add_request', 'handle_rm_request']
-
 
 log = logging.getLogger(__name__)
 
@@ -738,6 +738,11 @@ def handle_add_request(
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
+    with set_registry_token(overwrite_from_index_token, from_index_resolved):
+        is_fbc = is_image_fbc(from_index_resolved)
+        if is_fbc:
+            # logging requested by stakeholders do not delete
+            log.info("Processing File-Based Catalog image")
 
     if (cnr_token and organization) or force_backport:
         log.warning(
@@ -750,11 +755,6 @@ def handle_add_request(
     present_bundles_pull_spec = []
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
-            with set_registry_token(overwrite_from_index_token, from_index_resolved):
-                is_fbc = is_image_fbc(from_index_resolved)
-                if is_fbc:
-                    log.info("Processing File-Based Catalog image")
-
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
@@ -808,24 +808,30 @@ def handle_add_request(
         arches = prebuild_info['arches']
         if deprecation_bundles:
             if is_fbc:
-                err_msg = 'File-Based catalog image type is not supported for deprecation yet.'
-                log.error(err_msg)
-                raise IIBError(err_msg)
-            # opm can only deprecate a bundle image on an existing index image. Build and
-            # push a temporary index image to satisfy this requirement. Any arch will do.
-            arch = sorted(arches)[0]
-            log.info('Building a temporary index image to satisfy the deprecation requirement')
-            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
-            intermediate_image_name = _get_local_pull_spec(request_id, arch, include_transport=True)
-            deprecate_bundles(
-                deprecation_bundles,
-                temp_dir,
-                prebuild_info['binary_image'],
-                intermediate_image_name,
-                overwrite_from_index_token,
-                # Use podman so opm can find the image locally
-                container_tool='podman',
-            )
+                deprecate_bundles_fbc(
+                    bundles=deprecation_bundles,
+                    base_dir=temp_dir,
+                    binary_image=prebuild_info['binary_image'],
+                    from_index=from_index_resolved,
+                )
+            else:
+                # opm can only deprecate a bundle image on an existing index image. Build and
+                # push a temporary index image to satisfy this requirement. Any arch will do.
+                arch = sorted(arches)[0]
+                log.info('Building a temporary index image to satisfy the deprecation requirement')
+                _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+                intermediate_image_name = _get_local_pull_spec(
+                    request_id, arch, include_transport=True
+                )
+                deprecate_bundles(
+                    bundles=deprecation_bundles,
+                    base_dir=temp_dir,
+                    binary_image=prebuild_info['binary_image'],
+                    from_index=intermediate_image_name,
+                    overwrite_target_index_token=overwrite_from_index_token,
+                    # Use podman so opm can find the image locally
+                    container_tool='podman',
+                )
 
         _add_label_to_index(
             'com.redhat.index.delivery.version',
