@@ -10,6 +10,7 @@ import os
 import re
 import sqlite3
 import subprocess
+from typing import Any, Dict, Iterable
 
 from retry import retry
 
@@ -614,7 +615,9 @@ def podman_pull(*args):
     )
 
 
-def run_cmd(cmd, params=None, exc_msg=None, strict=True):
+def run_cmd(
+    cmd: Iterable, params: Dict[str, Any] = None, exc_msg: str = None, strict: bool = True
+) -> str:
     """
     Run the given command with the provided parameters.
 
@@ -634,22 +637,22 @@ def run_cmd(cmd, params=None, exc_msg=None, strict=True):
     params.setdefault('stdout', subprocess.PIPE)
 
     log.debug('Running the command "%s"', ' '.join(cmd))
-    response = subprocess.run(cmd, **params)
+    response: subprocess.CompletedProcess = subprocess.run(cmd, **params)
 
     if strict and response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         if cmd[0] == 'opm':
             # Capture the error message right before the help display
-            regex = r'^(?:Error: )(.+)$'
+            regex: str = r'^(?:Error: )(.+)$'
             # Start from the last log message since the failure occurs near the bottom
             for msg in reversed(response.stderr.splitlines()):
-                match = re.match(regex, msg)
+                match: re.Match = re.match(regex, msg)
                 if match:
                     raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
         elif cmd[0] == 'buildah':
             # Check for HTTP 50X errors on buildah
-            regex = r'.*(error creating build container).*(50[0-9]\s.*$)'
-            match = re.match(regex, response.stderr)
+            regex: str = r'.*(error creating build container).*(50[0-9]\s.*$)'
+            match: re.Match = re.match(regex, response.stderr)
             if match:
                 raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
         if set(['buildah', 'manifest', 'rm']) <= set(cmd):

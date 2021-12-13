@@ -49,7 +49,7 @@ log = logging.getLogger(__name__)
     jitter=get_worker_config().iib_retry_jitter,
     logger=log,
 )
-def _build_image(dockerfile_dir, dockerfile_name, request_id, arch):
+def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arch: str) -> None:
     """
     Build the index image for the specified architecture.
 
@@ -61,14 +61,14 @@ def _build_image(dockerfile_dir, dockerfile_name, request_id, arch):
     :param str arch: the architecture to build this image for
     :raises IIBError: if the build fails
     """
-    destination = _get_local_pull_spec(request_id, arch)
+    destination: str = _get_local_pull_spec(request_id, arch)
     log.info(
         'Building the container image with the %s dockerfile for arch %s and tagging it as %s',
         dockerfile_name,
         arch,
         destination,
     )
-    dockerfile_path = os.path.join(dockerfile_dir, dockerfile_name)
+    dockerfile_path: str = os.path.join(dockerfile_dir, dockerfile_name)
     # NOTE: It's important to provide both --override-arch and --arch to ensure the metadata
     # on the image, **and** on its config blob are set correctly.
     run_cmd(
