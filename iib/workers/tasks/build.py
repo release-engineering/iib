@@ -71,11 +71,16 @@ def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arc
     dockerfile_path: str = os.path.join(dockerfile_dir, dockerfile_name)
     # NOTE: It's important to provide both --override-arch and --arch to ensure the metadata
     # on the image, **and** on its config blob are set correctly.
+    #
+    # NOTE: The argument "--format docker" ensures buildah will not generate an index image with
+    # default OCI v1 manifest but always use Docker v2 format.
     run_cmd(
         [
             'buildah',
             'bud',
             '--no-cache',
+            '--format',
+            'docker',
             '--override-arch',
             arch,
             '--arch',
@@ -163,7 +168,14 @@ def _create_and_push_manifest_list(request_id, arches, build_tags):
         log.debug('Pushing manifest list %s', output_pull_spec)
         run_cmd(
             buildah_manifest_cmd
-            + ['push', '--all', output_pull_spec, f'docker://{output_pull_spec}'],
+            + [
+                'push',
+                '--all',
+                '--format',
+                'v2s2',
+                output_pull_spec,
+                f'docker://{output_pull_spec}',
+            ],
             exc_msg=f'Failed to push the manifest list to {output_pull_spec}',
         )
 

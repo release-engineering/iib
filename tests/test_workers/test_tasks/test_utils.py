@@ -314,6 +314,8 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMoc
                 'buildah',
                 'bud',
                 '--no-cache',
+                '--format',
+                'docker',
                 '--override-arch',
                 'amd64',
                 '--arch',
