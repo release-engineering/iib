@@ -294,8 +294,8 @@ def test_run_cmd_failed_buildah_manifest_rm(mock_sub_run):
 
 
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
-def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run):
-    mock_rv = mock.Mock()
+def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMock) -> None:
+    mock_rv: mock.Mock = mock.Mock()
     mock_rv.returncode = 1
     mock_rv.stderr = textwrap.dedent(
         '''
@@ -307,7 +307,7 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run):
     ).replace('\n', '')
     mock_sub_run.return_value = mock_rv
 
-    expected_exc = 'error creating build container: 503 Service Unavailable'
+    expected_exc: str = 'error creating build container: 503 Service Unavailable'
     with pytest.raises(ExternalServiceError, match=expected_exc):
         utils.run_cmd(
             [

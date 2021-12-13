@@ -504,8 +504,8 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_buildah_fail_max_retries(mock_run_cmd):
-    match_str = 'unexpected HTTP status: 503 Service Unavailable'
+def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
+    match_str: str = 'unexpected HTTP status: 503 Service Unavailable'
     mock_run_cmd.side_effect = ExternalServiceError(match_str)
     with pytest.raises(ExternalServiceError, match=match_str):
         build._build_image("foo", "bar", 1, "amd64")

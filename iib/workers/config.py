@@ -40,9 +40,9 @@ class Config(object):
     iib_dogpile_expiration_time = 600
     iib_dogpile_arguments = {'url': ['127.0.0.1']}
     iib_skopeo_timeout = '300s'
-    iib_total_attempts = 5
-    iib_retry_delay = 4
-    iib_retry_jitter = 2
+    iib_total_attempts: int = 5
+    iib_retry_delay: int = 4
+    iib_retry_jitter: int = 2
     include = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
