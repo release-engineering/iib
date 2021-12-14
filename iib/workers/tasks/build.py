@@ -13,8 +13,7 @@ from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_serve_from_index
-
+from iib.workers.tasks.opm_operations import opm_serve_from_index, opm_registry_add_fbc, opm_migrate
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
@@ -34,7 +33,6 @@ from iib.workers.tasks.utils import (
     verify_labels,
     prepare_request_for_build,
 )
-
 
 __all__ = ['handle_add_request', 'handle_rm_request']
 
@@ -748,10 +746,9 @@ def handle_add_request(
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         if from_index:
             with set_registry_token(overwrite_from_index_token, from_index_resolved):
-                if is_image_fbc(from_index_resolved):
-                    err_msg = 'File-Based catalog image type is not supported yet.'
-                    log.error(err_msg)
-                    raise IIBError(err_msg)
+                is_fbc = is_image_fbc(from_index_resolved)
+                if is_fbc:
+                    log.info("Processing File-Based Catalog image")
 
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
@@ -774,14 +771,23 @@ def handle_add_request(
                     ' '.join(excluded_bundles),
                 )
 
-        _opm_index_add(
-            temp_dir,
-            resolved_bundles,
-            prebuild_info['binary_image_resolved'],
-            from_index_resolved,
-            overwrite_from_index_token,
-            (prebuild_info['distribution_scope'] in ['dev', 'stage']),
-        )
+        if is_fbc:
+            opm_registry_add_fbc(
+                base_dir=temp_dir,
+                bundles=resolved_bundles,
+                binary_image=prebuild_info['binary_image_resolved'],
+                from_index=from_index_resolved,
+                overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
+            )
+        else:
+            _opm_index_add(
+                base_dir=temp_dir,
+                bundles=resolved_bundles,
+                binary_image=prebuild_info['binary_image_resolved'],
+                from_index=from_index_resolved,
+                overwrite_from_index_token=overwrite_from_index_token,
+                overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
+            )
 
         # Add the max ocp version property
         # We need to ensure that any bundle which has deprecated/removed API(s) in 1.22/ocp 4.9
@@ -796,6 +802,10 @@ def handle_add_request(
 
         arches = prebuild_info['arches']
         if deprecation_bundles:
+            if is_fbc:
+                err_msg = 'File-Based catalog image type is not supported for deprecation yet.'
+                log.error(err_msg)
+                raise IIBError(err_msg)
             # opm can only deprecate a bundle image on an existing index image. Build and
             # push a temporary index image to satisfy this requirement. Any arch will do.
             arch = sorted(arches)[0]
@@ -825,6 +835,11 @@ def handle_add_request(
             temp_dir,
             'index.Dockerfile',
         )
+
+        if is_fbc:
+            index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
+            # make sure FBC is generated right before build
+            opm_migrate(index_db=index_db_file, base_dir=temp_dir)
 
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)

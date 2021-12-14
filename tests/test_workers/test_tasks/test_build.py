@@ -663,9 +663,9 @@ def test_handle_add_request(
     mock_oia.assert_called_once()
 
     if distribution_scope in ['dev', 'stage']:
-        assert mock_oia.call_args[0][5]
+        assert mock_oia.call_args[1]['overwrite_csv']
     else:
-        assert not mock_oia.call_args[0][5]
+        assert not mock_oia.call_args[1]['overwrite_csv']
 
     mock_srt.call_count == 2
 
