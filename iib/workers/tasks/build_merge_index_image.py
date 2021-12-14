@@ -1,9 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import itertools
 import logging
+import os
 import stat
 import tempfile
 
+from iib.workers.config import get_worker_config
+from iib.workers.tasks.opm_operations import (
+    opm_registry_add_fbc,
+    opm_migrate,
+    opm_generate_dockerfile,
+)
 from packaging.version import Version
 
 from iib.exceptions import IIBError
@@ -118,16 +125,26 @@ def _add_bundles_missing_in_source(
             '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
         )
 
-    _opm_index_add(
-        base_dir,
-        missing_bundle_paths,
-        binary_image,
-        from_index=source_from_index,
-        overwrite_from_index_token=overwrite_target_index_token,
-        # Use podman until opm's default mechanism is more resilient:
-        #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
-        container_tool='podman',
-    )
+    is_source_fbc = is_image_fbc(source_from_index)
+    if is_source_fbc:
+        opm_registry_add_fbc(
+            base_dir=base_dir,
+            bundles=missing_bundle_paths,
+            binary_image=binary_image,
+            from_index=source_from_index,
+            container_tool='podman',
+        )
+    else:
+        _opm_index_add(
+            base_dir=base_dir,
+            bundles=missing_bundle_paths,
+            binary_image=binary_image,
+            from_index=source_from_index,
+            overwrite_from_index_token=overwrite_target_index_token,
+            # Use podman until opm's default mechanism is more resilient:
+            #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
+            container_tool='podman',
+        )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
     )
@@ -194,10 +211,22 @@ def handle_merge_request(
     _update_index_image_build_state(request_id, prebuild_info)
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
     target_index_resolved = prebuild_info['target_index_resolved']
+    dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_fbc(source_from_index_resolved):
-            err_msg = 'File-Based catalog image type is not supported yet.'
+        source_fbc = is_image_fbc(source_from_index_resolved)
+        target_fbc = is_image_fbc(target_index_resolved)
+
+        # do not remove - logging requested by stakeholders
+        if source_fbc:
+            log.info("Processing source index image as File-Based Catalog image")
+        if target_fbc:
+            log.info("Processing target index image as File-Based Catalog image")
+
+        if source_fbc and not target_fbc:
+            err_msg = (
+                'Cannot merge source File-Based Catalog index image into target SQLite index image.'
+            )
             log.error(err_msg)
             raise IIBError(err_msg)
 
@@ -232,7 +261,6 @@ def handle_merge_request(
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
         if missing_bundle_paths:
             add_max_ocp_version_property(missing_bundle_paths, temp_dir)
-
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
@@ -247,16 +275,21 @@ def handle_merge_request(
         ]
 
         if deprecation_bundles:
+            intermediate_image_name = _get_external_arch_pull_spec(
+                request_id, arch, include_transport=False
+            )
+
+            if is_image_fbc(intermediate_image_name):
+                err_msg = 'File-Based catalog image type is not supported for deprecation yet.'
+                log.error(err_msg)
+                raise IIBError(err_msg)
+
             # opm can only deprecate a bundle image on an existing index image. Build and
             # push a temporary index image to satisfy this requirement. Any arch will do.
             # NOTE: we cannot use local builds because opm commands fails,
             # index image has to be pushed to registry
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
-
-            intermediate_image_name = _get_external_arch_pull_spec(
-                request_id, arch, include_transport=False
-            )
 
             deprecate_bundles(
                 deprecation_bundles,
@@ -266,22 +299,41 @@ def handle_merge_request(
                 overwrite_target_index_token,
             )
 
+        if target_fbc:
+            index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
+            # make sure FBC is generated right before build
+            fbc_dir = opm_migrate(index_db=index_db_file, base_dir=temp_dir)
+            if not source_fbc:
+                # when source image is not FBC, but final image should be an FBC image
+                # we have to generate Dockerfile for FBC (with hidden index.db)
+                dockerfile_path = os.path.join(temp_dir, dockerfile_name)
+                if os.path.isfile(dockerfile_path):
+                    log.info('Removing previously generated dockerfile.')
+                    os.remove(dockerfile_path)
+                opm_generate_dockerfile(
+                    fbc_dir=fbc_dir,
+                    base_dir=temp_dir,
+                    index_db=index_db_file,
+                    binary_image=prebuild_info['binary_image'],
+                    dockerfile_name=dockerfile_name,
+                )
+
         _add_label_to_index(
             'com.redhat.index.delivery.version',
             prebuild_info['target_ocp_version'],
             temp_dir,
-            'index.Dockerfile',
+            dockerfile_name,
         )
 
         _add_label_to_index(
             'com.redhat.index.delivery.distribution_scope',
             prebuild_info['distribution_scope'],
             temp_dir,
-            'index.Dockerfile',
+            dockerfile_name,
         )
 
         for arch in sorted(prebuild_info['arches']):
-            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+            _build_image(temp_dir, dockerfile_name, request_id, arch)
             _push_image(request_id, arch)
 
         # If the container-tool podman is used in the opm commands above, opm will create temporary
