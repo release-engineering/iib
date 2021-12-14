@@ -91,11 +91,19 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
         return
 
     # Filter index image bundles to get pull spec for bundles in the request
-    updated_bundles = list(
-        filter(lambda b: b['bundlePath'] in resolved_bundles, get_bundle_json(raw_bundles))
-    )
+    present_bundles = get_bundle_json(raw_bundles)
+    unique_present_bundles_pull_spec = []
+    unique_present_bundles = []
 
-    for bundle in updated_bundles:
+    for bundle in present_bundles:
+        bundle_path = bundle['bundlePath']
+        if bundle_path in resolved_bundles:
+            if bundle_path in unique_present_bundles_pull_spec:
+                continue
+            unique_present_bundles.append(bundle)
+            unique_present_bundles_pull_spec.append(bundle_path)
+
+    for bundle in unique_present_bundles:
         if _requires_max_ocp_version(bundle['bundlePath']):
             log.info('adding property for %s', bundle['bundlePath'])
             max_openshift_version_property = {
@@ -152,6 +160,7 @@ def _requires_max_ocp_version(bundle):
     :param str bundle: a string representing the bundle pull specification
     :returns bool:
     """
+    log.info('Checking presence of maxOpenshiftVersion in bundle %s', bundle)
     cmd = [
         'operator-sdk',
         'bundle',
@@ -789,7 +798,8 @@ def get_image_arches(pull_spec):
         arches.add(skopeo_out['architecture'])
     else:
         raise IIBError(
-            f'The pull specification of {pull_spec} is neither a v2 manifest list nor a v2 manifest'
+            f'The pull specification of {pull_spec} is neither a v2 manifest list nor a v2 manifest.'
+            f'Media Type: {skopeo_raw.get("mediaType")}'
         )
 
     return arches
