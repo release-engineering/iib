@@ -100,7 +100,6 @@ def test_handle_merge_request(
     mock_ors.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
-
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
         ['some-bundle:1.0'],
@@ -261,6 +260,7 @@ def test_handle_merge_request_no_deprecate(
     mock_run_cmd.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
@@ -269,7 +269,7 @@ def test_handle_merge_request_no_deprecate(
 @mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc
 ):
     source_bundles = [
         {
@@ -318,6 +318,7 @@ def test_add_bundles_missing_in_source(
         },
     ]
     mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6']
+    mock_iifbc.return_value = False
     missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -358,9 +359,9 @@ def test_add_bundles_missing_in_source(
     ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
-        'some_dir',
-        ['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
-        'binary-image:4.5',
+        base_dir='some_dir',
+        bundles=['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
+        binary_image='binary-image:4.5',
         from_index='index-image:4.6',
         overwrite_from_index_token=None,
         container_tool='podman',
@@ -475,6 +476,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
         )
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
@@ -483,7 +485,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
 @mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source_none_missing(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc
 ):
     source_bundles = [
         {
@@ -526,6 +528,7 @@ def test_add_bundles_missing_in_source_none_missing(
         },
     ]
     mock_gil.side_effect = ['v=4.5', 'v4.7,v4.6', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
+    mock_iifbc.return_value = False
     missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
@@ -553,9 +556,9 @@ def test_add_bundles_missing_in_source_none_missing(
     ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
-        'some_dir',
-        [],
-        'binary-image:4.5',
+        base_dir='some_dir',
+        bundles=[],
+        binary_image='binary-image:4.5',
         from_index='index-image:4.6',
         overwrite_from_index_token=None,
         container_tool='podman',
@@ -596,15 +599,34 @@ def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
         build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
-def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc):
-    mock_iifbc.return_value = True
+def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc, mock_srs, mock_prfb, mock_uiibs):
+    # set true for source_fbc; false for target_fbc
+    mock_iifbc.side_effect = (True, False)
+
+    prebuild_info = {
+        'arches': {'amd64', 'other_arch'},
+        'binary_image': 'binary_image',
+        'binary_image_resolved': 'binary_image_resolved',
+        'target_ocp_version': '4.6',
+        'source_from_index_resolved': 'source-index@sha256:resolved',
+        'target_index_resolved': 'target_index_resolved',
+        'distribution_scope': 'stage',
+    }
+    mock_prfb.return_value = prebuild_info
+
     mock_gwc.iib_api_url.return_value = {
         'iib_api_url': 'http://iib-api:8080/api/v1/',
     }
-    with pytest.raises(IIBError):
+    with pytest.raises(
+        IIBError,
+        match="Cannot merge source File-Based Catalog index image into target SQLite index image.",
+    ):
         build_merge_index_image.handle_merge_request(
             source_from_index='source-from-index:1.0',
             deprecation_list=['some-bundle:1.0'],
@@ -617,3 +639,5 @@ def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc):
                 'stage': {'stage': 'some_other_img'},
             },
         )
+
+        mock_uiibs.assert_called_once_with(1, prebuild_info)
