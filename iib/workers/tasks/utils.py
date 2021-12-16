@@ -90,31 +90,44 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
         log.info('No bundles found in the index image')
         return
 
-    # Filter index image bundles to get pull spec for bundles in the request
+    # Filter index image bundles to get pull spec for unique bundles in the request
     present_bundles = get_bundle_json(raw_bundles)
     unique_present_bundles_pull_spec = []
-    unique_present_bundles = []
+    # unique_present_bundles = []
 
     for bundle in present_bundles:
         bundle_path = bundle['bundlePath']
         if bundle_path in resolved_bundles:
             if bundle_path in unique_present_bundles_pull_spec:
                 continue
-            unique_present_bundles.append(bundle)
+            # unique_present_bundles.append(bundle)
             unique_present_bundles_pull_spec.append(bundle_path)
 
-    for bundle in unique_present_bundles:
-        if _requires_max_ocp_version(bundle['bundlePath']):
-            log.info('adding property for %s', bundle['bundlePath'])
-            max_openshift_version_property = {
-                'type': 'olm.maxOpenShiftVersion',
-                'value': '4.8',
-                'operatorbundle_name': bundle['csvName'],
-                'operatorbundle_version': bundle['version'],
-                'operatorbundle_path': bundle['bundlePath'],
-            }
-            _add_property_to_index(db_path, max_openshift_version_property)
-            log.info('property added for %s', bundle['bundlePath'])
+            # Find and Add maxOCPVersion property
+            if _requires_max_ocp_version(bundle['bundlePath']):
+                log.info('adding property for %s', bundle['bundlePath'])
+                max_openshift_version_property = {
+                    'type': 'olm.maxOpenShiftVersion',
+                    'value': '4.8',
+                    'operatorbundle_name': bundle['csvName'],
+                    'operatorbundle_version': bundle['version'],
+                    'operatorbundle_path': bundle['bundlePath'],
+                }
+                _add_property_to_index(db_path, max_openshift_version_property)
+                log.info('property added for %s', bundle['bundlePath'])
+
+    # for bundle in unique_present_bundles:
+    #     if _requires_max_ocp_version(bundle['bundlePath']):
+    #         log.info('adding property for %s', bundle['bundlePath'])
+    #         max_openshift_version_property = {
+    #             'type': 'olm.maxOpenShiftVersion',
+    #             'value': '4.8',
+    #             'operatorbundle_name': bundle['csvName'],
+    #             'operatorbundle_version': bundle['version'],
+    #             'operatorbundle_path': bundle['bundlePath'],
+    #         }
+    #         _add_property_to_index(db_path, max_openshift_version_property)
+    #         log.info('property added for %s', bundle['bundlePath'])
 
 
 def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_config={}):
