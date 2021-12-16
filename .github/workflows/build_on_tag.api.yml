@@ -1,0 +1,37 @@
+name: Build IIB-API image and push to quay.io
+
+on:  
+  push:
+    tags:
+      - '*'
+
+jobs:
+  # this job will only be triggered when tag is pushed
+  deployments:
+    name: Build and Push IIB-API to quay.io
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Build iib-api
+        id: build-iib-api
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: iib-api
+          tags: qe
+          dockerfiles: |
+            ./docker/Dockerfile-api
+
+      - name: Push iib-api to quay.io
+        id: push-iib-api
+        uses: redhat-actions/push-to-registry@v2.1.1
+        with:
+          image: ${{ steps.build-iib-api.outputs.image }}
+          tags: ${{ steps.build-iib-api.outputs.tags }}
+          registry: quay.io/exd-guild-hello-operator
+          username: ${{ secrets.REGISTRY_QUAY_IO_USER }}
+          password: ${{ secrets.REGISTRY_QUAY_IO_PASSWORD }}
