@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 5.0.0
+ - Fix issue of deprecation list with duplicated bundles
+ - Add mod_wsgi dependency to Dockerfile-api
+ - Update opm in dev env to v1.19.5
+ - Add framework to support FBC indexes
+ - Upgrade Flask 2.0.2, Werkzeug 2.0.2, Celery 5.1.2, Kombu 5.1.0
+ - Add support for Python 3.8
+ - Add retries and minor fixes for buildah commands
+ - Add REGISTRY_AUTH_FILE support in dev env
+ - Add support for AWS S3 buckets for artifacts storage
+ - Add github action to build API image on tag push
+
 ## 4.9.0
  - Fix the comparison of index image and bundle
  - Avoid failing to create-empty-index when labels are not set
