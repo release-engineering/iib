@@ -13,10 +13,10 @@ def test_get_object_from_s3_bucket(mock_boto3):
     my_mock.meta.client.get_object.return_value = {
         'ResponseMetadata': {
             'RequestId': 'CK2VG4V5ZQXAAM5B',
-            'HostId': 'q4Wp/tsvjnl/eBeN0dHvHYi6xUl9U149BdN6IAXjaFJnnQX+mLjg8hM4xAfgijfDo3fugYSEpPA=',
+            'HostId': 'q4Wp/tsvjnl/eBeN0dHvHYi6xUl9U149BdN6IAXjaFJnnQX+=',
             'HTTPStatusCode': 200,
             'HTTPHeaders': {
-                'x-amz-id-2': 'q4Wp/tsvjnl/eBeN0dHvHYi6xUl9U149BdN6IAXjaFJnnQX+mLjg8hM4xAfgijfDo3fugYSEpPA=',
+                'x-amz-id-2': 'q4Wp/tsvjnl/eBeN0dHvHYi6xUl9U149BdN6IAXjaFJnnQX+=',
                 'x-amz-request-id': 'CK2VG4V5ZQXAAM5B',
                 'date': 'Sun, 05 Dec 2021 03:35:14 GMT',
                 'last-modified': 'Sun, 05 Dec 2021 03:29:26 GMT',
