@@ -1,4 +1,5 @@
 celery
+boto3
 dogpile.cache
 flask
 flask-login
