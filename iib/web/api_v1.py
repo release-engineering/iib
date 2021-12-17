@@ -120,7 +120,7 @@ def _get_artifact_file_from_s3_bucket(
     s3_key_prefix, s3_file_name, request_id, request_temp_data_expiration_date, s3_bucket_name
 ):
     """
-    Helper function to get artifact file from S3 bucket.
+    It's a helper function to get artifact file from S3 bucket.
 
     :param str s3_key_prefix: the logical location of the file in the S3 bucket
     :param str s3_file_name: the name of the file in S3 bucket
