@@ -14,7 +14,7 @@ RUN dnf -y install \
     libpq-devel \
     mod_auth_gssapi \
     mod_ssl \
-    python3-mod_wsgi \
+    python38-mod_wsgi \
     openssl-devel \
     python38-devel \
     python38-pip \
