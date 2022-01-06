@@ -1,3 +1,4 @@
+---
 name: Build IIB-API image and push to quay.io
 
 on:

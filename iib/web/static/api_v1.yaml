@@ -843,8 +843,8 @@ components:
         force_backport:
           type: boolean
           description: >
-            (deprecated) If True, always backport packages to the legacy app registry via OMPS. Requires
-            cnr_token and organization to be set if True.
+            (deprecated) If True, always backport packages to the legacy app registry via OMPS.
+            Requires cnr_token and organization to be set if True.
           default: false
         from_index:
           type: string
@@ -986,8 +986,8 @@ components:
             expiration:
               type: string
               description: >-
-                UTC timestamp in ISO format that indicates when the related bundles for the request are
-                considered to be expired and will be removed.
+                UTC timestamp in ISO format that indicates when the related bundles for the request
+                are considered to be expired and will be removed.
           example:
             url: https://iib.domain.local/api/v1/builds/1/related_bundles
             expiration: '2019-09-19T19:35:15.722265Z'
