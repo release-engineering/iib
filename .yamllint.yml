@@ -6,3 +6,8 @@ rules:
   line-length:
     max: 100
     level: warning
+
+  truthy:
+    # disable checking keys for truthy values (removes warning for "on" section in github workflows)
+    # https://yamllint.readthedocs.io/en/stable/rules.html#module-yamllint.rules.truthy
+    check-keys: false
