@@ -373,3 +373,41 @@ def test_opm_registry_rm(mock_run_cmd):
     opm_args = mock_run_cmd.call_args[0][0]
     assert opm_args[:3] == ['opm', 'registry', 'rm']
     assert ','.join(packages) in opm_args
+
+
+@pytest.mark.parametrize(
+    'from_index, is_fbc', [('some-fbc-index:latest', True), ('some-sqlite-index:latest', False)]
+)
+@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
+@mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_create_empty_fbc(
+    mock_srs, mock_iif, mock_gid, mock_ghid, mock_orr, mock_om, mock_ogd, tmpdir, from_index, is_fbc
+):
+
+    operators = ['abc-operator', 'xyz-operator']
+    mock_iif.return_value = is_fbc
+    hidden_index_db_file = os.path.join(tmpdir, 'hidden/index.db')
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    mock_ghid.return_value = hidden_index_db_file
+    mock_om.return_value = fbc_dir
+
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    mock_gid.return_value = index_db_file
+
+    opm_operations.opm_create_empty_fbc(3, tmpdir, from_index, from_index, 'some:image', operators)
+
+    if is_fbc:
+        mock_orr.assert_called_once_with(
+            index_db_path=hidden_index_db_file, operators=operators, base_dir=tmpdir
+        )
+        mock_ghid.assert_called_once()
+    else:
+        mock_gid.assert_called_once()
+        mock_orr.assert_called_once_with(
+            index_db_path=index_db_file, operators=operators, base_dir=tmpdir
+        )

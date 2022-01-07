@@ -798,6 +798,7 @@ class RequestIndexImageMixin:
             'overwrite_from_index_token',
             'distribution_scope',
             'build_tags',
+            'output_fbc',
         } | set(additional_optional_params or [])
 
         validate_request_params(
@@ -1543,6 +1544,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         'polymorphic_identity': RequestTypeMapping.__members__['create_empty_index'].value
     }
     build_tags = None
+    output_fbc = False
 
     @property
     def labels(self):
@@ -1576,6 +1578,10 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
             or len(request_kwargs.get('from_index')) == 0
         ):
             raise ValidationError('"from_index" must be a non-empty string')
+        if request_kwargs.get('output_fbc') and not isinstance(
+            request_kwargs.get('output_fbc'), bool
+        ):
+            raise ValidationError('"output_fbc" should be boolean')
 
         new_labels = request_kwargs.get('labels')
         if new_labels is not None:

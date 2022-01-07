@@ -84,6 +84,7 @@ def test_handle_create_empty_index_request(
     build_create_empty_index.handle_create_empty_index_request(
         from_index=from_index,
         request_id=3,
+        output_fbc=False,
         binary_image=binary_image,
         labels=labels,
         binary_image_config=binary_image_config,
@@ -119,13 +120,116 @@ def test_handle_create_empty_index_request(
 
 @mock.patch('iib.workers.tasks.build_create_empty_index._cleanup')
 @mock.patch('iib.workers.tasks.build_create_empty_index.is_image_fbc')
-def test_handle_create_empty_index_request_raises(mock_iifbc, mock_c):
-    mock_iifbc.return_value = True
-    with pytest.raises(IIBError):
+@mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
+def test_handle_create_empty_index_request_raises(mock_prfb, mock_iifbc, mock_c):
+    # Ensure that IIB raises error when output_fbc paramater is false
+    # but from_index provided is FBC
+    arches = {'amd64', 's390x'}
+    binary_image_resolved = 'binary-image@sha256:abcdef'
+    binary_image = 'binary:image'
+    from_index_resolved = 'fbc-index-image-resolved:latest'
+    from_index = 'fbc-index-image:latest'
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': binary_image,
+        'binary_image_resolved': binary_image_resolved,
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.5',
+        'distribution_scope': 'prod',
+    }
+    with pytest.raises(
+        IIBError, match=('Cannot create SQLite index image from File-Based Catalog index image')
+    ):
+        mock_iifbc.return_value = True
         build_create_empty_index.handle_create_empty_index_request(
-            from_index='index-image:latest',
+            from_index=from_index,
             request_id=3,
-            binary_image='binary-image:latest',
+            output_fbc=False,
+            binary_image=binary_image,
             labels={"version": "v4.5"},
             binary_image_config={'prod': {'v4.5': 'some_image'}},
         )
+
+
+@mock.patch('iib.workers.tasks.build_create_empty_index._cleanup')
+@mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
+@mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
+@mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
+@mock.patch('iib.workers.tasks.build_create_empty_index._push_image')
+@mock.patch('iib.workers.tasks.build_create_empty_index._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_create_empty_index.opm_create_empty_fbc')
+def test_handle_create_empty_index_request_fbc(
+    mock_ocef,
+    mock_uiips,
+    mock_capml,
+    mock_pi,
+    mock_bi,
+    mock_alti,
+    mock_gpo,
+    mock_srs,
+    mock_uiibs,
+    mock_prfb,
+    mock_c,
+):
+    arches = {'amd64', 's390x'}
+    binary_image_resolved = 'binary-image@sha256:abcdef'
+    binary_image = 'binary:image'
+    from_index_resolved = 'fbc-index-image-resolved:latest'
+    from_index = 'fbc-index-image:latest'
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': binary_image,
+        'binary_image_resolved': binary_image_resolved,
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.5',
+        'distribution_scope': 'prod',
+    }
+
+    mock_gpo.return_value = ["operator1", "operator2"]
+
+    output_pull_spec = 'quay.io/namespace/some-image:3'
+    mock_capml.return_value = output_pull_spec
+
+    build_create_empty_index.handle_create_empty_index_request(
+        from_index=from_index,
+        request_id=3,
+        output_fbc=True,
+        binary_image=binary_image,
+        labels={"version": "v4.5"},
+        binary_image_config={'prod': {'v4.5': 'some_image'}},
+    )
+
+    mock_c.asser_called_once()
+    mock_prfb.assert_called_once_with(
+        3,
+        RequestConfigCreateIndexImage(
+            _binary_image=binary_image,
+            from_index=from_index,
+            labels={"version": "v4.5"},
+            binary_image_config={'prod': {'v4.5': 'some_image'}},
+        ),
+    )
+
+    mock_ocef.call_args_list[0][1]['from_index'] = from_index
+    mock_ocef.call_args_list[0][1]['from_index_resolved'] = from_index_resolved
+    mock_ocef.call_args_list[0][1]['binary_image'] = binary_image
+    mock_ocef.call_args_list[0][1]['operators'] = mock_gpo.return_value
+
+    mock_uiibs.asser_called_once()
+    assert mock_srs.call_count == 4
+    assert mock_bi.call_count == 2
+    assert mock_pi.call_count == 2
+    assert mock_alti.call_count == 3
+
+    mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, [])
+    mock_uiips.assert_called_once_with(
+        output_pull_spec=output_pull_spec,
+        request_id=3,
+        arches=arches,
+        from_index=from_index,
+        resolved_prebuild_from_index=from_index_resolved,
+    )

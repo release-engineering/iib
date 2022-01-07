@@ -1143,6 +1143,11 @@ components:
           items:
             type: string
           example: ["v4.5-10-08-2021"]
+        output_fbc:
+          type: boolean
+          description: Specifies whether output index image should be File-based Catalog
+          example: true
+          default: false
       required:
         - from_index
     ResponseCreateEmptyIndex:

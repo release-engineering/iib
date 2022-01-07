@@ -19,7 +19,7 @@ class Config(object):
         os.path.expanduser('~'), '.docker', 'config.json.template'
     )
     iib_greenwave_url = None
-    iib_grpc_init_wait_time = 10
+    iib_grpc_init_wait_time = 30
     iib_grpc_max_port_tries = 100
     iib_grpc_max_tries = 5
     iib_grpc_start_port = 50051
