@@ -73,7 +73,7 @@ services:
         cp /broker-certs/client.crt /etc/iib/messaging.crt &&
         cp /broker-certs/client.key /etc/iib/messaging.key &&
         cp /broker-certs/ca.crt /etc/iib/messaging-ca.crt &&
-        pip3 uninstall -y iib &&
+        (pip3 uninstall -y iib || rm -rf /usr/local/lib/python3.8/site-packages/iib/) &&
         python3 setup.py develop --no-deps &&
         iib wait-for-db &&
         iib db upgrade &&
