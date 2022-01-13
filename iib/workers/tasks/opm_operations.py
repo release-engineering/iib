@@ -382,3 +382,56 @@ def opm_registry_add_fbc(
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
     )
+
+
+def _opm_registry_rm(index_db_path, operators, base_dir):
+    """
+    Generate and run the opm command to remove operator package from index db provided.
+
+    :param str index_db_path: path where the input index image is temporarily copied
+    :param list operators: list of operator packages to be removed
+    :param base_dir: the base directory to generate the database and index.Dockerfile in.
+    """
+    from iib.workers.tasks.utils import run_cmd
+
+    cmd = [
+        'opm',
+        'registry',
+        'rm',
+        '--database',
+        index_db_path,
+        '--packages',
+        ','.join(operators),
+    ]
+    run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
+
+
+@retry(exceptions=IIBError, tries=2, logger=log)
+def opm_registry_rm_fbc(base_dir, from_index, operators, binary_image):
+    """
+    Remove operator/s from a File Based Catalog index image.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+
+    :param str base_dir: the base directory to generate the database and index.Dockerfile in.
+    :param str from_index: the pull specification of the container image containing the index that
+        the index image build will be based from.
+    :param list operators: a list of strings representing the packages of the operators to be
+        removed from the output index image.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from. This should point to a digest or stable tag.
+    """
+    log.info('Removing %s from a FBC Image %s', operators, from_index)
+    log.info('Using the existing database from %s', from_index)
+    index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
+
+    _opm_registry_rm(index_db_path, operators, base_dir)
+    fbc_dir = opm_migrate(index_db=index_db_path, base_dir=base_dir)
+
+    opm_generate_dockerfile(
+        fbc_dir=fbc_dir,
+        base_dir=base_dir,
+        index_db=index_db_path,
+        binary_image=binary_image,
+        dockerfile_name='index.Dockerfile',
+    )
