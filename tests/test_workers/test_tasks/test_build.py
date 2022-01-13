@@ -1019,18 +1019,80 @@ def test_handle_rm_request(
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
-@mock.patch('iib.workers.tasks.build.run_cmd')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build.opm_registry_rm_fbc')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
-def test_handle_rm_request_raises(mock_iifbc, mock_runcmd, mock_c):
+@mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+def test_handle_rm_request_fbc(
+    mock_ogd,
+    mock_om,
+    mock_ghid,
+    mock_iifbc,
+    mock_alti,
+    mock_uiips,
+    mock_capml,
+    mock_srs,
+    mock_srs2,
+    mock_vii,
+    mock_pi,
+    mock_bi,
+    mock_runcmd,
+    mock_orrf,
+    mock_uiibs,
+    mock_prfb,
+    mock_c,
+):
     mock_iifbc.return_value = True
-    with pytest.raises(IIBError):
-        build.handle_rm_request(
-            operators=['some-operator'],
-            request_id=3,
+    mock_prfb.return_value = {
+        'arches': {'amd64', 's390x'},
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'ocp_version': 'v4.6',
+        'distribution_scope': 'PROD',
+    }
+    mock_ghid.return_value = "/tmp/xyz/database/index.db"
+    mock_ogd.return_value = "/tmp/xyz/index.Dockerfile"
+    mock_om.return_value = "/tmp/xyz/catalog"
+    mock_orrf.return_value = "/tmp/xyz/index.Dockerfile"
+    build.handle_rm_request(
+        operators=['some-operator'],
+        request_id=5,
+        from_index='from-index:latest',
+        binary_image='binary-image:latest',
+        binary_image_config={'prod': {'v4.6': 'some_image'}},
+    )
+    mock_prfb.assert_called_once_with(
+        5,
+        RequestConfigAddRm(
+            _binary_image='binary-image:latest',
             from_index='from-index:latest',
-            binary_image='binary-image:latest',
+            overwrite_from_index_token=None,
+            add_arches=None,
             binary_image_config={'prod': {'v4.6': 'some_image'}},
-        )
+            distribution_scope=None,
+        ),
+    )
+    mock_orrf.assert_called_once()
+    assert mock_alti.call_count == 2
+    assert mock_bi.call_count == 2
+    assert mock_pi.call_count == 2
+    assert mock_srs.call_count == 2
+    mock_capml.assert_called_once_with(5, {'s390x', 'amd64'}, None)
+    mock_uiips.assert_called_once()
+    assert mock_srs.call_args[0][1] == 'complete'
 
 
 @mock.patch('iib.workers.tasks.build.set_registry_token')
