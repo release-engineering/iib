@@ -4,17 +4,15 @@ services:
   # This "service" generates the certificate for the registry. Then,
   # it exits with status code 0.
   minica:
-    image: registry.access.redhat.com/ubi8/go-toolset:latest
-    user: root
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-minica
     command:
       - /bin/sh
       - -c
       - >-
-        go get github.com/jsha/minica &&
         cd /opt/app-root/certs &&
         /opt/app-root/src/bin/minica --domains registry
-    environment:
-      GOPATH: /opt/app-root/src
     volumes:
       - registry-certs-volume:/opt/app-root/certs:z
 

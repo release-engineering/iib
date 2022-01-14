@@ -1,0 +1,8 @@
+FROM registry.access.redhat.com/ubi8/go-toolset:latest
+LABEL maintainer="Red Hat - EXD"
+
+ENV GOPATH="/opt/app-root/src"
+
+USER root
+
+RUN go get github.com/jsha/minica
