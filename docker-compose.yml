@@ -111,7 +111,7 @@ services:
           -p iibpassword registry:8443 &&
         pip3 install watchdog[watchmedo] &&
         watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
-          -- celery -A iib.workers.tasks worker --loglevel=info
+          -- celery -A iib.workers.tasks worker --loglevel INFO
     environment:
       IIB_DEV: 'true'
       REGISTRY_AUTH_FILE: '/root/.docker/config.json'
