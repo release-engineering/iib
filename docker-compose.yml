@@ -5,6 +5,7 @@ services:
   # it exits with status code 0.
   minica:
     image: registry.access.redhat.com/ubi8/go-toolset:latest
+    user: root
     command:
       - /bin/sh
       - -c
