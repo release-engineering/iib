@@ -616,6 +616,25 @@ def podman_pull(*args):
     )
 
 
+def _regex_reverse_search(regex: str, proc_response: subprocess.CompletedProcess) -> re.Match:
+    """
+    Try to match the STDERR content with a regular expression from bottom to up.
+
+    This is a complementary function for ``run_cmd``.
+
+    :param str regex: The regular expression to try to match
+    :param subprocess.CompletedProcess proc_response: the popen response to retrieve the STDERR from
+    :return: the regex match or None if not matched
+    :rtype: re.Match
+    """
+    # Start from the last log message since the failure occurs near the bottom
+    for msg in reversed(proc_response.stderr.splitlines()):
+        match: re.Match = re.match(regex, msg)
+        if match:
+            return match
+    return None
+
+
 def run_cmd(
     cmd: Iterable, params: Dict[str, Any] = None, exc_msg: str = None, strict: bool = True
 ) -> str:
@@ -645,15 +664,13 @@ def run_cmd(
         if cmd[0] == 'opm':
             # Capture the error message right before the help display
             regex: str = r'^(?:Error: )(.+)$'
-            # Start from the last log message since the failure occurs near the bottom
-            for msg in reversed(response.stderr.splitlines()):
-                match: re.Match = re.match(regex, msg)
-                if match:
-                    raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+            match: re.Match = _regex_reverse_search(regex, response)
+            if match:
+                raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
         elif cmd[0] == 'buildah':
             # Check for HTTP 50X errors on buildah
             regex: str = r'.*(error creating build container).*(50[0-9]\s.*$)'
-            match: re.Match = re.match(regex, response.stderr)
+            match: re.Match = _regex_reverse_search(regex, response)
             if match:
                 raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
         if set(['buildah', 'manifest', 'rm']) <= set(cmd):
