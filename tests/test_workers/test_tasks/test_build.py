@@ -672,10 +672,10 @@ def test_handle_add_request(
     if deprecate_bundles:
         # Take into account the temporarily created index image
         assert mock_bi.call_count == len(arches) + 1
+        assert mock_pi.call_count == len(arches) + 1
     else:
         assert mock_bi.call_count == len(arches)
-
-    assert mock_pi.call_count == len(arches)
+        assert mock_pi.call_count == len(arches)
 
     mock_uiips.assert_called_once()
     mock_vii.assert_not_called()
@@ -686,7 +686,7 @@ def test_handle_add_request(
             bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
             base_dir=mock.ANY,
             binary_image=binary_image or 'some_image',
-            from_index='containers-storage:localhost/iib-build:3-amd64',
+            from_index='registry:8443/iib-build:3-amd64',
             overwrite_target_index_token=None,
             container_tool='podman',
         )
@@ -718,6 +718,7 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
         )
 
 
+@mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.utils.sqlite3.connect')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils.opm_registry_serve')
@@ -763,6 +764,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_ors,
     mock_run_cmd,
     mock_sqlite,
+    mock_gwc,
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
@@ -787,6 +789,10 @@ def test_handle_add_request_check_index_label_behavior(
     deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
     # Assume default labels are set on the index
     label_state = {'LABEL_SET': 'default_labels_set'}
+    mock_gwc.return_value = {
+        'iib_registry': 'quay.io',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
 
     def _add_label_to_index(*args):
         # Set the labels in the index again making sure they were wiped out
@@ -872,7 +878,7 @@ def test_handle_add_request_check_index_label_behavior(
         bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
         base_dir=mock.ANY,
         binary_image='binary-image:latest',
-        from_index='containers-storage:localhost/iib-build:3-amd64',
+        from_index='quay.io/iib-build:3-amd64',
         overwrite_target_index_token=None,
         container_tool='podman',
     )
