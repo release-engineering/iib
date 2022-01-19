@@ -39,7 +39,9 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
 @mock.patch('subprocess.run')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+@mock.patch('iib.workers.tasks.build.get_worker_config')
 def test_handle_merge_request(
+    mock_gwc,
     mock_iifbc,
     mock_run,
     mock_set_registry_token,
@@ -76,6 +78,11 @@ def test_handle_merge_request(
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
     binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
+    mock_gwc.return_value = {
+        'iib_registry': 'quay.io',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+        'iib_api_url': 'http://iib-api:8080/api/v1/',
+    }
 
     # Simulate opm's behavior of creating files that cannot be deleted
     def side_effect(_, temp_dir, *args, **kwargs):
@@ -127,8 +134,8 @@ def test_handle_merge_request(
     mock_geaps.assert_called_once()
     mock_dep_b.assert_called_once()
     mock_set_registry_token.assert_called_once()
-    assert mock_bi.call_count == 2
-    assert mock_pi.call_count == 2
+    assert mock_bi.call_count == 3
+    assert mock_pi.call_count == 3
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
@@ -233,15 +240,18 @@ def test_handle_merge_request_no_deprecate(
     assert mock_gpb.call_count == 2
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
-    mock_geaps.assert_called_once()
     if invalid_bundles:
         mock_dep_b.assert_called_once_with(
             ['invalid_bundle:1.0'], mock.ANY, 'binary-image:1.0', mock.ANY, None
         )
+        mock_geaps.assert_called_once()
+        assert mock_bi.call_count == 3
+        assert mock_pi.call_count == 3
     else:
+        mock_geaps.assert_not_called()
         mock_dep_b.assert_not_called()
-    assert mock_bi.call_count == 2
-    assert mock_pi.call_count == 2
+        assert mock_bi.call_count == 2
+        assert mock_pi.call_count == 2
     assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
@@ -586,10 +596,14 @@ def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
         build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
 
 
+@mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
-def test_handle_merge_request_raises(mock_iifbc, mock_c):
+def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc):
     mock_iifbc.return_value = True
+    mock_gwc.iib_api_url.return_value = {
+        'iib_api_url': 'http://iib-api:8080/api/v1/',
+    }
     with pytest.raises(IIBError):
         build_merge_index_image.handle_merge_request(
             source_from_index='source-from-index:1.0',
