@@ -820,8 +820,9 @@ def handle_add_request(
                 arch = sorted(arches)[0]
                 log.info('Building a temporary index image to satisfy the deprecation requirement')
                 _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
-                intermediate_image_name = _get_local_pull_spec(
-                    request_id, arch, include_transport=True
+                _push_image(request_id, arch)
+                intermediate_image_name = _get_external_arch_pull_spec(
+                    request_id, arch, include_transport=False
                 )
                 deprecate_bundles(
                     bundles=deprecation_bundles,
