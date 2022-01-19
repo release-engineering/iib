@@ -895,6 +895,7 @@ def create_empty_index():
     args = [
         payload['from_index'],
         request.id,
+        payload.get('output_fbc'),
         payload.get('binary_image'),
         payload.get('labels'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],

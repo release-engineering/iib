@@ -18,6 +18,7 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
+from iib.workers.tasks.opm_operations import opm_create_empty_fbc
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -58,13 +59,19 @@ def _get_present_operators(from_index, base_dir):
 @app.task
 @request_logger
 def handle_create_empty_index_request(
-    from_index, request_id, binary_image=None, labels=None, binary_image_config=None
+    from_index,
+    request_id,
+    output_fbc=False,
+    binary_image=None,
+    labels=None,
+    binary_image_config=None,
 ):
     """Coordinate the the work needed to create the index image with labels.
 
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
     :param int request_id: the ID of the IIB build request
+    :param bool output_fbc: specifies whether a File-based Catalog index image should be created
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from.
     :param dict labels: the dict of labels required to be added to a new index image
@@ -72,7 +79,6 @@ def handle_create_empty_index_request(
         ``binary_image`` to use.
     """
     _cleanup()
-
     prebuild_info = prepare_request_for_build(
         request_id,
         RequestConfigCreateIndexImage(
@@ -84,18 +90,34 @@ def handle_create_empty_index_request(
     from_index_resolved = prebuild_info['from_index_resolved']
     prebuild_info['labels'] = labels
 
+    if not output_fbc and is_image_fbc(from_index_resolved):
+        log.debug('%s is FBC index image', from_index_resolved)
+        err_msg = 'Cannot create SQLite index image from File-Based Catalog index image'
+        log.error(err_msg)
+        raise IIBError(err_msg)
+
     _update_index_image_build_state(request_id, prebuild_info)
+
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        if is_image_fbc(from_index_resolved):
-            err_msg = 'File-Based catalog image type is not supported yet.'
-            log.error(err_msg)
-            raise IIBError(err_msg)
         set_request_state(request_id, 'in_progress', 'Checking operators present in index image')
 
         operators = _get_present_operators(from_index_resolved, temp_dir)
-        set_request_state(request_id, 'in_progress', 'Removing operators from index image')
 
-        _opm_index_rm(temp_dir, operators, prebuild_info['binary_image'], from_index_resolved)
+        # if output_fbc parameter is true, create an empty FBC index image
+        # else create empty SQLite index image
+        if output_fbc:
+            log.debug('Creating empty FBC index image from %s', from_index)
+            opm_create_empty_fbc(
+                request_id=request_id,
+                temp_dir=temp_dir,
+                from_index_resolved=from_index_resolved,
+                from_index=from_index,
+                binary_image=binary_image,
+                operators=operators,
+            )
+        else:
+            set_request_state(request_id, 'in_progress', 'Removing operators from index image')
+            _opm_index_rm(temp_dir, operators, prebuild_info['binary_image'], from_index_resolved)
 
         set_request_state(
             request_id, 'in_progress', 'Getting and updating labels for new index image'

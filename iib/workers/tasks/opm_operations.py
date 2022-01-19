@@ -8,6 +8,7 @@ import time
 from retry import retry
 
 from iib.exceptions import AddressAlreadyInUse, IIBError
+from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, get_hidden_index_database
 
@@ -431,6 +432,52 @@ def opm_registry_rm_fbc(base_dir, from_index, operators, binary_image):
     opm_generate_dockerfile(
         fbc_dir=fbc_dir,
         base_dir=base_dir,
+        index_db=index_db_path,
+        binary_image=binary_image,
+        dockerfile_name='index.Dockerfile',
+    )
+
+
+def opm_create_empty_fbc(
+    request_id, temp_dir, from_index_resolved, from_index, binary_image, operators
+):
+    """
+    Create an empty FBC index image.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+
+    :param int request_id: the ID of the IIB build request
+    :param str temp_dir: the base directory to generate the database and index.Dockerfile in.
+    :param str from_index_resolved: the resolved pull specification of the container image
+        containing the index that the index image build will be based from.
+    :param str from_index: the pull specification of the container image containing the index that
+        the index image build will be based from.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from. This should point to a digest or stable tag.
+    :param list operators: a list of strings representing the packages of the operators to be
+        removed from the output index image.
+    """
+    # if from_index provided is FBC, get the hidden index db location
+    if is_image_fbc(from_index_resolved):
+        log.debug('%s provided is FBC index image', from_index)
+        index_db_path = get_hidden_index_database(from_index=from_index, base_dir=temp_dir)
+    # if the from_index is SQLite based, get the default index db location
+    else:
+        from iib.workers.tasks.build import _get_index_database
+
+        log.debug('%s provided is SQLite index image', from_index)
+        index_db_path = _get_index_database(from_index=from_index, base_dir=temp_dir)
+
+    # Remove all the operators from the index
+    set_request_state(request_id, 'in_progress', 'Removing operators from index image')
+    _opm_registry_rm(index_db_path=index_db_path, operators=operators, base_dir=temp_dir)
+
+    # Migrate the index to FBC
+    fbc_dir = opm_migrate(index_db=index_db_path, base_dir=temp_dir)
+
+    opm_generate_dockerfile(
+        fbc_dir=fbc_dir,
+        base_dir=temp_dir,
         index_db=index_db_path,
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
