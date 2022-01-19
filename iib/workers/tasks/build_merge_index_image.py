@@ -232,6 +232,7 @@ def handle_merge_request(
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
         if missing_bundle_paths:
             add_max_ocp_version_property(missing_bundle_paths, temp_dir)
+
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
@@ -244,11 +245,19 @@ def handle_merge_request(
         deprecation_bundles = deprecation_bundles + [
             bundle['bundlePath'] for bundle in invalid_version_bundles
         ]
-        intermediate_image_name = _get_external_arch_pull_spec(
-            request_id, arch, include_transport=False
-        )
 
         if deprecation_bundles:
+            # opm can only deprecate a bundle image on an existing index image. Build and
+            # push a temporary index image to satisfy this requirement. Any arch will do.
+            # NOTE: we cannot use local builds because opm commands fails,
+            # index image has to be pushed to registry
+            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+            _push_image(request_id, arch)
+
+            intermediate_image_name = _get_external_arch_pull_spec(
+                request_id, arch, include_transport=False
+            )
+
             deprecate_bundles(
                 deprecation_bundles,
                 temp_dir,
