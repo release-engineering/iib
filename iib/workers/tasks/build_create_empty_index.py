@@ -112,7 +112,7 @@ def handle_create_empty_index_request(
                 temp_dir=temp_dir,
                 from_index_resolved=from_index_resolved,
                 from_index=from_index,
-                binary_image=binary_image,
+                binary_image=prebuild_info['binary_image'],
                 operators=operators,
             )
         else:
