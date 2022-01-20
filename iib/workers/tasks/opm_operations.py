@@ -194,6 +194,102 @@ def _serve_cmd_at_port(serve_cmd, cwd, port, max_tries, wait_time):
     raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
 
 
+def _get_or_create_temp_index_db_file(base_dir, from_index=None):
+    """
+    Get path to temp index.db used for opm registry commands.
+
+    If index.db does not exist it will be created, ether by copying from from_index
+    or as creating empty index.db file if from_index is not set.
+
+    :param str base_dir: base directory where index.db file will be located.
+    :param str from_index: index image, from which we should copy index.
+    :return: Returns path to index.db located in base_dir.
+    :rtype: str
+    """
+    from iib.workers.tasks.build import _get_index_database
+
+    index_db_file = os.path.join(base_dir, get_worker_config()['temp_index_db_path'])
+
+    if os.path.exists(index_db_file):
+        log.debug('Temp index.db already exist for %s', from_index)
+        return index_db_file
+
+    log.info('Temp index.db does not exist yet for %s', from_index)
+    if from_index:
+        log.info('Using the existing database from %s', from_index)
+        if is_image_fbc(from_index):
+            return get_hidden_index_database(from_index, base_dir)
+        return _get_index_database(from_index, base_dir)
+
+    log.info('Creating empty database file %s', index_db_file)
+    index_db_dir = os.path.dirname(index_db_file)
+    if not os.path.exists(index_db_dir):
+        os.makedirs(index_db_dir, exist_ok=True)
+    with open(index_db_file, 'w'):
+        pass
+
+    return index_db_file
+
+
+def opm_registry_deprecatetruncate(base_dir, index_db, bundles):
+    """
+    Deprecate bundles from index.db.
+
+    :param str base_dir: base directory where operation files will be located.
+    :param str index_db: path to index.db used with opm registry deprecatetruncate.
+    :param list bundles: pull specifications of bundles to deprecate.
+    """
+    from iib.workers.tasks.utils import run_cmd
+
+    log.debug(
+        'Run opm registry deprecatetruncate on database %s and bundles %s',
+        index_db,
+        ' '.join(bundles),
+    )
+
+    cmd = [
+        'opm',
+        'registry',
+        'deprecatetruncate',
+        '--database',
+        index_db,
+        '--bundle-images',
+        ','.join(bundles),
+        '--allow-package-removal',
+    ]
+
+    run_cmd(cmd, {'cwd': base_dir}, exc_msg=f'Failed to deprecate the bundles on {index_db}')
+
+
+def deprecate_bundles_fbc(bundles, base_dir, binary_image, from_index):
+    """
+    Deprecate the specified bundles from the FBC index image.
+
+    Dockerfile is created only, no build is performed.
+
+    :param list bundles: pull specifications of bundles to deprecate.
+    :param str base_dir: base directory where operation files will be located.
+    :param str binary_image: binary image to be used by the new index image.
+    :param str from_index: index image, from which the bundles will be deprecated.
+    """
+    index_db_file = _get_or_create_temp_index_db_file(base_dir=base_dir, from_index=from_index)
+
+    opm_registry_deprecatetruncate(
+        base_dir=base_dir, index_db=index_db_file, bundles=bundles,
+    )
+
+    fbc_dir = opm_migrate(index_db_file, base_dir)
+    # we should keep generating Dockerfile here
+    # to have the same behavior as we run `opm index deprecatetruncate` with '--generate' option
+    opm_generate_dockerfile(
+        fbc_dir=fbc_dir,
+        base_dir=base_dir,
+        index_db=index_db_file,
+        binary_image=binary_image,
+        dockerfile_name='index.Dockerfile',
+    )
+
+
 def opm_migrate(index_db, base_dir):
     """
     Migrate SQLite database to File-Based catalog using opm command.

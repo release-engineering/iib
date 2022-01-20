@@ -10,6 +10,7 @@ from iib.workers.tasks import build_merge_index_image
 from iib.workers.tasks.utils import RequestConfigMerge
 
 
+@pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
 @pytest.mark.parametrize(
     'target_index, target_index_resolved, binary_image',
     (
@@ -21,8 +22,13 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.utils.opm_registry_serve')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_migrate')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_registry_add_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
@@ -55,8 +61,13 @@ def test_handle_merge_request(
     mock_gbfdl,
     mock_geaps,
     mock_dep_b,
+    mock_dep_b_fbc,
     mock_bi,
     mock_pi,
+    mock_oraf,
+    mock_om,
+    mock_gid,
+    mock_ogd,
     mock_vii,
     mock_uiips,
     mock_ors,
@@ -64,6 +75,8 @@ def test_handle_merge_request(
     target_index,
     target_index_resolved,
     binary_image,
+    source_fbc,
+    target_fbc,
 ):
     mock_run.return_value.returncode = 0
     prebuild_info = {
@@ -74,7 +87,14 @@ def test_handle_merge_request(
         'target_index_resolved': target_index_resolved,
         'distribution_scope': 'stage',
     }
-    mock_iifbc.return_value = False
+
+    # returns different values to test different cases
+    # depends on sequence of is_index_fbc calls:
+    # 1st - source_fbc = is_image_fbc(source_from_index_resolved)
+    # 2nd - target_fbc = is_image_fbc(target_index_resolved)
+    # 3rd - is_source_fbc = is_image_fbc(source_from_index)
+    mock_iifbc.side_effect = [source_fbc, target_fbc, source_fbc]
+
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = ['some-bundle:1.0']
     binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
@@ -83,10 +103,11 @@ def test_handle_merge_request(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_api_url': 'http://iib-api:8080/api/v1/',
     }
+    mock_gid.return_value = 'database/index.db'
 
     # Simulate opm's behavior of creating files that cannot be deleted
-    def side_effect(_, temp_dir, *args, **kwargs):
-        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+    def side_effect(*args, base_dir, **kwargs):
+        read_only_dir = os.path.join(base_dir, 'read-only-dir')
         os.mkdir(read_only_dir)
         with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
             os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
@@ -94,6 +115,7 @@ def test_handle_merge_request(
         os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
 
     mock_dep_b.side_effect = side_effect
+    mock_dep_b_fbc.side_effect = side_effect
 
     port = 0
     my_mock = mock.MagicMock()
@@ -109,6 +131,9 @@ def test_handle_merge_request(
         distribution_scope='stage',
         binary_image_config=binary_image_config,
     )
+
+    mock_om.called_once()
+    mock_oraf.called_once()
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
@@ -131,10 +156,15 @@ def test_handle_merge_request(
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
     mock_geaps.assert_called_once()
-    mock_dep_b.assert_called_once()
+    if source_fbc:
+        mock_dep_b_fbc.assert_called_once()
+        assert mock_bi.call_count == 2
+        assert mock_pi.call_count == 2
+    else:
+        mock_dep_b.assert_called_once()
+        assert mock_bi.call_count == 3
+        assert mock_pi.call_count == 3
     mock_set_registry_token.assert_called_once()
-    assert mock_bi.call_count == 3
-    assert mock_pi.call_count == 3
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
@@ -150,14 +180,20 @@ def test_handle_merge_request(
     )
 
 
+@pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
 @pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils.opm_serve_from_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_migrate')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_registry_add_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
@@ -186,14 +222,21 @@ def test_handle_merge_request_no_deprecate(
     mock_gbfdl,
     mock_geaps,
     mock_dep_b,
+    mock_dep_b_fbc,
     mock_bi,
     mock_pi,
     mock_capml,
+    mock_oraf,
+    mock_om,
+    mock_gid,
+    mock_ogd,
     mock_vii,
     mock_uiips,
     mock_osfi,
     mock_run_cmd,
     invalid_bundles,
+    source_fbc,
+    target_fbc,
 ):
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
@@ -203,10 +246,18 @@ def test_handle_merge_request_no_deprecate(
         'target_index_resolved': 'target-index@sha256:resolved',
         'distribution_scope': 'stage',
     }
-    mock_iifbc.return_value = False
+
+    # returns different values to test different cases
+    # depends on sequence of is_index_fbc calls:
+    # 1st - source_fbc = is_image_fbc(source_from_index_resolved)
+    # 2nd - target_fbc = is_image_fbc(target_index_resolved)
+    # 3rd - is_source_fbc = is_image_fbc(source_from_index)
+    mock_iifbc.side_effect = [source_fbc, target_fbc, source_fbc]
+
     mock_prfb.return_value = prebuild_info
     mock_gbfdl.return_value = []
     mock_abmis.return_value = ([], invalid_bundles)
+    mock_gid.return_value = 'database/index.db'
 
     port = 0
     my_mock = mock.MagicMock()
@@ -222,6 +273,9 @@ def test_handle_merge_request_no_deprecate(
         'target-from-index:1.0',
         distribution_scope='stage',
     )
+
+    mock_om.called_once()
+    mock_oraf.called_once()
 
     mock_cleanup.assert_called_once()
     mock_prfb.assert_called_once_with(
@@ -240,15 +294,30 @@ def test_handle_merge_request_no_deprecate(
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
     if invalid_bundles:
-        mock_dep_b.assert_called_once_with(
-            ['invalid_bundle:1.0'], mock.ANY, 'binary-image:1.0', mock.ANY, None
-        )
+        if source_fbc:
+            mock_dep_b_fbc.assert_called_once_with(
+                bundles=['invalid_bundle:1.0'],
+                base_dir=mock.ANY,
+                binary_image='binary-image:1.0',
+                from_index=mock.ANY,
+            )
+            assert mock_bi.call_count == 2
+            assert mock_pi.call_count == 2
+        else:
+            mock_dep_b.assert_called_once_with(
+                bundles=['invalid_bundle:1.0'],
+                base_dir=mock.ANY,
+                binary_image='binary-image:1.0',
+                from_index=mock.ANY,
+                overwrite_target_index_token=None,
+            )
+            assert mock_bi.call_count == 3
+            assert mock_pi.call_count == 3
         mock_geaps.assert_called_once()
-        assert mock_bi.call_count == 3
-        assert mock_pi.call_count == 3
     else:
         mock_geaps.assert_not_called()
         mock_dep_b.assert_not_called()
+        mock_dep_b_fbc.assert_not_called()
         assert mock_bi.call_count == 2
         assert mock_pi.call_count == 2
     assert mock_add_label_to_index.call_count == 2

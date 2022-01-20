@@ -598,8 +598,8 @@ def test_handle_add_request(
         deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
 
     # Simulate opm's behavior of creating files that cannot be deleted
-    def side_effect(_, temp_dir, *args, **kwargs):
-        read_only_dir = os.path.join(temp_dir, 'read-only-dir')
+    def side_effect(*args, base_dir, **kwargs):
+        read_only_dir = os.path.join(base_dir, 'read-only-dir')
         os.mkdir(read_only_dir)
         with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
             os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
@@ -683,11 +683,11 @@ def test_handle_add_request(
     assert mock_srs.call_count == 4
     if deprecate_bundles:
         mock_dep_b.assert_called_once_with(
-            ['random_bundle@sha', 'some-deprecation-bundle@sha'],
-            mock.ANY,
-            binary_image or 'some_image',
-            'containers-storage:localhost/iib-build:3-amd64',
-            None,
+            bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
+            base_dir=mock.ANY,
+            binary_image=binary_image or 'some_image',
+            from_index='containers-storage:localhost/iib-build:3-amd64',
+            overwrite_target_index_token=None,
             container_tool='podman',
         )
     else:
@@ -869,11 +869,11 @@ def test_handle_add_request_check_index_label_behavior(
         ),
     )
     mock_dep_b.assert_called_once_with(
-        ['random_bundle@sha', 'some-deprecation-bundle@sha'],
-        mock.ANY,
-        'binary-image:latest',
-        'containers-storage:localhost/iib-build:3-amd64',
-        None,
+        bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
+        base_dir=mock.ANY,
+        binary_image='binary-image:latest',
+        from_index='containers-storage:localhost/iib-build:3-amd64',
+        overwrite_target_index_token=None,
         container_tool='podman',
     )
     # Assert the labels are set again once they were wiped out
