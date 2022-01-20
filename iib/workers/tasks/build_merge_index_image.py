@@ -10,6 +10,7 @@ from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
     opm_migrate,
     opm_generate_dockerfile,
+    deprecate_bundles_fbc,
 )
 from packaging.version import Version
 
@@ -279,25 +280,31 @@ def handle_merge_request(
                 request_id, arch, include_transport=False
             )
 
-            if is_image_fbc(intermediate_image_name):
-                err_msg = 'File-Based catalog image type is not supported for deprecation yet.'
-                log.error(err_msg)
-                raise IIBError(err_msg)
+            # we can check if source index is FBC or not because intermediate_image
+            # will be always the same type because it is built
+            # from source index image in _add_bundles_missing_in_source()
+            if source_fbc:
+                deprecate_bundles_fbc(
+                    bundles=deprecation_bundles,
+                    base_dir=temp_dir,
+                    binary_image=prebuild_info['binary_image'],
+                    from_index=intermediate_image_name,
+                )
+            else:
+                # opm can only deprecate a bundle image on an existing index image. Build and
+                # push a temporary index image to satisfy this requirement. Any arch will do.
+                # NOTE: we cannot use local builds because opm commands fails,
+                # index image has to be pushed to registry
+                _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
+                _push_image(request_id, arch)
 
-            # opm can only deprecate a bundle image on an existing index image. Build and
-            # push a temporary index image to satisfy this requirement. Any arch will do.
-            # NOTE: we cannot use local builds because opm commands fails,
-            # index image has to be pushed to registry
-            _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
-            _push_image(request_id, arch)
-
-            deprecate_bundles(
-                deprecation_bundles,
-                temp_dir,
-                prebuild_info['binary_image'],
-                intermediate_image_name,
-                overwrite_target_index_token,
-            )
+                deprecate_bundles(
+                    bundles=deprecation_bundles,
+                    base_dir=temp_dir,
+                    binary_image=prebuild_info['binary_image'],
+                    from_index=intermediate_image_name,
+                    overwrite_target_index_token=overwrite_target_index_token,
+                )
 
         if target_fbc:
             index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
