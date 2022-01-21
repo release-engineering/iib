@@ -21,5 +21,5 @@ class AddressAlreadyInUse(BaseException):
     """Adress is already used by other service."""
 
 
-class ExternalServiceError(IIBError):
+class ExternalServiceError(BaseException):
     """An external service error occurred with HTTP 50X."""

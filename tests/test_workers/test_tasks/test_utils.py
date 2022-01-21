@@ -272,6 +272,57 @@ def test_run_cmd_failed_opm(mock_sub_run):
 
 
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_buildah(mock_sub_run):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = textwrap.dedent(
+        '''
+        2021-12-14 08:52:39,144 iib.workers.tasks.utils DEBUG utils.run_cmd Running the command "buildah bud --no-cache --override-arch s390x --arch s390x -t iib-build:56056-s390x -f /tmp/iib-ozo81z6o/index.Dockerfile"
+        2021-12-14 08:55:10,212 iib.workers.tasks.utils ERROR utils.run_cmd The command "buildah bud --no-cache --override-arch s390x --arch s390x -t iib-build:56056-s390x -f /tmp/iib-ozo81z6o/index.Dockerfile" failed with: Trying to pull registry.redhat.io/openshift4/ose-operator-registry@sha256:72498731bbea4307178f9d0d237bf2a8439bfa8f580f87c35e5a73cb1c854bd6...
+        Getting image source signatures
+        Checking if image destination supports signatures
+        Copying blob sha256:b381d16488eb8afbbaed78ff48e8b4702b04c236400524dfd2ae759127422edf
+        Copying blob sha256:27cb39a08c6eb46426e92622c4edea9b9b8495b2401d02c773e239dd40d99a22
+        Copying blob sha256:3eabe22a2aec9181c0849b1a23a6104a81bcf00bea55a52a45dba613f0afd896
+        Copying blob sha256:3224b0f72681ebcfaec3c51b3d7efe187a5cab0355b4bbe6cffadde0d17d2292
+        Copying blob sha256:45ac5acd44f7a277e412330b36e908278d979fa0de30ca0628ef0729f61d825e
+        Copying blob sha256:45ac5acd44f7a277e412330b36e908278d979fa0de30ca0628ef0729f61d825e
+        Copying blob sha256:3eabe22a2aec9181c0849b1a23a6104a81bcf00bea55a52a45dba613f0afd896
+        Copying blob sha256:27cb39a08c6eb46426e92622c4edea9b9b8495b2401d02c773e239dd40d99a22
+        error creating build container: reading blob sha256:3224b0f72681ebcfaec3c51b3d7efe187a5cab0355b4bbe6cffadde0d17d2292: Error fetching blob: invalid status code from registry 503 (Service Unavailable)
+        time="2021-12-14T08:55:10-05:00" level=error msg="exit status 125"
+        '''  # noqa: E501
+    )
+    mock_sub_run.return_value = mock_rv
+
+    expected_exc = (
+        r'Failed build the index image: error creating build container: 503 \(Service Unavailable\)'
+    )
+
+    with pytest.raises(ExternalServiceError, match=expected_exc):
+        utils.run_cmd(
+            [
+                'buildah',
+                'bud',
+                '--no-cache',
+                '--format',
+                'docker',
+                '--override-arch',
+                's390x',
+                '--arch',
+                's390x',
+                '-t',
+                'iib-build:56056-s390x',
+                '-f',
+                '/tmp/iib-ozo81z6o/index.Dockerfile',
+            ],
+            exc_msg='Failed build the index image',
+        )
+
+    mock_sub_run.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd_failed_buildah_manifest_rm(mock_sub_run):
     mock_rv = mock.Mock()
     mock_rv.returncode = 1
