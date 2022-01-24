@@ -194,7 +194,9 @@ def _serve_cmd_at_port(serve_cmd, cwd, port, max_tries, wait_time):
     raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
 
 
-def _get_or_create_temp_index_db_file(base_dir, from_index=None):
+def _get_or_create_temp_index_db_file(
+    base_dir, from_index=None, overwrite_from_index_token=None, ignore_existing=False
+):
     """
     Get path to temp index.db used for opm registry commands.
 
@@ -203,6 +205,8 @@ def _get_or_create_temp_index_db_file(base_dir, from_index=None):
 
     :param str base_dir: base directory where index.db file will be located.
     :param str from_index: index image, from which we should copy index.
+    :param bool ignore_existing: if set it forces to copy index.db from `from_index`.
+       `from_index` must be set
     :return: Returns path to index.db located in base_dir.
     :rtype: str
     """
@@ -210,7 +214,7 @@ def _get_or_create_temp_index_db_file(base_dir, from_index=None):
 
     index_db_file = os.path.join(base_dir, get_worker_config()['temp_index_db_path'])
 
-    if os.path.exists(index_db_file):
+    if not ignore_existing and os.path.exists(index_db_file):
         log.debug('Temp index.db already exist for %s', from_index)
         return index_db_file
 
