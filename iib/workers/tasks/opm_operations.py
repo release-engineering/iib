@@ -211,6 +211,7 @@ def _get_or_create_temp_index_db_file(
     :rtype: str
     """
     from iib.workers.tasks.build import _get_index_database
+    from iib.workers.tasks.utils import set_registry_token
 
     index_db_file = os.path.join(base_dir, get_worker_config()['temp_index_db_path'])
 
@@ -221,9 +222,10 @@ def _get_or_create_temp_index_db_file(
     log.info('Temp index.db does not exist yet for %s', from_index)
     if from_index:
         log.info('Using the existing database from %s', from_index)
-        if is_image_fbc(from_index):
-            return get_hidden_index_database(from_index, base_dir)
-        return _get_index_database(from_index, base_dir)
+        with set_registry_token(overwrite_from_index_token, from_index):
+            if is_image_fbc(from_index):
+                return get_hidden_index_database(from_index, base_dir)
+            return _get_index_database(from_index, base_dir)
 
     log.info('Creating empty database file %s', index_db_file)
     index_db_dir = os.path.dirname(index_db_file)
@@ -434,7 +436,13 @@ def _opm_registry_add(
 
 @retry(exceptions=IIBError, tries=2, logger=log)
 def opm_registry_add_fbc(
-    base_dir, bundles, binary_image, from_index=None, overwrite_csv=False, container_tool=None,
+    base_dir,
+    bundles,
+    binary_image,
+    from_index=None,
+    overwrite_csv=False,
+    overwrite_from_index_token=None,
+    container_tool=None,
 ):
     """
     Add the input bundles to an operator index.
@@ -450,20 +458,17 @@ def opm_registry_add_fbc(
         the index image build will be based from.
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``source_from_index`` image. This is required to use ``overwrite_target_index``.
+        The format of the token must be in the format "user:password".
     :param str container_tool: the container tool to be used to operate on the index image
     """
-    if from_index:
-        log.info('Using the existing database from %s', from_index)
-        index_db_file = get_hidden_index_database(from_index, base_dir)
-    else:
-        log.info('Creating new database file index.db')
-        index_db_file = os.path.join(base_dir, get_worker_config()['temp_index_db_path'])
-        # prepare path and create empty file as SQLite database
-        index_db_dir = os.path.dirname(index_db_file)
-        if not os.path.exists(index_db_dir):
-            os.makedirs(index_db_dir, exist_ok=True)
-        with open(index_db_file, 'w'):
-            pass
+    index_db_file = _get_or_create_temp_index_db_file(
+        base_dir=base_dir,
+        from_index=from_index,
+        overwrite_from_index_token=overwrite_from_index_token,
+        ignore_existing=True,
+    )
 
     _opm_registry_add(
         base_dir=base_dir,

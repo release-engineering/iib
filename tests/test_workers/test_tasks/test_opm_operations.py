@@ -280,6 +280,7 @@ def test_opm_registry_add(
     assert "--enable-alpha" in opm_args
 
 
+@pytest.mark.parametrize('is_fbc', (True, False))
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
@@ -287,9 +288,13 @@ def test_opm_registry_add(
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
+@mock.patch('iib.workers.tasks.build._get_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+@mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
 def test_opm_registry_add_fbc(
+    mock_iifbc,
     mock_ghid,
+    mock_gid,
     mock_ora,
     mock_om,
     mock_ogd,
@@ -297,12 +302,15 @@ def test_opm_registry_add_fbc(
     bundles,
     overwrite_csv,
     container_tool,
+    is_fbc,
     tmpdir,
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
     mock_ghid.return_value = index_db_file
+    mock_gid.return_value = index_db_file
     mock_om.return_value = fbc_dir
+    mock_iifbc.return_value = is_fbc
 
     opm_operations.opm_registry_add_fbc(
         base_dir=tmpdir,

@@ -126,7 +126,8 @@ def _add_bundles_missing_in_source(
             '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
         )
 
-    is_source_fbc = is_image_fbc(source_from_index)
+    with set_registry_token(overwrite_target_index_token, source_from_index):
+        is_source_fbc = is_image_fbc(source_from_index)
     if is_source_fbc:
         opm_registry_add_fbc(
             base_dir=base_dir,
@@ -134,6 +135,7 @@ def _add_bundles_missing_in_source(
             binary_image=binary_image,
             from_index=source_from_index,
             container_tool='podman',
+            overwrite_from_index_token=overwrite_target_index_token,
         )
     else:
         _opm_index_add(
@@ -215,8 +217,9 @@ def handle_merge_request(
     dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        source_fbc = is_image_fbc(source_from_index_resolved)
-        target_fbc = is_image_fbc(target_index_resolved)
+        with set_registry_token(overwrite_target_index_token, source_from_index):
+            source_fbc = is_image_fbc(source_from_index_resolved)
+            target_fbc = is_image_fbc(target_index_resolved)
 
         # do not remove - logging requested by stakeholders
         if source_fbc:
