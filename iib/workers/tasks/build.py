@@ -739,7 +739,7 @@ def handle_add_request(
     )
     from_index_resolved = prebuild_info['from_index_resolved']
     with set_registry_token(overwrite_from_index_token, from_index_resolved):
-        is_fbc = is_image_fbc(from_index_resolved)
+        is_fbc = is_image_fbc(from_index_resolved) if from_index else False
         if is_fbc:
             # logging requested by stakeholders do not delete
             log.info("Processing File-Based Catalog image")
