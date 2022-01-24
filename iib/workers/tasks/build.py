@@ -782,6 +782,7 @@ def handle_add_request(
                 bundles=resolved_bundles,
                 binary_image=prebuild_info['binary_image_resolved'],
                 from_index=from_index_resolved,
+                overwrite_from_index_token=overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
             )
         else:

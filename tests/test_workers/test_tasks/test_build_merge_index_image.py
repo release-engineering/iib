@@ -164,7 +164,7 @@ def test_handle_merge_request(
         mock_dep_b.assert_called_once()
         assert mock_bi.call_count == 3
         assert mock_pi.call_count == 3
-    mock_set_registry_token.assert_called_once()
+    mock_set_registry_token.call_count == 2
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
