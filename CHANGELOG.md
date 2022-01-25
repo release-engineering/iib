@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.0.2
+- Added support for File-Based Catalog
+- Dropped support for Python3.6
+- Fixed bug for failing opm index deprecatetruncate
+- Fixed loosing olm.maxOpenShiftVersion property
+- Fixed bug for Buildah retries on 5XX
+- Added Static Application Security Testing
+- Updated Celery to 5.2.2 for Python 3.8
+- Fixed mod_wsgi package in iib-api
+
 ## 5.0.0
  - Fix issue of deprecation list with duplicated bundles
  - Add mod_wsgi dependency to Dockerfile-api
