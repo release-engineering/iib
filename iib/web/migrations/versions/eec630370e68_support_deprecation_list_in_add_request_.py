@@ -21,8 +21,14 @@ def upgrade():
         'request_add_bundle_deprecation',
         sa.Column('request_add_id', sa.Integer(), autoincrement=False, nullable=False),
         sa.Column('bundle_id', sa.Integer(), autoincrement=False, nullable=False),
-        sa.ForeignKeyConstraint(['bundle_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['request_add_id'], ['request_add.id'],),
+        sa.ForeignKeyConstraint(
+            ['bundle_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['request_add_id'],
+            ['request_add.id'],
+        ),
         sa.PrimaryKeyConstraint('request_add_id', 'bundle_id'),
         sa.UniqueConstraint(
             'request_add_id', 'bundle_id', name='request_add_bundle_deprecation_constraint'

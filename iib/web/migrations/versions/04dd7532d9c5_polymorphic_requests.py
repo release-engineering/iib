@@ -125,7 +125,10 @@ def upgrade():
         sa.UniqueConstraint('request_add_id', 'image_id'),
     )
     op.create_index(
-        op.f('ix_request_add_bundle_image_id'), 'request_add_bundle', ['image_id'], unique=False,
+        op.f('ix_request_add_bundle_image_id'),
+        'request_add_bundle',
+        ['image_id'],
+        unique=False,
     )
     op.create_index(
         op.f('ix_request_add_bundle_request_add_id'),
@@ -277,19 +280,34 @@ def downgrade():
         batch_op.add_column(sa.Column('from_index_id', sa.INTEGER(), nullable=True))
         batch_op.add_column(sa.Column('binary_image_resolved_id', sa.INTEGER(), nullable=True))
         batch_op.create_foreign_key(
-            'request_from_index_resolved_id_fkey', 'image', ['from_index_resolved_id'], ['id'],
+            'request_from_index_resolved_id_fkey',
+            'image',
+            ['from_index_resolved_id'],
+            ['id'],
         )
         batch_op.create_foreign_key(
-            'request_index_image_id_fkey', 'image', ['index_image_id'], ['id'],
+            'request_index_image_id_fkey',
+            'image',
+            ['index_image_id'],
+            ['id'],
         )
         batch_op.create_foreign_key(
-            'request_binary_image_resolved_id_fkey', 'image', ['binary_image_resolved_id'], ['id'],
+            'request_binary_image_resolved_id_fkey',
+            'image',
+            ['binary_image_resolved_id'],
+            ['id'],
         )
         batch_op.create_foreign_key(
-            'request_binary_image_id_fkey', 'image', ['binary_image_id'], ['id'],
+            'request_binary_image_id_fkey',
+            'image',
+            ['binary_image_id'],
+            ['id'],
         )
         batch_op.create_foreign_key(
-            'request_from_index_id_fkey', 'image', ['from_index_id'], ['id'],
+            'request_from_index_id_fkey',
+            'image',
+            ['from_index_id'],
+            ['id'],
         )
 
     op.create_table(
@@ -302,10 +320,16 @@ def downgrade():
         sa.UniqueConstraint('request_id', 'operator_id'),
     )
     op.create_index(
-        'ix_request_operator_request_id', 'request_operator', ['request_id'], unique=False,
+        'ix_request_operator_request_id',
+        'request_operator',
+        ['request_id'],
+        unique=False,
     )
     op.create_index(
-        'ix_request_operator_operator_id', 'request_operator', ['operator_id'], unique=False,
+        'ix_request_operator_operator_id',
+        'request_operator',
+        ['operator_id'],
+        unique=False,
     )
 
     op.create_table(

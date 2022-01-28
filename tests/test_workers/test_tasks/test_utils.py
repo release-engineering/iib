@@ -1073,7 +1073,11 @@ def test_get_binary_image_config_no_config_val():
 
 
 @pytest.mark.parametrize(
-    'endpoint', ("api.Registry/ListPackages", "api.Registry/ListBundles",),
+    'endpoint',
+    (
+        "api.Registry/ListPackages",
+        "api.Registry/ListBundles",
+    ),
 )
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils.opm_serve_from_index')

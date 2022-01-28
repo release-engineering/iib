@@ -659,7 +659,10 @@ def regenerate_bundle():
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_regenerate_bundle_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue(),
+            args=args,
+            link_error=error_callback,
+            argsrepr=repr(safe_args),
+            queue=_get_user_queue(),
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)

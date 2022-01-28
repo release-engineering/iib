@@ -27,8 +27,14 @@ def upgrade():
         'request_build_tag',
         sa.Column('request_id', sa.Integer(), nullable=False),
         sa.Column('tag_id', sa.Integer(), autoincrement=False, nullable=False),
-        sa.ForeignKeyConstraint(['request_id'], ['request.id'],),
-        sa.ForeignKeyConstraint(['tag_id'], ['build_tag.id'],),
+        sa.ForeignKeyConstraint(
+            ['request_id'],
+            ['request.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['tag_id'],
+            ['build_tag.id'],
+        ),
         sa.PrimaryKeyConstraint('request_id', 'tag_id'),
         sa.UniqueConstraint('request_id', 'tag_id'),
     )

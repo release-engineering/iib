@@ -27,14 +27,38 @@ def upgrade():
         sa.Column('source_from_index_resolved_id', sa.Integer(), nullable=True),
         sa.Column('target_index_id', sa.Integer(), nullable=True),
         sa.Column('target_index_resolved_id', sa.Integer(), nullable=True),
-        sa.ForeignKeyConstraint(['binary_image_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['binary_image_resolved_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['id'], ['request.id'],),
-        sa.ForeignKeyConstraint(['index_image_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['source_from_index_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['source_from_index_resolved_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['target_index_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['target_index_resolved_id'], ['image.id'],),
+        sa.ForeignKeyConstraint(
+            ['binary_image_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['binary_image_resolved_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['id'],
+            ['request.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['index_image_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['source_from_index_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['source_from_index_resolved_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['target_index_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['target_index_resolved_id'],
+            ['image.id'],
+        ),
         sa.PrimaryKeyConstraint('id'),
     )
 
@@ -42,8 +66,14 @@ def upgrade():
         'bundle_deprecation',
         sa.Column('merge_index_image_id', sa.Integer(), autoincrement=False, nullable=False),
         sa.Column('bundle_id', sa.Integer(), autoincrement=False, nullable=False),
-        sa.ForeignKeyConstraint(['bundle_id'], ['image.id'],),
-        sa.ForeignKeyConstraint(['merge_index_image_id'], ['request_merge_index_image.id'],),
+        sa.ForeignKeyConstraint(
+            ['bundle_id'],
+            ['image.id'],
+        ),
+        sa.ForeignKeyConstraint(
+            ['merge_index_image_id'],
+            ['request_merge_index_image.id'],
+        ),
         sa.PrimaryKeyConstraint('merge_index_image_id', 'bundle_id'),
         sa.UniqueConstraint(
             'merge_index_image_id', 'bundle_id', name='merge_index_bundle_constraint'
