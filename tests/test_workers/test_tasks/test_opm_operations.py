@@ -162,7 +162,9 @@ def test_serve_cmd_at_port_delayed_initialize(
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_migrate(
-    mock_run_cmd, moch_srmtree, tmpdir,
+    mock_run_cmd,
+    moch_srmtree,
+    tmpdir,
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
 
@@ -214,7 +216,10 @@ def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_d
 
     with pytest.raises(IIBError, match=f"Cannot find generated Dockerfile at {df_path}"):
         opm_operations.opm_generate_dockerfile(
-            fbc_dir, tmpdir, index_db_file, "some:image",
+            fbc_dir,
+            tmpdir,
+            index_db_file,
+            "some:image",
         )
 
     mock_run_cmd.assert_called_once_with(
@@ -345,7 +350,12 @@ def test_opm_registry_add_fbc(
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
 def test_opm_registry_rm_fbc(
-    mock_ghid, mock_orr, mock_om, mock_ogd, tmpdir, operators,
+    mock_ghid,
+    mock_orr,
+    mock_om,
+    mock_ogd,
+    tmpdir,
+    operators,
 ):
     from_index = 'some_index:latest'
     index_db_file = os.path.join(tmpdir, 'database/index.db')
@@ -354,11 +364,16 @@ def test_opm_registry_rm_fbc(
     mock_om.return_value = fbc_dir
 
     opm_operations.opm_registry_rm_fbc(
-        tmpdir, from_index, operators, 'some:image',
+        tmpdir,
+        from_index,
+        operators,
+        'some:image',
     )
 
     mock_orr.assert_called_once_with(
-        index_db_file, operators, tmpdir,
+        index_db_file,
+        operators,
+        tmpdir,
     )
 
     mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)
@@ -375,7 +390,9 @@ def test_opm_registry_rm_fbc(
 def test_opm_registry_rm(mock_run_cmd):
     packages = ['abc-operator', 'xyz-operator']
     opm_operations._opm_registry_rm(
-        '/tmp/somedir/some.db', packages, '/tmp/somedir',
+        '/tmp/somedir/some.db',
+        packages,
+        '/tmp/somedir',
     )
 
     mock_run_cmd.assert_called_once()
@@ -462,7 +479,9 @@ def test_opm_registry_deprecatetruncate(mock_run_cmd, bundles):
     ]
 
     opm_operations.opm_registry_deprecatetruncate(
-        base_dir='/tmp', index_db=index_db_file, bundles=bundles,
+        base_dir='/tmp',
+        index_db=index_db_file,
+        bundles=bundles,
     )
 
     mock_run_cmd.assert_called_once_with(
@@ -477,7 +496,13 @@ def test_opm_registry_deprecatetruncate(mock_run_cmd, bundles):
 @mock.patch('iib.workers.tasks.opm_operations.opm_registry_deprecatetruncate')
 @mock.patch('iib.workers.tasks.opm_operations._get_or_create_temp_index_db_file')
 def test_deprecate_bundles_fbc(
-    mock_gtidf, mock_ord, mock_om, mock_ogd, from_index, bundles, tmpdir,
+    mock_gtidf,
+    mock_ord,
+    mock_om,
+    mock_ogd,
+    from_index,
+    bundles,
+    tmpdir,
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
@@ -485,7 +510,10 @@ def test_deprecate_bundles_fbc(
     mock_om.return_value = fbc_dir
 
     opm_operations.deprecate_bundles_fbc(
-        bundles=bundles, base_dir=tmpdir, binary_image="some:image", from_index=from_index,
+        bundles=bundles,
+        base_dir=tmpdir,
+        binary_image="some:image",
+        from_index=from_index,
     )
 
     mock_ord.assert_called_once_with(base_dir=tmpdir, index_db=index_db_file, bundles=bundles)

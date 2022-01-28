@@ -60,7 +60,9 @@ def upgrade():
         # naming convention used by Postgreql. This will allow us to drop them
         # in a future migration.
         sa.ForeignKeyConstraint(
-            ['binary_image_id'], ['image.id'], name='request_binary_image_id_fkey',
+            ['binary_image_id'],
+            ['image.id'],
+            name='request_binary_image_id_fkey',
         ),
         sa.ForeignKeyConstraint(
             ['binary_image_resolved_id'],
@@ -68,10 +70,14 @@ def upgrade():
             name='request_binary_image_resolved_id_fkey',
         ),
         sa.ForeignKeyConstraint(
-            ['from_index_id'], ['image.id'], name='request_from_index_id_fkey',
+            ['from_index_id'],
+            ['image.id'],
+            name='request_from_index_id_fkey',
         ),
         sa.ForeignKeyConstraint(
-            ['from_index_resolved_id'], ['image.id'], name='request_from_index_resolved_id_fkey',
+            ['from_index_resolved_id'],
+            ['image.id'],
+            name='request_from_index_resolved_id_fkey',
         ),
         sa.ForeignKeyConstraint(
             ['index_image_id'], ['image.id'], name='request_index_image_id_fkey'

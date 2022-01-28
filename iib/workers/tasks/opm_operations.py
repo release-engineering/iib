@@ -281,7 +281,9 @@ def deprecate_bundles_fbc(bundles, base_dir, binary_image, from_index):
     index_db_file = _get_or_create_temp_index_db_file(base_dir=base_dir, from_index=from_index)
 
     opm_registry_deprecatetruncate(
-        base_dir=base_dir, index_db=index_db_file, bundles=bundles,
+        base_dir=base_dir,
+        index_db=index_db_file,
+        bundles=bundles,
     )
 
     fbc_dir = opm_migrate(index_db_file, base_dir)
@@ -387,7 +389,11 @@ def opm_generate_dockerfile(fbc_dir, base_dir, index_db, binary_image, dockerfil
 
 @retry(exceptions=IIBError, tries=2, logger=log)
 def _opm_registry_add(
-    base_dir, index_db, bundles, overwrite_csv=False, container_tool=None,
+    base_dir,
+    index_db,
+    bundles,
+    overwrite_csv=False,
+    container_tool=None,
 ):
     """
     Add the input bundles to an operator index database.

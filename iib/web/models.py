@@ -1077,7 +1077,9 @@ class RequestRm(Request, RequestIndexImageMixin):
             raise ValidationError(f'"operators" should be a non-empty array of strings')
 
         cls._from_json(
-            request_kwargs, additional_required_params=['operators', 'from_index'], batch=batch,
+            request_kwargs,
+            additional_required_params=['operators', 'from_index'],
+            batch=batch,
         )
 
         request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
