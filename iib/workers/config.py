@@ -68,6 +68,9 @@ class Config(object):
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
     # other tasks aren't starved. This will only be useful once more workers are enabled.
     worker_prefetch_multiplier = 1
+    # Enable send events to the broker. This is needed for celery promethues exporter
+    worker_send_task_events = True
+    task_send_sent_event = True
 
 
 class ProductionConfig(Config):
