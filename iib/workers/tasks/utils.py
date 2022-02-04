@@ -195,6 +195,14 @@ class RequestConfig:
         identify the appropriate ``binary_image`` to use.
     """
 
+    # these attrs should not be printed out
+    _secret_attrs = [
+        'cnr_token',
+        'overwrite_from_index_token',
+        'overwrite_target_index_token',
+        'registry_auths',
+    ]
+
     _attrs = ["_binary_image", "distribution_scope", "binary_image_config"]
     __slots__ = _attrs
 
@@ -217,6 +225,14 @@ class RequestConfig:
         ]:
             return True
         return False
+
+    def __repr__(self):
+        # this is used to print() and log any instance of this class in dictionary format
+        attrs = {x: getattr(self, x) for x in self.__slots__}
+        for attr in self._secret_attrs:
+            if attrs.get(attr) is not None:
+                attrs[attr] = '*****'
+        return str(attrs)
 
     def binary_image(self, index_info, distribution_scope):
         """Get binary image based on self configuration, index image info and distribution scope."""
