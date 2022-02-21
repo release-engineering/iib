@@ -29,7 +29,8 @@ class Config(object):
     iib_organization_customizations = {}
     iib_request_logs_dir = None
     iib_request_logs_format = (
-        '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
+        '%(asctime)s %(name)s %(processName)s {request_id} '
+        '%(levelname)s %(module)s.%(funcName)s %(message)s'
     )
     iib_request_logs_level = 'DEBUG'
     iib_required_labels = {}
