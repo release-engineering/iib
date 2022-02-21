@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import base64
+import getpass
+import socket
 from contextlib import contextmanager
 import functools
 import hashlib
@@ -13,6 +15,7 @@ import subprocess
 from typing import Any, Dict, Iterable
 
 from retry import retry
+from celery.app.log import TaskFormatter
 
 from iib.workers.dogpile_cache import (
     create_dogpile_region,
@@ -721,11 +724,13 @@ def request_logger(func):
     def wrapper(*args, **kwargs):
         request_log_handler = None
         if log_dir:
-            log_formatter = logging.Formatter(log_format)
             request_id = _get_function_arg_value('request_id', func, args, kwargs)
             if not request_id:
                 raise IIBError(f'Unable to get "request_id" from {func.__name__}')
-
+            # for better filtering of all logs for one build in SPLUNK
+            log_formatter = TaskFormatter(
+                log_format.format(request_id=f'request-{request_id}'), use_color=False
+            )
             log_file_path = os.path.join(log_dir, f'{request_id}.log')
             request_log_handler = logging.FileHandler(log_file_path)
             request_log_handler.setLevel(log_level)
@@ -734,6 +739,8 @@ def request_logger(func):
             os.chmod(log_file_path, 0o775)  # nosec
             logger = logging.getLogger()
             logger.addHandler(request_log_handler)
+            worker_info = f'Host: {socket.getfqdn()}; User: {getpass.getuser()}'
+            logger.info(worker_info)
         try:
             return func(*args, **kwargs)
         finally:

@@ -420,15 +420,18 @@ def test_request_logger(mock_ufts3b, tmpdir):
     def mock_handler(spam, eggs, request_id, bacon):
         logging.getLogger('iib.workers.tasks.utils').info('this is a test')
 
-    expected_message = ' iib.workers.tasks.utils INFO test_utils.mock_handler this is a test\n'
+    expected_message = (
+        ' iib.workers.tasks.utils MainProcess request-{rid} '
+        'INFO test_utils.mock_handler this is a test\n'
+    )
 
     mock_handler('spam', 'eggs', 123, 'bacon')
-    assert logs_dir.join('123.log').read().endswith(expected_message)
+    assert logs_dir.join('123.log').read().endswith(expected_message.format(rid=123))
     assert original_handlers_count == len(logging.getLogger().handlers)
     mock_ufts3b.assert_called_with(f'{logs_dir}/123.log', 'request_logs', '123.log')
 
     mock_handler('spam', 'eggs', bacon='bacon', request_id=321)
-    assert logs_dir.join('321.log').read().endswith(expected_message)
+    assert logs_dir.join('321.log').read().endswith(expected_message.format(rid=321))
     assert original_handlers_count == len(logging.getLogger().handlers)
     mock_ufts3b.assert_called_with(f'{logs_dir}/321.log', 'request_logs', '321.log')
 
