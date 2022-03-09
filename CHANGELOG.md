@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.1.0 
+- Add support for Python3.9
+- Enable send events to the broker
+- Bump pytest from 6.2.5 to 7.0.0
+- Use terminate function to shut down a process instead of kill
+- Pretty print (log) of RequestConfig classes
+- Logging improvements
+
 ## 6.0.2
 - Added support for File-Based Catalog
 - Dropped support for Python3.6
