@@ -80,7 +80,7 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
         exc_msg='Failed to get bundle data from index image',
     )
-    rpc_proc.kill()
+    rpc_proc.terminate()
 
     # This branch is hit when `bundles` attribute is empty and the index image is empty.
     # Ideally the code should not reach here if the bundles attribute is empty but adding
@@ -1040,5 +1040,5 @@ def grpcurl_get_db_data(from_index, base_dir, endpoint):
         ['grpcurl', '-plaintext', f'localhost:{port}', endpoint],
         exc_msg=f'Failed to get {endpoint} data from index image',
     )
-    rpc_proc.kill()
+    rpc_proc.terminate()
     return result

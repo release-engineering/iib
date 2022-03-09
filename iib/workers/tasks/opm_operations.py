@@ -189,7 +189,7 @@ def _serve_cmd_at_port(serve_cmd, cwd, port, max_tries, wait_time):
                 log.info('Index registry service has been initialized.')
                 return rpc_proc
 
-        rpc_proc.kill()
+        rpc_proc.terminate()
 
     raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
 

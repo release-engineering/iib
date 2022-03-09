@@ -330,7 +330,7 @@ def _get_present_bundles(from_index, base_dir):
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
         exc_msg='Failed to get bundle data from index image',
     )
-    rpc_proc.kill()
+    rpc_proc.terminate()
 
     # If no data is returned there are not bundles present
     if not bundles:
