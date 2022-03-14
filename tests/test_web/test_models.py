@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from datetime import timedelta
+from unittest import mock
 
 import pytest
 
@@ -186,3 +187,19 @@ def test_batch_request_states(db):
 def test_validate_registry_auths(registry_auths, msg_error):
     with pytest.raises(ValidationError, match=msg_error):
         models.validate_registry_auths(registry_auths)
+
+
+@mock.patch('iib.web.models.url_for')
+def test_request_logs_and_related_bundles_in_response(
+    mock_url_for, app, db, minimal_request_regenerate_bundle
+):
+    mock_url_for.return_value = 'some-url-for-data'
+    minimal_request_regenerate_bundle.add_state('in_progress', 'Starting things up')
+    db.session.commit()
+    app.config['IIB_AWS_S3_BUCKET_NAME'] = 'some_bucket'
+    app.config['IIB_REQUEST_LOGS_DIR'] = None
+    app.config['IIB_REQUEST_RELATED_BUNDLES_DIR'] = None
+
+    rv = minimal_request_regenerate_bundle.to_json(verbose=True)
+    assert rv['logs']['url'] == 'some-url-for-data'
+    assert rv['related_bundles']['url'] == 'some-url-for-data'
