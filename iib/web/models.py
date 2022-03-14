@@ -477,7 +477,10 @@ class Request(db.Model):
             states = list(reversed(states))
             rv['state_history'] = states
             latest_state = states[0]
-            if current_app.config['IIB_REQUEST_LOGS_DIR']:
+            if (
+                current_app.config['IIB_REQUEST_LOGS_DIR']
+                or current_app.config['IIB_AWS_S3_BUCKET_NAME']
+            ):
                 rv['logs'] = {
                     'expiration': self.temporary_data_expiration.isoformat() + 'Z',
                     'url': url_for('.get_build_logs', request_id=self.id, _external=True),
@@ -1210,7 +1213,10 @@ class RequestRegenerateBundle(Request):
             self.from_bundle_image_resolved, 'pull_specification', None
         )
         rv['organization'] = self.organization
-        if current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']:
+        if (
+            current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']
+            or current_app.config['IIB_AWS_S3_BUCKET_NAME']
+        ):
             rv['related_bundles'] = {
                 'expiration': self.temporary_data_expiration.isoformat() + 'Z',
                 'url': url_for('.get_related_bundles', request_id=self.id, _external=True),
