@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.2.0
+- Fix bug of missing related_bundles param and logs param in API response
+- Modify permissions on logs files 
+
 ## 6.1.0 
 - Add support for Python3.9
 - Enable send events to the broker
