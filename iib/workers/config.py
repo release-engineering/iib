@@ -171,7 +171,6 @@ def configure_celery(celery_app):
         # Celery doesn't support importing config files that aren't part of a Python path. This is
         # a hack taken from flask.config.from_pyfile.
         _user_config = {}
-        # FIXME: Bandit complaining on use of exec - CLOUDDST-11306
         with open(prod_config_file_path, mode='rb') as config_file:
             exec(compile(config_file.read(), prod_config_file_path, 'exec'), _user_config)  # nosec
 
