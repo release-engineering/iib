@@ -735,7 +735,6 @@ def request_logger(func):
             request_log_handler = logging.FileHandler(log_file_path)
             request_log_handler.setLevel(log_level)
             request_log_handler.setFormatter(log_formatter)
-            # Bandit complaining on too permissive logs
             os.chmod(log_file_path, 0o664)
             logger = logging.getLogger()
             logger.addHandler(request_log_handler)
