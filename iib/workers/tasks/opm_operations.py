@@ -354,7 +354,6 @@ def opm_generate_dockerfile(fbc_dir, base_dir, index_db, binary_image, dockerfil
 
     cmd = [
         'opm',
-        'alpha',
         'generate',
         'dockerfile',
         os.path.abspath(fbc_dir),
