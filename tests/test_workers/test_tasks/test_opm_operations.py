@@ -197,7 +197,7 @@ def test_opm_generate_dockerfile(mock_run_cmd, tmpdir, dockerfile):
     df_name = dockerfile if dockerfile else f"{os.path.basename(fbc_dir)}.Dockerfile"
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'alpha', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
+        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
         {'cwd': tmpdir},
         exc_msg='Failed to generate Dockerfile for file-based catalog',
     )
@@ -223,7 +223,7 @@ def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_d
         )
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'alpha', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
+        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
         {'cwd': tmpdir},
         exc_msg='Failed to generate Dockerfile for file-based catalog',
     )
