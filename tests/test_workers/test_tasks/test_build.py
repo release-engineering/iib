@@ -1183,24 +1183,21 @@ def test_add_label_to_index(tmpdir):
 
 
 def test_get_missing_bundles_no_match():
-    assert (
-        build._get_missing_bundles(
-            [
-                {
-                    'packageName': 'bundle1',
-                    'version': 'v1.0',
-                    'bundlePath': 'quay.io/pkg/pkg1@sha256:987654',
-                },
-                {
-                    'packageName': 'bundle2',
-                    'version': 'v2.0',
-                    'bundlePath': 'quay.io/pkg/pkg2@sha256:111111',
-                },
-            ],
-            ['quay.io/ns/repo@sha256:123456'],
-        )
-        == ['quay.io/ns/repo@sha256:123456']
-    )
+    assert build._get_missing_bundles(
+        [
+            {
+                'packageName': 'bundle1',
+                'version': 'v1.0',
+                'bundlePath': 'quay.io/pkg/pkg1@sha256:987654',
+            },
+            {
+                'packageName': 'bundle2',
+                'version': 'v2.0',
+                'bundlePath': 'quay.io/pkg/pkg2@sha256:111111',
+            },
+        ],
+        ['quay.io/ns/repo@sha256:123456'],
+    ) == ['quay.io/ns/repo@sha256:123456']
 
 
 def test_get_missing_bundles_match_hash():
