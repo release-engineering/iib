@@ -1136,13 +1136,6 @@ components:
             type: string
           example:
             version: 'v4.6'
-        build_tags:
-          description: >
-              Extra tags applied to intermediate index image
-          type: array
-          items:
-            type: string
-          example: ["v4.5-10-08-2021"]
         output_fbc:
           type: boolean
           description: Specifies whether output index image should be File-based Catalog
