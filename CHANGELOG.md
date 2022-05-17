@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.3.0
+- Fix create-empty-index endpoint to not accept build_tags
+- Update black to stable version 22.3.0
+- Build container image for message broker and push to quay.io
+- Upgrade OPM to 1.21.0
+- Remove FIXME comments for issues caught by bandit
+- Bump pytest from 7.1.0 to 7.1.2 
+
 ## 6.2.0
 - Fix bug of missing related_bundles param and logs param in API response
 - Modify permissions on logs files 
