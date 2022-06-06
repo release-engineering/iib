@@ -12,6 +12,7 @@ from iib.workers.tasks.utils import get_image_labels
 log = logging.getLogger(__name__)
 
 
+# NOTE: The gating feature will be removed in the next release
 def gate_bundles(bundles, greenwave_config):
     """
     Check if all bundle images have passed gating tests in the CVP pipeline.
@@ -27,6 +28,7 @@ def gate_bundles(bundles, greenwave_config):
     conf = get_worker_config()
     _validate_greenwave_params_and_config(conf, greenwave_config)
 
+    log.warning('Gating feature will be removed in the next release.')
     log.info('Gating on bundles: %s', ', '.join(bundles))
     gating_unsatisfied_bundles = []
     testcases = []
