@@ -724,6 +724,8 @@ def handle_add_request(
     # Check if Gating passes for all the bundles
     if greenwave_config:
         gate_bundles(resolved_bundles, greenwave_config)
+    else:
+        log.warning('Greenwave checks are not active and will be disabled in next release.')
 
     prebuild_info = prepare_request_for_build(
         request_id,
