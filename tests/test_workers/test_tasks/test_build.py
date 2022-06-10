@@ -260,7 +260,13 @@ def test_update_index_image_pull_spec(
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     if add_or_rm:
-        assert update_request_payload.keys() == {'arches', 'index_image', 'index_image_resolved'}
+        assert update_request_payload.keys() == {
+            'arches',
+            'index_image',
+            'index_image_resolved',
+            'internal_index_image_copy',
+            'internal_index_image_copy_resolved',
+        }
     else:
         assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec

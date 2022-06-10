@@ -784,6 +784,20 @@ components:
             index_image_resolved:
               type: string
               example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            internal_index_image_copy:
+              description: >
+                The pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            internal_index_image_copy_resolved:
+              description: >
+                The resolved pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image_resolved when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
             distribution_scope:
               description: >
                 The scope of distribution for the index created by the request.

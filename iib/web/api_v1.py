@@ -554,6 +554,8 @@ def patch_request(request_id):
         'from_index_resolved',
         'index_image',
         'index_image_resolved',
+        'internal_index_image_copy',
+        'internal_index_image_copy_resolved',
         'source_from_index_resolved',
         'target_index_resolved',
     )

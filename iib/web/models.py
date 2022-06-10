@@ -683,6 +683,8 @@ def get_request_query_options(verbose=False):
         joinedload(RequestAdd.from_index_resolved),
         joinedload(RequestAdd.index_image),
         joinedload(RequestAdd.index_image_resolved),
+        joinedload(RequestAdd.internal_index_image_copy),
+        joinedload(RequestAdd.internal_index_image_copy_resolved),
         joinedload(RequestAdd.build_tags),
         joinedload(RequestRegenerateBundle.bundle_image),
         joinedload(RequestRegenerateBundle.from_bundle_image),
@@ -693,6 +695,8 @@ def get_request_query_options(verbose=False):
         joinedload(RequestRm.from_index_resolved),
         joinedload(RequestRm.index_image),
         joinedload(RequestRm.index_image_resolved),
+        joinedload(RequestRm.internal_index_image_copy),
+        joinedload(RequestRm.internal_index_image_copy_resolved),
         joinedload(RequestRm.operators),
         joinedload(RequestRm.build_tags),
         joinedload(RequestMergeIndexImage.build_tags),
@@ -772,6 +776,30 @@ class RequestIndexImageMixin:
     def index_image_resolved(cls):
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_resolved_id], uselist=False)
+
+    @declared_attr
+    def internal_index_image_copy_id(cls):
+        """Return the ID of IIB's internal copy of the built index image."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def internal_index_image_copy(cls):
+        """Return the relationship to IIB's internal copy of the built index image."""
+        return db.relationship(
+            'Image', foreign_keys=[cls.internal_index_image_copy_id], uselist=False
+        )
+
+    @declared_attr
+    def internal_index_image_copy_resolved_id(cls):
+        """Return the ID of resolved IIB's internal copy of the built index image."""
+        return db.Column(db.Integer, db.ForeignKey('image.id'))
+
+    @declared_attr
+    def internal_index_image_copy_resolved(cls):
+        """Return the relationship to resolved IIB's internal copy of the built index image."""
+        return db.relationship(
+            'Image', foreign_keys=[cls.internal_index_image_copy_resolved_id], uselist=False
+        )
 
     @declared_attr
     def distribution_scope(cls):
@@ -907,6 +935,12 @@ class RequestIndexImageMixin:
             'from_index_resolved': getattr(self.from_index_resolved, 'pull_specification', None),
             'index_image': getattr(self.index_image, 'pull_specification', None),
             'index_image_resolved': getattr(self.index_image_resolved, 'pull_specification', None),
+            'internal_index_image_copy': getattr(
+                self.internal_index_image_copy, 'pull_specification', None
+            ),
+            'internal_index_image_copy_resolved': getattr(
+                self.internal_index_image_copy_resolved, 'pull_specification', None
+            ),
             'organization': None,
             'removed_operators': [],
             'distribution_scope': self.distribution_scope,
@@ -928,6 +962,8 @@ class RequestIndexImageMixin:
             'from_index_resolved',
             'index_image',
             'index_image_resolved',
+            'internal_index_image_copy',
+            'internal_index_image_copy_resolved',
         }
 
 
@@ -1639,6 +1675,8 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv.pop('deprecation_list')
         rv.pop('removed_operators')
         rv.pop('build_tags')
+        rv.pop('internal_index_image_copy')
+        rv.pop('internal_index_image_copy_resolved')
         rv['labels'] = self.labels
         return rv
 
@@ -1653,4 +1691,6 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv.update(self.get_index_image_mutable_keys())
         rv.update('labels')
         rv.remove('from_bundle_image_resolved')
+        rv.remove('internal_index_image_copy')
+        rv.remove('internal_index_image_copy_resolved')
         return rv
