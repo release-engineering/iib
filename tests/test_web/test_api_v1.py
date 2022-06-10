@@ -27,6 +27,12 @@ def test_get_build(app, auth_env, client, db):
             'quay.io/namespace/from_index@sha256:defghi'
         )
         request.index_image = Image.get_or_create('quay.io/namespace/index@sha256:fghijk')
+        request.internal_index_image_copy = Image.get_or_create(
+            'quay.io/namespace/internal_index:tag'
+        )
+        request.internal_index_image_copy_resolved = Image.get_or_create(
+            'quay.io/namespace/internal_index@sha256:something'
+        )
         request.add_architecture('amd64')
         request.add_architecture('s390x')
         request.add_state('complete', 'Completed successfully')
@@ -57,6 +63,8 @@ def test_get_build(app, auth_env, client, db):
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
         'index_image_resolved': None,
+        'internal_index_image_copy': 'quay.io/namespace/internal_index:tag',
+        'internal_index_image_copy_resolved': 'quay.io/namespace/internal_index@sha256:something',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -680,6 +688,8 @@ def test_add_bundle_success(
         'id': 1,
         'index_image': None,
         'index_image_resolved': None,
+        'internal_index_image_copy': None,
+        'internal_index_image_copy_resolved': None,
         'removed_operators': [],
         'request_type': 'add',
         'state': 'in_progress',
@@ -989,6 +999,8 @@ def test_patch_request_add_success(
         'index_image': 'index:image',
         'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
+        'internal_index_image_copy': 'quay.io/namespace/internal_index:tag',
+        'internal_index_image_copy_resolved': 'quay.io/namespace/internal_index@sha256:something',
     }
 
     if distribution_scope:
@@ -1010,6 +1022,8 @@ def test_patch_request_add_success(
         'id': minimal_request_add.id,
         'index_image': 'index:image',
         'index_image_resolved': 'index:image-resolved',
+        'internal_index_image_copy': 'quay.io/namespace/internal_index:tag',
+        'internal_index_image_copy_resolved': 'quay.io/namespace/internal_index@sha256:something',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -1059,6 +1073,8 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'index_image': 'index:image',
         'index_image_resolved': 'index:image-resolved',
         'binary_image_resolved': 'binary-image@sha256:1234',
+        'internal_index_image_copy': 'quay.io/namespace/internal_index:tag',
+        'internal_index_image_copy_resolved': 'quay.io/namespace/internal_index@sha256:something',
     }
 
     response_json = {
@@ -1077,6 +1093,8 @@ def test_patch_request_rm_success(mock_smfsc, db, minimal_request_rm, worker_aut
         'id': minimal_request_rm.id,
         'index_image': 'index:image',
         'index_image_resolved': 'index:image-resolved',
+        'internal_index_image_copy': 'quay.io/namespace/internal_index:tag',
+        'internal_index_image_copy_resolved': 'quay.io/namespace/internal_index@sha256:something',
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',
@@ -1204,6 +1222,8 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'id': 1,
         'index_image': None,
         'index_image_resolved': None,
+        'internal_index_image_copy': None,
+        'internal_index_image_copy_resolved': None,
         'logs': {
             'url': 'http://localhost/api/v1/builds/1/logs',
             'expiration': '2020-02-15T17:03:00Z',

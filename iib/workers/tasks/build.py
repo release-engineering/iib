@@ -243,6 +243,8 @@ def _update_index_image_pull_spec(
         with set_registry_token(overwrite_from_index_token, index_image):
             index_image_resolved = get_resolved_image(index_image)
         payload['index_image_resolved'] = index_image_resolved
+        payload['internal_index_image_copy'] = output_pull_spec
+        payload['internal_index_image_copy_resolved'] = get_resolved_image(output_pull_spec)
 
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
 
