@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.4.0
+- Add internal_index_image_copy and internal_index_image_copy_resolved to Add and Rm response
+- Add a warning for when gating is disabled
+
 ## 6.3.0
 - Fix create-empty-index endpoint to not accept build_tags
 - Update black to stable version 22.3.0
