@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
 import logging
+from typing import Any, Dict, Optional
 
 import requests
 from requests.packages.urllib3.util.retry import Retry
 import requests_kerberos
 
 from iib.exceptions import IIBError
+from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 
 log = logging.getLogger(__name__)
 
 
-def get_requests_session(auth=False):
+def get_requests_session(auth: bool = False) -> requests.Session:
     """
     Create a requests session with authentication (when enabled).
 
@@ -33,7 +35,7 @@ def get_requests_session(auth=False):
     return session
 
 
-def get_request(request_id):
+def get_request(request_id: int) -> Dict[str, Any]:
     """
     Get the IIB build request from the REST API.
 
@@ -68,7 +70,7 @@ def get_request(request_id):
     return rv.json()
 
 
-def set_request_state(request_id, state, state_reason):
+def set_request_state(request_id: int, state: str, state_reason: str) -> Dict[str, Any]:
     """
     Set the state of the request using the IIB API.
 
@@ -85,12 +87,15 @@ def set_request_state(request_id, state, state_reason):
         state,
         state_reason,
     )
-    payload = {'state': state, 'state_reason': state_reason}
+    payload: UpdateRequestPayload = {'state': state, 'state_reason': state_reason}
     exc_msg = 'Setting the state to "{state}" on request {request_id} failed'
     return update_request(request_id, payload, exc_msg=exc_msg)
 
 
-def set_omps_operator_version(request_id, omps_operator_version):
+def set_omps_operator_version(
+    request_id: int,
+    omps_operator_version: Dict[str, str],
+) -> Dict[str, Any]:
     """
     Set the set_omps_operator_version of the request using the IIB API.
 
@@ -106,13 +111,17 @@ def set_omps_operator_version(request_id, omps_operator_version):
         request_id,
         omps_operator_version_json,
     )
-    payload = {'omps_operator_version': omps_operator_version_json}
+    payload: UpdateRequestPayload = {'omps_operator_version': omps_operator_version_json}
     exc_msg = 'Setting the omps_operator_version to "{omps_operator_version}" failed'
 
     return update_request(request_id, payload, exc_msg=exc_msg)
 
 
-def update_request(request_id, payload, exc_msg=None):
+def update_request(
+    request_id: int,
+    payload: UpdateRequestPayload,
+    exc_msg: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Update the IIB build request.
 

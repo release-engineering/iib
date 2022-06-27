@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
+from typing import Any
+
+import celery.app.task
 
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
@@ -13,7 +16,12 @@ log = logging.getLogger(__name__)
 
 @app.task
 @request_logger
-def failed_request_callback(context, exc, traceback, request_id):
+def failed_request_callback(
+    context: celery.app.task.Context,
+    exc: Exception,
+    traceback: Any,
+    request_id: int,
+) -> None:
     """
     Wrap set_request_state for task error callbacks.
 

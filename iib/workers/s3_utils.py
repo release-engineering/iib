@@ -10,7 +10,7 @@ from iib.workers.config import get_worker_config
 log = logging.getLogger(__name__)
 
 
-def upload_file_to_s3_bucket(file_path, s3_key_prefix, s3_file_name):
+def upload_file_to_s3_bucket(file_path: str, s3_key_prefix: str, s3_file_name: str) -> None:
     """
     Upload artifact file to AWS S3 bucket.
 

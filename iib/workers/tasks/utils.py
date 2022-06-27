@@ -2,6 +2,7 @@
 import base64
 import getpass
 import socket
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 from contextlib import contextmanager
 import functools
 import hashlib
@@ -12,29 +13,34 @@ import os
 import re
 import sqlite3
 import subprocess
-from typing import Any, Dict, Iterable
 
 from retry import retry
 from celery.app.log import TaskFormatter
+from operator_manifest.operator import ImageName
 
 from iib.workers.dogpile_cache import (
     create_dogpile_region,
     dogpile_cache,
     skopeo_inspect_should_use_cache,
 )
-from operator_manifest.operator import ImageName
 
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.config import get_worker_config
 from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.opm_operations import opm_registry_serve, opm_serve_from_index
+from iib.workers.tasks.iib_static_types import (
+    IndexImageInfo,
+    AllIndexImagesInfo,
+    PrebuildInfo,
+    BundleImage,
+)
 
 log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
 
 
-def _add_property_to_index(db_path, property):
+def _add_property_to_index(db_path: str, property: Dict[str, str]) -> None:
     """
     Add a property to the index.
 
@@ -62,7 +68,7 @@ def _add_property_to_index(db_path, property):
     con.close()
 
 
-def add_max_ocp_version_property(resolved_bundles, temp_dir):
+def add_max_ocp_version_property(resolved_bundles: List[str], temp_dir: str) -> None:
     """
     Add the max ocp version property to bundles.
 
@@ -95,17 +101,19 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
         return
 
     # Filter index image bundles to get pull spec for bundles in the request
-    updated_bundles = list(
+    updated_bundles: List[BundleImage] = list(
         filter(lambda b: b['bundlePath'] in resolved_bundles, get_bundle_json(raw_bundles))
     )
 
     for bundle in updated_bundles:
         if _requires_max_ocp_version(bundle['bundlePath']):
             log.info('adding property for %s', bundle['bundlePath'])
-            max_openshift_version_property = {
+            max_openshift_version_property: Dict[str, str] = {
                 'type': 'olm.maxOpenShiftVersion',
                 'value': '4.8',
-                'operatorbundle_name': bundle['csvName'],
+                #  MYPY  error: Dict entry 2 has incompatible type "str": "Optional[str]";
+                #  expected "str": "str"
+                'operatorbundle_name': bundle['csvName'],  # type: ignore
                 'operatorbundle_version': bundle['version'],
                 'operatorbundle_path': bundle['bundlePath'],
             }
@@ -113,7 +121,11 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
             log.info('property added for %s', bundle['bundlePath'])
 
 
-def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_config={}):
+def get_binary_image_from_config(
+    ocp_version: str,
+    distribution_scope: str,
+    binary_image_config: Dict[str, Dict[str, str]] = {},
+) -> str:
     """
     Determine the binary image to be used to build the index image.
 
@@ -136,17 +148,17 @@ def get_binary_image_from_config(ocp_version, distribution_scope, binary_image_c
     return binary_image
 
 
-def get_bundle_json(bundles):
+def get_bundle_json(bundles: str) -> List[BundleImage]:
     """
     Get bundle json from grpcurl response.
 
-    :param list bundles: response from grpcurl call to retrieve list of bundles in
+    :param str bundles: response from grpcurl call to retrieve list of bundles in
         an index
     """
     return [json.loads(bundle) for bundle in re.split(r'(?<=})\n(?={)', bundles)]
 
 
-def _requires_max_ocp_version(bundle):
+def _requires_max_ocp_version(bundle: str) -> bool:
     """
     Check if the bundle requires the olm.maxOpenShiftVersion property.
 
@@ -199,15 +211,21 @@ class RequestConfig:
     """
 
     # these attrs should not be printed out
-    _secret_attrs = [
+    _secret_attrs: List[str] = [
         'cnr_token',
         'overwrite_from_index_token',
         'overwrite_target_index_token',
         'registry_auths',
     ]
 
-    _attrs = ["_binary_image", "distribution_scope", "binary_image_config"]
+    _attrs: List[str] = ["_binary_image", "distribution_scope", "binary_image_config"]
     __slots__ = _attrs
+    if TYPE_CHECKING:
+        _binary_image: str
+        distribution_scope: str
+        binary_image_config: Dict[str, Dict[str, str]]
+        overwrite_from_index_token: str
+        overwrite_target_index_token: str
 
     def __init__(self, **kwargs):
         """
@@ -222,14 +240,14 @@ class RequestConfig:
         for key, val in kwargs.items():
             setattr(self, key, kwargs[key])
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if type(self) == type(other) and [getattr(self, x) for x in self.__slots__] == [
             getattr(self, x) for x in self.__slots__
         ]:
             return True
         return False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         # this is used to print() and log any instance of this class in dictionary format
         attrs = {x: getattr(self, x) for x in self.__slots__}
         for attr in self._secret_attrs:
@@ -237,7 +255,7 @@ class RequestConfig:
                 attrs[attr] = '*****'
         return str(attrs)
 
-    def binary_image(self, index_info, distribution_scope):
+    def binary_image(self, index_info: IndexImageInfo, distribution_scope: str) -> str:
         """Get binary image based on self configuration, index image info and distribution scope."""
         if not self._binary_image:
             binary_image_ocp_version = index_info['ocp_version']
@@ -258,7 +276,7 @@ class RequestConfigAddRm(RequestConfig):
     :param str from_index: the pull specification of the container image
         containing the index that the index image build
         will be based from.
-    :param list add_arches: the list of arches to build in addition to the
+    :param set add_arches: the set of arches to build in addition to the
         arches ``from_index`` is currently built for;
         if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
@@ -266,7 +284,7 @@ class RequestConfigAddRm(RequestConfig):
         bundle mapping on the request
     """
 
-    _attrs = RequestConfig._attrs + [
+    _attrs: List[str] = RequestConfig._attrs + [
         "overwrite_from_index_token",
         "from_index",
         "add_arches",
@@ -274,6 +292,12 @@ class RequestConfigAddRm(RequestConfig):
         "operators",
     ]
     __slots__ = _attrs
+    if TYPE_CHECKING:
+        overwrite_from_index_token: str
+        from_index: str
+        add_arches: Set[str]
+        bundles: List[str]
+        operators: List[str]
 
 
 class RequestConfigMerge(RequestConfig):
@@ -289,13 +313,17 @@ class RequestConfigMerge(RequestConfig):
         to the merged index image.
     """
 
-    _attrs = RequestConfig._attrs + [
+    _attrs: List[str] = RequestConfig._attrs + [
         "source_from_index",
         "target_index",
         "overwrite_target_index_token",
     ]
 
     __slots__ = _attrs
+    if TYPE_CHECKING:
+        source_from_index: str
+        target_index: str
+        overwrite_target_index_token: str
 
 
 class RequestConfigCreateIndexImage(RequestConfig):
@@ -313,18 +341,21 @@ class RequestConfigCreateIndexImage(RequestConfig):
         labels ``from_index`` is currently built for;
     """
 
-    _attrs = RequestConfig._attrs + ["from_index", "labels"]
+    _attrs: List[str] = RequestConfig._attrs + ["from_index", "labels"]
     __slots__ = _attrs
+    if TYPE_CHECKING:
+        from_index: str
+        labels: Dict[str, str]
 
 
 def deprecate_bundles(
-    bundles,
-    base_dir,
-    binary_image,
-    from_index,
-    overwrite_target_index_token=None,
-    container_tool=None,
-):
+    bundles: List[str],
+    base_dir: str,
+    binary_image: str,
+    from_index: str,
+    overwrite_target_index_token: Optional[str] = None,
+    container_tool: Optional[str] = None,
+) -> None:
     """
     Deprecate the specified bundles from the index image.
 
@@ -359,7 +390,7 @@ def deprecate_bundles(
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
 
 
-def get_bundles_from_deprecation_list(bundles, deprecation_list):
+def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List[str]) -> List[str]:
     """
     Get a list of to-be-deprecated bundles based on the data from the deprecation list.
 
@@ -380,7 +411,7 @@ def get_bundles_from_deprecation_list(bundles, deprecation_list):
     return deprecate_bundles
 
 
-def get_resolved_bundles(bundles):
+def get_resolved_bundles(bundles: List[str]) -> List[str]:
     """
     Get the pull specification of the bundle images using their digests.
 
@@ -423,7 +454,7 @@ def get_resolved_bundles(bundles):
     return list(resolved_bundles)
 
 
-def _get_container_image_name(pull_spec):
+def _get_container_image_name(pull_spec: str) -> str:
     """
     Get the container image name from a pull specification.
 
@@ -436,7 +467,7 @@ def _get_container_image_name(pull_spec):
         return pull_spec.rsplit(':', 1)[0]
 
 
-def get_resolved_image(pull_spec):
+def get_resolved_image(pull_spec: str) -> str:
     """
     Get the pull specification of the container image using its digest.
 
@@ -462,7 +493,7 @@ def get_resolved_image(pull_spec):
     return pull_spec_resolved
 
 
-def get_image_labels(pull_spec):
+def get_image_labels(pull_spec: str) -> Dict[str, str]:
     """
     Get the labels from the image.
 
@@ -478,7 +509,7 @@ def get_image_labels(pull_spec):
     return skopeo_inspect(full_pull_spec, '--config').get('config', {}).get('Labels', {})
 
 
-def reset_docker_config():
+def reset_docker_config() -> None:
     """Create a symlink from ``iib_docker_config_template`` to ``~/.docker/config.json``."""
     conf = get_worker_config()
     docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
@@ -497,7 +528,7 @@ def reset_docker_config():
 
 
 @contextmanager
-def set_registry_token(token, container_image):
+def set_registry_token(token: Optional[str], container_image: Optional[str]) -> Generator:
     """
     Configure authentication to the registry that ``container_image`` is from.
 
@@ -532,7 +563,7 @@ def set_registry_token(token, container_image):
 
 
 @contextmanager
-def set_registry_auths(registry_auths):
+def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
     """
     Configure authentication to the registry with provided dockerconfig.json.
 
@@ -589,7 +620,11 @@ def set_registry_auths(registry_auths):
 @dogpile_cache(
     dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache
 )
-def skopeo_inspect(*args, return_json=True, require_media_type=False):
+def skopeo_inspect(
+    *args,
+    return_json: bool = True,
+    require_media_type: bool = False,
+) -> Union[Dict[str, Any], str]:
     """
     Wrap the ``skopeo inspect`` command.
 
@@ -622,7 +657,7 @@ def skopeo_inspect(*args, return_json=True, require_media_type=False):
 
 
 @retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
-def podman_pull(*args):
+def podman_pull(*args) -> None:
     """
     Wrap the ``podman pull`` command.
 
@@ -635,7 +670,10 @@ def podman_pull(*args):
     )
 
 
-def _regex_reverse_search(regex: str, proc_response: subprocess.CompletedProcess) -> re.Match:
+def _regex_reverse_search(
+    regex: str,
+    proc_response: subprocess.CompletedProcess,
+) -> Optional[re.Match]:
     """
     Try to match the STDERR content with a regular expression from bottom to up.
 
@@ -648,21 +686,25 @@ def _regex_reverse_search(regex: str, proc_response: subprocess.CompletedProcess
     """
     # Start from the last log message since the failure occurs near the bottom
     for msg in reversed(proc_response.stderr.splitlines()):
-        match: re.Match = re.match(regex, msg)
+        match = re.match(regex, msg)
         if match:
             return match
     return None
 
 
 def run_cmd(
-    cmd: Iterable, params: Dict[str, Any] = None, exc_msg: str = None, strict: bool = True
+    cmd: List[str],
+    params: Optional[Dict[str, Any]] = None,
+    exc_msg: Optional[str] = None,
+    strict: bool = True,
 ) -> str:
     """
     Run the given command with the provided parameters.
 
-    :param iter cmd: iterable representing the command to be executed
+    :param list cmd: list of strings representing the command to be executed
     :param dict params: keyword parameters for command execution
     :param str exc_msg: an optional exception message when the command fails
+    :param bool strict: when true function will throw exception when problem occurs
     :return: the command output
     :rtype: str
     :raises IIBError: if the command fails
@@ -680,16 +722,18 @@ def run_cmd(
 
     if strict and response.returncode != 0:
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
+        regex: str
+        match: Optional[re.Match]
         if cmd[0] == 'opm':
             # Capture the error message right before the help display
-            regex: str = r'^(?:Error: )(.+)$'
-            match: re.Match = _regex_reverse_search(regex, response)
+            regex = r'^(?:Error: )(.+)$'
+            match = _regex_reverse_search(regex, response)
             if match:
                 raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
         elif cmd[0] == 'buildah':
             # Check for HTTP 50X errors on buildah
-            regex: str = r'.*(error creating build container).*(50[0-9]\s.*$)'
-            match: re.Match = _regex_reverse_search(regex, response)
+            regex = r'.*(error creating build container).*(50[0-9]\s.*$)'
+            match = _regex_reverse_search(regex, response)
             if match:
                 raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
         if set(['buildah', 'manifest', 'rm']) <= set(cmd):
@@ -701,7 +745,7 @@ def run_cmd(
     return response.stdout
 
 
-def terminate_process(proc, timeout=5):
+def terminate_process(proc: subprocess.Popen, timeout: int = 5) -> None:
     """
     Terminate given process. Fallback to SIGKILL when process is not terminated in given timeout.
 
@@ -738,7 +782,7 @@ def _get_binary_versions():
     return f"opm {opm_version}\n{podman_version}\n{buildah_version}"
 
 
-def request_logger(func):
+def request_logger(func: Callable) -> Callable:
     """
     Log messages relevant to the current request to a dedicated file.
 
@@ -758,7 +802,7 @@ def request_logger(func):
     log_format = worker_config.iib_request_logs_format
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args, **kwargs) -> None:
         request_log_handler = None
         if log_dir:
             request_id = _get_function_arg_value('request_id', func, args, kwargs)
@@ -790,11 +834,18 @@ def request_logger(func):
     return wrapper
 
 
-def _get_function_arg_value(arg_name, func, args, kwargs):
+def _get_function_arg_value(
+    arg_name: str,
+    func: Callable,
+    args: tuple,
+    kwargs: Dict[Any, Any],
+) -> Any:
     """Return the value of the given argument name."""
     original_func = func
     while getattr(original_func, '__wrapped__', None):
-        original_func = original_func.__wrapped__
+        # Type is ignored as mypy solution is not supported yet
+        #  MYPY  error: "Callable[..., Any]" has no attribute "__wrapped__"
+        original_func = original_func.__wrapped__  # type: ignore
     argspec = inspect.getfullargspec(original_func).args
 
     arg_index = argspec.index(arg_name)
@@ -804,7 +855,7 @@ def _get_function_arg_value(arg_name, func, args, kwargs):
     return arg_value
 
 
-def chmod_recursively(dir_path, dir_mode, file_mode):
+def chmod_recursively(dir_path: str, dir_mode: int, file_mode: int) -> None:
     """Change file mode bits recursively.
 
     :param str dir_path: the path to the starting directory to apply the file mode bits
@@ -830,7 +881,10 @@ def chmod_recursively(dir_path, dir_mode, file_mode):
             os.chmod(file_path, file_mode)
 
 
-def gather_index_image_arches(build_request_config, index_image_infos):
+def gather_index_image_arches(
+    build_request_config: RequestConfig,
+    index_image_infos: AllIndexImagesInfo,
+) -> Set[str]:
     """Gather architectures from build_request_config and provided index image.
 
     :param RequestConfig build_request_config: build request configuration
@@ -840,18 +894,27 @@ def gather_index_image_arches(build_request_config, index_image_infos):
     :rtype: set
     """
     arches = set(
-        (build_request_config.add_arches if hasattr(build_request_config, 'add_arches') else [])
+        (
+            build_request_config.add_arches
+            if (
+                hasattr(build_request_config, 'add_arches')
+                and isinstance(build_request_config, RequestConfigAddRm)
+            )
+            else []
+        )
         or []
     )
+
     for info in index_image_infos.values():
-        arches |= set(info['arches'])
+        #  MYPY error: Value of type "object" is not indexable
+        arches |= set(info['arches'])  # type: ignore
 
     if not arches:
         raise IIBError('No arches were provided to build the index image')
     return arches
 
 
-def get_image_arches(pull_spec):
+def get_image_arches(pull_spec: str) -> Set[str]:
     """
     Get the architectures this image was built for.
 
@@ -877,7 +940,11 @@ def get_image_arches(pull_spec):
     return arches
 
 
-def get_index_image_info(overwrite_from_index_token, from_index=None, default_ocp_version='v4.5'):
+def get_index_image_info(
+    overwrite_from_index_token: Optional[str],
+    from_index: Optional[str] = None,
+    default_ocp_version: str = 'v4.5',
+) -> IndexImageInfo:
     """Get arches, resolved pull specification and ocp_version for the index image.
 
     :param str overwrite_from_index_token: the token used for overwriting the input
@@ -889,7 +956,7 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
         resolved_distribution_scope
     :rtype: dict
     """
-    result = {
+    result: IndexImageInfo = {
         'resolved_from_index': None,
         'ocp_version': default_ocp_version,
         'arches': set(),
@@ -912,15 +979,20 @@ def get_index_image_info(overwrite_from_index_token, from_index=None, default_oc
     return result
 
 
-def get_all_index_images_info(build_request_config, index_version_map):
+def get_all_index_images_info(
+    build_request_config: RequestConfig,
+    index_version_map: List[Tuple[str, Any]],
+) -> AllIndexImagesInfo:
     """Get image info of all images in version map.
 
     :param RequestConfig build_request_config: build request configuration
     :param list index_version_map: list of tuples with (index_name, index_ocp_version)
-    :return: dictionary with inex image information obtained from `get_index_image_info`
+    :return: dictionary with index image information obtained from `get_index_image_info`
     :rtype: dict
     """
-    infos = {}
+    #  MYPY error: Missing keys ("from_index", "source_from_index", "target_index")
+    #  for TypedDict "AllIndexImagesInfo"
+    infos: AllIndexImagesInfo = {}  # type: ignore
     for (index, version) in index_version_map:
         log.debug(f'Get index image info {index} for version {version}')
         if not hasattr(build_request_config, index):
@@ -928,19 +1000,22 @@ def get_all_index_images_info(build_request_config, index_version_map):
         else:
             from_index = getattr(build_request_config, index)
 
-        token = None
+        # Cannot be None, as get_index_image_info do not accept None
+        token: Optional[str] = None
         if hasattr(build_request_config, 'overwrite_from_index_token'):
             token = build_request_config.overwrite_from_index_token
         elif hasattr(build_request_config, 'overwrite_target_index_token'):
             token = build_request_config.overwrite_target_index_token
 
-        infos[index] = get_index_image_info(
+        #  MYPY error: TypedDict key must be a string literal;
+        #  expected one of ("from_index", "source_from_index", "target_index")
+        infos[index] = get_index_image_info(  # type: ignore
             overwrite_from_index_token=token, from_index=from_index, default_ocp_version=version
         )
     return infos
 
 
-def get_image_label(pull_spec, label):
+def get_image_label(pull_spec: str, label: str) -> Optional[str]:
     """
     Get a specific label from the container image.
 
@@ -953,7 +1028,7 @@ def get_image_label(pull_spec, label):
     return get_image_labels(pull_spec).get(label)
 
 
-def verify_labels(bundles):
+def verify_labels(bundles: List[str]) -> None:
     """
     Verify that the required labels are set on the input bundles.
 
@@ -972,7 +1047,7 @@ def verify_labels(bundles):
                 raise IIBError(f'The bundle {bundle} does not have the label {label}={value}')
 
 
-def _validate_distribution_scope(resolved_distribution_scope, distribution_scope):
+def _validate_distribution_scope(resolved_distribution_scope: str, distribution_scope: str) -> str:
     """
     Validate distribution scope is allowed to be updated.
 
@@ -997,13 +1072,17 @@ def _validate_distribution_scope(resolved_distribution_scope, distribution_scope
     return distribution_scope
 
 
-def prepare_request_for_build(request_id, build_request_config):
+def prepare_request_for_build(
+    request_id: int,
+    build_request_config: RequestConfig,
+) -> PrebuildInfo:
     """Prepare the request for the index image build.
 
     All information that was retrieved and/or calculated for the next steps in the build are
     returned as a dictionary.
     This function was created so that code didn't need to be duplicated for the ``add`` and ``rm``
     request types.
+    :param int request_id: id of the request
     :param RequestConfig build_request_config: build request configuration
     :return: a dictionary with the keys: arches, binary_image_resolved, from_index_resolved, and
     ocp_version.
@@ -1012,9 +1091,14 @@ def prepare_request_for_build(request_id, build_request_config):
     detected.
     """
     log.info(f'Prepare request for build with parameters {build_request_config}')
-    bundles = None
-    if hasattr(build_request_config, "bundles"):
-        bundles = build_request_config.bundles
+    bundles = (
+        build_request_config.bundles
+        if (
+            isinstance(build_request_config, RequestConfigAddRm)
+            and hasattr(build_request_config, "bundles")
+        )
+        else None
+    )
 
     if bundles is None:
         bundles = []
@@ -1039,6 +1123,7 @@ def prepare_request_for_build(request_id, build_request_config):
     request_index = index_info['from_index']
     if (
         hasattr(build_request_config, "source_from_index")
+        and isinstance(build_request_config, RequestConfigMerge)
         and build_request_config.source_from_index
     ):
         request_index = index_info['target_index']
@@ -1061,34 +1146,39 @@ def prepare_request_for_build(request_id, build_request_config):
             )
         )
 
-    bundle_mapping = {}
+    bundle_mapping: Dict[str, Any] = {}
     for bundle in bundles:
         operator = get_image_label(bundle, 'operators.operatorframework.io.bundle.package.v1')
         if operator:
             bundle_mapping.setdefault(operator, []).append(bundle)
+    source_from_index_resolved = index_info['source_from_index']['resolved_from_index']
 
+    # MYPY error: Incompatible types (expression has type "Optional[str]",
+    # - TypedDict item "from_index_resolved" has type "str")
+    # - TypedDict item "source_from_index_resolved" has type "str")
+    # - TypedDict item "target_index_resolved" has type "str")
     return {
         'arches': arches,
         'binary_image': binary_image,
         'binary_image_resolved': binary_image_resolved,
         'bundle_mapping': bundle_mapping,
-        'from_index_resolved': index_info["from_index"]['resolved_from_index'],
-        'ocp_version': index_info["from_index"]['ocp_version'],
         'distribution_scope': distribution_scope,
-        'source_from_index_resolved': index_info['source_from_index']['resolved_from_index'],
+        'from_index_resolved': index_info["from_index"]['resolved_from_index'],  # type: ignore
+        'ocp_version': index_info["from_index"]['ocp_version'],
+        'source_from_index_resolved': source_from_index_resolved,  # type: ignore
         'source_ocp_version': index_info['source_from_index']['ocp_version'],
-        'target_index_resolved': index_info['target_index']['resolved_from_index'],
+        'target_index_resolved': index_info['target_index']['resolved_from_index'],  # type: ignore
         'target_ocp_version': index_info['target_index']['ocp_version'],
     }
 
 
-def grpcurl_get_db_data(from_index, base_dir, endpoint):
-    """Get a list of operators already present in the index image.
+def grpcurl_get_db_data(from_index: str, base_dir: str, endpoint: str) -> str:
+    """Get a str  with operators already present in the index image.
 
     :param str from_index: index image to inspect.
     :param str base_dir: base directory to create temporary files in.
-    :return: list of unique present operators as provided by the grpc query
-    :rtype: list
+    :return: str result of the grpc query
+    :rtype: str
     :raises IIBError: if any of the commands fail.
     """
     port, rpc_proc = opm_serve_from_index(base_dir, from_index=from_index)

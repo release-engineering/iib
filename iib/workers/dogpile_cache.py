@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import functools
 import hashlib
+from typing import Callable
 
 from dogpile.cache import make_region
+from dogpile.cache.region import CacheRegion
 
 from iib.workers.config import get_worker_config
 
 
-def skopeo_inspect_should_use_cache(*args, **kwargs):
+def skopeo_inspect_should_use_cache(*args, **kwargs) -> bool:
     """Return true in case this requests can be taken from or stored in cache."""
     return any(arg.find('@sha256:') != -1 for arg in args)
 
 
-def dogpile_cache(dogpile_region, should_use_cache_fn):
+def dogpile_cache(dogpile_region: CacheRegion, should_use_cache_fn: Callable) -> Callable:
     """
     Dogpile cache decorator.
 
@@ -44,20 +46,21 @@ def dogpile_cache(dogpile_region, should_use_cache_fn):
     return cache_decorator
 
 
-def generate_cache_key(fn, *args, **kwargs):
+def generate_cache_key(fn: str, *args, **kwargs) -> str:
     """Generate key that is used in dogpile cache."""
     arguments = '|'.join(
         [str(arg) for arg in args] + [f'{kwarg}={kwargs[kwarg]}' for kwarg in kwargs]
     )
     key_str = f'{fn}|{arguments}'
     try:
-        key = hashlib.sha256(key_str).hexdigest()
+        # error: Argument 1 to "sha256" has incompatible type "str"; expected Union[bytes, ...]]
+        key = hashlib.sha256(key_str).hexdigest()  # type: ignore
     except TypeError:
         key = hashlib.sha256(key_str.encode('utf-8')).hexdigest()
     return key
 
 
-def create_dogpile_region():
+def create_dogpile_region() -> CacheRegion:
     """Create and configure a dogpile region."""
     conf = get_worker_config()
 

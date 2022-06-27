@@ -10,7 +10,7 @@ from iib.workers.config import get_worker_config
 log = logging.getLogger(__name__)
 
 
-def is_image_fbc(image):
+def is_image_fbc(image: str) -> bool:
     """
     Detect File-Based catalog image.
 
@@ -28,7 +28,7 @@ def is_image_fbc(image):
     return bool(get_image_label(image, 'operators.operatorframework.io.index.configs.v1'))
 
 
-def get_catalog_dir(from_index, base_dir):
+def get_catalog_dir(from_index: str, base_dir: str) -> str:
     """
     Get file-based catalog directory from the specified index image and save it locally.
 
@@ -52,7 +52,7 @@ def get_catalog_dir(from_index, base_dir):
     return os.path.join(base_dir, os.path.basename(fbc_dir_path))
 
 
-def get_hidden_index_database(from_index, base_dir):
+def get_hidden_index_database(from_index: str, base_dir: str) -> str:
     """
     Get hidden database file from the specified index image and save it locally.
 

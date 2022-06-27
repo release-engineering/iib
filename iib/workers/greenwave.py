@@ -2,17 +2,20 @@
 from copy import deepcopy
 import json
 import logging
+from typing import List
 
 import requests
+from celery.app.utils import Settings
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import get_image_labels
+from iib.workers.tasks.iib_static_types import GreenwaveConfig
 
 log = logging.getLogger(__name__)
 
 
-def gate_bundles(bundles, greenwave_config):
+def gate_bundles(bundles: List[str], greenwave_config: GreenwaveConfig) -> None:
     """
     Check if all bundle images have passed gating tests in the CVP pipeline.
 
@@ -33,7 +36,7 @@ def gate_bundles(bundles, greenwave_config):
     for bundle in bundles:
         koji_build_nvr = _get_koji_build_nvr(bundle)
         log.debug('Querying Greenwave for decision on %s', koji_build_nvr)
-        payload = deepcopy(greenwave_config)
+        payload = dict(deepcopy(greenwave_config))
         payload['subject_identifier'] = koji_build_nvr
         log.debug(
             'Querying Greenwave with decision_context: %s, product_version: %s, '
@@ -78,7 +81,7 @@ def gate_bundles(bundles, greenwave_config):
         raise IIBError(error_msg)
 
 
-def _get_koji_build_nvr(bundle):
+def _get_koji_build_nvr(bundle: str) -> str:
     """
     Get the Koji build NVR of the bundle from its labels.
 
@@ -90,7 +93,10 @@ def _get_koji_build_nvr(bundle):
     return '{}-{}-{}'.format(labels['com.redhat.component'], labels['version'], labels['release'])
 
 
-def _validate_greenwave_params_and_config(conf, greenwave_config):
+def _validate_greenwave_params_and_config(
+    conf: Settings,
+    greenwave_config: GreenwaveConfig,
+) -> None:
     """
     Validate payload parameters and config variables required for gating bundles.
 

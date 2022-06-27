@@ -397,6 +397,7 @@ def test_add_bundles_missing_in_source(
         1,
         'amd64',
         '4.6',
+        'dev',
     )
     assert missing_bundles == [
         {
@@ -542,6 +543,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
             1,
             'amd64',
             '4.6',
+            'dev',
         )
 
 
@@ -607,6 +609,7 @@ def test_add_bundles_missing_in_source_none_missing(
         1,
         'amd64',
         '4.6',
+        'dev',
     )
     assert missing_bundles == []
     assert invalid_bundles == [

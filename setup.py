@@ -25,6 +25,7 @@ setup(
         'retry',
         'ruamel.yaml',
         'ruamel.yaml.clib',
+        'typing-extensions',
         'packaging',
     ],
     classifiers=[

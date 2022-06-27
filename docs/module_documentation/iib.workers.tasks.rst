@@ -40,6 +40,14 @@ iib.workers.tasks.utils module
    :private-members:
    :show-inheritance:
 
+iib.workers.tasks.iib_static_types module
+-----------------------------------------
+
+.. automodule:: iib.workers.tasks.iib_static_types
+   :ignore-module-all:
+   :members:
+   :private-members:
+   :show-inheritance:
 
 Module contents
 ---------------

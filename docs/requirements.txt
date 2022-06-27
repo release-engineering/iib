@@ -16,3 +16,4 @@ ruamel.yaml
 # https://github.com/sphinx-doc/sphinx/issues/2796
 sphinx!=3.0.2
 sphinx_rtd_theme
+typing-extensions
