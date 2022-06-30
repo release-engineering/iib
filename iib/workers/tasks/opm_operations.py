@@ -154,7 +154,7 @@ def _serve_cmd_at_port(serve_cmd, cwd, port, max_tries, wait_time):
         error occurred.
     :raises AddressAlreadyInUse: if the specified port is already being used by another service.
     """
-    from iib.workers.tasks.utils import run_cmd
+    from iib.workers.tasks.utils import run_cmd, terminate_process
 
     log.debug('Run command %s with up to %d retries', ' '.join(serve_cmd), max_tries)
     for _ in range(max_tries):
@@ -189,7 +189,7 @@ def _serve_cmd_at_port(serve_cmd, cwd, port, max_tries, wait_time):
                 log.info('Index registry service has been initialized.')
                 return rpc_proc
 
-        rpc_proc.terminate()
+        terminate_process(rpc_proc)
 
     raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
 

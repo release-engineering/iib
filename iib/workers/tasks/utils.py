@@ -83,7 +83,7 @@ def add_max_ocp_version_property(resolved_bundles, temp_dir):
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
         exc_msg='Failed to get bundle data from index image',
     )
-    rpc_proc.terminate()
+    terminate_process(rpc_proc)
 
     # This branch is hit when `bundles` attribute is empty and the index image is empty.
     # Ideally the code should not reach here if the bundles attribute is empty but adding
@@ -701,6 +701,25 @@ def run_cmd(
     return response.stdout
 
 
+def terminate_process(proc, timeout=5):
+    """
+    Terminate given process. Fallback to SIGKILL when process is not terminated in given timeout.
+
+    :param subprocess.Popen proc: process to be terminated
+    :param int timeout: number of seconds to wait for terminating process
+    """
+    log.debug('Terminating process %s', proc)
+    proc.terminate()
+    try:
+        # not using proc.wait() because it might cause deadlock when using pipes
+        # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.wait
+        proc.communicate(timeout=timeout)
+        log.info('Process terminated.')
+    except subprocess.TimeoutExpired:
+        log.warning('Process not terminated in time (%ss). Sending SIGKILL.', timeout)
+        proc.kill()
+
+
 def request_logger(func):
     """
     Log messages relevant to the current request to a dedicated file.
@@ -1062,5 +1081,5 @@ def grpcurl_get_db_data(from_index, base_dir, endpoint):
         ['grpcurl', '-plaintext', f'localhost:{port}', endpoint],
         exc_msg=f'Failed to get {endpoint} data from index image',
     )
-    rpc_proc.terminate()
+    terminate_process(rpc_proc)
     return result
