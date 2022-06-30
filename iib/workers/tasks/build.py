@@ -38,6 +38,7 @@ from iib.workers.tasks.utils import (
     get_image_label,
     verify_labels,
     prepare_request_for_build,
+    terminate_process,
 )
 
 __all__ = ['handle_add_request', 'handle_rm_request']
@@ -332,7 +333,7 @@ def _get_present_bundles(from_index, base_dir):
         ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
         exc_msg='Failed to get bundle data from index image',
     )
-    rpc_proc.terminate()
+    terminate_process(rpc_proc)
 
     # If no data is returned there are not bundles present
     if not bundles:
