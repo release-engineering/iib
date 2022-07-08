@@ -10,12 +10,12 @@ from iib.web.app import create_app
 
 
 @click.group(cls=FlaskGroup, create_app=create_app)
-def cli():
+def cli() -> None:
     """Manage the IIB Flask application."""
 
 
 @cli.command(name='wait-for-db')
-def wait_for_db():
+def wait_for_db() -> None:
     """Wait until database server is reachable."""
     # The polling interval in seconds
     poll_interval = 10

@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from typing import List, NoReturn
+
 import kombu.exceptions
-from flask import jsonify, current_app
+from flask import current_app, jsonify, Request, Response
 from werkzeug.exceptions import HTTPException
 
 from iib.exceptions import IIBError, ValidationError
 from iib.web import messaging, db
 
 
-def json_error(error):
+def json_error(error: Exception) -> Response:
     """
     Convert exceptions to JSON responses.
 
@@ -35,7 +37,7 @@ def json_error(error):
     return response
 
 
-def handle_broker_error(request):
+def handle_broker_error(request: Request) -> NoReturn:
     """
     Handle broker errors by setting the request as failed and raise an IIBError exception.
 
@@ -52,7 +54,7 @@ def handle_broker_error(request):
     raise IIBError(error_message)
 
 
-def handle_broker_batch_error(requests):
+def handle_broker_batch_error(requests: List[Request]) -> NoReturn:
     """
     Handle broker errors by setting all requests as failed and raise an IIBError exception.
 

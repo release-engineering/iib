@@ -3,14 +3,20 @@ from collections import namedtuple
 import json
 import os
 import time
+from typing import Any, Callable, cast, Dict, List, Optional, Union
 import uuid
 
 from flask import current_app
 import proton
 import proton.reactor
 import proton.utils
+from proton._endpoints import Connection
 
-from iib.web.models import RequestStateMapping
+from iib.web.iib_static_types import (
+    BaseClassRequestResponse,
+    BatchRequestResponseList,
+)
+from iib.web.models import Batch, Request, RequestStateMapping
 
 __all__ = ['Envelope', 'json_to_envelope', 'send_messages', 'send_message_for_state_change']
 
@@ -25,20 +31,20 @@ class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
 
     def __init__(
         self,
-        url=None,
-        timeout=None,
-        container=None,
-        ssl_domain=None,
-        heartbeat=None,
-        urls=None,
+        url: Optional[str] = None,
+        timeout: Optional[int] = None,
+        container: Optional[proton.reactor.Container] = None,
+        ssl_domain: Optional[proton.SSLDomain] = None,
+        heartbeat: Optional[int] = None,
+        urls: Optional[List[str]] = None,
         **kwargs,
-    ):
+    ) -> None:
         self.disconnected = False
         self.timeout = timeout or 60
         self.container = container or proton.reactor.Container()
         self.container.timeout = self.timeout
         self.container.start()
-        self.conn = None
+        self.conn: Connection = None
         self.closing = False
         # If multiple URLs are provided, allow a reconnect to occur if the
         # connection to one of the previous URLs fails.
@@ -63,7 +69,12 @@ class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
             if failed and self.conn:
                 self.close()
 
-    def wait(self, condition, timeout=False, msg=None):
+    def wait(
+        self,
+        condition: Callable[[], bool],
+        timeout: Optional[Union[int, bool]] = False,
+        msg: Optional[str] = None,
+    ) -> None:
         """
         Process events until ``condition()`` returns ``True``.
 
@@ -114,7 +125,7 @@ class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
             )
 
     @property
-    def url(self):
+    def url(self) -> Optional[str]:
         """
         Get the current URL of the connection.
 
@@ -127,7 +138,10 @@ class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
 Envelope = namedtuple('Envelope', 'address message')
 
 
-def _get_batch_state_change_envelope(batch, new_batch=False):
+def _get_batch_state_change_envelope(
+    batch: Batch,
+    new_batch: Optional[bool] = False,
+) -> Optional[Envelope]:
     """
     Generate a batch state change ``Envelope`` object.
 
@@ -146,7 +160,7 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
             'No batch state change message will be generated since the configuration '
             '"IIB_MESSAGING_BATCH_STATE_DESTINATION" is not set'
         )
-        return
+        return None
 
     if new_batch:
         # Avoid querying the database for the batch state since we know it's a new batch
@@ -157,7 +171,7 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
     if new_batch or batch_state in RequestStateMapping.get_final_states():
         current_app.logger.debug('Preparing to send a state change message for batch %d', batch.id)
         batch_username = getattr(batch.user, 'username', None)
-        content = {
+        content: BatchRequestResponseList = {
             'batch': batch.id,
             'annotations': batch.annotations,
             'requests': [
@@ -177,9 +191,10 @@ def _get_batch_state_change_envelope(batch, new_batch=False):
             'user': batch_username,
         }
         return json_to_envelope(batch_address, content, properties)
+    return None
 
 
-def _get_request_state_change_envelope(request):
+def _get_request_state_change_envelope(request: Request) -> Optional[Envelope]:
     """
     Generate a request state change ``Envelope`` object.
 
@@ -195,10 +210,11 @@ def _get_request_state_change_envelope(request):
             'No request state change message will be generated since the configuration '
             '"IIB_MESSAGING_BUILD_STATE_DESTINATION" is not set'
         )
-        return
+        return None
 
     current_app.logger.debug('Preparing to send a state change message for request %d', request.id)
-    request_json = request.to_json(verbose=False)
+    # cast from Union - see Request.to_json
+    request_json = cast(BaseClassRequestResponse, request.to_json(verbose=False))
     properties = {
         'batch': request_json['batch'],
         'id': request_json['id'],
@@ -208,7 +224,7 @@ def _get_request_state_change_envelope(request):
     return json_to_envelope(request_address, request_json, properties)
 
 
-def _get_ssl_domain():
+def _get_ssl_domain() -> Optional[proton.SSLDomain]:
     """
     Create the SSL configuration object for qpid-proton.
 
@@ -223,7 +239,7 @@ def _get_ssl_domain():
         current_app.logger.warning(
             'Skipping authentication due to missing certificates and/or a private key'
         )
-        return
+        return None
 
     domain = proton.SSLDomain(proton.SSLDomain.MODE_CLIENT)
     domain.set_credentials(conf['IIB_MESSAGING_CERT'], conf['IIB_MESSAGING_KEY'], None)
@@ -232,7 +248,11 @@ def _get_ssl_domain():
     return domain
 
 
-def json_to_envelope(address, content, properties=None):
+def json_to_envelope(
+    address: str,
+    content: Union[BaseClassRequestResponse, BatchRequestResponseList],
+    properties: Optional[Dict[str, Any]] = None,
+) -> Envelope:
     """
     Create an ``Envelope`` object from a JSON dictionary.
 
@@ -249,7 +269,7 @@ def json_to_envelope(address, content, properties=None):
     return Envelope(address, message)
 
 
-def send_messages(envelopes):
+def send_messages(envelopes: List[Envelope]) -> None:
     """
     Send multiple messages in order while using a single connection and reusing sender links.
 
@@ -264,7 +284,7 @@ def send_messages(envelopes):
     conf = current_app.config
     if not conf.get('IIB_MESSAGING_URLS'):
         current_app.logger.error('The "IIB_MESSAGING_URLS" must be set to send messages')
-        return
+        return None
 
     address_to_sender = {}
     connection = None
@@ -294,7 +314,7 @@ def send_messages(envelopes):
             connection.close()
 
 
-def send_message_for_state_change(request, new_batch_msg=False):
+def send_message_for_state_change(request: Request, new_batch_msg: Optional[bool] = False) -> None:
     """
     Send the appropriate message(s) based on a build request state change.
 
@@ -319,7 +339,7 @@ def send_message_for_state_change(request, new_batch_msg=False):
         send_messages(envelopes)
 
 
-def send_messages_for_new_batch_of_requests(requests):
+def send_messages_for_new_batch_of_requests(requests: List[Request]) -> None:
     """
     Send the appropriate message(s) based on a new batch of build requests.
 
@@ -328,7 +348,7 @@ def send_messages_for_new_batch_of_requests(requests):
     :param list requests: the requests that were created as part of the batch request
     """
     if not requests:
-        return
+        return None
 
     envelopes = []
 

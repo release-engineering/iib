@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from flask import current_app
+from typing import Optional
+
+from flask import current_app, Request
 
 from iib.web import db
 from iib.web.models import User
 
 
-def user_loader(username):
+def user_loader(username: str) -> Optional[User]:
     """
     Get the user by their username from the database.
 
@@ -18,7 +20,7 @@ def user_loader(username):
     return User.query.filter_by(username=username).first()
 
 
-def _get_kerberos_principal(request):
+def _get_kerberos_principal(request: Request) -> Optional[str]:
     """
     Get the Kerberos principal from the current request.
 
@@ -32,7 +34,7 @@ def _get_kerberos_principal(request):
     return request.environ.get('REMOTE_USER')
 
 
-def load_user_from_request(request):
+def load_user_from_request(request: Request) -> Optional[User]:
     """
     Load the user that authenticated from the current request.
 
@@ -54,7 +56,7 @@ def load_user_from_request(request):
                 'The REMOTE_USER environment variable wasn\'t set on the request, but the '
                 'LOGIN_DISABLED configuration is set to True.'
             )
-        return
+        return None
 
     current_app.logger.info(f'The user "{username}" was authenticated successfully by httpd')
     user = User.get_or_create(username)

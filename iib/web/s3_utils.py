@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
+from typing import Optional
 
 import boto3
+from botocore.response import StreamingBody
 
 log = logging.getLogger(__name__)
 
 
-def get_object_from_s3_bucket(s3_key_prefix, s3_file_name, bucket_name):
+def get_object_from_s3_bucket(
+    s3_key_prefix: str,
+    s3_file_name: str,
+    bucket_name: str,
+) -> Optional[StreamingBody]:
     """
     Get object from AWS S3 bucket.
 

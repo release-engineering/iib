@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import os
+from typing import Optional
 
 from flask import Flask
+from flask.config import Config
 from flask.logging import default_handler
 from flask_login import LoginManager
 from flask_migrate import Migrate
@@ -20,7 +22,7 @@ from iib.web.errors import json_error
 import iib.web.models  # noqa: F401
 
 
-def load_config(app):
+def load_config(app: Flask) -> None:
     """
     Determine the correct configuration to use and apply it.
 
@@ -40,7 +42,7 @@ def load_config(app):
         app.config.from_pyfile(config_file)
 
 
-def validate_api_config(config):
+def validate_api_config(config: Config) -> None:
     """
     Determine if the configuration is valid.
 
@@ -154,7 +156,7 @@ def validate_api_config(config):
 
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/
-def create_app(config_obj=None):  # pragma: no cover
+def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     """
     Create a Flask application object.
 

@@ -63,7 +63,7 @@ class BundleImage(TypedDict):
 class UpdateRequestPayload(TypedDict, total=False):
     """Type class referencing possible parameters used with IIB API."""
 
-    arches: NotRequired[Set[str]]
+    arches: NotRequired[List[str]]
     binary_image: NotRequired[str]
     binary_image_resolved: NotRequired[str]
     bundle_image: NotRequired[str]

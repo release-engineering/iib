@@ -1,25 +1,55 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
 from copy import deepcopy
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 import json
+from typing import Any, cast, Dict, List, Literal, Optional, Sequence, Set, Union
+from abc import abstractmethod
 
 from flask import current_app, url_for
 from flask_login import UserMixin, current_user
+from flask_sqlalchemy.model import DefaultMeta
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import joinedload, load_only, validates
+from sqlalchemy.orm.strategy_options import _UnboundLoad
+from sqlalchemy.orm.relationships import RelationshipProperty
+from sqlalchemy.sql.schema import Column
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
 
 
+from iib.web.iib_static_types import (
+    AddRequestPayload,
+    AddRequestResponse,
+    AddRmBatchPayload,
+    AddRmRequestResponseBase,
+    BaseClassRequestResponse,
+    BuildRequestState,
+    CommonIndexImageResponseBase,
+    CreateEmptyIndexPayload,
+    CreateEmptyIndexRequestResponse,
+    MergeIndexImageRequestResponse,
+    MergeIndexImagesPayload,
+    RequestPayload,
+    PayloadTypesUnion,
+    RecursiveRelatedBundlesRequestPayload,
+    RecursiveRelatedBundlesRequestResponse,
+    RegenerateBundleBatchPayload,
+    RegenerateBundlePayload,
+    RegenerateBundleRequestResponse,
+    RmRequestPayload,
+)
+
+
 class BaseEnum(Enum):
     """A base class for IIB enums."""
 
     @classmethod
-    def get_names(cls):
+    def get_names(cls) -> List[str]:
         """
         Get a sorted list of enum names.
 
@@ -32,12 +62,12 @@ class BaseEnum(Enum):
 class RequestStateMapping(BaseEnum):
     """An Enum that represents the request states."""
 
-    in_progress = 1
-    complete = 2
-    failed = 3
+    in_progress: int = 1
+    complete: int = 2
+    failed: int = 3
 
     @staticmethod
-    def get_final_states():
+    def get_final_states() -> List[str]:
         """
         Get the states that are considered final for a request.
 
@@ -47,7 +77,7 @@ class RequestStateMapping(BaseEnum):
         return ['complete', 'failed']
 
     @classmethod
-    def validate_state(cls, state):
+    def validate_state(cls, state: str) -> None:
         """
         Verify that the input state is valid.
 
@@ -65,16 +95,16 @@ class RequestStateMapping(BaseEnum):
 class RequestTypeMapping(BaseEnum):
     """An Enum that represents the request types."""
 
-    generic = 0
-    add = 1
-    rm = 2
-    regenerate_bundle = 3
-    merge_index_image = 4
-    create_empty_index = 5
-    recursive_related_bundles = 6
+    generic: int = 0
+    add: int = 1
+    rm: int = 2
+    regenerate_bundle: int = 3
+    merge_index_image: int = 4
+    create_empty_index: int = 5
+    recursive_related_bundles: int = 6
 
     @classmethod
-    def pretty(cls, num):
+    def pretty(cls, num: int) -> str:
         """
         Return the prettified version of the enum value.
 
@@ -85,11 +115,11 @@ class RequestTypeMapping(BaseEnum):
         return cls(num).name.replace('_', '-')
 
     @classmethod
-    def validate_type(cls, request_type):
+    def validate_type(cls, request_type: str) -> None:
         """
         Verify that the input request_type is valid.
 
-        :param str type: the request_type to validate
+        :param str request_type: the request_type to validate
         :raises iib.exceptions.ValidationError: if the request_type is invalid
         """
         prettified_request_types = [
@@ -155,11 +185,11 @@ class Architecture(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False, unique=True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Architecture name={0!r}>'.format(self.name)
 
     @staticmethod
-    def validate_architecture_json(arches):
+    def validate_architecture_json(arches: List[str]) -> None:
         """
         Validate the JSON representation of architectures.
 
@@ -206,11 +236,11 @@ class Image(db.Model):
 
     operator = db.relationship('Operator')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
 
     @classmethod
-    def get_or_create(cls, pull_specification):
+    def get_or_create(cls, pull_specification: str) -> Image:
         """
         Get the image from the database and create it if it doesn't exist.
 
@@ -239,11 +269,11 @@ class Operator(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False, index=True, unique=True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<Operator name={0!r}>'.format(self.name)
 
     @classmethod
-    def get_or_create(cls, name):
+    def get_or_create(cls, name: str) -> Operator:
         """
         Get the operator from the database and create it if it doesn't exist.
 
@@ -353,7 +383,7 @@ class Request(db.Model):
     }
 
     @validates('type')
-    def validate_type(self, key, type_num):
+    def validate_type(self, key: Optional[str], type_num: int) -> int:
         """
         Verify the type number used is valid.
 
@@ -367,10 +397,10 @@ class Request(db.Model):
             raise ValidationError(f'{type_num} is not a valid request type number')
         return type_num
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<{0} {1!r}>'.format(self.__class__.__name__, self.id)
 
-    def add_state(self, state, state_reason):
+    def add_state(self, state: str, state_reason: str) -> None:
         """
         Add a RequestState associated with the current request.
 
@@ -401,7 +431,7 @@ class Request(db.Model):
         db.session.flush()
         self.request_state_id = request_state.id
 
-    def add_build_tag(self, name):
+    def add_build_tag(self, name: str) -> None:
         """
         Add a RequestBuildTag associated with the current request.
 
@@ -416,7 +446,7 @@ class Request(db.Model):
         if bt not in self.build_tags:
             self.build_tags.append(bt)
 
-    def add_architecture(self, arch_name):
+    def add_architecture(self, arch_name: str) -> None:
         """
         Add an architecture associated with this image.
 
@@ -432,20 +462,35 @@ class Request(db.Model):
         if arch not in self.architectures:
             self.architectures.append(arch)
 
-    @classmethod
-    def from_json(cls, kwargs):
+    @abstractmethod
+    def from_json(
+        cls,
+        kwargs: PayloadTypesUnion,
+    ) -> Request:
         """
         Handle JSON requests for a request API endpoint.
 
         Child classes MUST override this method.
 
-        :param dict kwargs: the user provided parameters to create a Request
+        :param PayloadTypesUnion kwargs: the user provided parameters to create a Request
         :return: an object representation of the request
         :retype: Request
         """
         raise NotImplementedError('{} does not implement from_json'.format(cls.__name__))
 
-    def to_json(self, verbose=True):
+    # return value is BaseClassRequestResponse, however because of LSP, we need other types here too
+    def to_json(
+        self,
+        verbose: Optional[bool] = True,
+    ) -> Union[
+        AddRequestResponse,
+        AddRmRequestResponseBase,
+        BaseClassRequestResponse,
+        CreateEmptyIndexRequestResponse,
+        MergeIndexImageRequestResponse,
+        RecursiveRelatedBundlesRequestResponse,
+        RegenerateBundleRequestResponse,
+    ]:
         """
         Provide the basic JSON representation of a build request.
 
@@ -463,7 +508,7 @@ class Request(db.Model):
             'user': getattr(self.user, 'username', None),
         }
 
-        def _state_to_json(state):
+        def _state_to_json(state: RequestState) -> BuildRequestState:
             return {
                 'state': RequestStateMapping(state.state).name,
                 'state_reason': state.state_reason,
@@ -488,9 +533,10 @@ class Request(db.Model):
                 }
         rv.update(latest_state or _state_to_json(self.state))
 
-        return rv
+        # cast from Dict[str, Any] - sooner cast would require less strict types
+        return cast(BaseClassRequestResponse, rv)
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -500,7 +546,7 @@ class Request(db.Model):
         return {'arches', 'state', 'state_reason'}
 
     @property
-    def type_name(self):
+    def type_name(self) -> str:
         """
         Get the request's type as a string.
 
@@ -510,7 +556,7 @@ class Request(db.Model):
         return RequestTypeMapping.pretty(self.type)
 
     @property
-    def temporary_data_expiration(self):
+    def temporary_data_expiration(self) -> datetime:
         """
         Return the timestamp of when logs and related_bundles are considered expired.
 
@@ -532,12 +578,12 @@ class Batch(db.Model):
     )
 
     @property
-    def annotations(self):
+    def annotations(self) -> Optional[Dict[str, Any]]:
         """Return the Python representation of the JSON annotations."""
         return json.loads(self._annotations) if self._annotations else None
 
     @annotations.setter
-    def annotations(self, annotations):
+    def annotations(self, annotations: Optional[Dict[str, Any]]) -> None:
         """
         Set the annotations column to the input annotations as a JSON string.
 
@@ -550,7 +596,9 @@ class Batch(db.Model):
         )
 
     @staticmethod
-    def validate_batch_request_params(payload):
+    def validate_batch_request_params(
+        payload: Union[AddRmBatchPayload, RegenerateBundleBatchPayload]
+    ) -> None:
         """
         Validate batch specific parameters from the input JSON payload.
 
@@ -573,7 +621,7 @@ class Batch(db.Model):
             raise ValidationError('The value of "annotations" must be a JSON object')
 
     @property
-    def state(self):
+    def state(self) -> str:
         """
         Get the state of the batch.
 
@@ -600,7 +648,7 @@ class Batch(db.Model):
             return 'complete'
 
     @property
-    def request_states(self):
+    def request_states(self) -> List[str]:
         """
         Get the states of all the requests in the batch.
 
@@ -619,7 +667,7 @@ class Batch(db.Model):
         return [RequestStateMapping(request.state.state).name for request in requests]
 
     @property
-    def user(self):
+    def user(self) -> Optional[User]:
         """
         Get the ``User`` object associated with the batch.
 
@@ -635,7 +683,7 @@ class Batch(db.Model):
         )
 
     @staticmethod
-    def validate_batch(batch_id):
+    def validate_batch(batch_id: int) -> int:
         """
         Validate the input batch ID.
 
@@ -662,7 +710,7 @@ class Batch(db.Model):
         return rv
 
 
-def get_request_query_options(verbose=False):
+def get_request_query_options(verbose: Optional[bool] = False) -> List[_UnboundLoad]:
     """
     Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
 
@@ -719,98 +767,102 @@ class RequestIndexImageMixin:
     """
 
     @declared_attr
-    def binary_image_id(cls):
+    def binary_image_id(cls: DefaultMeta) -> Column:
         """Return the ID of the image that the opm binary comes from."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def binary_image_resolved_id(cls):
+    def binary_image_resolved_id(cls: DefaultMeta) -> Column:
         """Return the ID of the resolved image that the opm binary comes from."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def binary_image(cls):
+    def binary_image(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to the image that the opm binary comes from."""
         return db.relationship('Image', foreign_keys=[cls.binary_image_id], uselist=False)
 
     @declared_attr
-    def binary_image_resolved(cls):
+    def binary_image_resolved(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to the resolved image that the opm binary comes from."""
         return db.relationship('Image', foreign_keys=[cls.binary_image_resolved_id], uselist=False)
 
     @declared_attr
-    def from_index_id(cls):
+    def from_index_id(cls: DefaultMeta) -> Column:
         """Return the ID of the index image to base the request from."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def from_index_resolved_id(cls):
+    def from_index_resolved_id(cls: DefaultMeta) -> Column:
         """Return the ID of the resolved index image  to base the request from."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def from_index(cls):
+    def from_index(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship of the index image to base the request from."""
         return db.relationship('Image', foreign_keys=[cls.from_index_id], uselist=False)
 
     @declared_attr
-    def from_index_resolved(cls):
+    def from_index_resolved(cls: DefaultMeta) -> Image:
         """Return the relationship of the resolved index image to base the request from."""
         return db.relationship('Image', foreign_keys=[cls.from_index_resolved_id], uselist=False)
 
     @declared_attr
-    def index_image_id(cls):
+    def index_image_id(cls: DefaultMeta) -> Column:
         """Return the ID of the built index image."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def index_image(cls):
+    def index_image(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
     @declared_attr
-    def index_image_resolved_id(cls):
+    def index_image_resolved_id(cls: DefaultMeta) -> Column:
         """Return the ID of the resolved built index image."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def index_image_resolved(cls):
+    def index_image_resolved(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_resolved_id], uselist=False)
 
     @declared_attr
-    def internal_index_image_copy_id(cls):
+    def internal_index_image_copy_id(cls: DefaultMeta) -> Column:
         """Return the ID of IIB's internal copy of the built index image."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def internal_index_image_copy(cls):
+    def internal_index_image_copy(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to IIB's internal copy of the built index image."""
         return db.relationship(
             'Image', foreign_keys=[cls.internal_index_image_copy_id], uselist=False
         )
 
     @declared_attr
-    def internal_index_image_copy_resolved_id(cls):
+    def internal_index_image_copy_resolved_id(cls: DefaultMeta) -> Column:
         """Return the ID of resolved IIB's internal copy of the built index image."""
         return db.Column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def internal_index_image_copy_resolved(cls):
+    def internal_index_image_copy_resolved(cls: DefaultMeta) -> RelationshipProperty:
         """Return the relationship to resolved IIB's internal copy of the built index image."""
         return db.relationship(
             'Image', foreign_keys=[cls.internal_index_image_copy_resolved_id], uselist=False
         )
 
     @declared_attr
-    def distribution_scope(cls):
+    def distribution_scope(cls: DefaultMeta) -> Column:
         """Return the distribution_scope for the request."""
         return db.Column(db.String, nullable=True)
 
+    # Union for request_kwargs would require exhausting checking of the request_kwargs in the method
     @staticmethod
     def _from_json(
-        request_kwargs, additional_required_params=None, additional_optional_params=None, batch=None
-    ):
+        request_kwargs: RequestPayload,
+        additional_required_params: Optional[List[str]] = None,
+        additional_optional_params: Optional[List[str]] = None,
+        batch: Optional[Batch] = None,
+    ) -> None:
         """
         Validate and process request agnostic parameters.
 
@@ -909,7 +961,7 @@ class RequestIndexImageMixin:
         db.session.add(batch)
         request_kwargs['batch'] = batch
 
-    def get_common_index_image_json(self):
+    def get_common_index_image_json(self) -> CommonIndexImageResponseBase:
         """
         Return the common set of attributes for an index image request.
 
@@ -945,10 +997,11 @@ class RequestIndexImageMixin:
             'organization': None,
             'removed_operators': [],
             'distribution_scope': self.distribution_scope,
-            'build_tags': [tag.name for tag in self.build_tags],
+            # Mypy Error: "RequestIndexImageMixin" has no attribute "build_tags"
+            'build_tags': [tag.name for tag in self.build_tags],  # type: ignore
         }
 
-    def get_index_image_mutable_keys(self):
+    def get_index_image_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -983,7 +1036,11 @@ class RequestAdd(Request, RequestIndexImageMixin):
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['add'].value}
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: AddRequestPayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestAdd:
         """
         Handle JSON requests for the Add API endpoint.
 
@@ -1006,7 +1063,11 @@ class RequestAdd(Request, RequestIndexImageMixin):
         if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
             raise ValidationError('"from_index" must be specified if no bundles are specified')
 
-        for param in ('cnr_token', 'organization'):
+        ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'organization']] = (
+            'cnr_token',
+            'organization',
+        )
+        for param in ALLOWED_KEYS_1:
             if param not in request_kwargs:
                 continue
 
@@ -1020,8 +1081,9 @@ class RequestAdd(Request, RequestIndexImageMixin):
         request_kwargs.pop('cnr_token', None)
         request_kwargs.pop('force_backport', None)
 
+        # cast to more wider type, see _from_json method
         cls._from_json(
-            request_kwargs,
+            cast(RequestPayload, request_kwargs),
             additional_optional_params=[
                 'from_index',
                 'organization',
@@ -1033,9 +1095,14 @@ class RequestAdd(Request, RequestIndexImageMixin):
             batch=batch,
         )
 
-        for key in ('bundles', 'deprecation_list'):
+        ALLOWED_KEYS_2: Sequence[Literal['bundles', 'deprecation_list']] = (
+            'bundles',
+            'deprecation_list',
+        )
+        for key in ALLOWED_KEYS_2:
             request_kwargs[key] = [
-                Image.get_or_create(pull_specification=item) for item in request_kwargs.get(key, [])
+                Image.get_or_create(pull_specification=item)
+                for item in request_kwargs.get(key, [])  # type: ignore
             ]
         build_tags = request_kwargs.pop('build_tags', [])
         request = cls(**request_kwargs)
@@ -1046,7 +1113,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         request.add_state('in_progress', 'The request was initiated')
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> AddRequestResponse:
         """
         Provide the JSON representation of an "add" build request.
 
@@ -1054,8 +1121,9 @@ class RequestAdd(Request, RequestIndexImageMixin):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
-        rv.update(self.get_common_index_image_json())
+        # cast to result type, super-type returns Union
+        rv = cast(AddRequestResponse, super().to_json(verbose=verbose))
+        rv.update(self.get_common_index_image_json())  # type: ignore
         rv['organization'] = self.organization
         rv['omps_operator_version'] = {}
         if self.omps_operator_version:
@@ -1072,7 +1140,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
         return rv
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -1099,7 +1167,11 @@ class RequestRm(Request, RequestIndexImageMixin):
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['rm'].value}
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: RmRequestPayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestRm:
         """
         Handle JSON requests for the Remove API endpoint.
 
@@ -1116,8 +1188,9 @@ class RequestRm(Request, RequestIndexImageMixin):
         ):
             raise ValidationError(f'"operators" should be a non-empty array of strings')
 
+        # cast to more wider type, see _from_json method
         cls._from_json(
-            request_kwargs,
+            cast(RequestPayload, request_kwargs),
             additional_required_params=['operators', 'from_index'],
             batch=batch,
         )
@@ -1133,7 +1206,7 @@ class RequestRm(Request, RequestIndexImageMixin):
 
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> AddRmRequestResponseBase:
         """
         Provide the JSON representation of an "rm" build request.
 
@@ -1141,13 +1214,14 @@ class RequestRm(Request, RequestIndexImageMixin):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
-        rv.update(self.get_common_index_image_json())
+        # cast to result type, super-type returns Union
+        rv = cast(AddRmRequestResponseBase, super().to_json(verbose=verbose))
+        rv.update(self.get_common_index_image_json())  # type: ignore
         rv['removed_operators'] = [operator.name for operator in self.operators]
 
         return rv
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -1187,12 +1261,12 @@ class RequestRegenerateBundle(Request):
     build_tags = None
 
     @property
-    def bundle_replacements(self):
+    def bundle_replacements(self) -> Optional[Dict[str, str]]:
         """Return the Python representation of the JSON bundle_replacements."""
         return json.loads(self._bundle_replacements) if self._bundle_replacements else {}
 
     @bundle_replacements.setter
-    def bundle_replacements(self, bundle_replacements):
+    def bundle_replacements(self, bundle_replacements: Dict[str, str]) -> None:
         """
         Set the bundle_replacements column to the input bundle_replacements as a JSON string.
 
@@ -1205,7 +1279,11 @@ class RequestRegenerateBundle(Request):
         )
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: RegenerateBundlePayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestRegenerateBundle:
         """
         Handle JSON requests for the Regenerate Bundle API endpoint.
 
@@ -1237,7 +1315,7 @@ class RequestRegenerateBundle(Request):
             raise ValidationError('"organization" must be a string')
 
         # Validate from_bundle_image is correctly provided
-        from_bundle_image = request_kwargs.pop('from_bundle_image')
+        from_bundle_image = request_kwargs.get('from_bundle_image')
         if not isinstance(from_bundle_image, str):
             raise ValidationError('"from_bundle_image" must be a string')
 
@@ -1264,7 +1342,7 @@ class RequestRegenerateBundle(Request):
         request.add_state('in_progress', 'The request was initiated')
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> RegenerateBundleRequestResponse:
         """
         Provide the JSON representation of a "regenerate-bundle" build request.
 
@@ -1272,7 +1350,8 @@ class RequestRegenerateBundle(Request):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
+        # cast to result type, super-type returns Union
+        rv = cast(RegenerateBundleRequestResponse, super().to_json(verbose=verbose))
         rv['bundle_image'] = getattr(self.bundle_image, 'pull_specification', None)
         rv['from_bundle_image'] = self.from_bundle_image.pull_specification
         rv['from_bundle_image_resolved'] = getattr(
@@ -1291,7 +1370,7 @@ class RequestRegenerateBundle(Request):
 
         return rv
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -1343,7 +1422,11 @@ class RequestMergeIndexImage(Request):
     }
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: MergeIndexImagesPayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestMergeIndexImage:
         """
         Handle JSON requests for the merge-index-image API endpoint.
 
@@ -1364,7 +1447,7 @@ class RequestMergeIndexImage(Request):
             Image.get_or_create(pull_specification=item) for item in deprecation_list
         ]
 
-        source_from_index = request_kwargs.pop('source_from_index', None)
+        source_from_index = request_kwargs.get('source_from_index', None)
         if not (isinstance(source_from_index, str) and source_from_index):
             raise ValidationError('The "source_from_index" value must be a string')
         request_kwargs['source_from_index'] = Image.get_or_create(
@@ -1443,7 +1526,7 @@ class RequestMergeIndexImage(Request):
         request.add_state('in_progress', 'The request was initiated')
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> MergeIndexImageRequestResponse:
         """
         Provide the JSON representation of an "merge-index-image" build request.
 
@@ -1451,7 +1534,8 @@ class RequestMergeIndexImage(Request):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
+        # cast to result type, super-type returns Union
+        rv = cast(MergeIndexImageRequestResponse, super().to_json(verbose=verbose))
         rv['binary_image'] = getattr(self.binary_image, 'pull_specification', None)
         rv['binary_image_resolved'] = getattr(
             self.binary_image_resolved, 'pull_specification', None
@@ -1471,7 +1555,7 @@ class RequestMergeIndexImage(Request):
 
         return rv
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -1505,12 +1589,13 @@ class RequestState(db.Model):
     request = db.relationship('Request', foreign_keys=[request_id], back_populates='states')
 
     @property
-    def state_name(self):
+    def state_name(self) -> Optional[str]:
         """Get the state's display name."""
         if self.state:
             return RequestStateMapping(self.state).name
+        return None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return '<RequestState id={} state="{}" request_id={}>'.format(
             self.id, self.state_name, self.request_id
         )
@@ -1524,7 +1609,7 @@ class User(db.Model, UserMixin):
     requests = db.relationship('Request', foreign_keys=[Request.user_id], back_populates='user')
 
     @classmethod
-    def get_or_create(cls, username):
+    def get_or_create(cls, username: str) -> User:
         """
         Get the user from the database and create it if it doesn't exist.
 
@@ -1541,14 +1626,19 @@ class User(db.Model, UserMixin):
         return user
 
 
-def validate_request_params(request_params, required_params, optional_params):
+def validate_request_params(
+    request_params: Union[RequestPayload, PayloadTypesUnion],
+    required_params: Set[str],
+    optional_params: Set[str],
+) -> None:
     """
     Validate parameters for a build request.
 
     All required parameters must be set in the request_params and
     unknown parameters are not allowed.
 
-    :param dict request_params: the request parameters provided by the user
+    :param Union[RequestPayload, PayloadTypesUnion] request_params: the request parameters
+                                                               provided by the user
     :param set required_params: the set of required parameters
     :param set optional_params: the set of optional parameters
     :raises iib.exceptions.ValidationError: if validation of parameters fails
@@ -1575,12 +1665,12 @@ def validate_request_params(request_params, required_params, optional_params):
         if (
             param in request_params
             and not isinstance(request_params.get(param), bool)
-            and not request_params[param]
+            and not request_params[param]  # type: ignore
         ):
-            del request_params[param]
+            del request_params[param]  # type: ignore
 
 
-def validate_registry_auths(registry_auths):
+def validate_registry_auths(registry_auths: Dict[str, Any]) -> None:
     """
     Validate registry_auths for a build request.
 
@@ -1623,12 +1713,12 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
     output_fbc = False
 
     @property
-    def labels(self):
+    def labels(self) -> Optional[Dict[str, str]]:
         """Return the Python representation of the JSON labels."""
         return json.loads(self._labels) if self._labels else None
 
     @labels.setter
-    def labels(self, labels):
+    def labels(self, labels: Optional[Dict[str, Any]]) -> None:
         """
         Set the labels column to the input labels as a JSON string.
 
@@ -1639,7 +1729,11 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         self._labels = json.dumps(labels, sort_keys=True) if labels is not None else None
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: CreateEmptyIndexPayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestCreateEmptyIndex:
         """
         Handle JSON requests for the create-empty-index API endpoint.
 
@@ -1651,7 +1745,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
             raise ValidationError('"from_index" must be a specified')
         if (
             not isinstance(request_kwargs.get('from_index'), str)
-            or len(request_kwargs.get('from_index')) == 0
+            or len(str(request_kwargs.get('from_index'))) == 0
         ):
             raise ValidationError('"from_index" must be a non-empty string')
         if request_kwargs.get('output_fbc') and not isinstance(
@@ -1679,8 +1773,9 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
                     f'The "{arg}" arg is invalid for the create-empty-index endpoint.'
                 )
 
+        # cast to more wider type, see _from_json method
         cls._from_json(
-            request_kwargs,
+            cast(RequestPayload, request_kwargs),
             additional_required_params=['from_index'],
             additional_optional_params=['labels'],
             batch=batch,
@@ -1691,7 +1786,7 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
 
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> CreateEmptyIndexRequestResponse:
         """
         Provide the JSON representation of an "create-empty-index" build request.
 
@@ -1699,8 +1794,10 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
-        rv.update(self.get_common_index_image_json())
+        # cast from Union, see Request.to_json,
+        # because of pop methods in the method BaseClassRequestResponse is better
+        rv = cast(BaseClassRequestResponse, super().to_json(verbose=verbose))
+        rv.update(self.get_common_index_image_json())  # type: ignore
         rv.pop('bundles')
         rv.pop('bundle_mapping')
         rv.pop('organization')
@@ -1709,10 +1806,12 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv.pop('build_tags')
         rv.pop('internal_index_image_copy')
         rv.pop('internal_index_image_copy_resolved')
-        rv['labels'] = self.labels
-        return rv
+        # cast to result type
+        result = cast(CreateEmptyIndexRequestResponse, rv)
+        result['labels'] = self.labels
+        return result
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 
@@ -1755,7 +1854,11 @@ class RequestRecursiveRelatedBundles(Request):
     build_tags = None
 
     @classmethod
-    def from_json(cls, kwargs, batch=None):
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: RecursiveRelatedBundlesRequestPayload,
+        batch: Optional[Batch] = None,
+    ):
         """
         Handle JSON requests for the Recursive Related Bundles API endpoint.
 
@@ -1778,7 +1881,7 @@ class RequestRecursiveRelatedBundles(Request):
             raise ValidationError('"organization" must be a string')
 
         # Validate parent_bundle_image is correctly provided
-        parent_bundle_image = request_kwargs.pop('parent_bundle_image')
+        parent_bundle_image = request_kwargs.get('parent_bundle_image')
         if not isinstance(parent_bundle_image, str):
             raise ValidationError('"parent_bundle_image" must be a string')
 
@@ -1805,7 +1908,7 @@ class RequestRecursiveRelatedBundles(Request):
         request.add_state('in_progress', 'The request was initiated')
         return request
 
-    def to_json(self, verbose=True):
+    def to_json(self, verbose: Optional[bool] = True) -> RecursiveRelatedBundlesRequestResponse:
         """
         Provide the JSON representation of a "recursive-related-bundles" build request.
 
@@ -1813,7 +1916,8 @@ class RequestRecursiveRelatedBundles(Request):
         :return: a dictionary representing the JSON of the build request
         :rtype: dict
         """
-        rv = super().to_json(verbose=verbose)
+        # cast to result type, super-type returns Union
+        rv = cast(RecursiveRelatedBundlesRequestResponse, super().to_json(verbose=verbose))
         rv['parent_bundle_image'] = self.parent_bundle_image.pull_specification
         rv['parent_bundle_image_resolved'] = getattr(
             self.parent_bundle_image_resolved, 'pull_specification', None
@@ -1827,7 +1931,7 @@ class RequestRecursiveRelatedBundles(Request):
 
         return rv
 
-    def get_mutable_keys(self):
+    def get_mutable_keys(self) -> Set[str]:
         """
         Return the set of keys representing the attributes that can be modified.
 

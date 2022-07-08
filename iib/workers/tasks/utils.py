@@ -561,7 +561,7 @@ def set_registry_token(
 
     registry = ImageName.parse(container_image).registry
     encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
-    registry_auths = {'auths': {}}
+    registry_auths: Dict[str, Any] = {'auths': {}}
     if append:
         docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
         if os.path.exists(docker_config_path):
