@@ -1124,6 +1124,17 @@ components:
               type: string
               example: >-
                 quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            related_bundles:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL to fetch the related bundles for the request
+                expiration:
+                  type: string
+                  description: >-
+                    UTC timestamp in ISO format that indicates when the related bundles for the request
+                    are considered to be expired and will be removed.
     MergeIndexImageRequest:
       type: object
       properties:
@@ -1285,13 +1296,6 @@ components:
             request_type:
               type: string
               example: "create-empty-index"
-            build_tags:
-              description: >
-                Extra tags applied to intermediate index image
-              type: array
-              items:
-                type: string
-              example: ["v4.5-10-08-2021"]
     RecursiveRelatedBundlesRequest:
       type: object
       properties:

@@ -338,10 +338,11 @@ def _adjust_operator_bundle(
             log.info('Performing bundle replacements')
             bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
             replacement_pullspecs = {}
-            for old, new in bundle_replacements.items():
-                if _is_bundle_image(old):
-                    replacement_pullspecs[ImageName.parse(old)] = ImageName.parse(new)
-            _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
+            if bundle_replacements:
+                for old, new in bundle_replacements.items():
+                    if _is_bundle_image(old):
+                        replacement_pullspecs[ImageName.parse(old)] = ImageName.parse(new)
+                _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
 
     return labels
 

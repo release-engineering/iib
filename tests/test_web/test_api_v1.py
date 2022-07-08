@@ -1660,7 +1660,7 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     'registry:8443/iib-build:11',
                     'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     None,
-                    None,
+                    False,
                     None,
                     None,
                     {},
@@ -1669,7 +1669,7 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                 argsrepr=(
                     "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "
                     "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
-                    ", None, None, None, None, {}, []]"
+                    ", None, False, None, None, {}, []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,

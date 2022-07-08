@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from flask import request, url_for
+from flask_sqlalchemy import Pagination
+
+from iib.web.iib_static_types import PaginationMetadata
 
 
-def pagination_metadata(pagination_query, **kwargs):
+def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMetadata:
     """
     Return a dictionary containing metadata about the paginated query.
 
@@ -12,7 +15,7 @@ def pagination_metadata(pagination_query, **kwargs):
     :param dict kwargs: the query parameters to add to the URLs
     :return: a dictionary containing metadata about the paginated query
     """
-    pagination_data = {
+    pagination_data: PaginationMetadata = {
         'first': url_for(
             request.endpoint, page=1, per_page=pagination_query.per_page, _external=True, **kwargs
         ),
@@ -51,7 +54,7 @@ def pagination_metadata(pagination_query, **kwargs):
     return pagination_data
 
 
-def str_to_bool(item):
+def str_to_bool(item: str) -> bool:
     """
     Convert a string to a boolean.
 
