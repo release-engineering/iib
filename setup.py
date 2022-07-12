@@ -24,6 +24,7 @@ setup(
         'requests-kerberos',
         'retry',
         'ruamel.yaml',
+        'ruamel.yaml.clib',
         'packaging',
     ],
     classifiers=[
