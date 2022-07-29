@@ -238,7 +238,7 @@ The custom configuration options for the Celery workers are listed below:
   [broker_url](https://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url)
   configuration documentation.
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
-  `30` seconds.
+  `60` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
 * `iib_aws_s3_bucket_name` - the name of the AWS S3 bucket used to store artifact files like logs
   and related_bundles if specified. `iib_request_logs_dir` and `iib_request_related_bundles_dir`
@@ -349,8 +349,8 @@ The custom configuration options for the Celery workers are listed below:
   `30s` (30 seconds).
 * `iib_total_attempts` - the total number of attempts to make at trying a function relating to the
   container registry before erroring out. This defaults to `5`. It's also used as the max number of attempts to buildah when receiving HTTP 50X errors.
-* `iib_retry_delay` - the delay in seconds between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `4`.
-* `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `2`.
+* `iib_retry_delay` - the delay in seconds between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
+* `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
 must be set along with `iib_aws_s3_bucket_name` config variable:
