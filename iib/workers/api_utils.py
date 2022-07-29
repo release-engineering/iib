@@ -25,7 +25,7 @@ def get_requests_session(auth=False):
             mutual_authentication=requests_kerberos.OPTIONAL
         )
     retry = Retry(
-        total=3, read=3, connect=3, backoff_factor=1, status_forcelist=(500, 502, 503, 504)
+        total=3, read=3, connect=3, backoff_factor=3, status_forcelist=(408, 500, 502, 503, 504)
     )
     adapter = requests.adapters.HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
