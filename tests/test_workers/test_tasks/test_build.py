@@ -590,18 +590,20 @@ def test_handle_add_request(
         'ocp_version': 'v4.5',
         'distribution_scope': distribution_scope,
     }
-    mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
+    mock_grb.return_value = ['some-bundle@sha256:123', 'some-deprecation-bundle@sha256:456']
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
-    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
+    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha256:678'}], [
+        'random_bundle@sha256:678'
+    ]
     bundles = ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1']
     cnr_token = 'token'
     organization = 'org'
     greenwave_config = {'some_key': 'other_value'}
     deprecation_list = []
     if deprecate_bundles:
-        mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
-        deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+        mock_ugrb.return_value = ['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456']
+        deprecation_list = ['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456']
 
     # Simulate opm's behavior of creating files that cannot be deleted
     def side_effect(*args, base_dir, **kwargs):
@@ -689,7 +691,7 @@ def test_handle_add_request(
     assert mock_srs.call_count == 4
     if deprecate_bundles:
         mock_dep_b.assert_called_once_with(
-            bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
+            bundles=['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456'],
             base_dir=mock.ANY,
             binary_image=binary_image or 'some_image',
             from_index='registry:8443/iib-build:3-amd64',
@@ -783,16 +785,18 @@ def test_handle_add_request_check_index_label_behavior(
         'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
     }
-    mock_grb.return_value = ['some-bundle@sha', 'some-deprecation-bundle@sha']
+    mock_grb.return_value = ['some-bundle@sha256:123', 'some-deprecation-bundle@sha256:456']
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
-    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha'}], ['random_bundle@sha']
+    mock_gpb.return_value = [{'bundlePath': 'random_bundle@sha256:678'}], [
+        'random_bundle@sha256:678'
+    ]
     bundles = ['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1']
     cnr_token = 'token'
     organization = 'org'
     greenwave_config = {'some_key': 'other_value'}
-    mock_ugrb.return_value = ['random_bundle@sha', 'some-deprecation-bundle@sha']
-    deprecation_list = ['random_bundle@sha', 'some-deprecation-bundle@sha']
+    mock_ugrb.return_value = ['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456']
+    deprecation_list = ['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456']
     # Assume default labels are set on the index
     label_state = {'LABEL_SET': 'default_labels_set'}
     mock_gwc.return_value = {
@@ -818,7 +822,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_ors.return_value = (port, my_mock)
     mock_run_cmd.side_effect = [
         '{"packageName": "package1", "version": "v1.0", "csvName": "random-csv", \
-        "bundlePath": "some-bundle@sha"\n}',
+        "bundlePath": "some-bundle@sha256:123"\n}',
         '{"passed":false, "outputs": [{"message": "olm.maxOpenShiftVersion not present"}]}',
     ]
     mock_sqlite.execute.return_value = 200
@@ -854,7 +858,7 @@ def test_handle_add_request_check_index_label_behavior(
                     'operator-sdk',
                     'bundle',
                     'validate',
-                    'some-bundle@sha',
+                    'some-bundle@sha256:123',
                     '--select-optional',
                     'name=community',
                     '--output=json-alpha1',
@@ -881,7 +885,7 @@ def test_handle_add_request_check_index_label_behavior(
         ),
     )
     mock_dep_b.assert_called_once_with(
-        bundles=['random_bundle@sha', 'some-deprecation-bundle@sha'],
+        bundles=['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456'],
         base_dir=mock.ANY,
         binary_image='binary-image:latest',
         from_index='quay.io/iib-build:3-amd64',

@@ -363,15 +363,31 @@ def _get_missing_bundles(present_bundles, bundles):
     :return: list of bundles not present in the index image.
     :rtype: list
     """
-    present_bundle_hashes = []
+    present_bundle_pullspecs = []
     filtered_bundles = []
     for bundle in present_bundles:
         if '@sha256:' in bundle['bundlePath']:
-            present_bundle_hashes.append(bundle['bundlePath'].split('@sha256:')[-1])
+            present_bundle_pullspecs.append(bundle['bundlePath'])
 
-    for bundle in bundles:
-        if bundle.split('@sha256:')[-1] not in present_bundle_hashes:
-            filtered_bundles.append(bundle)
+    for candidate_bundle in bundles:
+        bundle_hash = candidate_bundle.split('@sha256:')[-1]
+        bundle_found = False
+        for present_bundle in present_bundle_pullspecs:
+            if present_bundle == candidate_bundle:
+                log.info('Entire pullspec %s is present in the index', candidate_bundle)
+                bundle_found = True
+                break
+            elif bundle_hash in present_bundle:
+                log.warning(
+                    'WARNING! Only the hash with a different registry name/repo found in the index.'
+                    ' Present bundle: %s, Candidate bundle: %s',
+                    present_bundle,
+                    candidate_bundle,
+                )
+                bundle_found = True
+                break
+        if not bundle_found:
+            filtered_bundles.append(candidate_bundle)
 
     return filtered_bundles
 
