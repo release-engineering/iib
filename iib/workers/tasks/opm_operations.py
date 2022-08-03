@@ -238,7 +238,7 @@ def _get_or_create_temp_index_db_file(
     log.info('Temp index.db does not exist yet for %s', from_index)
     if from_index:
         log.info('Using the existing database from %s', from_index)
-        with set_registry_token(overwrite_from_index_token, from_index):
+        with set_registry_token(overwrite_from_index_token, from_index, append=True):
             if is_image_fbc(from_index):
                 return get_hidden_index_database(from_index, base_dir)
             return _get_index_database(from_index, base_dir)

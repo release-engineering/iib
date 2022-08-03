@@ -433,7 +433,6 @@ def test_add_bundles_missing_in_source(
         bundles=['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
         binary_image='binary-image:4.5',
         from_index='index-image:4.6',
-        overwrite_from_index_token=None,
         container_tool='podman',
     )
     assert mock_gil.call_count == 5
@@ -632,7 +631,6 @@ def test_add_bundles_missing_in_source_none_missing(
         bundles=[],
         binary_image='binary-image:4.5',
         from_index='index-image:4.6',
-        overwrite_from_index_token=None,
         container_tool='podman',
     )
     assert mock_gil.call_count == 4
