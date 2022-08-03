@@ -60,6 +60,7 @@ def _add_bundles_missing_in_source(
     arch: str,
     ocp_version: str,
     distribution_scope: str,
+    target_index=None,
     overwrite_target_index_token: Optional[str] = None,
 ) -> Tuple[List[BundleImage], List[BundleImage]]:
     """
@@ -76,6 +77,7 @@ def _add_bundles_missing_in_source(
     :param int request_id: the ID of the IIB build request.
     :param str arch: the architecture to build this image for.
     :param str ocp_version: ocp version which will be added as a label to the image.
+    :param str target_index: the pull specification of the container image
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``source_from_index`` image. This is required to use ``overwrite_target_index``.
         The format of the token must be in the format "user:password".
@@ -128,28 +130,26 @@ def _add_bundles_missing_in_source(
             '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
         )
 
-    with set_registry_token(overwrite_target_index_token, source_from_index):
+    with set_registry_token(overwrite_target_index_token, target_index, append=True):
         is_source_fbc = is_image_fbc(source_from_index)
-    if is_source_fbc:
-        opm_registry_add_fbc(
-            base_dir=base_dir,
-            bundles=missing_bundle_paths,
-            binary_image=binary_image,
-            from_index=source_from_index,
-            container_tool='podman',
-            overwrite_from_index_token=overwrite_target_index_token,
-        )
-    else:
-        _opm_index_add(
-            base_dir=base_dir,
-            bundles=missing_bundle_paths,
-            binary_image=binary_image,
-            from_index=source_from_index,
-            overwrite_from_index_token=overwrite_target_index_token,
-            # Use podman until opm's default mechanism is more resilient:
-            #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
-            container_tool='podman',
-        )
+        if is_source_fbc:
+            opm_registry_add_fbc(
+                base_dir=base_dir,
+                bundles=missing_bundle_paths,
+                binary_image=binary_image,
+                from_index=source_from_index,
+                container_tool='podman',
+            )
+        else:
+            _opm_index_add(
+                base_dir=base_dir,
+                bundles=missing_bundle_paths,
+                binary_image=binary_image,
+                from_index=source_from_index,
+                # Use podman until opm's default mechanism is more resilient:
+                #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
+                container_tool='podman',
+            )
     _add_label_to_index(
         'com.redhat.index.delivery.version', ocp_version, base_dir, 'index.Dockerfile'
     )
@@ -202,24 +202,25 @@ def handle_merge_request(
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
-    prebuild_info = prepare_request_for_build(
-        request_id,
-        RequestConfigMerge(
-            _binary_image=binary_image,
-            overwrite_target_index_token=overwrite_target_index_token,
-            source_from_index=source_from_index,
-            target_index=target_index,
-            distribution_scope=distribution_scope,
-            binary_image_config=binary_image_config,
-        ),
-    )
+    with set_registry_token(overwrite_target_index_token, target_index, append=True):
+        prebuild_info = prepare_request_for_build(
+            request_id,
+            RequestConfigMerge(
+                _binary_image=binary_image,
+                overwrite_target_index_token=overwrite_target_index_token,
+                source_from_index=source_from_index,
+                target_index=target_index,
+                distribution_scope=distribution_scope,
+                binary_image_config=binary_image_config,
+            ),
+        )
     _update_index_image_build_state(request_id, prebuild_info)
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
     target_index_resolved = prebuild_info['target_index_resolved']
     dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        with set_registry_token(overwrite_target_index_token, source_from_index):
+        with set_registry_token(overwrite_target_index_token, target_index, append=True):
             source_fbc = is_image_fbc(source_from_index_resolved)
             target_fbc = is_image_fbc(target_index_resolved)
 
@@ -238,30 +239,35 @@ def handle_merge_request(
 
         set_request_state(request_id, 'in_progress', 'Getting bundles present in the index images')
         log.info('Getting bundles present in the source index image')
-        with set_registry_token(overwrite_target_index_token, source_from_index):
+
+        with set_registry_token(overwrite_target_index_token, target_index, append=True):
             source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
                 source_from_index_resolved, temp_dir
             )
 
-            target_index_bundles: List[BundleImage] = []
-            if target_index:
-                log.info('Getting bundles present in the target index image')
+        target_index_bundles: List[BundleImage] = []
+        if target_index:
+            log.info('Getting bundles present in the target index image')
+            with set_registry_token(
+                overwrite_target_index_token, target_index_resolved, append=True
+            ):
                 target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
 
         arches = list(prebuild_info['arches'])
         arch = sorted(arches)[0]
 
         missing_bundles, invalid_version_bundles = _add_bundles_missing_in_source(
-            source_index_bundles,
-            target_index_bundles,
-            temp_dir,
-            prebuild_info['binary_image'],
-            source_from_index_resolved,
-            request_id,
-            arch,
-            prebuild_info['target_ocp_version'],
-            distribution_scope=prebuild_info['distribution_scope'],
+            source_index_bundles=source_index_bundles,
+            target_index_bundles=target_index_bundles,
+            base_dir=temp_dir,
+            binary_image=prebuild_info['binary_image'],
+            source_from_index=source_from_index_resolved,
+            request_id=request_id,
+            arch=arch,
+            ocp_version=prebuild_info['target_ocp_version'],
+            target_index=target_index,
             overwrite_target_index_token=overwrite_target_index_token,
+            distribution_scope=prebuild_info['distribution_scope'],
         )
 
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]

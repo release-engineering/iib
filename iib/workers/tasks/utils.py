@@ -528,7 +528,9 @@ def reset_docker_config() -> None:
 
 
 @contextmanager
-def set_registry_token(token: Optional[str], container_image: Optional[str]) -> Generator:
+def set_registry_token(
+    token: Optional[str], container_image: Optional[str], append: bool = False
+) -> Generator:
     """
     Configure authentication to the registry that ``container_image`` is from.
 
@@ -538,6 +540,8 @@ def set_registry_token(token: Optional[str], container_image: Optional[str]) -> 
     :param str token: the token in the format of ``username:password``
     :param str container_image: the pull specification of the container image to parse to determine
         the registry this token is for.
+    :param bool append: When enabled new token is appended to current configuration.
+        Old token for the same registry is overwritten.
     :return: None
     :rtype: None
     """
@@ -557,7 +561,22 @@ def set_registry_token(token: Optional[str], container_image: Optional[str]) -> 
 
     registry = ImageName.parse(container_image).registry
     encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
-    registry_auths = {'auths': {registry: {'auth': encoded_token}}}
+    registry_auths = {'auths': {}}
+    if append:
+        docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
+        if os.path.exists(docker_config_path):
+            with open(docker_config_path, 'r') as f:
+                try:
+                    registry_auths = json.load(f)
+                except json.JSONDecodeError as e:
+                    log.error("Invalid JSON file %s; %s", docker_config_path, e.msg)
+                    raise e
+
+                log.debug('Docker config will be updated')
+
+    log.debug('Setting the override token for the registry %s ', registry)
+    registry_auths['auths'].update({registry: {'auth': encoded_token}})
+
     with set_registry_auths(registry_auths):
         yield
 
@@ -1002,9 +1021,12 @@ def get_all_index_images_info(
 
         # Cannot be None, as get_index_image_info do not accept None
         token: Optional[str] = None
-        if hasattr(build_request_config, 'overwrite_from_index_token'):
+        if hasattr(build_request_config, 'overwrite_from_index_token') and index == 'from_index':
             token = build_request_config.overwrite_from_index_token
-        elif hasattr(build_request_config, 'overwrite_target_index_token'):
+        elif (
+            hasattr(build_request_config, 'overwrite_target_index_token')
+            and index == 'target_index'
+        ):
             token = build_request_config.overwrite_target_index_token
 
         #  MYPY error: TypedDict key must be a string literal;

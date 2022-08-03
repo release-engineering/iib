@@ -325,7 +325,7 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
         assert '--container-tool' not in opm_args
     assert "--enable-alpha" in opm_args
 
-    mock_srt.assert_called_once_with('user:pass', from_index)
+    mock_srt.assert_called_once_with('user:pass', from_index, append=True)
 
 
 @mock.patch('iib.workers.tasks.build.set_registry_token')
@@ -341,7 +341,7 @@ def test_opm_index_rm(mock_run_cmd, mock_srt):
     assert opm_args[0:3] == ['opm', 'index', 'rm']
     assert ','.join(operators) in opm_args
     assert 'some_index:latest' in opm_args
-    mock_srt.assert_called_once_with('user:pass', 'some_index:latest')
+    mock_srt.assert_called_once_with('user:pass', 'some_index:latest', append=True)
 
 
 @pytest.mark.parametrize(
@@ -695,7 +695,6 @@ def test_handle_add_request(
             base_dir=mock.ANY,
             binary_image=binary_image or 'some_image',
             from_index='registry:8443/iib-build:3-amd64',
-            overwrite_target_index_token=None,
             container_tool='podman',
         )
     else:
@@ -889,7 +888,6 @@ def test_handle_add_request_check_index_label_behavior(
         base_dir=mock.ANY,
         binary_image='binary-image:latest',
         from_index='quay.io/iib-build:3-amd64',
-        overwrite_target_index_token=None,
         container_tool='podman',
     )
     # Assert the labels are set again once they were wiped out
@@ -954,8 +952,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
             cnr_token,
             organization,
             False,
+            False,
             None,
-            greenwave_config,
+            greenwave_config=greenwave_config,
         )
     mock_cleanup.assert_called_once_with()
     mock_srs.assert_called_once()
@@ -1122,7 +1121,7 @@ def test_verify_index_image_failure(mock_gri, mock_srt):
     with pytest.raises(IIBError, match=match_str):
         build._verify_index_image('image:doesnt_work', 'unresolved_image', 'user:pass')
 
-    mock_srt.assert_called_once_with('user:pass', 'unresolved_image')
+    mock_srt.assert_called_once_with('user:pass', 'unresolved_image', append=True)
 
 
 @pytest.mark.parametrize('fail_rm', (True, False))

@@ -254,7 +254,7 @@ def _update_index_image_pull_spec(
     payload: UpdateRequestPayload = {'arches': set(arches), 'index_image': index_image}
 
     if add_or_rm:
-        with set_registry_token(overwrite_from_index_token, index_image):
+        with set_registry_token(overwrite_from_index_token, from_index, append=True):
             index_image_resolved = get_resolved_image(index_image)
         payload['index_image_resolved'] = index_image_resolved
         payload['internal_index_image_copy'] = output_pull_spec
@@ -473,7 +473,7 @@ def _opm_index_add(
         log.info('Using force to add bundle(s) to index')
         cmd.extend(['--overwrite-latest'])
 
-    with set_registry_token(overwrite_from_index_token, from_index):
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
@@ -522,7 +522,7 @@ def _opm_index_rm(
         ', '.join(operators),
     )
 
-    with set_registry_token(overwrite_from_index_token, from_index):
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
 
 
@@ -583,7 +583,7 @@ def _overwrite_from_index(
                 )
 
         exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
-        with set_registry_token(overwrite_from_index_token, from_index):
+        with set_registry_token(overwrite_from_index_token, from_index, append=True):
             _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
     finally:
         if temp_dir:
@@ -705,7 +705,7 @@ def _verify_index_image(
         The format of the token must be in the format "user:password".
     :raises IIBError: if the index image has changed since IIB build started.
     """
-    with set_registry_token(overwrite_from_index_token, unresolved_from_index):
+    with set_registry_token(overwrite_from_index_token, unresolved_from_index, append=True):
         resolved_post_build_from_index = get_resolved_image(unresolved_from_index)
 
     if resolved_post_build_from_index != resolved_prebuild_from_index:
@@ -772,9 +772,10 @@ def handle_add_request(
     _cleanup()
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
-    resolved_bundles = get_resolved_bundles(bundles)
 
-    verify_labels(resolved_bundles)
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+        resolved_bundles = get_resolved_bundles(bundles)
+        verify_labels(resolved_bundles)
 
     # Check if Gating passes for all the bundles
     if greenwave_config:
@@ -816,7 +817,7 @@ def handle_add_request(
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
 
-            with set_registry_token(overwrite_from_index_token, from_index_resolved):
+            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
                 present_bundles, present_bundles_pull_spec = _get_present_bundles(
                     from_index_resolved, temp_dir
                 )
@@ -882,15 +883,18 @@ def handle_add_request(
                 intermediate_image_name = _get_external_arch_pull_spec(
                     request_id, arch, include_transport=False
                 )
-                deprecate_bundles(
-                    bundles=deprecation_bundles,
-                    base_dir=temp_dir,
-                    binary_image=prebuild_info['binary_image'],
-                    from_index=intermediate_image_name,
-                    overwrite_target_index_token=overwrite_from_index_token,
-                    # Use podman so opm can find the image locally
-                    container_tool='podman',
-                )
+
+                with set_registry_token(
+                    overwrite_from_index_token, from_index_resolved, append=True
+                ):
+                    deprecate_bundles(
+                        bundles=deprecation_bundles,
+                        base_dir=temp_dir,
+                        binary_image=prebuild_info['binary_image'],
+                        from_index=intermediate_image_name,
+                        # Use podman so opm can find the image locally
+                        container_tool='podman',
+                    )
 
         _add_label_to_index(
             'com.redhat.index.delivery.version',
@@ -997,24 +1001,26 @@ def handle_rm_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
-        with set_registry_token(overwrite_from_index_token, from_index_resolved):
-            if is_image_fbc(from_index_resolved):
-                log.info("Processing File-Based Catalog image")
-                opm_registry_rm_fbc(
-                    base_dir=temp_dir,
-                    from_index=from_index_resolved,
-                    operators=operators,
-                    binary_image=prebuild_info['binary_image'],
-                )
+        with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+            image_is_fbc = is_image_fbc(from_index_resolved)
 
-            else:
-                _opm_index_rm(
-                    base_dir=temp_dir,
-                    operators=operators,
-                    binary_image=prebuild_info['binary_image'],
-                    from_index=from_index_resolved,
-                    overwrite_from_index_token=overwrite_from_index_token,
-                )
+        if image_is_fbc:
+            log.info("Processing File-Based Catalog image")
+            opm_registry_rm_fbc(
+                base_dir=temp_dir,
+                from_index=from_index_resolved,
+                operators=operators,
+                binary_image=prebuild_info['binary_image'],
+            )
+
+        else:
+            _opm_index_rm(
+                base_dir=temp_dir,
+                operators=operators,
+                binary_image=prebuild_info['binary_image'],
+                from_index=from_index_resolved,
+                overwrite_from_index_token=overwrite_from_index_token,
+            )
 
         _add_label_to_index(
             'com.redhat.index.delivery.version',
