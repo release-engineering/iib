@@ -400,8 +400,9 @@ def test_podman_pull(mock_run_cmd):
     mock_run_cmd.assert_called_once_with(['podman', 'pull', image], exc_msg=mock.ANY)
 
 
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils.upload_file_to_s3_bucket')
-def test_request_logger(mock_ufts3b, tmpdir):
+def test_request_logger(mock_ufts3b, mock_runcmd, tmpdir):
     # Setting the logging level via caplog.set_level is not sufficient. The flask
     # related settings from previous tests interfere with this.
     utils_logger = logging.getLogger('iib.workers.tasks.utils')
@@ -413,6 +414,13 @@ def test_request_logger(mock_ufts3b, tmpdir):
     config = get_worker_config()
     config.iib_request_logs_dir = str(logs_dir)
     config.iib_aws_s3_bucket_name = 's3-bucket'
+
+    mock_runcmd.side_effects = [
+        'Version: version.Version{OpmVersion:"v1.21.0", GitCommit:"9999f796", '
+        'BuildDate:"2022-03-03T21:23:12Z", GoOs:"linux", GoArch:"amd64"}',
+        'podman version 4.0.2',
+        'buildah version 1.24.2 (image-spec 1.0.2-dev, runtime-spec 1.0.2-dev)',
+    ]
 
     original_handlers_count = len(logging.getLogger().handlers)
 

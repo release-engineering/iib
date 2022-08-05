@@ -720,6 +720,24 @@ def terminate_process(proc, timeout=5):
         proc.kill()
 
 
+def _get_binary_versions():
+    """
+    Return string containing version of binary files used by IIB.
+
+    :return: String with all binary used and their version
+    :rtype: str
+    """
+    opm_version_cmd = ['opm', 'version']
+    podman_version_cmd = ['podman', '-v']
+    buildah_version_cmd = ['buildah', '-v']
+
+    opm_version = run_cmd(opm_version_cmd, exc_msg='Failed to get opm version.').strip()
+    podman_version = run_cmd(podman_version_cmd, exc_msg='Failed to get podman version.').strip()
+    buildah_version = run_cmd(buildah_version_cmd, exc_msg='Failed to get buildah version.').strip()
+
+    return f"opm {opm_version}\n{podman_version}\n{buildah_version}"
+
+
 def request_logger(func):
     """
     Log messages relevant to the current request to a dedicated file.
@@ -759,6 +777,7 @@ def request_logger(func):
             logger.addHandler(request_log_handler)
             worker_info = f'Host: {socket.getfqdn()}; User: {getpass.getuser()}'
             logger.info(worker_info)
+            logger.info(_get_binary_versions())
         try:
             return func(*args, **kwargs)
         finally:
