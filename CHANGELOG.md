@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.5.0
+- Print version of binary files in log files
+- Improve traceability in _get_present_bundles and fix tests
+- Increase iib_api_timeout, iib_retry_delay and iib_retry_jitter
+- Keep Gating feature in IIB and improve gating logging
+- Adding fallback from SIGTERM to SIGKILL
+- Fix dependency issues for python 3.9
+
 ## 6.4.0
 - Add internal_index_image_copy and internal_index_image_copy_resolved to Add and Rm response
 - Add a warning for when gating is disabled
