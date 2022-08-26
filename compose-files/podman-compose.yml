@@ -29,11 +29,11 @@ services:
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
     volumes:
-      - ./iib_data/registry:/var/lib/registry:z
+      - ../iib_data/registry:/var/lib/registry
       - registry-certs-volume:/certs:z
-      - ./docker/registry/auth:/auth:z
-    depends_on:
-      - minica
+      - ../docker/registry/auth:/auth
+    # depends_on: # yamllint disable-line comments-indentation
+    #   - minica  # yamllint disable-line comments-indentation
 
   db:
     image: postgres:9.6
@@ -63,8 +63,8 @@ services:
 
   iib-api:
     build:
-      context: .
-      dockerfile: ./docker/Dockerfile-api
+      context: ..
+      dockerfile: ../docker/Dockerfile-api
     command:
       - /bin/sh
       - -c
@@ -83,8 +83,8 @@ services:
       FLASK_APP: iib/web/wsgi.py
       IIB_DEV: 'true'
     volumes:
-      - ./:/src:z
-      - ./docker/message_broker/certs:/broker-certs:ro,z
+      - ../:/src
+      - ../docker/message_broker/certs:/broker-certs
       - request-logs-volume:/var/log/iib/requests:z
       - request-related-bundles-volume:/var/lib/requests/related_bundles:z
       - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
@@ -96,16 +96,16 @@ services:
 
   iib-worker:
     build:
-      context: .
-      dockerfile: ./docker/Dockerfile-workers
+      context: ..
+      dockerfile: ../docker/Dockerfile-workers
     # Override the default command so that Celery auto-reloads on code changes.
     # This also adds the self-signed CA that was used to sign the Docker registry's certificate
     # to the trusted CA bundle. This will make podman trust the local Docker registry's certificate.
+    # cp host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
     command:
       - /bin/bash
       - -c
       - >-
-        cp /host-ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt &&
         cat /registry-certs/minica.pem >> /etc/pki/tls/certs/ca-bundle.crt &&
         podman login --authfile ~/.docker/config.json.template -u iib \
           -p iibpassword registry:8443 &&
@@ -119,10 +119,11 @@ services:
     # Make this privileged to be able to build container images
     privileged: true
     volumes:
-      - ./:/src:z
+      - ../:/src
       - worker_container_storage:/var/lib/containers:z
-      - registry-certs-volume:/registry-certs:ro,z
-      - ./ca-bundle.crt:/host-ca-bundle.crt:ro
+      # - ./docker/registry/certs:/registry-certs
+      - registry-certs-volume:/registry-certs
+      - ../ca-bundle.crt:/host-ca-bundle.crt
       - request-logs-volume:/var/log/iib/requests:z
       - request-related-bundles-volume:/var/lib/requests/related_bundles:z
       - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
@@ -135,11 +136,11 @@ services:
   # This is an external message broker used to publish messages about state changes
   message-broker:
     build:
-      context: .
-      dockerfile: ./docker/message_broker/Dockerfile
+      context: ..
+      dockerfile: ../docker/message_broker/Dockerfile
     volumes:
       - message-broker-volume:/opt/activemq/data:z
-      - ./docker/message_broker/certs:/broker-certs:ro,z
+      - ../docker/message_broker/certs:/broker-certs
     ports:
       - 5671:5671   # amqp+ssl
       - 5672:5672   # amqp
@@ -149,6 +150,6 @@ volumes:
   registry-certs-volume:
   message-broker-volume:
   request-logs-volume:
-  request-recursive-related-bundles-volume:
   request-related-bundles-volume:
+  request-recursive-related-bundles-volume:
   worker_container_storage:
