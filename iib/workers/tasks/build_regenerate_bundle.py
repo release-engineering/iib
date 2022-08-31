@@ -198,6 +198,7 @@ def _adjust_operator_bundle(
     request_id: int,
     organization: Optional[str] = None,
     pinned_by_iib: bool = False,
+    recursive_related_bundles: bool = False,
 ) -> Dict[str, str]:
     """
     Apply modifications to the operator manifests at the given location.
@@ -219,6 +220,8 @@ def _adjust_operator_bundle(
         no custom behavior will be applied.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
         IIB to perform image pinning of related images.
+    :param bool recursive_related_bundles: whether or not the call is from a
+        recursive_related_bundles request.
     :raises IIBError: if the operator manifest has invalid entries
     :return: a dictionary of labels to set on the bundle
     :rtype: dict
@@ -292,9 +295,29 @@ def _adjust_operator_bundle(
                     bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue
                 )
         elif customization_type == 'related_bundles':
+            # When recursive_related_bundles is set to True, the call is from a
+            # recureive_related_bundles request. Product teams have customizations
+            # in the order so that when this customization is specified, the bundles
+            # are accessible. For the recursive_related_bundles request, we want the
+            # the images to be in an accessible state. So apply all customizations
+            # that were specified before this one and return.
+            if recursive_related_bundles:
+                log.debug(
+                    'Stopping before performing `related_bundles` modification since '
+                    'recursive_related_bundles set to True. No further '
+                    'customizations will be performed for organization '
+                    f'{organization}. Finding recursive_related_bundles'
+                )
+                return labels
             log.info('Applying related_bundles customization')
             bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
-            _write_related_bundles_file(bundle_metadata, request_id)
+            related_bundle_images = get_related_bundle_images(bundle_metadata=bundle_metadata)
+            write_related_bundles_file(
+                related_bundle_images,
+                request_id,
+                conf['iib_request_related_bundles_dir'],
+                'related_bundles',
+            )
         elif customization_type == 'resolve_image_pullspecs':
             log.info('Resolving image pull specs')
             bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
@@ -560,17 +583,14 @@ def _apply_repo_enclosure(
     _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
 
 
-def _write_related_bundles_file(bundle_metadata: BundleMetadata, request_id: int) -> None:
+def get_related_bundle_images(bundle_metadata: BundleMetadata) -> List[str]:
     """
-    Get bundle images in the CSV files of the bundle being regenerated and store them in a file.
+    Get related bundle images from bundle metadata.
 
     :param dict bundle_metadata: the dictionary of CSV's and relatedImages pull specifications
-    :param int request_id: the ID of the IIB build request
+    :rtype: list
+    :return: a list of related bundles
     """
-    worker_config = get_worker_config()
-    related_bundles_dir = worker_config['iib_request_related_bundles_dir']
-    related_bundles_file = os.path.join(related_bundles_dir, f'{request_id}_related_bundles.json')
-
     related_bundle_images = []
     for related_pullspec_obj in bundle_metadata['found_pullspecs']:
         related_pullspec = related_pullspec_obj.to_str()
@@ -578,12 +598,29 @@ def _write_related_bundles_file(bundle_metadata: BundleMetadata, request_id: int
             get_image_label(related_pullspec, 'com.redhat.delivery.operator.bundle') or 'false'
         ):
             related_bundle_images.append(related_pullspec)
+    return related_bundle_images
 
-    log.debug('Writing related bundle images to %s', related_bundles_file)
+
+def write_related_bundles_file(
+    related_bundle_images: List[str], request_id: int, local_directory: str, s3_file_identifier: str
+) -> None:
+    """
+    Get bundle images in the CSV files of the bundle being regenerated and store them in a file.
+
+    :param list related_bundle_images: the list of pull specifications of related bundle images
+    :param int request_id: the ID of the IIB build request
+    :param str local_directory: the directory in which the file should be stored locally
+    :param str s3_file_identifier: the identifier to be used for sub-directory and file name on the
+        s3 bucket.
+    """
+    worker_config = get_worker_config()
+    related_bundles_file = os.path.join(local_directory, f'{request_id}_{s3_file_identifier}.json')
+
+    log.debug('Writing related bundle images %s to %s', related_bundle_images, related_bundles_file)
     with open(related_bundles_file, 'w') as output_file:
         json.dump(related_bundle_images, output_file)
 
     if worker_config['iib_aws_s3_bucket_name']:
         upload_file_to_s3_bucket(
-            related_bundles_file, 'related_bundles', f'{request_id}_related_bundles.json'
+            related_bundles_file, s3_file_identifier, f'{request_id}_{s3_file_identifier}.json'
         )

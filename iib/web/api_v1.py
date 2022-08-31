@@ -22,6 +22,7 @@ from iib.web.models import (
     Request,
     RequestAdd,
     RequestMergeIndexImage,
+    RequestRecursiveRelatedBundles,
     RequestRegenerateBundle,
     RequestRm,
     RequestState,
@@ -36,6 +37,9 @@ from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
     handle_add_request,
     handle_rm_request,
+)
+from iib.workers.tasks.build_recursive_related_bundles import (
+    handle_recursive_related_bundles_request,
 )
 from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
 from iib.workers.tasks.build_merge_index_image import handle_merge_request
@@ -116,7 +120,7 @@ def _get_safe_args(args, payload):
     return safe_args
 
 
-def _get_artifact_file_from_s3_bucket(
+def get_artifact_file_from_s3_bucket(
     s3_key_prefix, s3_file_name, request_id, request_temp_data_expiration_date, s3_bucket_name
 ):
     """
@@ -216,7 +220,7 @@ def get_build_logs(request_id):
     # Else, check if logs are stored on the system itself and return them.
     # Otherwise, raise an IIBError.
     if s3_bucket_name:
-        log_file = _get_artifact_file_from_s3_bucket(
+        log_file = get_artifact_file_from_s3_bucket(
             'request_logs',
             f'{request_id}.log',
             request_id,
@@ -274,7 +278,7 @@ def get_related_bundles(request_id):
     # Else, check if related bundles are stored on the system itself and return them.
     # Otherwise, raise an IIBError.
     if s3_bucket_name:
-        log_file = _get_artifact_file_from_s3_bucket(
+        log_file = get_artifact_file_from_s3_bucket(
             'related_bundles',
             f'{request_id}_related_bundles.json',
             request_id,
@@ -514,6 +518,13 @@ def patch_request(request_id):
             for v in value.values():
                 if not isinstance(v, list) or any(not isinstance(s, str) for s in v):
                     raise ValidationError(exc_msg)
+        elif key == 'recursive_related_bundles':
+            if not isinstance(value, list):
+                exc_msg = f'The value for "{key}" must be a list of non-empty strings'
+                raise ValidationError(exc_msg)
+            for bundle in value:
+                if not isinstance(bundle, str):
+                    raise ValidationError(exc_msg)
         elif not value or not isinstance(value, str):
             raise ValidationError(f'The value for "{key}" must be a non-empty string')
 
@@ -556,6 +567,7 @@ def patch_request(request_id):
         'index_image_resolved',
         'internal_index_image_copy',
         'internal_index_image_copy_resolved',
+        'parent_bundle_image_resolved',
         'source_from_index_resolved',
         'target_index_resolved',
     )
@@ -917,3 +929,107 @@ def create_empty_index():
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/recursive-related-bundles', methods=['POST'])
+@login_required
+def recursive_related_bundles():
+    """
+    Submit a request to get nested related bundles of an operator bundle image.
+
+    The nested related bundles will be returned as a list in a reversed level-order traversal.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = RequestRecursiveRelatedBundles.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
+
+    args = [
+        payload['parent_bundle_image'],
+        payload.get('organization'),
+        request.id,
+        payload.get('registry_auths'),
+    ]
+    safe_args = _get_safe_args(args, payload)
+
+    error_callback = failed_request_callback.s(request.id)
+    try:
+        handle_recursive_related_bundles_request.apply_async(
+            args=args,
+            link_error=error_callback,
+            argsrepr=repr(safe_args),
+            queue=_get_user_queue(),
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/<int:request_id>/nested-bundles')
+def get_nested_bundles(request_id):
+    """
+    Retrieve the nested bundle images for a recursive-related-bundle request.
+
+    :param int request_id: the request ID that was passed in through the URL.
+    :rtype: flask.Response
+    :raise NotFound: if the request is not found or there are no related bundles for the request
+    :raise Gone: if the related bundles for the build request have been removed due to expiration
+    :raise ValidationError: if the request is of invalid type or is not completed yet
+    """
+    recursive_related_bundles_dir = flask.current_app.config[
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR'
+    ]
+    s3_bucket_name = flask.current_app.config['IIB_AWS_S3_BUCKET_NAME']
+
+    request = Request.query.get_or_404(request_id)
+    if request.type != RequestTypeMapping.recursive_related_bundles.value:
+        raise ValidationError(
+            f'The request {request_id} is of type {request.type_name}. '
+            'This endpoint is only valid for requests of type recursive-related-bundles.'
+        )
+
+    finalized = request.state.state_name in RequestStateMapping.get_final_states()
+    if not finalized:
+        raise ValidationError(
+            f'The request {request_id} is not complete yet.'
+            ' nested_bundles will be available once the request is complete.'
+        )
+
+    # If S3 bucket is configured, fetch the related bundles file from the S3 bucket.
+    # Else, check if related bundles are stored on the system itself and return them.
+    # Otherwise, raise an IIBError.
+    if s3_bucket_name:
+        log_file = get_artifact_file_from_s3_bucket(
+            'recursive_related_bundles',
+            f'{request_id}_recursive_related_bundles.json',
+            request_id,
+            request.temporary_data_expiration,
+            s3_bucket_name,
+        )
+        return flask.Response(log_file.read(), mimetype='application/json')
+
+    related_bundles_file_path = os.path.join(
+        recursive_related_bundles_dir, f'{request_id}_recursive_related_bundles.json'
+    )
+    if not os.path.exists(related_bundles_file_path):
+        expired = request.temporary_data_expiration < datetime.utcnow()
+        if expired:
+            raise Gone(f'The nested_bundles for the build request {request_id} no longer exist')
+        flask.current_app.logger.warning(
+            ' Please make sure either an S3 bucket is configured or the data is'
+            ' stored locally in a directory by specifying'
+            ' IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR'
+        )
+        raise IIBError('IIB is done processing the request and could not find nested_bundles.')
+
+    with open(related_bundles_file_path) as f:
+        return flask.Response(f.read(), mimetype='application/json')

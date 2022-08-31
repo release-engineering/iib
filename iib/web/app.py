@@ -106,6 +106,22 @@ def validate_api_config(config):
                 if not isinstance(ocp_version, str) or not isinstance(binary_image_value, str):
                     raise ConfigError('All ocp_version and binary_image values must be strings.')
 
+    if (
+        not config['IIB_AWS_S3_BUCKET_NAME']
+        and not config['IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR']
+    ):
+        raise ConfigError(
+            'One of "IIB_AWS_S3_BUCKET_NAME" or "IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR"'
+            ' must be set'
+        )
+
+    if config['IIB_AWS_S3_BUCKET_NAME'] and config['IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR']:
+        raise ConfigError(
+            'S3 bucket and local artifacts directories cannot be set together.'
+            ' Either S3 bucket should be configured or "IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR"'
+            ' must be set.'
+        )
+
     if config['IIB_AWS_S3_BUCKET_NAME'] and (
         config['IIB_REQUEST_LOGS_DIR'] or config['IIB_REQUEST_RELATED_BUNDLES_DIR']
     ):

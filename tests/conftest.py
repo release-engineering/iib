@@ -76,7 +76,11 @@ def worker_forbidden_env():
 
 @pytest.fixture(params=['add', 'rm', 'regenerate-bundle'])
 def minimal_request(
-    request, minimal_request_add, minimal_request_rm, minimal_request_regenerate_bundle
+    request,
+    minimal_request_add,
+    minimal_request_rm,
+    minimal_request_regenerate_bundle,
+    minimal_request_recursive_related_bundles,
 ):
     """
     Create and return an instance of each support request class.
@@ -88,6 +92,8 @@ def minimal_request(
     :param pytest.fixture minimal_request_add: instance of RequestAdd
     :param pytest.fixture minimal_request_rm: instance of RequestRm
     :param pytest.fixture minimal_request_regenerate_bundle: instance of RequestRegenerateBundle
+    :param pytest.fixture minimal_request_recursive_related_bundles: instance of
+        RequestRecursiveRelatedBundles
     :return: yield each request instance
     :rtype: Request
     """
@@ -97,6 +103,7 @@ def minimal_request(
         'add': minimal_request_add,
         'rm': minimal_request_rm,
         'regenerate-bundle': minimal_request_regenerate_bundle,
+        'recursive-related-bundles': minimal_request_recursive_related_bundles,
     }
     return request_instances[request.param]
 
@@ -168,6 +175,32 @@ def minimal_request_regenerate_bundle(db):
     batch = models.Batch()
     db.session.add(batch)
     request = models.RequestRegenerateBundle(batch=batch, from_bundle_image=from_bundle_image)
+    db.session.add(request)
+    db.session.commit()
+    return request
+
+
+@pytest.fixture()
+def minimal_request_recursive_related_bundles(db):
+    """
+    Create and return an instance of the RequestRecursiveRelatedBundles class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestRecursiveRelatedBundles
+    """
+    parent_bundle_image = models.Image(
+        pull_specification='quay.io/parent-bundle/bundle-image:latest'
+    )
+    db.session.add(parent_bundle_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    request = models.RequestRecursiveRelatedBundles(
+        batch=batch, parent_bundle_image=parent_bundle_image
+    )
     db.session.add(request)
     db.session.commit()
     return request

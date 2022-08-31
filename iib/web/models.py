@@ -71,6 +71,7 @@ class RequestTypeMapping(BaseEnum):
     regenerate_bundle = 3
     merge_index_image = 4
     create_empty_index = 5
+    recursive_related_bundles = 6
 
     @classmethod
     def pretty(cls, num):
@@ -1693,4 +1694,115 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         rv.remove('from_bundle_image_resolved')
         rv.remove('internal_index_image_copy')
         rv.remove('internal_index_image_copy_resolved')
+        return rv
+
+
+class RequestRecursiveRelatedBundles(Request):
+    """A "recursive_related_bundles" image build request."""
+
+    __tablename__ = 'request_recursive_related_bundles'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    # The ID of the parent bundle image
+    parent_bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
+    parent_bundle_image = db.relationship(
+        'Image', foreign_keys=[parent_bundle_image_id], uselist=False
+    )
+    # The ID of the resolved parent bundle image
+    parent_bundle_image_resolved_id = db.Column(
+        db.Integer, db.ForeignKey('image.id'), nullable=True
+    )
+    parent_bundle_image_resolved = db.relationship(
+        'Image', foreign_keys=[parent_bundle_image_resolved_id], uselist=False
+    )
+    # The name of the organization the related bundles should be found for
+    organization = db.Column(db.String, nullable=True)
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['recursive_related_bundles'].value
+    }
+    build_tags = None
+
+    @classmethod
+    def from_json(cls, kwargs, batch=None):
+        """
+        Handle JSON requests for the Recursive Related Bundles API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request. If one is not specified, one will
+            be created automatically.
+        """
+        batch = batch or Batch()
+        request_kwargs = deepcopy(kwargs)
+
+        validate_request_params(
+            request_kwargs,
+            required_params={'parent_bundle_image'},
+            optional_params={'organization', 'registry_auths'},
+        )
+
+        # Validate organization is correctly provided
+        organization = request_kwargs.get('organization')
+        if organization and not isinstance(organization, str):
+            raise ValidationError('"organization" must be a string')
+
+        # Validate parent_bundle_image is correctly provided
+        parent_bundle_image = request_kwargs.pop('parent_bundle_image')
+        if not isinstance(parent_bundle_image, str):
+            raise ValidationError('"parent_bundle_image" must be a string')
+
+        # Remove attributes that are not stored in the database
+        registry_auths = request_kwargs.pop('registry_auths', None)
+
+        # Check that registry_auths were provided in valid format
+        if registry_auths:
+            validate_registry_auths(registry_auths)
+
+        request_kwargs['parent_bundle_image'] = Image.get_or_create(
+            pull_specification=parent_bundle_image
+        )
+
+        # current_user.is_authenticated is only ever False when auth is disabled
+        if current_user.is_authenticated:
+            request_kwargs['user'] = current_user
+
+        # Add the request to a new batch
+        db.session.add(batch)
+        request_kwargs['batch'] = batch
+
+        request = cls(**request_kwargs)
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    def to_json(self, verbose=True):
+        """
+        Provide the JSON representation of a "recursive-related-bundles" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        rv = super().to_json(verbose=verbose)
+        rv['parent_bundle_image'] = self.parent_bundle_image.pull_specification
+        rv['parent_bundle_image_resolved'] = getattr(
+            self.parent_bundle_image_resolved, 'pull_specification', None
+        )
+
+        rv['organization'] = self.organization
+        rv['nested_bundles'] = {
+            'expiration': self.temporary_data_expiration.isoformat() + 'Z',
+            'url': url_for('.get_nested_bundles', request_id=self.id, _external=True),
+        }
+
+        return rv
+
+    def get_mutable_keys(self):
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.add('parent_bundle_image_resolved')
         return rv

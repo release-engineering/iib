@@ -175,6 +175,9 @@ The custom configuration options for the REST API are listed below:
 * `IIB_REQUEST_RELATED_BUNDLES_DIR` - the directory to load the request specific related
   bundles files. If `None`, per request related bundles files information will not appear in
   the API response. This defaults to `None`.
+* `IIB_RECURSIVE_REQUEST_RELATED_BUNDLES_DIR` - the directory to load the recursive-related-bundles
+  request specific recursive related bundles files. This is a required config variable if
+  `IIB_AWS_S3_BUCKET_NAME` is not specified.
 * `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
   This is useful in isolating the workload from certain users. Some celery tasks must execute
   serially, while others can execute in parallel. Add the prefix `SERIAL:` or `PARALLEL:` to the
@@ -270,6 +273,8 @@ The custom configuration options for the Celery workers are listed below:
   manifest list. The available variables are `registry` and `request_id`. The default value is
   `{registry}/iib-build:{request_id}`.
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
+* `iib_max_recursive_related_bundles` - the maximum number of recursive related bundles IIB will
+  recurse through. This is to avoid DOS attacks.
 * `iib_organization_customizations` - this is used to customize aspects of the bundle being
   regenerated. The format is a dictionary where each key is an organization that requires
   customizations. Each value is a list of dictionaries with the ``type`` key set to one of the
@@ -340,6 +345,9 @@ The custom configuration options for the Celery workers are listed below:
   file. If `None`, per request related bundles files are not created. This defaults to `None`.
 * `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per
   request log files are not created. This defaults to `None`.
+* `iib_request_recursive_related_bundles_dir` - the directory to load the recursive-related-bundles
+  request specific recursive related bundles files. This is a required config variable if
+  `iib_aws_s3_bucket_name` is not specified.
 * `iib_request_logs_format` - the format for the log messages of the request specific log files.
   This defaults to `%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s`.
 * `iib_request_logs_level` - the log level for the request specific log files. This defaults to
