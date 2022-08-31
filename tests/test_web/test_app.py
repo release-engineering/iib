@@ -138,6 +138,7 @@ def test_validate_api_config_failure_binary_image_params(config, error_msg):
                 'IIB_AWS_S3_BUCKET_NAME': 's3-bucket',
                 'IIB_REQUEST_LOGS_DIR': 'some-dir',
                 'IIB_REQUEST_RELATED_BUNDLES_DIR': 'some-other-dir',
+                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': None,
                 'IIB_GREENWAVE_CONFIG': {},
                 'IIB_BINARY_IMAGE_CONFIG': {},
             },
@@ -153,6 +154,7 @@ def test_validate_api_config_failure_binary_image_params(config, error_msg):
                 'IIB_AWS_S3_BUCKET_NAME': 123456,
                 'IIB_REQUEST_LOGS_DIR': None,
                 'IIB_REQUEST_RELATED_BUNDLES_DIR': None,
+                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': None,
                 'IIB_GREENWAVE_CONFIG': {},
                 'IIB_BINARY_IMAGE_CONFIG': {},
             },
@@ -176,6 +178,7 @@ def test_validate_api_config_failure_aws_s3_env_vars():
         'IIB_AWS_S3_BUCKET_NAME': 's3-bucket',
         'IIB_REQUEST_LOGS_DIR': None,
         'IIB_REQUEST_RELATED_BUNDLES_DIR': None,
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': None,
         'IIB_GREENWAVE_CONFIG': {},
         'IIB_BINARY_IMAGE_CONFIG': {},
     }
@@ -185,5 +188,40 @@ def test_validate_api_config_failure_aws_s3_env_vars():
         '"IIB_AWS_S3_BUCKET_NAME" is set. '
         'These are used for read/write access to the s3 bucket by IIB'
     )
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
+@pytest.mark.parametrize(
+    'config, error_msg',
+    (
+        (
+            {
+                'IIB_AWS_S3_BUCKET_NAME': None,
+                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': None,
+                'IIB_GREENWAVE_CONFIG': {},
+                'IIB_BINARY_IMAGE_CONFIG': {},
+            },
+            (
+                'One of "IIB_AWS_S3_BUCKET_NAME" or "IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR"'
+                ' must be set'
+            ),
+        ),
+        (
+            {
+                'IIB_AWS_S3_BUCKET_NAME': 'something',
+                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'something-else',
+                'IIB_GREENWAVE_CONFIG': {},
+                'IIB_BINARY_IMAGE_CONFIG': {},
+            },
+            (
+                'S3 bucket and local artifacts directories cannot be set together.'
+                ' Either S3 bucket should be configured or '
+                '"IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR" must be set.'
+            ),
+        ),
+    ),
+)
+def test_validate_api_config_recursive_related_bundle_params(config, error_msg):
     with pytest.raises(ConfigError, match=error_msg):
         validate_api_config(config)

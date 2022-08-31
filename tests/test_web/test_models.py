@@ -85,6 +85,7 @@ def test_get_type_names():
         'create_empty_index',
         'generic',
         'merge_index_image',
+        'recursive_related_bundles',
         'regenerate_bundle',
         'rm',
     ]
@@ -99,7 +100,8 @@ def test_get_type_names():
         (3, True),
         (4, True),
         (5, True),
-        (6, False),
+        (6, True),
+        (7, False),
         ('1', False),
         (None, False),
     ],

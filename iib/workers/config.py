@@ -39,6 +39,7 @@ class Config(object):
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry: Optional[str] = None
     iib_log_level: str = 'INFO'
+    iib_max_recursive_related_bundles = 15
     iib_organization_customizations: iib_organization_customizations_type = {}
     iib_sac_queues: List[str] = []
     iib_request_logs_dir: Optional[str] = None
@@ -62,6 +63,7 @@ class Config(object):
     include: List[str] = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
+        'iib.workers.tasks.build_recursive_related_bundles',
         'iib.workers.tasks.build_regenerate_bundle',
         'iib.workers.tasks.build_create_empty_index',
         'iib.workers.tasks.general',
@@ -164,10 +166,32 @@ class DevelopmentConfig(Config):
                 }
             ),
         ],
+        'company-managed-recursive': [
+            RegistryReplacements(
+                {
+                    'type': 'registry_replacements',
+                    'replacements': {
+                        'registry.redhat.io': 'brew.registry.redhat.io',
+                    },
+                }
+            ),
+            IIBOrganizationCustomizations({'type': 'related_bundles'}),
+            RegistryReplacements(
+                {
+                    'type': 'registry_replacements',
+                    'replacements': {
+                        'brew.registry.redhat.io': 'quay.io',
+                    },
+                }
+            ),
+        ],
     }
     iib_registry: str = 'registry:8443'
     iib_request_logs_dir: Optional[str] = '/var/log/iib/requests'
     iib_request_related_bundles_dir: Optional[str] = '/var/lib/requests/related_bundles'
+    iib_request_recursive_related_bundles_dir: Optional[
+        str
+    ] = '/var/lib/requests/recursive_related_bundles'
     iib_dogpile_backend: str = 'dogpile.cache.memcached'
 
 
@@ -246,10 +270,15 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
                 '"iib_aws_s3_bucket_name" must be set to a valid string. '
                 'This is used for read/write access to the s3 bucket by IIB'
             )
-        if not conf.get('iib_request_logs_dir') or not conf.get('iib_request_related_bundles_dir'):
+        if (
+            not conf.get('iib_request_logs_dir')
+            or not conf.get('iib_request_related_bundles_dir')
+            or not conf.get('iib_request_recursive_related_bundles_dir')
+        ):
             raise ConfigError(
-                '"iib_request_logs_dir" and "iib_request_related_bundles_dir" '
-                'must be set when iib_aws_s3_bucket_name is set.'
+                '"iib_request_logs_dir", "iib_request_related_bundles_dir" and '
+                '"iib_request_recursive_related_bundles_dir" must be set '
+                'when iib_aws_s3_bucket_name is set.'
             )
         if (
             not os.getenv('AWS_ACCESS_KEY_ID')
@@ -262,8 +291,18 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
                 '"iib_aws_s3_bucket_name" is set. '
                 'These are used for read/write access to the s3 bucket by IIB'
             )
+    else:
+        if not conf.get('iib_request_recursive_related_bundles_dir'):
+            raise ConfigError(
+                '"iib_request_recursive_related_bundles_dir" must be set when'
+                ' "iib_aws_s3_bucket_name" is not set'
+            )
 
-    for directory in ('iib_request_logs_dir', 'iib_request_related_bundles_dir'):
+    for directory in (
+        'iib_request_logs_dir',
+        'iib_request_related_bundles_dir',
+        'iib_request_recursive_related_bundles_dir',
+    ):
         iib_request_temp_data_dir = conf.get(directory)
         if iib_request_temp_data_dir:
             if not os.path.isdir(iib_request_temp_data_dir):

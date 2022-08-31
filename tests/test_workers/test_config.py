@@ -37,13 +37,16 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     assert celery_app.conf.broker_connection_max_retries == 10
 
 
-def test_validate_celery_config():
+@patch('os.path.isdir', return_value=True)
+@patch('os.access', return_value=True)
+def test_validate_celery_config(mock_isdir, mock_isaccess):
     validate_celery_config(
         {
             'iib_api_url': 'http://localhost:8080/api/v1/',
             'iib_organization_customizations': {},
             'iib_registry': 'registry',
             'iib_required_labels': {},
+            'iib_request_recursive_related_bundles_dir': 'some-dire',
         }
     )
 
@@ -227,6 +230,7 @@ def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type
         'iib_request_logs_dir': iib_request_logs_dir,
         'iib_registry': 'registry',
         'iib_required_labels': {},
+        'iib_request_recursive_related_bundles_dir': 'some-dir',
     }
     error = error.format(logs_dir=iib_request_logs_dir)
     with pytest.raises(ConfigError, match=error):
@@ -239,8 +243,9 @@ def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type
         (
             {'iib_aws_s3_bucket_name': 'bucket'},
             (
-                '"iib_request_logs_dir" and "iib_request_related_bundles_dir" '
-                'must be set when iib_aws_s3_bucket_name is set.'
+                '"iib_request_logs_dir", "iib_request_related_bundles_dir" and '
+                '"iib_request_recursive_related_bundles_dir" must be set when '
+                'iib_aws_s3_bucket_name is set.'
             ),
         ),
         (
@@ -274,6 +279,7 @@ def test_validate_celery_config_invalid_s3_env_vars():
         'iib_aws_s3_bucket_name': 'bucket',
         'iib_request_logs_dir': 'some-dir',
         'iib_request_related_bundles_dir': 'some-other-dir',
+        'iib_request_recursive_related_bundles_dir': 'yet-antoher-dir',
     }
     error = (
         '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
@@ -283,3 +289,18 @@ def test_validate_celery_config_invalid_s3_env_vars():
     )
     with pytest.raises(ConfigError, match=error):
         validate_celery_config(conf)
+
+
+def test_validate_celery_config_invalid_recursive_related_bundles_config():
+    worker_config = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+        'iib_organization_customizations': {},
+    }
+    error = (
+        '"iib_request_recursive_related_bundles_dir" must be set when'
+        ' "iib_aws_s3_bucket_name" is not set'
+    )
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(worker_config)

@@ -197,7 +197,8 @@ def test_get_builds_invalid_type(app, client, db):
     assert rv.json == {
         'error': (
             'wrong-type is not a valid build request type. Valid request_types are: '
-            'generic, add, rm, regenerate-bundle, merge-index-image, create-empty-index'
+            'generic, add, rm, regenerate-bundle, merge-index-image, '
+            'create-empty-index, recursive-related-bundles'
         )
     }
 
@@ -2204,3 +2205,233 @@ def test_get_build_related_bundles_s3_configured(
     assert rv.status_code == expected['status']
     assert rv.mimetype == expected['mimetype']
     assert rv.json == expected['json']
+
+
+@mock.patch('iib.web.api_v1.handle_recursive_related_bundles_request')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_recursive_related_bundles_success(mock_smfsc, mock_hrbr, db, auth_env, client):
+    data = {'parent_bundle_image': 'registry.example.com/bundle-image:latest'}
+
+    # Assume a timestamp to simplify tests
+    _timestamp = '2020-02-12T17:03:00Z'
+    _expiration_timestamp = '2020-02-15T17:03:00Z'
+
+    response_json = {
+        'arches': [],
+        'batch': 1,
+        'batch_annotations': None,
+        'parent_bundle_image': 'registry.example.com/bundle-image:latest',
+        'parent_bundle_image_resolved': None,
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
+        'organization': None,
+        'nested_bundles': {
+            'expiration': '2020-02-15T17:03:00Z',
+            'url': 'http://localhost/api/v1/builds/1/nested-bundles',
+        },
+        'id': 1,
+        'request_type': 'recursive-related-bundles',
+        'state': 'in_progress',
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': _timestamp,
+            }
+        ],
+        'state_reason': 'The request was initiated',
+        'updated': _timestamp,
+        'user': 'tbrady@DOMAIN.LOCAL',
+    }
+
+    rv = client.post('/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    rv_json = rv.json
+    rv_json['state_history'][0]['updated'] = _timestamp
+    rv_json['updated'] = _timestamp
+    rv_json['logs']['expiration'] = _expiration_timestamp
+    rv_json['nested_bundles']['expiration'] = _expiration_timestamp
+    assert response_json == rv_json
+    mock_hrbr.apply_async.assert_called_once()
+    mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        ({'parent_bundle_image': ''}, '"parent_bundle_image" must be set'),
+        ({'parent_bundle_image': 123}, '"parent_bundle_image" must be a string'),
+        (
+            {
+                'parent_bundle_image': 'registry.example.com/bundle-image:latest',
+                'organization': 123,
+            },
+            '"organization" must be a string',
+        ),
+        (
+            {'parent_bundle_image': 'registry.example.com/bundle-image:latest', 'spam': 'maps'},
+            'The following parameters are invalid: spam',
+        ),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_recursive_related_bundles_invalid_params_format(
+    mock_smfsc, data, error_msg, db, auth_env, client
+):
+    rv = client.post(f'/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        ({}, 'Missing required parameter(s): parent_bundle_image'),
+        ({'organization': 'acme'}, 'Missing required parameter(s): parent_bundle_image'),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_recursive_related_bundles_missing_required_param(
+    mock_smfsc, data, error_msg, db, auth_env, client
+):
+    rv = client.post(f'/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert rv.json['error'] == error_msg
+    mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('nested_bundles_content', 'expired', 'finalized', 'expected'),
+    (
+        (
+            ['foobar'],
+            False,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            ['foobar'],
+            True,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            ['foobar'],
+            False,
+            True,
+            {'status': 200, 'mimetype': 'application/json', 'json': ['foobar']},
+        ),
+        (
+            [],
+            True,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            False,
+            {'status': 400, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            False,
+            True,
+            {'status': 500, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (
+            None,
+            True,
+            True,
+            {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+    ),
+)
+def test_get_nested_bundles(
+    client,
+    db,
+    minimal_request_recursive_related_bundles,
+    tmpdir,
+    nested_bundles_content,
+    expired,
+    finalized,
+    expected,
+):
+    minimal_request_recursive_related_bundles.add_state('in_progress', 'Starting things up!')
+    db.session.commit()
+
+    client.application.config['IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR'] = str(tmpdir)
+    if expired:
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
+    if finalized:
+        minimal_request_recursive_related_bundles.add_state('complete', 'The request is complete')
+        db.session.commit()
+    request_id = minimal_request_recursive_related_bundles.id
+    related_bundles_file = tmpdir.join(f'{request_id}_recursive_related_bundles.json')
+    if nested_bundles_content is not None:
+        with open(related_bundles_file, 'w') as output_file:
+            json.dump(nested_bundles_content, output_file)
+    rv = client.get(f'/api/v1/builds/{request_id}/nested-bundles')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    assert rv.json == expected['json']
+
+
+@pytest.mark.parametrize(
+    ('nested_bundles_content', 'expired', 'expected'),
+    (
+        (
+            None,
+            False,
+            {'status': 404, 'mimetype': 'application/json', 'json': {'error': mock.ANY}},
+        ),
+        (None, True, {'status': 410, 'mimetype': 'application/json', 'json': {'error': mock.ANY}}),
+        (['foobar'], False, {'status': 200, 'mimetype': 'application/json', 'json': ['foobar']}),
+    ),
+)
+@mock.patch('iib.web.api_v1.get_object_from_s3_bucket')
+def test_get_nested_bundles_s3_configured(
+    mock_gofs3b,
+    nested_bundles_content,
+    expired,
+    expected,
+    client,
+    db,
+    minimal_request_recursive_related_bundles,
+):
+    minimal_request_recursive_related_bundles.add_state('complete', 'The request is complete')
+    db.session.commit()
+    mock_gofs3b.return_value = None
+    if nested_bundles_content:
+        content = json.dumps(nested_bundles_content)
+        response_body = StreamingBody(StringIO(content), len(content))
+        mock_gofs3b.return_value = response_body
+    client.application.config['IIB_AWS_S3_BUCKET_NAME'] = 's3-bucket'
+    if expired:
+        client.application.config['IIB_REQUEST_DATA_DAYS_TO_LIVE'] = -1
+    request_id = minimal_request_recursive_related_bundles.id
+    rv = client.get(f'/api/v1/builds/{request_id}/nested-bundles')
+    assert rv.status_code == expected['status']
+    assert rv.mimetype == expected['mimetype']
+    assert rv.json == expected['json']
+
+
+def test_get_nested_bundles_invalid_request_type(
+    client,
+    db,
+    minimal_request_regenerate_bundle,
+):
+    error_msg = (
+        'The request 1 is of type regenerate-bundle. '
+        'This endpoint is only valid for requests of type recursive-related-bundles.'
+    )
+    minimal_request_regenerate_bundle.add_state('complete', 'The request is complete')
+    db.session.commit()
+    client.application.config['IIB_AWS_S3_BUCKET_NAME'] = 's3-bucket'
+    request_id = minimal_request_regenerate_bundle.id
+    rv = client.get(f'/api/v1/builds/{request_id}/nested-bundles')
+    assert rv.status_code == 400
+    assert rv.json['error'] == error_msg

@@ -2,7 +2,7 @@
 import os
 import tempfile
 
-TEST_DB_FILE = os.path.join(tempfile.gettempdir(), 'iib.db')
+TEST_DB_FILE = os.path.join(tempfile.gettempdir(), 'iib_recursive.db')
 
 
 class Config(object):
@@ -25,6 +25,7 @@ class Config(object):
     IIB_REQUEST_DATA_DAYS_TO_LIVE = 3
     IIB_REQUEST_LOGS_DIR = None
     IIB_REQUEST_RELATED_BUNDLES_DIR = None
+    IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR = '/var/lib/requests/recursive_related_bundles'
     IIB_USER_TO_QUEUE = {}
     IIB_WORKER_USERNAMES = []
     SQLALCHEMY_TRACK_MODIFICATIONS = False

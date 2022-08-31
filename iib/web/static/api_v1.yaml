@@ -635,6 +635,90 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/recursive-related-bundles:
+    post:
+      description: >-
+        Submit a build request to find recursive related bundles of a bundle image
+        in a reversed level-order traversal.
+      requestBody:
+        description: The build request to create
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecursiveRelatedBundlesRequest'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecursiveRelatedBundlesResponse'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"organization" must be a string'
+        '401':
+          description: The user is not allowed to submit a build request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+  '/builds/{id}/nested_bundles':
+    get:
+      description: Return nested related bundles for a specific recursive related bundles request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve the related bundles for
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The nested related bundles for the build request in level order traversal
+            from bottom to top
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  - 'quay.io/user/openshift-bundle-example-container@sha256:29e4531e4625653'
+        '403':
+          description: >
+            The related bundles are not available for this request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The request is not complete yet. The nested bundles are not available.
+        '410':
+          description: The nested related bundles for the request have been removed due to expiration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The nested related bundles for the build request 1 no longer exist
 components:
   schemas:
     BundleMapping:
@@ -1198,6 +1282,67 @@ components:
               items:
                 type: string
               example: ["v4.5-10-08-2021"]
+    RecursiveRelatedBundlesRequest:
+      type: object
+      properties:
+        parent_bundle_image:
+          type: string
+          description: >-
+            The pull specification of the bundle image whose related bundles are to be found.
+          example: 'quay.io/user/openshift-bundle-example-container:v1'
+        organization:
+          type: string
+          description: >-
+            The name of the organization the bundle should be regenerated for. If provided,
+            the value must exist in IIB's server configuration. This will be used to perform
+            various modifications in the operator metadata embeded in the operator bundle
+            image, e.g. change the container registry, or the operator package name.
+          example: 'openshift-operators'
+        registry_auths:
+          type: object
+          description: >
+            Provide the dockerconfig.json for authentication to private registries.
+            Non-auth information in the dockerconfig.json is not allowed.
+          example:
+            auths:
+              registry.example.io:
+                auth: "my-secret-token-base-64-encoded"
+      required:
+        - parent_bundle_image
+    RecursiveRelatedBundlesResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            organization:
+              type: string
+              description: The name of the organization the bundle was regenerated for.
+              example: openshift-operators
+            request_type:
+              type: string
+              example: recursive-related-bundles
+            parent_bundle_image:
+              type: string
+              description: The pull specification of the original bundle image that was modified.
+              example: 'quay.io/user/openshift-bundle-example-container:v1'
+            parent_bundle_image_resolved:
+              type: string
+              example: >-
+                quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            nested_bundles:
+              type: object
+              properties:
+                url:
+                  type: string
+                  description: URL to fetch the nested related bundles for the request
+                expiration:
+                  type: string
+                  description: >-
+                    UTC timestamp in ISO format that indicates when the related bundles for the request
+                    are considered to be expired and will be removed.
+              example:
+                url: https://iib.domain.local/api/v1/builds/1/nested_bundles
+                expiration: '2019-09-19T19:35:15.722265Z'
     RequestUpdate:
       type: object
       properties:
@@ -1261,6 +1406,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/BaseResponseVerbose'
         - $ref: '#/components/schemas/RegenerateBundleResponse'
+    RecursiveRelatedBundlesResponseVerbose:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/RecursiveRelatedBundlesResponse'
     ResponseCreateEmptyIndexVerbose:
       allOf:
         - $ref: '#/components/schemas/BaseResponseVerbose'

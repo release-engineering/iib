@@ -75,6 +75,7 @@ class UpdateRequestPayload(TypedDict, total=False):
     internal_index_image_copy: NotRequired[str]
     internal_index_image_copy_resolved: NotRequired[str]
     omps_operator_version: NotRequired[str]
+    parent_bundle_image_resolved: NotRequired[str]
     source_from_index_resolved: NotRequired[str]
     state: NotRequired[str]
     state_reason: NotRequired[str]
