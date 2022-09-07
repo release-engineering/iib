@@ -1178,11 +1178,33 @@ class RequestRegenerateBundle(Request):
     )
     # The name of the organization the bundle should be regenerated for
     organization = db.Column(db.String, nullable=True)
+    # The mapping of bundle replacements to apply to the regeneration request
+    _bundle_replacements = db.Column('bundle_replacements', db.Text, nullable=True)
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value
     }
     build_tags = None
+
+    @property
+    def bundle_replacements(self):
+        """Return the Python representation of the JSON bundle_replacements."""
+        return json.loads(self._bundle_replacements) if self._bundle_replacements else None
+
+    @bundle_replacements.setter
+    def bundle_replacements(self, bundle_replacements):
+        """
+        Set the bundle_replacements column to the input bundle_replacements as a JSON string.
+
+        If ``None`` is provided, it will be simply set to ``None`` and not be converted to JSON.
+
+        :param dict bundle_replacements: the dictionary of the bundle_replacements or ``None``
+        """
+        self._bundle_replacements = (
+            json.dumps(bundle_replacements, sort_keys=True)
+            if bundle_replacements is not None
+            else None
+        )
 
     @classmethod
     def from_json(cls, kwargs, batch=None):
@@ -1199,8 +1221,17 @@ class RequestRegenerateBundle(Request):
         validate_request_params(
             request_kwargs,
             required_params={'from_bundle_image'},
-            optional_params={'organization', 'registry_auths'},
+            optional_params={'bundle_replacements', 'organization', 'registry_auths'},
         )
+        # Validate bundle_replacements is correctly provided
+        bundle_replacements = request_kwargs.get('bundle_replacements', None)
+        if bundle_replacements is not None:
+            if not isinstance(bundle_replacements, dict):
+                raise ValidationError('The value of "bundle_replacements" must be a JSON object')
+
+            for key, value in bundle_replacements.items():
+                if not isinstance(value, str) or not isinstance(key, str):
+                    raise ValidationError(f'The key and value of "{key}" must be a string')
 
         # Validate organization is correctly provided
         organization = request_kwargs.get('organization')
@@ -1271,6 +1302,7 @@ class RequestRegenerateBundle(Request):
         rv = super().get_mutable_keys()
         rv.add('bundle_image')
         rv.add('from_bundle_image_resolved')
+        rv.add('bundle_replacements')
         return rv
 
 
