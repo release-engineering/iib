@@ -15,6 +15,7 @@ Podman 1.9.2+ is required by IIB.
 * [General Documentation](https://iib.readthedocs.io/en/latest/)
 * [Python Module Documentation](https://iib.readthedocs.io/en/latest/module_documentation/index.html)
 
+# Development
 ## Coding Standards
 
 The codebase conforms to the style enforced by `flake8` with the following exceptions:
@@ -57,7 +58,7 @@ The testing environment is managed by [tox](https://tox.readthedocs.io/en/latest
 If you'd like to run a specific unit test, you can do the following:
 
 ```bash
-tox -e py37 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
+tox -e py38 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 ```
 
 ## Development Environment
@@ -121,14 +122,49 @@ adding a new package. To upgrade a package, use the `-P` argument of the `pip-co
 To update `requirements-test.txt`, run
 `pip-compile --generate-hashes requirements-test.in -o requirements-test.txt`.
 
+Both `requirements.txt` and `requirements-test.txt` can be updated using the tox command
+
+```bash
+$ tox -e pip-compile
+```
+
+You can also use this to upgrade specific packages and specific package versions
+
+```bash
+$ tox -e pip-compile -- --upgrade-package <package-name><==package-version>
+```
+
 When installing the dependencies in a production environment, run
 `pip install --require-hashes -r requirements.txt`. Alternatively, you may use
 `pip-sync requirements.txt`, which will make sure your virtualenv only has the packages listed in
 `requirements.txt`.
 
+
 To ensure the pinned dependencies are not vulnerable, this project uses
 [safety](https://github.com/pyupio/safety), which runs on every pull-request.
 
+## Database Migrations
+
+When the models are modified, the database schema also needs to be updated which includes leveraging
+`alembic` to generate a database migration. In order to simplify this process, a `tox` command can be
+used
+
+```bash
+$ tox -e migrate-db <simple message describing the change.>
+```
+
+Before running this command, however, you should `SQLALCHEMY_DATABASE_URI` to point to `'sqlite:///'`
+in `iib/web/config.py`. This parameter also needs to be added to the `Config` class specification.
+
+**NOTE:** This tox command was written as a convenience function that might not work in all situations.
+If alembic cannot auto-create the version file for the migration with `migrate`, you can just create it
+and then manually populate the steps with
+
+```bash
+$ flask db revision -m <simple message describing the change.>
+```
+
+# Configuring IIB deployments
 ## Registry Authentication
 
 IIB does not handle authentication with container registries directly. If authentication is needed,
@@ -370,6 +406,7 @@ must be set along with `iib_aws_s3_bucket_name` config variable:
 
 More info on these environment variables can be found in the [AWS User Guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
 
+# Additional information on specific IIB functionality
 ## Regenerating Bundle Images
 
 In addition to building operator index images, IIB can also be used to regenerate operator bundle
@@ -415,9 +452,10 @@ them to the index image. If a Greenwave configuration is setup for your queue, I
 Greenwave to check if your bundle image builds have passed the tests in the Greenwave policy you
 have defined. The IIB request submitted to that queue will succeed only if the policy is satisfied.
 
-## Read the Docs Documentation
+# Documentation
+This package has documentaiton on [Read the Docs](https://iib.readthedocs.io)
 
-### Build the Docs
+## Build the Docs
 
 To build and serve the docs, run the following commands:
 
@@ -426,7 +464,7 @@ tox -e docs
 google-chrome .tox/docs_out/index.html
 ```
 
-### Expanding the Docs
+## Expanding the Docs
 
 To document a new Python module, find the `rst` file of the corresponding Python package that
 contains the module. Once found, add a section under "Submodules" in alphabetical order such as:
