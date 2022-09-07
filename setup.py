@@ -10,6 +10,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'boto3',
+        'cffi',
         'celery',
         'dogpile.cache',
         'flask',
