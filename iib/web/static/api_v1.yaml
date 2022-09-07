@@ -1075,6 +1075,16 @@ components:
             auths:
               registry.example.io:
                 auth: "my-secret-token-base-64-encoded"
+        bundle_replacements:
+          type: object
+          description: >
+            A dictionary of bundle image pullspecs to replace in the CSV. The dictionary
+            should contain a mapping of the original pullspec to the target pullspec. Since
+            replacement happens according to the location of the `perform_bundle_replacements`
+            customization type, the original pullspecs need to be accurate for where the
+            customization is run.
+          example:
+            quay.io/foo/bar@sha256:123456: quay.io/foo/bar@sha256:654321
         related_bundles:
           type: object
           properties:

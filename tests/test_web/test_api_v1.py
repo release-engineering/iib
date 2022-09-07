@@ -1145,6 +1145,7 @@ def test_patch_request_regenerate_bundle_success(
         'state_reason': 'All done!',
         'bundle_image': 'bundle:image',
         'from_bundle_image_resolved': 'from-bundle-image:resolved',
+        'bundle_replacements': {'foo': 'bar:baz'},
     }
 
     response_json = {
@@ -1398,6 +1399,20 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
             {'from_bundle_image': 'registry.example.com/bundle-image:latest', 'spam': 'maps'},
             'The following parameters are invalid: spam',
         ),
+        (
+            {
+                'from_bundle_image': 'registry.example.com/bundle-image:latest',
+                'bundle_replacements': 'bundle_replacements',
+            },
+            'The value of "bundle_replacements" must be a JSON object',
+        ),
+        (
+            {
+                'from_bundle_image': 'registry.example.com/bundle-image:latest',
+                'bundle_replacements': {'bundle': ['replacements']},
+            },
+            'The key and value of "bundle" must be a string',
+        ),
     ),
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
@@ -1469,6 +1484,7 @@ def test_regenerate_bundle_batch_success(
             {
                 'from_bundle_image': 'registry.example.com/bundle-image:latest',
                 'registry_auths': {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
+                'bundle_replacements': {'foo': 'bar:baz'},
             },
             {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
         ]
@@ -1487,14 +1503,18 @@ def test_regenerate_bundle_batch_success(
                     None,
                     1,
                     {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
+                    {'foo': 'bar:baz'},
                 ],
-                argsrepr="['registry.example.com/bundle-image:latest', None, 1, '*****']",
+                argsrepr=(
+                    "['registry.example.com/bundle-image:latest', None, 1, '*****', "
+                    "{'foo': 'bar:baz'}]"
+                ),
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),
             mock.call(
-                args=['registry.example.com/bundle-image2:latest', None, 2, None],
-                argsrepr="['registry.example.com/bundle-image2:latest', None, 2, None]",
+                args=['registry.example.com/bundle-image2:latest', None, 2, None, None],
+                argsrepr="['registry.example.com/bundle-image2:latest', None, 2, None, None]",
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),

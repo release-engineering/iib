@@ -525,6 +525,13 @@ def patch_request(request_id):
             for bundle in value:
                 if not isinstance(bundle, str):
                     raise ValidationError(exc_msg)
+        elif key == 'bundle_replacements':
+            exc_msg = f'The "{key}" key must be a dictionary object mapping from strings to strings'
+            if not isinstance(value, dict):
+                raise ValidationError(exc_msg)
+            for k, v in value.items():
+                if not isinstance(v, str) or not isinstance(k, str):
+                    raise ValidationError(exc_msg)
         elif not value or not isinstance(value, str):
             raise ValidationError(f'The value for "{key}" must be a non-empty string')
 
@@ -667,6 +674,7 @@ def regenerate_bundle():
         payload.get('organization'),
         request.id,
         payload.get('registry_auths'),
+        payload.get('bundle_replacements'),
     ]
     safe_args = _get_safe_args(args, payload)
 
@@ -731,6 +739,7 @@ def regenerate_bundle_batch():
                 build_request.get('organization'),
                 request.id,
                 build_request.get('registry_auths'),
+                build_request.get('bundle_replacements'),
             ]
             safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
