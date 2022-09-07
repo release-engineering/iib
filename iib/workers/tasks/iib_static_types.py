@@ -39,6 +39,7 @@ class PrebuildInfo(TypedDict):
     binary_image: str
     binary_image_resolved: str
     bundle_mapping: NotRequired[Dict[str, List[str]]]
+    bundle_replacements: NotRequired[Dict[str, str]]
     distribution_scope: str
     extra: NotRequired[str]
     from_index_resolved: NotRequired[str]
@@ -67,6 +68,7 @@ class UpdateRequestPayload(TypedDict, total=False):
     binary_image_resolved: NotRequired[str]
     bundle_image: NotRequired[str]
     bundle_mapping: NotRequired[Dict[str, List[str]]]
+    bundle_replacements: NotRequired[Dict[str, str]]
     distribution_scope: NotRequired[str]
     from_bundle_image_resolved: NotRequired[str]
     from_index_resolved: NotRequired[str]

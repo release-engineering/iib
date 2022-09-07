@@ -55,15 +55,18 @@ def handle_regenerate_bundle_request(
     organization: str,
     request_id: int,
     registry_auths: Optional[Dict[str, Any]] = None,
+    bundle_replacements: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Coordinate the work needed to regenerate the operator bundle image.
 
     :param str from_bundle_image: the pull specification of the bundle image to be regenerated.
     :param str organization: the name of the organization the bundle should be regenerated for.
-    :param int request_id: the ID of the IIB build request
+    :param int request_id: the ID of the IIB build request.
     :param dict registry_auths: Provide the dockerconfig.json for authentication to private
       registries, defaults to ``None``.
+    :param dict bundle_replacements: Dictionary mapping from original bundle pullspecs to rebuilt
+      bundle pullspecs.
     :raises IIBError: if the regenerate bundle image build fails.
     """
     _cleanup()
@@ -97,6 +100,9 @@ def handle_regenerate_bundle_request(
 
         # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
         podman_pull(from_bundle_image_resolved)
+
+        if bundle_replacements:
+            log.debug(f'Ignoring the following bundle_replacements: {bundle_replacements}')
 
         with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
             manifests_path = os.path.join(temp_dir, 'manifests')
