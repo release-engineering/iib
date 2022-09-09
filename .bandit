@@ -1,2 +1,2 @@
 [bandit]
-exclude: /tests,/docker,/htmlcov,/.pytest-cache,/.git*,__pycache__,/.tox,.eggs,*.egg,/env*,/iib-data,/venv*,/.vscode,/.pyre
+exclude: /tests,/docker,/htmlcov,/.pytest-cache,/.git*,__pycache__,/.tox,.eggs,*.egg,/env*,/iib-data,/venv,/venv*,/.vscode,/.pyre
