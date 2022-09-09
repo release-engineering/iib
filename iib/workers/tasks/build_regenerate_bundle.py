@@ -110,7 +110,12 @@ def handle_regenerate_bundle_request(
             metadata_path = os.path.join(temp_dir, 'metadata')
             _copy_files_from_image(from_bundle_image_resolved, '/metadata', metadata_path)
             new_labels = _adjust_operator_bundle(
-                manifests_path, metadata_path, request_id, organization, pinned_by_iib
+                manifests_path,
+                metadata_path,
+                request_id,
+                organization,
+                pinned_by_iib,
+                bundle_replacements,
             )
 
             with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
@@ -204,6 +209,7 @@ def _adjust_operator_bundle(
     request_id: int,
     organization: Optional[str] = None,
     pinned_by_iib: bool = False,
+    bundle_replacements: dict = {},
 ) -> Dict[str, str]:
     """
     Apply modifications to the operator manifests at the given location.
@@ -225,6 +231,8 @@ def _adjust_operator_bundle(
         no custom behavior will be applied.
     :param bool pinned_by_iib: whether or not the bundle image has already been processed by
         IIB to perform image pinning of related images.
+    :param dict bundle_replacements: mapping between original pullspecs and rebuilt bundles,
+        allowing the updating of digests if any bundles have been rebuilt.
     :raises IIBError: if the operator manifest has invalid entries
     :return: a dictionary of labels to set on the bundle
     :rtype: dict
@@ -244,6 +252,7 @@ def _adjust_operator_bundle(
             {'type': 'related_bundles'},
             {'type': 'package_name_suffix'},
             {'type': 'registry_replacements'},
+            {'type': 'perform_bundle_replacements'},
             {'type': 'image_name_from_labels'},
             {'type': 'csv_annotations'},
             {'type': 'enclose_repo'},
@@ -305,6 +314,13 @@ def _adjust_operator_bundle(
             log.info('Resolving image pull specs')
             bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
             _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib)
+        elif customization_type == 'perform_bundle_replacements':
+            log.info('Performing bundle replacements')
+            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            replacement_pullspecs = {}
+            for old, new in bundle_replacements.items():
+                replacement_pullspecs[ImageName.parse(old)] = ImageName.parse(new)
+            _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
 
     return labels
 

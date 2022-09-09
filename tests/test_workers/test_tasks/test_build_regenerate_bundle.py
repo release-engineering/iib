@@ -16,8 +16,14 @@ yaml = build_regenerate_bundle.yaml
 
 
 @pytest.mark.parametrize(
-    'pinned_by_iib_label, pinned_by_iib_bool',
-    (('true', True), ('True', True), (None, False), ('false', False), ('False', False)),
+    'pinned_by_iib_label, pinned_by_iib_bool, bundle_replacements',
+    (
+        ('true', True, None),
+        ('True', True, {}),
+        (None, False, {'a': 'b'}),
+        ('false', False, None),
+        ('False', False, {'a@b', 'c@d'}),
+    ),
 )
 @pytest.mark.parametrize(
     'iib_index_image_output_registry, expected_bundle_image',
@@ -56,6 +62,7 @@ def test_handle_regenerate_bundle_request(
     expected_bundle_image,
     pinned_by_iib_label,
     pinned_by_iib_bool,
+    bundle_replacements,
     tmpdir,
 ):
     arches = ['amd64', 's390x']
@@ -77,7 +84,7 @@ def test_handle_regenerate_bundle_request(
     mock_gil.return_value = pinned_by_iib_label
 
     build_regenerate_bundle.handle_regenerate_bundle_request(
-        from_bundle_image, organization, request_id
+        from_bundle_image, organization, request_id, bundle_replacements=bundle_replacements
     )
 
     mock_cleanup.assert_called_once()
@@ -104,6 +111,7 @@ def test_handle_regenerate_bundle_request(
         request_id,
         'acme',
         pinned_by_iib_bool,
+        bundle_replacements,
     )
 
     assert mock_bi.call_count == len(arches)
@@ -628,7 +636,7 @@ def test_adjust_operator_bundle_already_pinned_by_iib(
             # worker configuration.
             registry='registry.access.company.com',
             ref='@sha256:765432',
-            related_name=f'operator/image-765432-annotation',
+            related_name='operator/image-765432-annotation',
             related_ref='@sha256:765432',
             operator='operator',
             image='/image',
@@ -644,7 +652,7 @@ def test_adjust_operator_bundle_already_pinned_by_iib(
     assert csv1.read_text('utf-8') == csv_related_images_template.format(
         registry='quay.io',
         ref='@sha256:654321',
-        related_name=f'image-654321-annotation',
+        related_name='image-654321-annotation',
         related_ref='@sha256:654321',
         operator='namespace/reponame',
         image='-rhel-8-final',
@@ -652,7 +660,119 @@ def test_adjust_operator_bundle_already_pinned_by_iib(
     assert csv2.read_text('utf-8') == csv_related_images_template.format(
         registry='registry.marketplace.company.com',
         ref='@sha256:765432',
-        related_name=f'operator/image-765432-annotation',
+        related_name='operator/image-765432-annotation',
+        related_ref='@sha256:765432',
+        operator='namespace/reponame',
+        image='-rhel-8-final',
+    )
+    mock_aca.assert_called_once_with(mock.ANY, 'amqstreams', annotations)
+    mock_gri.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_package_annotations')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._apply_package_name_suffix')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._adjust_csv_annotations')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle.get_image_labels')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._write_related_bundles_file')
+def test_adjust_operator_bundle_perform_bundle_replacements(
+    mock_grbi, mock_gil, mock_aca, mock_gri, mock_apns, mock_gpa, tmpdir
+):
+    annotations = {
+        'marketplace.company.io/remote-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/pricing'
+        ),
+        'marketplace.company.io/support-workflow': (
+            'https://marketplace.company.com/en-us/operators/{package_name}/support'
+        ),
+    }
+    mock_gpa.return_value = {
+        'annotations': {'operators.operatorframework.io.bundle.package.v1': 'amqstreams'}
+    }
+    mock_apns.return_value = (
+        'amqstreams',
+        {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'},
+    )
+    mock_gil.return_value = {'name': 'namespace/reponame', 'version': 'rhel-8'}
+    manifests_dir = tmpdir.mkdir('manifests')
+    metadata_dir = tmpdir.mkdir('metadata')
+    csv1 = manifests_dir.join('2.clusterserviceversion.yaml')
+    csv2 = manifests_dir.join('3.clusterserviceversion.yaml')
+
+    # NOTE: The OperatorManifest class is capable of modifying pull specs found in
+    # various locations within the CSV file. Since IIB relies on this class to do
+    # such modifications, this test only verifies that at least one of the locations
+    # is being handled properly. This is to ensure IIB is using OperatorManifest
+    # correctly.
+    csv_template = textwrap.dedent(
+        """\
+        apiVersion: operators.example.com/v1
+        kind: ClusterServiceVersion
+        metadata:
+          name: amqstreams.v1.0.0
+          namespace: placeholder
+          annotations:
+            containerImage: {registry}/{operator}{image}{ref}
+        """
+    )
+    csv_related_images_template = csv_template + textwrap.dedent(
+        """\
+        spec:
+          relatedImages:
+          - name: {related_name}
+            image: {registry}/{operator}{image}{related_ref}
+        """
+    )
+    csv1.write(
+        csv_related_images_template.format(
+            registry='quay.io',
+            ref='@sha256:654321',
+            related_name='image-654321-annotation',
+            related_ref='@sha256:654321',
+            operator='operator',
+            image='/image',
+        )
+    )
+    csv2.write(
+        csv_related_images_template.format(
+            # This registry for the company-marketplace will be replaced based on
+            # worker configuration.
+            registry='registry.access.company.com',
+            ref='@sha256:765432',
+            related_name='operator/image-765432-annotation',
+            related_ref='@sha256:765432',
+            operator='operator',
+            image='/image',
+        )
+    )
+
+    bundle_replacements = {
+        'quay.io/operator/image@sha256:654321': 'quay.io/operator/image@sha256:123456',
+    }
+
+    labels = build_regenerate_bundle._adjust_operator_bundle(
+        str(manifests_dir),
+        str(metadata_dir),
+        1,
+        'company-marketplace',
+        pinned_by_iib=True,
+        bundle_replacements=bundle_replacements,
+    )
+
+    # The com.redhat.iib.pinned label is not explicitly set, but inherited from the original image
+    assert labels == {'operators.operatorframework.io.bundle.package.v1': 'amqstreams-cmp'}
+    assert csv1.read_text('utf-8') == csv_related_images_template.format(
+        registry='quay.io',
+        ref='@sha256:123456',
+        related_name='image-654321-annotation',
+        related_ref='@sha256:123456',
+        operator='namespace/reponame',
+        image='-rhel-8-final',
+    )
+    assert csv2.read_text('utf-8') == csv_related_images_template.format(
+        registry='registry.marketplace.company.com',
+        ref='@sha256:765432',
+        related_name='operator/image-765432-annotation',
         related_ref='@sha256:765432',
         operator='namespace/reponame',
         image='-rhel-8-final',

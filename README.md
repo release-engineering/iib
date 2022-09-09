@@ -341,6 +341,10 @@ The custom configuration options for the Celery workers are listed below:
     question to their digests. If this customization is not specified in the config for an
     organization, the pinning will not be done. If no organization is specified, IIB will try and
     pin the pull specs in the CSV files to their digests.
+  * The `perform_bundle_replacements` customization type is a dictionary with no additional
+    arguments. It enables bundle replacements to be passed to the bundle regeneration APIs with
+    the `bundle_replacements` parameter. If the customization type is not set, and bundle
+    replacements specified will be ignored.
 
   Here is an example that ties this all together:
 
