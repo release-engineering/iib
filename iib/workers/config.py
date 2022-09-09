@@ -104,6 +104,7 @@ class DevelopmentConfig(Config):
         'company-marketplace': [
             IIBOrganizationCustomizations({'type': 'resolve_image_pullspecs'}),
             IIBOrganizationCustomizations({'type': 'related_bundles'}),
+            IIBOrganizationCustomizations({'type': 'perform_bundle_replacements'}),
             CSVAnnotations(
                 {
                     'type': 'csv_annotations',
