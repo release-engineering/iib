@@ -40,7 +40,7 @@ class Config(object):
     iib_index_image_output_registry: Optional[str] = None
     iib_log_level: str = 'INFO'
     iib_organization_customizations: iib_organization_customizations_type = {}
-    iib_sac_queue: List[str] = []
+    iib_sac_queues: List[str] = []
     iib_request_logs_dir: Optional[str] = None
     iib_request_logs_format: str = (
         '%(asctime)s %(name)s %(processName)s {request_id} '
@@ -214,7 +214,7 @@ def configure_celery(celery_app: Celery) -> None:
 
     celery_app.config_from_object(config, force=True)
 
-    for qname in config.iib_sac_queue:
+    for qname in config.iib_sac_queues:
         celery_app.conf.task_queues = [
             Queue(qname, queue_arguments={'x-single-active-consumer': True}),
         ]
