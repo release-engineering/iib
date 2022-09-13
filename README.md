@@ -345,7 +345,7 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_request_logs_level` - the log level for the request specific log files. This defaults to
   `DEBUG`.
 * `iib_registry` - the container registry to push images to (e.g. `quay.io`).
-* `iib_sac_queue` - list of names of celery queues which should be created as single-active-consumer 
+* `iib_sac_queues` - list of names of celery queues which should be created as single-active-consumer 
 * `iib_skopeo_timeout` - the command timeout for skopeo commands run by IIB. This defaults to
   `30s` (30 seconds).
 * `iib_total_attempts` - the total number of attempts to make at trying a function relating to the
