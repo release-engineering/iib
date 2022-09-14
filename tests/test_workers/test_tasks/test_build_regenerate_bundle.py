@@ -139,7 +139,7 @@ def test_handle_regenerate_bundle_request(
             mock.call(
                 request_id,
                 {
-                    'arches': set(arches),
+                    'arches': list(arches),
                     'bundle_image': expected_bundle_image,
                     'state': 'complete',
                     'state_reason': 'The request completed successfully',

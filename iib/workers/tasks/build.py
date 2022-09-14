@@ -251,7 +251,7 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
-    payload: UpdateRequestPayload = {'arches': set(arches), 'index_image': index_image}
+    payload: UpdateRequestPayload = {'arches': list(arches), 'index_image': index_image}
 
     if add_or_rm:
         with set_registry_token(overwrite_from_index_token, from_index, append=True):

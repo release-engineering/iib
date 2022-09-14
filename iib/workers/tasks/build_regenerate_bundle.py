@@ -140,7 +140,7 @@ def handle_regenerate_bundle_request(
         )
 
     payload = {
-        'arches': set(arches),
+        'arches': list(arches),
         'bundle_image': output_pull_spec,
         'state': 'complete',
         'state_reason': 'The request completed successfully',
