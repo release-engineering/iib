@@ -108,10 +108,6 @@ You may also run the development environment with
 branch as it has various fixes and new features required to run IIB. Set the environment variable
 `IIB_COMPOSE_ENGINE` to the path of the `podman-compose` script before running the `make` commands.
 
-Setting the `IIB_COMPOSE_ENGINE` variable will update compose targets to point to a similarly named
-file inside the `compose-files` directory. Any changes made to the compose files should be submitted to
-all files in the directory.
-
 ## Dependency Management
 
 To manage dependencies, this project uses [pip-tools](https://github.com/jazzband/pip-tools) so that
