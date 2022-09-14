@@ -238,9 +238,10 @@ def configure_celery(celery_app: Celery) -> None:
 
     celery_app.config_from_object(config, force=True)
 
-    for qname in config.iib_sac_queues:
+    if config.iib_sac_queues:
         celery_app.conf.task_queues = [
-            Queue(qname, queue_arguments={'x-single-active-consumer': True}),
+            Queue(qname, queue_arguments={'x-single-active-consumer': True})
+            for qname in config.iib_sac_queues
         ]
 
     logging.getLogger('iib.workers').setLevel(celery_app.conf.iib_log_level)
