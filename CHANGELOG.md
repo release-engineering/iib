@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-## 6.6.0
+## 6.6.1
 - Add recursive-related-bundles endpoint 
 - Adding ability to create single-active-consumer queues
 - Add static types and mypy checks
