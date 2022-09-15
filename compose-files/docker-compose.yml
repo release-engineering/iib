@@ -63,7 +63,7 @@ services:
 
   iib-api:
     build:
-      context: .
+      context: ..
       dockerfile: ./docker/Dockerfile-api
     command:
       - /bin/sh
@@ -96,7 +96,7 @@ services:
 
   iib-worker:
     build:
-      context: .
+      context: ..
       dockerfile: ./docker/Dockerfile-workers
     # Override the default command so that Celery auto-reloads on code changes.
     # This also adds the self-signed CA that was used to sign the Docker registry's certificate
@@ -135,7 +135,7 @@ services:
   # This is an external message broker used to publish messages about state changes
   message-broker:
     build:
-      context: .
+      context: ..
       dockerfile: ./docker/message_broker/Dockerfile
     volumes:
       - message-broker-volume:/opt/activemq/data:z
