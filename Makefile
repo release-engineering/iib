@@ -1,6 +1,7 @@
 # Set the default composer while allowing user to overwrite via the
 # environment variable IIB_COMPOSE_ENGINE.
 IIB_COMPOSE_ENGINE ?= docker-compose
+IIB_COMPOSE_RUNNER = ${IIB_COMPOSE_ENGINE} -f ${PWD}/compose-files/${IIB_COMPOSE_ENGINE}.yml
 
 # Declare non-file targets to avoid potential conflict with files
 # of the same name.
@@ -35,16 +36,16 @@ all:
 
 up: ca-bundle.crt iib-data
 	@echo "Starting the local development instance..."
-	${IIB_COMPOSE_ENGINE} up -d
+	${IIB_COMPOSE_RUNNER} up -d
 
 down:
 	@echo "Destroying the local development instance..."
-	${IIB_COMPOSE_ENGINE} down $(COMPOSER_DOWN_OPTS)
+	${IIB_COMPOSE_RUNNER} down $(COMPOSER_DOWN_OPTS)
 	@rm -rf iib_data
 
 build:
 	@echo "Building the container images for the local development instance..."
-	${IIB_COMPOSE_ENGINE} build
+	${IIB_COMPOSE_RUNNER} build
 
 test:
 	@tox

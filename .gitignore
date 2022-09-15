@@ -131,3 +131,4 @@ dmypy.json
 # docker-compose volumes and files
 /iib_data/
 /ca-bundle.crt
+compose-files/docker/
