@@ -29,6 +29,8 @@ def load_config(app):
     config_file = None
     if os.getenv('IIB_DEV', '').lower() == 'true':
         default_config_obj = 'iib.web.config.DevelopmentConfig'
+    elif os.getenv('IIB_TESTING', '').lower() == 'true':
+        default_config_obj = 'iib.web.config.TestingConfig'
     else:
         default_config_obj = 'iib.web.config.ProductionConfig'
         config_file = '/etc/iib/settings.py'
