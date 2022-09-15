@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.6.0
+- Add recursive-related-bundles endpoint 
+- Adding ability to create single-active-consumer queues
+- Add static types and mypy checks
+- Append overwrite index token to current docker config.
+
 ## 6.5.0
 - Print version of binary files in log files
 - Improve traceability in _get_present_bundles and fix tests
