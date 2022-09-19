@@ -16,6 +16,7 @@ class Config(object):
     IIB_LOG_FORMAT = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
     IIB_LOG_LEVEL = 'INFO'
+    IIB_SAC_QUEUES = []
     IIB_MAX_PER_PAGE = 20
     IIB_MESSAGING_CA = '/etc/pki/tls/certs/ca-bundle.crt'
     IIB_MESSAGING_CERT = '/etc/iib/messaging.crt'
