@@ -11,7 +11,7 @@ from iib.exceptions import ConfigError
 @mock.patch('iib.web.app.os.getenv')
 @mock.patch('iib.web.app.os.path.isfile')
 def test_load_config_dev(mock_isfile, mock_getenv):
-    mock_app = mock.Mock()
+    mock_app = mock.MagicMock()
 
     def new_getenv(key, default_value):
         return {'IIB_DEV': 'true'}.get(key, default_value)
@@ -27,7 +27,7 @@ def test_load_config_dev(mock_isfile, mock_getenv):
 @mock.patch('iib.web.app.os.path.isfile')
 def test_load_config_prod(mock_isfile, mock_getenv):
     mock_isfile.return_value = True
-    mock_app = mock.Mock()
+    mock_app = mock.MagicMock()
 
     load_config(mock_app)
 
