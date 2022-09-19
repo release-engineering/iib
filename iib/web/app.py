@@ -7,7 +7,6 @@ from flask.logging import default_handler
 from flask_login import LoginManager
 from flask_migrate import Migrate
 import kombu.exceptions
-from kombu import Queue
 from werkzeug.exceptions import default_exceptions
 
 from iib.exceptions import ConfigError, IIBError, ValidationError
@@ -39,12 +38,6 @@ def load_config(app):
 
     if config_file and os.path.isfile(config_file):
         app.config.from_pyfile(config_file)
-
-    if app.config['IIB_SAC_QUEUES']:
-        app.config.conf.task_queues = [
-            Queue(qname, queue_arguments={'x-single-active-consumer': True})
-            for qname in app.config['IIB_SAC_QUEUES']
-        ]
 
 
 def validate_api_config(config):
