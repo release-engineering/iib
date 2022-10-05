@@ -15,7 +15,7 @@ def test_get_request(mock_session):
 
     api_utils.get_request(3)
 
-    mock_session.get.assert_called_once_with('http://iib-api:8080/api/v1/builds/3', timeout=60)
+    mock_session.get.assert_called_once_with('http://iib-api:8080/api/v1/builds/3', timeout=120)
 
 
 @mock.patch('iib.workers.api_utils.requests_session')
@@ -52,7 +52,7 @@ def test_set_omps_operator_version(mock_session):
     mock_session.patch.assert_called_once_with(
         'http://iib-api:8080/api/v1/builds/3',
         json={'omps_operator_version': '{"operator": "1.0.0"}'},
-        timeout=60,
+        timeout=120,
     )
 
 
@@ -66,7 +66,7 @@ def test_update_request(mock_session):
     mock_session.patch.assert_called_once_with(
         'http://iib-api:8080/api/v1/builds/3',
         json={'index_image': 'index-image:latest'},
-        timeout=60,
+        timeout=120,
     )
 
 
