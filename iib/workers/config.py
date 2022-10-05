@@ -27,7 +27,7 @@ class Config(object):
     # Avoid infinite Celery retries when the broker is offline.
     broker_connection_max_retries: int = 10
     iib_aws_s3_bucket_name: Optional[str] = None
-    iib_api_timeout: int = 60
+    iib_api_timeout: int = 120
     iib_docker_config_template: str = os.path.join(
         os.path.expanduser('~'), '.docker', 'config.json.template'
     )
