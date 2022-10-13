@@ -349,7 +349,9 @@ def test_opm_registry_add_fbc(
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 def test_opm_registry_rm_fbc(
+    mock_srt,
     mock_ghid,
     mock_orr,
     mock_om,
@@ -364,10 +366,7 @@ def test_opm_registry_rm_fbc(
     mock_om.return_value = fbc_dir
 
     opm_operations.opm_registry_rm_fbc(
-        tmpdir,
-        from_index,
-        operators,
-        'some:image',
+        tmpdir, from_index, operators, 'some:image', overwrite_from_index_token='some_token'
     )
 
     mock_orr.assert_called_once_with(
@@ -376,6 +375,7 @@ def test_opm_registry_rm_fbc(
         tmpdir,
     )
 
+    mock_srt.assert_called_once_with('some_token', 'some_index:latest', append=True)
     mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)
     mock_ogd.assert_called_once_with(
         fbc_dir=fbc_dir,

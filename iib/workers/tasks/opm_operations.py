@@ -550,6 +550,7 @@ def opm_registry_rm_fbc(
     from_index: str,
     operators: List[str],
     binary_image: str,
+    overwrite_from_index_token: Optional[str] = None,
 ) -> None:
     """
     Remove operator/s from a File Based Catalog index image.
@@ -563,10 +564,17 @@ def opm_registry_rm_fbc(
         removed from the output index image.
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from. This should point to a digest or stable tag.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
     """
+    from iib.workers.tasks.utils import set_registry_token
+
     log.info('Removing %s from a FBC Image %s', operators, from_index)
     log.info('Using the existing database from %s', from_index)
-    index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
+
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+        index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
 
     _opm_registry_rm(index_db_path, operators, base_dir)
     fbc_dir = opm_migrate(index_db=index_db_path, base_dir=base_dir)
