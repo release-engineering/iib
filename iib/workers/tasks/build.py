@@ -1011,6 +1011,7 @@ def handle_rm_request(
                 from_index=from_index_resolved,
                 operators=operators,
                 binary_image=prebuild_info['binary_image'],
+                overwrite_from_index_token=overwrite_from_index_token,
             )
 
         else:
