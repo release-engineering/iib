@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.7.0
+- Add bundle_replacements parameter to regenerate_bundle API and worker
+- Bump mako version
+- Increase iib_api_timeout to 120 seconds
+- Fix RM request private registry bug
+
 ## 6.6.1
 - Add recursive-related-bundles endpoint 
 - Adding ability to create single-active-consumer queues
