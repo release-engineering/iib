@@ -1,10 +1,10 @@
 import logging
 import os
+import random
 import shutil
-import socket
 import subprocess
 import time
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Generator
 
 from retry import retry
 
@@ -16,43 +16,29 @@ from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, get_hidde
 log = logging.getLogger(__name__)
 
 
-def _get_free_port(port_start: int, port_end: int) -> int:
+def _gen_port_for_grpc() -> Generator[int, None, None]:
     """
-    Return free port that is safe to use for opm command.
+    Generate port for gRPC service from range set in IIB config.
 
-    :param int port_start: port from which we should start trying to connect to
-    :param int port_end: port on which we should stop trying
-    :return: free port from given interval
-    :rtype: int
-    :raises IIBError: if all tried ports are in use
+    :raises: IIBError when all ports were already taken
     """
-    log.debug('Finding free port from interval [%d,%d)', port_start, port_end)
-    for port in range(port_start, port_end):
-        sock = socket.socket()
-        try:
-            sock.bind(('', port))
-            sock.close()
-            log.debug('Free port found: %d', port)
-            return port
-
-        except OSError:
-            log.info('Port %d is in use, trying another.', port)
-            port += 1
-        sock.close()
-
-    err_msg = f'No free port has been found after {port_end - port_start} attempts.'
-    log.error(err_msg)
-    raise IIBError(err_msg)
-
-
-def _get_free_port_for_grpc() -> int:
-    """Return free port for gRPC service from range set in IIB config."""
-    log.debug('Finding free port for gRPC')
     conf = get_worker_config()
     port_start = conf['iib_grpc_start_port']
     port_end = port_start + conf['iib_grpc_max_port_tries']
 
-    return _get_free_port(port_start, port_end)
+    port_stack = list(range(port_start, port_end))
+    random.shuffle(port_stack)
+
+    log.debug('Get random ports from range [%d, %d)', port_start, port_end)
+
+    while port_stack:
+        yield port_stack.pop(0)
+
+    # The port stack is empty - we tried out all ports from allowed range
+    # therefore we will raise and IIB error
+    err_msg = f'No free port has been found after {port_end - port_start} attempts.'
+    log.error(err_msg)
+    raise IIBError(err_msg)
 
 
 def opm_serve_from_index(base_dir: str, from_index: str) -> Tuple[int, subprocess.Popen]:
@@ -78,7 +64,6 @@ def opm_serve_from_index(base_dir: str, from_index: str) -> Tuple[int, subproces
     return opm_serve(catalog_dir)
 
 
-@retry(exceptions=AddressAlreadyInUse, tries=get_worker_config().iib_grpc_max_tries, logger=log)
 def opm_serve(catalog_dir: str) -> Tuple[int, subprocess.Popen]:
     """
     Locally start OPM service, which can be communicated with using gRPC queries.
@@ -92,16 +77,19 @@ def opm_serve(catalog_dir: str) -> Tuple[int, subprocess.Popen]:
     """
     log.info('Serving data from file-based catalog %s', catalog_dir)
 
-    port = _get_free_port_for_grpc()
-    cmd = ['opm', 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
-    cwd = os.path.abspath(os.path.join(catalog_dir, os.path.pardir))
-    return (
-        port,
-        _serve_cmd_at_port_defaults(cmd, cwd, port),
-    )
+    for port in _gen_port_for_grpc():
+        try:
+            cmd = ['opm', 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
+            cwd = os.path.abspath(os.path.join(catalog_dir, os.path.pardir))
+            return (
+                port,
+                _serve_cmd_at_port_defaults(cmd, cwd, port),
+            )
+        except AddressAlreadyInUse:
+            log.debug('Port %s is already taken. Checking next one...', port)
+            continue
 
 
-@retry(exceptions=AddressAlreadyInUse, tries=get_worker_config().iib_grpc_max_tries, logger=log)
 def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
     """
     Locally start OPM registry service, which can be communicated with using gRPC queries.
@@ -115,13 +103,17 @@ def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
     """
     log.info('Serving data from index.db %s', db_path)
 
-    port = _get_free_port_for_grpc()
-    cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
-    cwd = os.path.dirname(db_path)
-    return (
-        port,
-        _serve_cmd_at_port_defaults(cmd, cwd, port),
-    )
+    for port in _gen_port_for_grpc():
+        try:
+            cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
+            cwd = os.path.dirname(db_path)
+            return (
+                port,
+                _serve_cmd_at_port_defaults(cmd, cwd, port),
+            )
+        except AddressAlreadyInUse:
+            log.debug('Port %s is already taken. Checking next one...', port)
+            continue
 
 
 def _serve_cmd_at_port_defaults(serve_cmd: List[str], cwd: str, port: int) -> subprocess.Popen:

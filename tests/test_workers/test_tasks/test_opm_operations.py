@@ -4,7 +4,7 @@ import pytest
 
 from unittest import mock
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.config import get_worker_config
 from iib.workers.tasks import opm_operations
 
@@ -21,96 +21,82 @@ def mock_config():
         yield mc
 
 
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-def test_get_free_port(mock_socket):
-    mock_socket.socket().bind.side_effect = [OSError(), OSError(), '']
-    mock_socket.poll.side_effect = [1, 1, None]
-    port = opm_operations._get_free_port(50051, 50054)
-    assert port == 50053
+def test_gen_port_for_grp():
+    conf = get_worker_config()
+    port_start = conf['iib_grpc_start_port']
+    port_end = port_start + conf['iib_grpc_max_port_tries']
+    port_range = set(range(port_start, port_end))
+
+    with pytest.raises(
+        IIBError, match=f'No free port has been found after {len(port_range)} attempts.'
+    ):
+        for port in opm_operations._gen_port_for_grpc():
+            assert port in port_range
 
 
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-def test_get_free_port_no_port(mock_socket):
-    mock_socket.socket().bind.side_effect = OSError()
-    with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
-        opm_operations._get_free_port(50051, 50054)
-
-
-@mock.patch('time.sleep')
-@mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_opm_registry_serve(mock_run_cmd, mock_socket, mock_popen, mock_sleep):
-    my_mock = mock.MagicMock()
-    mock_popen.return_value = my_mock
-    my_mock.poll.return_value = None
-    mock_socket.socket().bind.side_effect = [OSError(), OSError(), '']
-    mock_socket.poll.side_effect = [1, 1, None]
-    mock_run_cmd.return_value = 'api.Registry.ListBundles'
+@mock.patch('iib.workers.tasks.opm_operations._gen_port_for_grpc')
+@mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
+def test_opm_registry_serve(mock_scap, mock_gpfg):
+    mock_scap.side_effect = [AddressAlreadyInUse(), AddressAlreadyInUse(), (50053, 456)]
+    mock_gpfg.return_value = iter([50051, 50052, 50053])
     port, _ = opm_operations.opm_registry_serve(db_path='some_path.db')
     assert port == 50053
-    assert mock_socket.socket().bind.call_count == 3
+    assert mock_scap.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-def test_opm_registry_serve_no_ports(mock_socket, mock_scap, mock_config):
-    mock_socket.socket().bind.side_effect = OSError('OSError: [Errno 98] Address already in use')
+def test_opm_registry_serve_no_ports(mock_scap, mock_config):
+    mock_scap.side_effect = AddressAlreadyInUse()
     with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
         opm_operations.opm_registry_serve(db_path='some_path.db')
-    mock_scap.assert_not_called()
+    mock_scap.call_count = 3
 
 
-@mock.patch('time.sleep')
-@mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_opm_serve(mock_run_cmd, mock_socket, mock_popen, mock_sleep):
-    my_mock = mock.MagicMock()
-    mock_popen.return_value = my_mock
-    my_mock.poll.return_value = None
-    mock_socket.socket().bind.side_effect = [OSError(), OSError(), '']
-    mock_socket.poll.side_effect = [1, 1, None]
-    mock_run_cmd.return_value = 'api.Registry.ListBundles'
+@mock.patch('iib.workers.tasks.opm_operations._gen_port_for_grpc')
+@mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
+def test_opm_serve(mock_scap, mock_gpfg):
+    mock_scap.side_effect = [AddressAlreadyInUse(), AddressAlreadyInUse(), (50053, 456)]
+    mock_gpfg.return_value = iter([50051, 50052, 50053])
     port, _ = opm_operations.opm_serve(catalog_dir='/some/dir')
     assert port == 50053
-    assert mock_socket.socket().bind.call_count == 3
+    assert mock_scap.call_count == 3
 
 
 @mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
-@mock.patch('iib.workers.tasks.opm_operations.socket')
-def test_opm_serve_no_ports(mock_socket, mock_scap, mock_config):
-    mock_socket.socket().bind.side_effect = OSError('OSError: [Errno 98] Address already in use')
+def test_opm_serve_no_ports(mock_scap, mock_config):
+    mock_scap.side_effect = AddressAlreadyInUse()
     with pytest.raises(IIBError, match='No free port has been found after 3 attempts.'):
         opm_operations.opm_serve(catalog_dir='/some/dir')
-    mock_scap.assert_not_called()
+    assert mock_scap.call_count == 3
 
 
 @pytest.mark.parametrize('is_fbc', (True, False))
-@mock.patch('time.sleep')
-@mock.patch('subprocess.Popen')
-@mock.patch('iib.workers.tasks.opm_operations.socket')
 @mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
 @mock.patch('iib.workers.tasks.build._get_index_database')
-@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._gen_port_for_grpc')
+@mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
 def test_opm_serve_from_index(
-    mock_ifbc, mock_run_cmd, mock_gid, mock_cd, mock_socket, mock_popen, mock_sleep, tmpdir, is_fbc
+    mock_scap,
+    mock_gpfg,
+    mock_ifbc,
+    mock_gid,
+    mock_cd,
+    tmpdir,
+    is_fbc,
 ):
     my_mock = mock.MagicMock()
     mock_ifbc.return_value = is_fbc
     mock_gid.return_value = "some.db"
     mock_cd.return_value = "/some/path"
-    mock_popen.return_value = my_mock
     my_mock.poll.return_value = None
-    mock_socket.socket().bind.side_effect = [OSError(), OSError(), '']
-    mock_socket.poll.side_effect = [1, 1, None]
-    mock_run_cmd.return_value = 'api.Registry.ListBundles'
+    mock_scap.side_effect = [AddressAlreadyInUse(), AddressAlreadyInUse(), (50053, 456)]
+    mock_gpfg.return_value = iter([50051, 50052, 50053])
     port, _ = opm_operations.opm_serve_from_index(
         base_dir=tmpdir, from_index='docker://test_pull_spec:latest'
     )
     assert port == 50053
-    assert mock_socket.socket().bind.call_count == 3
+    assert mock_scap.call_count == 3
 
 
 @mock.patch('time.time')
