@@ -5,11 +5,12 @@ services:
   # it exits with status code 0.
   minica:
     image: registry.access.redhat.com/ubi8/go-toolset:latest
+    user: root
     command:
       - /bin/sh
       - -c
       - >-
-        go get github.com/jsha/minica &&
+        go install github.com/jsha/minica@latest &&
         cd /opt/app-root/certs &&
         /opt/app-root/src/bin/minica --domains registry
     environment:
@@ -29,11 +30,12 @@ services:
       REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
       REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
     volumes:
-      - ./iib_data/registry:/var/lib/registry:z
+      - ../iib_data/registry:/var/lib/registry:z
       - registry-certs-volume:/certs:z
-      - ./docker/registry/auth:/auth:z
+      - ../docker/registry/auth:/auth:z
     depends_on:
-      - minica
+      minica:
+        condition: service_completed_successfully
 
   db:
     image: postgres:9.6
@@ -83,8 +85,8 @@ services:
       FLASK_APP: iib/web/wsgi.py
       IIB_DEV: 'true'
     volumes:
-      - ./:/src:z
-      - ./docker/message_broker/certs:/broker-certs:ro,z
+      - ../:/src:z
+      - ../docker/message_broker/certs:/broker-certs:ro,z
       - request-logs-volume:/var/log/iib/requests:z
       - request-related-bundles-volume:/var/lib/requests/related_bundles:z
       - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
@@ -119,10 +121,10 @@ services:
     # Make this privileged to be able to build container images
     privileged: true
     volumes:
-      - ./:/src:z
+      - ../:/src:z
       - worker_container_storage:/var/lib/containers:z
       - registry-certs-volume:/registry-certs:ro,z
-      - ./ca-bundle.crt:/host-ca-bundle.crt:ro
+      - ../ca-bundle.crt:/host-ca-bundle.crt:ro
       - request-logs-volume:/var/log/iib/requests:z
       - request-related-bundles-volume:/var/lib/requests/related_bundles:z
       - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
@@ -139,7 +141,7 @@ services:
       dockerfile: ./docker/message_broker/Dockerfile
     volumes:
       - message-broker-volume:/opt/activemq/data:z
-      - ./docker/message_broker/certs:/broker-certs:ro,z
+      - ../docker/message_broker/certs:/broker-certs:ro,z
     ports:
       - 5671:5671   # amqp+ssl
       - 5672:5672   # amqp
@@ -149,6 +151,6 @@ volumes:
   registry-certs-volume:
   message-broker-volume:
   request-logs-volume:
-  request-recursive-related-bundles-volume:
   request-related-bundles-volume:
+  request-recursive-related-bundles-volume:
   worker_container_storage:
