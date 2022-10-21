@@ -771,7 +771,7 @@ def terminate_process(proc: subprocess.Popen, timeout: int = 5) -> None:
     :param subprocess.Popen proc: process to be terminated
     :param int timeout: number of seconds to wait for terminating process
     """
-    log.debug('Terminating process %s', proc)
+    log.debug('Terminating process %s; pid: %d', proc, proc.pid)
     proc.terminate()
     try:
         # not using proc.wait() because it might cause deadlock when using pipes

@@ -190,7 +190,7 @@ def _serve_cmd_at_port(
                 output = ''
 
             if 'api.Registry.ListBundles' in output or 'api.Registry.ListPackages' in output:
-                log.debug('Started the command "%s"', ' '.join(serve_cmd))
+                log.debug('Started the command "%s"; pid: %d', ' '.join(serve_cmd), rpc_proc.pid)
                 log.info('Index registry service has been initialized.')
                 return rpc_proc
 
