@@ -1189,7 +1189,7 @@ class RequestRegenerateBundle(Request):
     @property
     def bundle_replacements(self):
         """Return the Python representation of the JSON bundle_replacements."""
-        return json.loads(self._bundle_replacements) if self._bundle_replacements else None
+        return json.loads(self._bundle_replacements) if self._bundle_replacements else {}
 
     @bundle_replacements.setter
     def bundle_replacements(self, bundle_replacements):
@@ -1201,9 +1201,7 @@ class RequestRegenerateBundle(Request):
         :param dict bundle_replacements: the dictionary of the bundle_replacements or ``None``
         """
         self._bundle_replacements = (
-            json.dumps(bundle_replacements, sort_keys=True)
-            if bundle_replacements is not None
-            else None
+            json.dumps(bundle_replacements, sort_keys=True) if bundle_replacements else None
         )
 
     @classmethod
@@ -1224,8 +1222,8 @@ class RequestRegenerateBundle(Request):
             optional_params={'bundle_replacements', 'organization', 'registry_auths'},
         )
         # Validate bundle_replacements is correctly provided
-        bundle_replacements = request_kwargs.get('bundle_replacements', None)
-        if bundle_replacements is not None:
+        bundle_replacements = request_kwargs.get('bundle_replacements', {})
+        if bundle_replacements:
             if not isinstance(bundle_replacements, dict):
                 raise ValidationError('The value of "bundle_replacements" must be a JSON object')
 
@@ -1281,6 +1279,7 @@ class RequestRegenerateBundle(Request):
             self.from_bundle_image_resolved, 'pull_specification', None
         )
         rv['organization'] = self.organization
+        rv['bundle_replacements'] = self.bundle_replacements
         if (
             current_app.config['IIB_REQUEST_RELATED_BUNDLES_DIR']
             or current_app.config['IIB_AWS_S3_BUCKET_NAME']

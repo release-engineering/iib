@@ -55,7 +55,7 @@ def handle_regenerate_bundle_request(
     organization: str,
     request_id: int,
     registry_auths: Optional[Dict[str, Any]] = None,
-    bundle_replacements: Optional[Dict[str, str]] = None,
+    bundle_replacements: Optional[Dict[str, str]] = {},
 ) -> None:
     """
     Coordinate the work needed to regenerate the operator bundle image.

@@ -132,3 +132,6 @@ dmypy.json
 /iib_data/
 /ca-bundle.crt
 compose-files/docker/
+
+# other files
+**/.DS_Store

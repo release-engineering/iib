@@ -205,3 +205,4 @@ def test_request_logs_and_related_bundles_in_response(
     rv = minimal_request_regenerate_bundle.to_json(verbose=True)
     assert rv['logs']['url'] == 'some-url-for-data'
     assert rv['related_bundles']['url'] == 'some-url-for-data'
+    assert rv['bundle_replacements'] == {}
