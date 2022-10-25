@@ -1153,6 +1153,7 @@ def test_patch_request_regenerate_bundle_success(
         'batch': 1,
         'batch_annotations': None,
         'bundle_image': 'bundle:image',
+        'bundle_replacements': {},
         'from_bundle_image': minimal_request_regenerate_bundle.from_bundle_image.pull_specification,
         'from_bundle_image_resolved': 'from-bundle-image:resolved',
         'id': minimal_request_regenerate_bundle.id,
@@ -1337,7 +1338,10 @@ def test_not_found(client):
 @mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
-    data = {'from_bundle_image': 'registry.example.com/bundle-image:latest'}
+    data = {
+        'from_bundle_image': 'registry.example.com/bundle-image:latest',
+        'bundle_replacements': {'foo': 'bar'},
+    }
 
     # Assume a timestamp to simplify tests
     _timestamp = '2020-02-12T17:03:00Z'
@@ -1348,6 +1352,7 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
         'batch': 1,
         'batch_annotations': None,
         'bundle_image': None,
+        'bundle_replacements': {'foo': 'bar'},
         'from_bundle_image': 'registry.example.com/bundle-image:latest',
         'from_bundle_image_resolved': None,
         'logs': {
@@ -1486,7 +1491,10 @@ def test_regenerate_bundle_batch_success(
                 'registry_auths': {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
                 'bundle_replacements': {'foo': 'bar:baz'},
             },
-            {'from_bundle_image': 'registry.example.com/bundle-image2:latest'},
+            {
+                'from_bundle_image': 'registry.example.com/bundle-image2:latest',
+                'bundle_replacements': None,
+            },
         ]
     }
     if annotations:
