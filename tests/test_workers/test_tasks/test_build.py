@@ -39,6 +39,19 @@ def test_build_image(mock_run_cmd, arch):
     )
 
 
+@mock.patch(
+    'iib.workers.tasks.build.run_cmd',
+    side_effect=ExternalServiceError(
+        'error creating build container: parsing image configuration: '
+        'dial tcp: i/o timeout msg="exit status 125"'
+    ),
+)
+def test_build_image_retry(mock_run_cmd):
+    with pytest.raises(ExternalServiceError):
+        build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
+    assert mock_run_cmd.call_count == 5
+
+
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.reset_docker_config')
 def test_cleanup(mock_rdc, mock_run_cmd):
