@@ -674,7 +674,7 @@ def regenerate_bundle():
         payload.get('organization'),
         request.id,
         payload.get('registry_auths'),
-        payload.get('bundle_replacements'),
+        payload.get('bundle_replacements', dict()),
     ]
     safe_args = _get_safe_args(args, payload)
 
@@ -739,7 +739,7 @@ def regenerate_bundle_batch():
                 build_request.get('organization'),
                 request.id,
                 build_request.get('registry_auths'),
-                build_request.get('bundle_replacements'),
+                build_request.get('bundle_replacements', dict()),
             ]
             safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
