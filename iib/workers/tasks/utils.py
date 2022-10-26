@@ -751,7 +751,7 @@ def run_cmd(
                 raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
         elif cmd[0] == 'buildah':
             # Check for HTTP 50X errors on buildah
-            regex = r'.*(error creating build container).*(50[0-9]\s.*$)'
+            regex = r'.*(error creating build container).*((?:50[0-9]|125)\s.*$)'
             match = _regex_reverse_search(regex, response)
             if match:
                 raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
