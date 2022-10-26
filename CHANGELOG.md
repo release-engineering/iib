@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.7.2
+- Fix bundle_replacements bug when the user doesn't provide it in regenerate-bundle requests
+
 ## 6.7.1
 - Fix dev env compose files
 - Fix bundle_replacements bug in regenerate-bundle request
