@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.7.1
+- Fix dev env compose files
+- Fix bundle_replacements bug in regenerate-bundle request
+- Upgrade OPM to 1.26.2 in dev env
+- Fix buildah bud command retries
+
 ## 6.7.0
 - Add bundle_replacements parameter to regenerate_bundle API and worker
 - Bump mako version
