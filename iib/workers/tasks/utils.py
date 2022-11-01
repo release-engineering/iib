@@ -405,9 +405,13 @@ def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List
         if bundle in resolved_deprecation_list:
             deprecate_bundles.append(bundle)
 
-    log.info(
-        'Bundles that will be deprecated from the index image: %s', ', '.join(deprecate_bundles)
-    )
+    if deprecation_list and not deprecate_bundles:
+        log.warning('Deprecation list was set but no bundles were found for deprecation.')
+
+    if deprecate_bundles:
+        log.info(
+            'Bundles that will be deprecated from the index image: %s', ', '.join(deprecate_bundles)
+        )
     return deprecate_bundles
 
 
