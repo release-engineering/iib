@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix bundle_replacements bug in regenerate-bundle request
 - Upgrade OPM to 1.26.2 in dev env
 - Fix buildah bud command retries
+- Adding retry and port check when opm serve/opm registry serve is called
 
 ## 6.7.0
 - Add bundle_replacements parameter to regenerate_bundle API and worker
