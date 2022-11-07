@@ -6,7 +6,14 @@ import tempfile
 from typing import Dict, List, Optional, Set, Tuple
 
 from operator_manifest.operator import ImageName
-from retry import retry
+from tenacity import (
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_chain,
+    wait_fixed,
+    before_sleep_log,
+    retry,
+)
 
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
@@ -54,11 +61,18 @@ log = logging.getLogger(__name__)
 
 
 @retry(
-    exceptions=ExternalServiceError,
-    tries=get_worker_config().iib_total_attempts,
-    delay=get_worker_config().iib_retry_delay,
-    jitter=get_worker_config().iib_retry_jitter,
-    logger=log,
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(ExternalServiceError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_chain(
+        *[
+            wait_fixed(
+                get_worker_config().iib_retry_delay + (x * get_worker_config().iib_retry_jitter)
+            )
+            for x in range(get_worker_config().iib_total_attempts)
+        ]
+    ),
 )
 def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arch: str) -> None:
     """
@@ -126,7 +140,12 @@ def _cleanup() -> None:
     reset_docker_config()
 
 
-@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+)
 def _create_and_push_manifest_list(
     request_id: int,
     arches: Set[str],
@@ -412,7 +431,12 @@ def _get_missing_bundles(
     return filtered_bundles
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def _opm_index_add(
     base_dir: str,
     bundles: List[str],
@@ -477,7 +501,12 @@ def _opm_index_add(
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def _opm_index_rm(
     base_dir: str,
     operators: List[str],
@@ -635,7 +664,12 @@ def _update_index_image_build_state(
     update_request(request_id, payload, exc_msg)
 
 
-@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+)
 def _push_image(request_id: int, arch: str) -> None:
     """
     Push the single arch container image to the configured registry.
@@ -664,7 +698,12 @@ def _push_image(request_id: int, arch: str) -> None:
         _skopeo_copy(destination, destination, exc_msg=exc_msg)
 
 
-@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+)
 def _skopeo_copy(
     source: str,
     destination: str,

@@ -14,7 +14,14 @@ import re
 import sqlite3
 import subprocess
 
-from retry import retry
+from tenacity import (
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_chain,
+    before_sleep_log,
+    wait_exponential,
+    retry,
+)
 from celery.app.log import TaskFormatter
 from operator_manifest.operator import ImageName
 
@@ -634,11 +641,11 @@ def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
 
 
 @retry(
-    exceptions=IIBError,
-    tries=get_worker_config().iib_total_attempts,
-    delay=5,
-    backoff=2,
-    logger=log,
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_chain(wait_exponential(multiplier=5)),
 )
 @dogpile_cache(
     dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache
@@ -679,7 +686,12 @@ def skopeo_inspect(
     return json_output
 
 
-@retry(exceptions=IIBError, tries=get_worker_config().iib_total_attempts, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+)
 def podman_pull(*args) -> None:
     """
     Wrap the ``podman pull`` command.

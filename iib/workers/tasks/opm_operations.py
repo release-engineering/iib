@@ -6,7 +6,12 @@ import subprocess
 import time
 from typing import List, Optional, Tuple, Generator
 
-from retry import retry
+from tenacity import (
+    retry_if_exception_type,
+    stop_after_attempt,
+    before_sleep_log,
+    retry,
+)
 
 from iib.exceptions import AddressAlreadyInUse, IIBError
 from iib.workers.api_utils import set_request_state
@@ -131,7 +136,12 @@ def _serve_cmd_at_port_defaults(serve_cmd: List[str], cwd: str, port: int) -> su
     )
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def _serve_cmd_at_port(
     serve_cmd: List[str],
     cwd: str,
@@ -405,7 +415,12 @@ def opm_generate_dockerfile(
     return dockerfile_path
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def _opm_registry_add(
     base_dir: str,
     index_db: str,
@@ -458,7 +473,12 @@ def _opm_registry_add(
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def opm_registry_add_fbc(
     base_dir: str,
     bundles: List[str],
@@ -536,7 +556,12 @@ def _opm_registry_rm(index_db_path: str, operators: List[str], base_dir: str) ->
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
 
 
-@retry(exceptions=IIBError, tries=2, logger=log)
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
 def opm_registry_rm_fbc(
     base_dir: str,
     from_index: str,

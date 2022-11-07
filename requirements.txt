@@ -148,7 +148,6 @@ decorator==4.4.2 \
     # via
     #   dogpile-cache
     #   gssapi
-    #   retry
 dogpile-cache==1.0.2 \
     --hash=sha256:64fda39d25b46486a4876417ca03a4af06f35bfadba9f59613f9b3d748aa21ef
     # via iib (setup.py)
@@ -378,10 +377,6 @@ psycopg2-binary==2.9.3 \
     --hash=sha256:e847774f8ffd5b398a75bc1c18fbb56564cda3d629fe68fd81971fece2d3c67e \
     --hash=sha256:ffb7a888a047696e7f8240d649b43fb3644f14f0ee229077e7f6b9f9081635bd
     # via iib (setup.py)
-py==1.11.0 \
-    --hash=sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719 \
-    --hash=sha256:607c53218732647dff4acdfcd50cb62615cedf612e72d1724fb1a0cc6405b378
-    # via retry
 pycparser==2.19 \
     --hash=sha256:a988718abfad80b6b157acce7bf130a30876d27603738ac39f140993246b25b3
     # via cffi
@@ -434,10 +429,6 @@ requests==2.26.0 \
 requests-kerberos==0.14.0 \
     --hash=sha256:cda9d1240ae5392e081869881c8742d0e171fd6a893a7ac0875db2748e966fd1 \
     --hash=sha256:da74ea478ccd8584de88092bdcd17a7c29d494374a340d1d8677189903c9ac6a
-    # via iib (setup.py)
-retry==0.9.2 \
-    --hash=sha256:ccddf89761fa2c726ab29391837d4327f819ea14d244c232a1d24c67a2f98606 \
-    --hash=sha256:f8bfa8b99b69c4506d6f5bd3b0aabf77f98cdb17f3c9fc3f5ca820033336fba4
     # via iib (setup.py)
 ruamel-yaml==0.16.10 \
     --hash=sha256:0962fd7999e064c4865f96fb1e23079075f4a2a14849bcdc5cdba53a24f9759b \
@@ -492,6 +483,10 @@ stevedore==3.2.0 \
     --hash=sha256:38791aa5bed922b0a844513c5f9ed37774b68edc609e5ab8ab8d8fe0ce4315e5 \
     --hash=sha256:c8f4f0ebbc394e52ddf49de8bcc3cf8ad2b4425ebac494106bbc5e3661ac7633
     # via dogpile-cache
+tenacity==8.1.0 \
+    --hash=sha256:35525cd47f82830069f0d6b73f7eb83bc5b73ee2fff0437952cedf98b27653ac \
+    --hash=sha256:e48c437fdf9340f5666b92cd7990e96bc5fc955e1298baf4a907e3972067a445
+    # via iib (setup.py)
 typing-extensions==4.3.0 \
     --hash=sha256:25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02 \
     --hash=sha256:e6d2677a32f47fc7eb2795db1dd15c1f34eff616bcaf2cfb5e997f854fa1c4a6
