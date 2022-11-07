@@ -11,9 +11,9 @@ python-memcached
 psycopg2-binary
 recommonmark
 requests
-retry
 ruamel.yaml
 # https://github.com/sphinx-doc/sphinx/issues/2796
 sphinx!=3.0.2
 sphinx_rtd_theme
+tenacity
 typing-extensions

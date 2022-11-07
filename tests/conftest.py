@@ -3,7 +3,7 @@ import os
 
 import flask_migrate
 import pytest
-import retry
+import tenacity
 from unittest import mock
 
 from iib.web import models
@@ -208,5 +208,5 @@ def minimal_request_recursive_related_bundles(db):
 
 @pytest.fixture(scope='session', autouse=True)
 def patch_retry():
-    with mock.patch.object(retry.api.time, 'sleep'):
+    with mock.patch.object(tenacity.nap.time, "sleep"):
         yield
