@@ -60,6 +60,7 @@ class Config(object):
     iib_total_attempts: int = 5
     iib_retry_delay: int = 5
     iib_retry_jitter: int = 5
+    iib_retry_multiplier: int = 5
     include: List[str] = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
