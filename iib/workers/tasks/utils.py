@@ -15,12 +15,12 @@ import sqlite3
 import subprocess
 
 from tenacity import (
+    before_sleep_log,
+    retry,
     retry_if_exception_type,
     stop_after_attempt,
-    wait_chain,
-    before_sleep_log,
     wait_exponential,
-    retry,
+    wait_chain,
 )
 from celery.app.log import TaskFormatter
 from operator_manifest.operator import ImageName
@@ -645,7 +645,7 @@ def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
     reraise=True,
     retry=retry_if_exception_type(IIBError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
-    wait=wait_chain(wait_exponential(multiplier=5)),
+    wait=wait_chain(wait_exponential(multiplier=get_worker_config().iib_retry_multiplier)),
 )
 @dogpile_cache(
     dogpile_region=dogpile_cache_region, should_use_cache_fn=skopeo_inspect_should_use_cache

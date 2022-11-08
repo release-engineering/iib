@@ -7,12 +7,12 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from operator_manifest.operator import ImageName
 from tenacity import (
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_chain,
-    wait_fixed,
     before_sleep_log,
     retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_incrementing,
 )
 
 from iib.exceptions import IIBError, ExternalServiceError
@@ -65,13 +65,9 @@ log = logging.getLogger(__name__)
     reraise=True,
     retry=retry_if_exception_type(ExternalServiceError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
-    wait=wait_chain(
-        *[
-            wait_fixed(
-                get_worker_config().iib_retry_delay + (x * get_worker_config().iib_retry_jitter)
-            )
-            for x in range(get_worker_config().iib_total_attempts)
-        ]
+    wait=wait_incrementing(
+        start=get_worker_config().iib_retry_delay,
+        increment=get_worker_config().iib_retry_jitter,
     ),
 )
 def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arch: str) -> None:
@@ -145,6 +141,7 @@ def _cleanup() -> None:
     reraise=True,
     retry=retry_if_exception_type(IIBError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_exponential(multiplier=get_worker_config().iib_retry_multiplier),
 )
 def _create_and_push_manifest_list(
     request_id: int,
@@ -669,6 +666,7 @@ def _update_index_image_build_state(
     reraise=True,
     retry=retry_if_exception_type(IIBError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_exponential(get_worker_config().iib_retry_multiplier),
 )
 def _push_image(request_id: int, arch: str) -> None:
     """
@@ -703,6 +701,7 @@ def _push_image(request_id: int, arch: str) -> None:
     reraise=True,
     retry=retry_if_exception_type(IIBError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_exponential(get_worker_config().iib_retry_multiplier),
 )
 def _skopeo_copy(
     source: str,

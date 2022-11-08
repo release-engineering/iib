@@ -7,10 +7,10 @@ import time
 from typing import List, Optional, Tuple, Generator
 
 from tenacity import (
-    retry_if_exception_type,
-    stop_after_attempt,
     before_sleep_log,
     retry,
+    retry_if_exception_type,
+    stop_after_attempt,
 )
 
 from iib.exceptions import AddressAlreadyInUse, IIBError
