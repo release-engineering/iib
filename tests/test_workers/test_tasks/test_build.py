@@ -11,6 +11,9 @@ import pytest
 from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
+from iib.workers.config import get_worker_config
+
+worker_config = get_worker_config()
 
 
 @pytest.mark.parametrize('arch', ('amd64', 'ppc64le', 's390x', 'spam'))
@@ -49,7 +52,7 @@ def test_build_image(mock_run_cmd, arch):
 def test_build_image_retry(mock_run_cmd):
     with pytest.raises(ExternalServiceError):
         build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
-    assert mock_run_cmd.call_count == 5
+    assert mock_run_cmd.call_count == worker_config.iib_total_attempts
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
@@ -525,7 +528,7 @@ def test_skopeo_copy_fail_max_retries(mock_run_cmd):
     destination = 'some_destination'
     with pytest.raises(IIBError, match=match_str):
         build._skopeo_copy(destination, destination)
-        assert mock_run_cmd.call_count == 5
+        assert mock_run_cmd.call_count == worker_config.iib_total_attempts
 
 
 @mock.patch('iib.workers.tasks.build.run_cmd')
@@ -534,7 +537,7 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
     mock_run_cmd.side_effect = ExternalServiceError(match_str)
     with pytest.raises(ExternalServiceError, match=match_str):
         build._build_image("foo", "bar", 1, "amd64")
-        assert mock_run_cmd.call_count == 5
+        assert mock_run_cmd.call_count == worker_config.iib_total_attempts
 
 
 @pytest.mark.parametrize(

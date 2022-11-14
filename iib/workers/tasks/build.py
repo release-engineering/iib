@@ -58,16 +58,17 @@ from iib.workers.tasks.iib_static_types import (
 __all__ = ['handle_add_request', 'handle_rm_request']
 
 log = logging.getLogger(__name__)
+worker_config = get_worker_config()
 
 
 @retry(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
     retry=retry_if_exception_type(ExternalServiceError),
-    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    stop=stop_after_attempt(worker_config.iib_total_attempts),
     wait=wait_incrementing(
-        start=get_worker_config().iib_retry_delay,
-        increment=get_worker_config().iib_retry_jitter,
+        start=worker_config.iib_retry_delay,
+        increment=worker_config.iib_retry_jitter,
     ),
 )
 def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arch: str) -> None:
@@ -140,8 +141,8 @@ def _cleanup() -> None:
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
     retry=retry_if_exception_type(IIBError),
-    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
-    wait=wait_exponential(multiplier=get_worker_config().iib_retry_multiplier),
+    stop=stop_after_attempt(worker_config.iib_total_attempts),
+    wait=wait_exponential(multiplier=worker_config.iib_retry_multiplier),
 )
 def _create_and_push_manifest_list(
     request_id: int,
@@ -665,8 +666,8 @@ def _update_index_image_build_state(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
     retry=retry_if_exception_type(IIBError),
-    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
-    wait=wait_exponential(get_worker_config().iib_retry_multiplier),
+    stop=stop_after_attempt(worker_config.iib_total_attempts),
+    wait=wait_exponential(worker_config.iib_retry_multiplier),
 )
 def _push_image(request_id: int, arch: str) -> None:
     """
@@ -700,8 +701,8 @@ def _push_image(request_id: int, arch: str) -> None:
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
     retry=retry_if_exception_type(IIBError),
-    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
-    wait=wait_exponential(get_worker_config().iib_retry_multiplier),
+    stop=stop_after_attempt(worker_config.iib_total_attempts),
+    wait=wait_exponential(worker_config.iib_retry_multiplier),
 )
 def _skopeo_copy(
     source: str,
