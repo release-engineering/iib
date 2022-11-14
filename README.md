@@ -404,6 +404,9 @@ The custom configuration options for the Celery workers are listed below:
   container registry before erroring out. This defaults to `5`. It's also used as the max number of attempts to buildah when receiving HTTP 50X errors.
 * `iib_retry_delay` - the delay in seconds between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
 * `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
+* `iib_retry_multiplier` - the constant in the `2^x * multiplier` formula, where x stands for attempt number. Formula is used to calculate the
+  seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
+
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
 must be set along with `iib_aws_s3_bucket_name` config variable:
