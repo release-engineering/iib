@@ -756,6 +756,8 @@ def run_cmd(
     response: subprocess.CompletedProcess = subprocess.run(cmd, **params)
 
     if strict and response.returncode != 0:
+        if set(['buildah', 'manifest', 'rm']) <= set(cmd) and 'image not known' in response.stderr:
+            raise IIBError('Manifest list not found locally.')
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         regex: str
         match: Optional[re.Match]
@@ -771,9 +773,6 @@ def run_cmd(
             match = _regex_reverse_search(regex, response)
             if match:
                 raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
-        if set(['buildah', 'manifest', 'rm']) <= set(cmd):
-            if 'image not known' in response.stderr:
-                raise IIBError('Manifest list not found locally.')
 
         raise IIBError(exc_msg)
 
