@@ -176,7 +176,7 @@ def _serve_cmd_at_port(
         )
         start_time = time.time()
         while time.time() - start_time < wait_time:
-            time.sleep(1)
+            time.sleep(5)
             ret = rpc_proc.poll()
             # process has terminated
             if ret is not None:
