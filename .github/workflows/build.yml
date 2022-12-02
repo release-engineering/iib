@@ -2,27 +2,41 @@
 name: Build images and push to quay.io
 
 on:
+  # Start build when GitHub release is published
   release:
     types: [published]
+  # Allow manual trigger
+  workflow_dispatch:
+  # Rebuild every Monday at 4:30 UTC
+  schedule:
+    - cron: '30 4 * * 1'
 
 jobs:
-  # this job will only be triggered when release is published
+  # this job will only be triggered when one of the above trigger condition is met
   deployments:
     name: Build and Push to quay.io
     runs-on: ubuntu-latest
 
     steps:
+      - name: Get latest tag
+        uses: oprypin/find-latest-tag@v1
+        with:
+          repository: release-engineering/iib
+          releases-only: true
+          prefix: 'v'
+        id: iibtag
+
       - name: Checkout code
         uses: actions/checkout@v2
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || steps.iibtag.outputs.tag }}
 
       - name: Build iib-worker
         id: build-iib-worker
         uses: redhat-actions/buildah-build@v2
         with:
           image: iib-worker
-          tags: ${{ github.event.release.tag_name }} latest
+          tags: ${{ github.event.release.tag_name || steps.iibtag.outputs.tag }} latest
           dockerfiles: |
             ./docker/Dockerfile-workers
 
@@ -31,7 +45,7 @@ jobs:
         uses: redhat-actions/buildah-build@v2
         with:
           image: iib-api
-          tags: ${{ github.event.release.tag_name }} latest
+          tags: ${{ github.event.release.tag_name || steps.iibtag.outputs.tag }} latest
           dockerfiles: |
             ./docker/Dockerfile-api
 
@@ -40,7 +54,7 @@ jobs:
         uses: redhat-actions/buildah-build@v2
         with:
           image: iib-message-broker
-          tags: ${{ github.event.release.tag_name }} latest
+          tags: ${{ github.event.release.tag_name || steps.iibtag.outputs.tag }} latest
           dockerfiles: |
             ./docker/message_broker/Dockerfile
 
