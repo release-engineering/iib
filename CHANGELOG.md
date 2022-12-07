@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.7.3
+- Using ubi8 for iib messaging container image
+- Enable weekly rebuild of IIB images and manual trigger of GH action
+- Upgrade pytest to 7.2.0
+- Increase wait time for grpc calls
+- Remove misleading log from API response
+- Retry decorators replaced by tenacity
+- Upgrade py to 1.11.0
+- Added empty deprecate bundles warning
+
 ## 6.7.2
 - Fix bundle_replacements bug when the user doesn't provide it in regenerate-bundle requests
 
