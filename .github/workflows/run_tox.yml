@@ -1,0 +1,42 @@
+---
+name: Run tox
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - "master"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json
+        python-version: ["3.8", "3.9"]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          sudo apt install libkrb5-dev -y
+          python -m pip install --upgrade pip
+          pip install --upgrade virtualenv
+          pip install --upgrade tox>4.0.0
+          pip install --pre tox-gh-actions
+      - name: Run static tests with tox
+        run: |
+          tox -m static
+      - name: Run unit tests with tox
+        run: |
+          tox -m test
+      - name: Run documentation build test with tox
+        run: |
+          tox -m docs
+      - name: Run security checks with tox
+        run: |
+          tox -m security
