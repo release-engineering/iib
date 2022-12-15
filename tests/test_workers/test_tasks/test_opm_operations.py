@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os.path
 import pytest
+import textwrap
 
 from unittest import mock
 
@@ -166,7 +167,9 @@ def test_opm_migrate(
 
 @pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_opm_generate_dockerfile(mock_run_cmd, tmpdir, dockerfile):
+@mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
+@mock.patch('iib.workers.tasks.opm_operations.insert_cache_into_dockerfile')
+def test_opm_generate_dockerfile(mock_icid, mock_gcl, mock_run_cmd, tmpdir, dockerfile):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
 
@@ -191,6 +194,9 @@ def test_opm_generate_dockerfile(mock_run_cmd, tmpdir, dockerfile):
     df_path = os.path.join(tmpdir, df_name)
     with open(df_path, 'r') as f:
         assert any(line.find('/var/lib/iib/_hidden/do.not.edit.db') != -1 for line in f.readlines())
+
+    mock_icid.assert_called_once_with(df_path, mock.ANY)
+    mock_gcl.assert_called_once_with(tmpdir, fbc_dir, mock.ANY)
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
@@ -512,3 +518,104 @@ def test_deprecate_bundles_fbc(
         binary_image="some:image",
         dockerfile_name='index.Dockerfile',
     )
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.opm_operations.os.path.isdir', return_value=True)
+def test_generate_cache_locally(mock_isdir, mock_cmd, tmpdir):
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    local_cache_path = os.path.join(tmpdir, 'cache')
+    cmd = [
+        'opm',
+        'serve',
+        os.path.abspath(fbc_dir),
+        f'--cache-dir={local_cache_path}',
+        '--cache-only',
+        '--termination-log',
+        '/dev/null',
+    ]
+
+    opm_operations.generate_cache_locally(tmpdir, fbc_dir, local_cache_path)
+
+    mock_cmd.assert_called_once_with(
+        cmd, {'cwd': tmpdir}, exc_msg='Failed to generate cache for file-based catalog'
+    )
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_generate_cache_locally_failed(mock_cmd, tmpdir):
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    local_cache_path = os.path.join(tmpdir, 'cache')
+    cmd = [
+        'opm',
+        'serve',
+        os.path.abspath(fbc_dir),
+        f'--cache-dir={local_cache_path}',
+        '--cache-only',
+        '--termination-log',
+        '/dev/null',
+    ]
+
+    with pytest.raises(IIBError, match='Cannot find generated cache at .+'):
+        opm_operations.generate_cache_locally(tmpdir, fbc_dir, local_cache_path)
+        mock_cmd.assert_called_once_with(
+            cmd, {'cwd': tmpdir}, exc_msg='Failed to generate cache for file-based catalog'
+        )
+
+
+def test_insert_cache_into_dockerfile(tmpdir):
+    local_cache_dir = tmpdir.mkdir('cache')
+    local_cache_path = os.path.join(tmpdir, 'cache')
+    generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
+
+    dockerfile_template = textwrap.dedent(
+        """\
+        ADD /configs
+        RUN something-else
+        {run_command}
+        COPY . .
+        """
+    )
+
+    generated_dockerfile.write(
+        dockerfile_template.format(
+            run_command=(
+                'RUN ["/bin/opm", "serve", "/configs", "--cache-dir=/tmp/cache", "--cache-only"]'
+            )
+        )
+    )
+
+    opm_operations.insert_cache_into_dockerfile(generated_dockerfile, local_cache_path)
+
+    assert generated_dockerfile.read_text('utf-8') == dockerfile_template.format(
+        run_command=f'COPY {local_cache_path} /tmp/cache'
+    )
+
+
+def test_insert_cache_into_dockerfile_no_matching_line(tmpdir):
+    local_cache_dir = tmpdir.mkdir('cache')
+    local_cache_path = os.path.join(tmpdir, 'cache')
+    generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
+
+    dockerfile_template = textwrap.dedent(
+        """\
+        ADD /configs
+        RUN something-else
+        COPY . .
+        """
+    )
+
+    generated_dockerfile.write(dockerfile_template)
+    with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
+        opm_operations.insert_cache_into_dockerfile(generated_dockerfile, local_cache_path)
+
+
+def test_verify_cache_insertion_edit_dockerfile():
+    input_list = ['ADD /configs', 'COPY . .' 'COPY a/b /tmp/cache']
+    opm_operations.verify_cache_insertion_edit_dockerfile(input_list, 'a/b')
+
+
+def test_verify_cache_insertion_edit_dockerfile_failed():
+    input_list = ['ADD /configs', 'COPY . .' 'RUN something']
+    with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
+        opm_operations.verify_cache_insertion_edit_dockerfile(input_list, 'a/b')
