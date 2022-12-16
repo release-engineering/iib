@@ -22,6 +22,7 @@ from iib.web.models import (
     Operator,
     Request,
     RequestAdd,
+    RequestFbcOperations,
     RequestMergeIndexImage,
     RequestRecursiveRelatedBundles,
     RequestRegenerateBundle,
@@ -51,6 +52,7 @@ from iib.web.iib_static_types import (
     AddRequestPayload,
     AddRmBatchPayload,
     CreateEmptyIndexPayload,
+    FbcOperationRequestPayload,
     MergeIndexImagesPayload,
     PayloadTypesUnion,
     RecursiveRelatedBundlesRequestPayload,
@@ -1096,3 +1098,56 @@ def get_nested_bundles(request_id: int) -> flask.Response:
 
     with open(related_bundles_file_path) as f:
         return flask.Response(f.read(), mimetype='application/json')
+
+
+@api_v1.route('/builds/fbc-operations', methods=['POST'])
+@login_required
+def fbc_operations() -> Tuple[flask.Response, int]:
+    """
+    Submit a request to run supported fbc operation on an FBC index image.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload: FbcOperationRequestPayload = flask.request.get_json()
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = RequestFbcOperations.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
+
+    overwrite_from_index = payload.get('overwrite_from_index', False)
+    # TODO - remove # noqa when worker implementation is done
+    celery_queue = _get_user_queue(serial=overwrite_from_index)  # noqa
+
+    # TODO - update order based on worker implementation
+    args = [
+        request.id,
+        payload['fbc_fragment'],
+        payload['from_index'],
+        payload.get('binary_image'),
+        payload.get('distribution_scope'),
+        payload.get('overwrite_from_index'),
+        payload.get('overwrite_from_index_token'),
+        payload.get('build_tags'),
+        payload.get('add_arches'),
+    ]
+    # TODO - remove no-qa when worker implementation is done
+    safe_args = _get_safe_args(args, payload)  # noqa
+    error_callback = failed_request_callback.s(request.id)  # noqa
+    try:
+        # TODO - remove this line once worker is ready
+        raise NotImplementedError(
+            "Worker part handle_fbc_operation_request is not implemented yet."
+        )
+        # TODO - update call of worker handle function once it is ready
+        # handle_fbc_operation_request.apply_async(
+        #     args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+        # )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201
