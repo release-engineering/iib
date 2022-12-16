@@ -198,7 +198,7 @@ def test_get_builds_invalid_type(app, client, db):
         'error': (
             'wrong-type is not a valid build request type. Valid request_types are: '
             'generic, add, rm, regenerate-bundle, merge-index-image, '
-            'create-empty-index, recursive-related-bundles'
+            'create-empty-index, recursive-related-bundles, fbc-operations'
         )
     }
 
@@ -2463,3 +2463,88 @@ def test_get_nested_bundles_invalid_request_type(
     rv = client.get(f'/api/v1/builds/{request_id}/nested-bundles')
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': '',
+                'fbc_fragment': 'pull:spec',
+                'add_arches': ['s390x'],
+            },
+            'The "binary_image" value must be a non-empty string',
+        ),
+        (
+            {
+                'from_index': 32,
+                'binary_image': 'binary:image',
+                'fbc_fragment': 'pull:spec',
+                'add_arches': ['s390x'],
+            },
+            '"from_index" must be a string',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'fbc_fragment': 32,
+                'binary_image': 'binary:image',
+                'add_arches': ['s390x'],
+            },
+            'The "fbc_fragment" must be a string',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'fbc_fragment': 'pull:spec',
+                'binary_image': 'binary:image',
+                'add_arches': [1, 2, 3],
+            },
+            'Architectures should be specified as a non-empty array of strings',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'fbc_fragment': 'pull:spec',
+                'binary_image': 'binary:image',
+                'overwrite_from_index': 123,
+            },
+            'The "overwrite_from_index" parameter must be a boolean',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'fbc_fragment': 'pull:spec',
+                'overwrite_from_index': True,
+                'overwrite_from_index_token': True,
+            },
+            'The "overwrite_from_index_token" parameter must be a string',
+        ),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_fbc_operations_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
+    rv = client.post(f'/api/v1/builds/fbc-operations', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
+
+
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_fbc_operations_overwrite_not_allowed(mock_smfsc, client, db):
+    data = {
+        'from_index': 'pull:spec',
+        'binary_image': 'binary:image',
+        'fbc_fragment': 'pull:spec',
+        'overwrite_from_index': True,
+    }
+    rv = client.post(
+        f'/api/v1/builds/fbc-operations', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
+    )
+    assert rv.status_code == 403
+    error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()

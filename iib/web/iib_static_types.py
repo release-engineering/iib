@@ -46,6 +46,7 @@ PayloadTags = Literal[
     'AddRmBatchPayload',
     'MergeIndexImagesPayload',
     'CreateEmptyIndexPayload',
+    'FbcOperationRequestPayload',
 ]
 
 
@@ -107,6 +108,21 @@ class RmRequestPayload(TypedDict):
     operators: List[str]
     overwrite_from_index: NotRequired[bool]
     overwrite_from_index_token: Optional[str]
+
+
+class FbcOperationRequestPayload(TypedDict):
+    """Datastructure of the request to /builds/fbc-operation API point."""
+
+    fbc_fragment: str
+    from_index: str
+    binary_image: NotRequired[str]
+    build_tags: NotRequired[List[str]]
+    add_arches: NotRequired[List[str]]
+    overwrite_from_index: NotRequired[bool]
+    overwrite_from_index_token: NotRequired[str]
+    batch: NotRequired[str]
+    distribution_scope: NotRequired[str]
+    user: NotRequired[str]
 
 
 class RegenerateBundlePayload(TypedDict):
@@ -183,6 +199,7 @@ class RequestPayload(TypedDict):
     cnr_token: NotRequired[str]
     deprecation_list: NotRequired[List[str]]
     distribution_scope: NotRequired[str]
+    fbc_fragment: NotRequired[bool]
     force_backport: NotRequired[bool]
     from_bundle_image: NotRequired[str]
     from_index: NotRequired[str]
@@ -204,6 +221,7 @@ class RequestPayload(TypedDict):
 PayloadTypesUnion = Union[
     AddRequestPayload,
     CreateEmptyIndexPayload,
+    FbcOperationRequestPayload,
     MergeIndexImagesPayload,
     RecursiveRelatedBundlesRequestPayload,
     RegenerateBundlePayload,
@@ -394,6 +412,13 @@ class RecursiveRelatedBundlesRequestResponse(APIPartImageBuildRequestResponse):
 
 class BaseClassRequestResponse(APIPartImageBuildRequestResponse, CommonIndexImageResponseBase):
     """Datastructure representing data returned by Request class to_json method."""
+
+
+class FbcOperationRequestResponse(BaseClassRequestResponse):
+    """Datastructure of the response to request from /builds/fbc-operations API point."""
+
+    fbc_fragment: str
+    fbc_fragment_resolved: Optional[str]
 
 
 #  End of the RequestResponses Part

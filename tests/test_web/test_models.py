@@ -83,6 +83,7 @@ def test_get_type_names():
     assert models.RequestTypeMapping.get_names() == [
         'add',
         'create_empty_index',
+        'fbc_operations',
         'generic',
         'merge_index_image',
         'recursive_related_bundles',
@@ -101,7 +102,8 @@ def test_get_type_names():
         (4, True),
         (5, True),
         (6, True),
-        (7, False),
+        (7, True),
+        (90, False),
         ('1', False),
         (None, False),
     ],

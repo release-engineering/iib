@@ -42,6 +42,8 @@ from iib.web.iib_static_types import (
     RegenerateBundlePayload,
     RegenerateBundleRequestResponse,
     RmRequestPayload,
+    FbcOperationRequestPayload,
+    FbcOperationRequestResponse,
 )
 
 
@@ -102,6 +104,7 @@ class RequestTypeMapping(BaseEnum):
     merge_index_image: int = 4
     create_empty_index: int = 5
     recursive_related_bundles: int = 6
+    fbc_operations: int = 7
 
     @classmethod
     def pretty(cls, num: int) -> str:
@@ -490,6 +493,7 @@ class Request(db.Model):
         MergeIndexImageRequestResponse,
         RecursiveRelatedBundlesRequestResponse,
         RegenerateBundleRequestResponse,
+        FbcOperationRequestResponse,
     ]:
         """
         Provide the basic JSON representation of a build request.
@@ -751,6 +755,8 @@ def get_request_query_options(verbose: Optional[bool] = False) -> List[_UnboundL
         joinedload(RequestRm.operators),
         joinedload(RequestRm.build_tags),
         joinedload(RequestMergeIndexImage.build_tags),
+        joinedload(RequestFbcOperations.fbc_fragment),
+        joinedload(RequestFbcOperations.fbc_fragment_resolved),
     ]
     if verbose:
         query_options.append(joinedload(Request.states))
@@ -1942,4 +1948,110 @@ class RequestRecursiveRelatedBundles(Request):
         """
         rv = super().get_mutable_keys()
         rv.add('parent_bundle_image_resolved')
+        return rv
+
+
+class RequestFbcOperations(Request, RequestIndexImageMixin):
+    """FBC operation build request."""
+
+    __tablename__ = 'request_fbc_operations'
+
+    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+
+    fbc_fragment_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    fbc_fragment_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
+    fbc_fragment = db.relationship('Image', foreign_keys=[fbc_fragment_id], uselist=False)
+    fbc_fragment_resolved = db.relationship(
+        'Image', foreign_keys=[fbc_fragment_resolved_id], uselist=False
+    )
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['fbc_operations'].value
+    }
+
+    @classmethod
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: FbcOperationRequestPayload,
+    ):
+        """
+        Handle JSON requests for the fbc-operations API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        """
+        request_kwargs = deepcopy(kwargs)
+
+        validate_request_params(
+            request_kwargs,
+            required_params={'fbc_fragment', 'from_index'},
+            optional_params={
+                'add_arches',
+                'binary_image',
+                'distribution_scope',
+                'build_tags',
+                'overwrite_from_index',
+                'overwrite_from_index_token',
+            },
+        )
+
+        # Validate parent_bundle_image is correctly provided
+        fbc_fragment = request_kwargs.get('fbc_fragment')
+        if not isinstance(fbc_fragment, str):
+            raise ValidationError('The "fbc_fragment" must be a string')
+        request_kwargs['fbc_fragment'] = Image.get_or_create(pull_specification=fbc_fragment)
+
+        # cast to more wider type, see _from_json method
+        cls._from_json(
+            cast(RequestPayload, request_kwargs),
+            additional_optional_params=[
+                'bundles',
+                'fbc_fragment',
+                'from_index',
+                'organization',
+            ],
+        )
+
+        build_tags = request_kwargs.pop('build_tags', [])
+        request = cls(**request_kwargs)
+
+        for bt in build_tags:
+            request.add_build_tag(bt)
+
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
+    def to_json(self, verbose: Optional[bool] = True) -> FbcOperationRequestResponse:
+        """
+        Provide the JSON representation of a "fbc-operation" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        # cast to result type, super-type returns Union
+        rv = cast(FbcOperationRequestResponse, super().to_json(verbose=verbose))
+        rv.update(self.get_common_index_image_json())  # type: ignore
+        rv['fbc_fragment'] = self.fbc_fragment.pull_specification
+        rv['fbc_fragment_resolved'] = getattr(
+            self.fbc_fragment_resolved, 'pull_specification', None
+        )
+
+        rv.pop('bundles')
+        rv.pop('bundle_mapping')
+        rv.pop('deprecation_list')
+        rv.pop('organization')
+        rv.pop('removed_operators')
+
+        return rv
+
+    def get_mutable_keys(self) -> Set[str]:
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
+        rv.add('fbc_fragment_resolved')
         return rv
