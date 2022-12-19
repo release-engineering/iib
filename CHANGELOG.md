@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.8.0
+- Add static types to IIB
+- Upgrade dependencies to apply security fixes
+- Increase default grpc wait time, retry delay and retry jitter
+- Enable weekly rebuild of IIB images to patch old images regularly
+- Use UBI8 for messaging
+- Replace Travis CI with Github actions
+- Build index image cache locally to enable multi-arch builds on amd64 machines
+- Improved logging in the API response
+- Unsupported retry package replaced by tenacity
+
 ## 6.7.2
 - Fix bundle_replacements bug when the user doesn't provide it in regenerate-bundle requests
 
