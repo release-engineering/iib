@@ -408,7 +408,7 @@ def opm_generate_dockerfile(
 
     local_cache_path = os.path.join(base_dir, 'cache')
     generate_cache_locally(base_dir, fbc_dir, local_cache_path)
-    insert_cache_into_dockerfile(dockerfile_path, local_cache_path)
+    insert_cache_into_dockerfile(dockerfile_path)
 
     db_path = get_worker_config()['hidden_index_db_path']
     rel_path_index_db = os.path.relpath(index_db, base_dir)
@@ -419,16 +419,15 @@ def opm_generate_dockerfile(
     return dockerfile_path
 
 
-def verify_cache_insertion_edit_dockerfile(file_list: list, local_cache_path: str) -> None:
+def verify_cache_insertion_edit_dockerfile(file_list: list) -> None:
     """
     Verify Dockerfile edit to insert local cache was successful.
 
     :param list file_list: Generated dockerfile as a list.
-    :param str local_cache_path: path to the locally generated cache.
     :raises: IIBError when the Dockerfile edit is unsuccessful.
     """
     copied_cache_found = False
-    match_str = f'COPY {local_cache_path} /tmp/cache'
+    match_str = f'COPY cache /tmp/cache'
     for line in file_list:
         if match_str in line:
             copied_cache_found = True
@@ -437,26 +436,25 @@ def verify_cache_insertion_edit_dockerfile(file_list: list, local_cache_path: st
         raise IIBError('Dockerfile edit to insert locally built cache failed.')
 
 
-def insert_cache_into_dockerfile(dockerfile_path: str, local_cache_path: str) -> None:
+def insert_cache_into_dockerfile(dockerfile_path: str) -> None:
     """
     Insert built cache into the Dockerfile.
 
     :param str dockerfile_path: path to the generated Dockerfile.
-    :param str local_cache_path: path to the locally generated cache.
     """
     with open(dockerfile_path, 'r') as f:
         file_data = f.read()
 
     file_data = file_data.replace(
         'RUN ["/bin/opm", "serve", "/configs", "--cache-dir=/tmp/cache", "--cache-only"]',
-        f'COPY {local_cache_path} /tmp/cache',
+        'COPY cache /tmp/cache',
     )
 
     with open(dockerfile_path, 'w') as f:
         f.write(file_data)
 
     with open(dockerfile_path, 'r') as f:
-        verify_cache_insertion_edit_dockerfile(f.readlines(), local_cache_path)
+        verify_cache_insertion_edit_dockerfile(f.readlines())
 
 
 def generate_cache_locally(base_dir: str, fbc_dir: str, local_cache_path: str) -> None:
