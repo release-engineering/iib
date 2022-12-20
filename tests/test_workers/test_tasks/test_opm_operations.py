@@ -195,7 +195,7 @@ def test_opm_generate_dockerfile(mock_icid, mock_gcl, mock_run_cmd, tmpdir, dock
     with open(df_path, 'r') as f:
         assert any(line.find('/var/lib/iib/_hidden/do.not.edit.db') != -1 for line in f.readlines())
 
-    mock_icid.assert_called_once_with(df_path, mock.ANY)
+    mock_icid.assert_called_once_with(df_path)
     mock_gcl.assert_called_once_with(tmpdir, fbc_dir, mock.ANY)
 
 
@@ -565,7 +565,6 @@ def test_generate_cache_locally_failed(mock_cmd, tmpdir):
 
 def test_insert_cache_into_dockerfile(tmpdir):
     local_cache_dir = tmpdir.mkdir('cache')
-    local_cache_path = os.path.join(tmpdir, 'cache')
     generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
 
     dockerfile_template = textwrap.dedent(
@@ -585,16 +584,15 @@ def test_insert_cache_into_dockerfile(tmpdir):
         )
     )
 
-    opm_operations.insert_cache_into_dockerfile(generated_dockerfile, local_cache_path)
+    opm_operations.insert_cache_into_dockerfile(generated_dockerfile)
 
     assert generated_dockerfile.read_text('utf-8') == dockerfile_template.format(
-        run_command=f'COPY {local_cache_path} /tmp/cache'
+        run_command='COPY cache /tmp/cache'
     )
 
 
 def test_insert_cache_into_dockerfile_no_matching_line(tmpdir):
     local_cache_dir = tmpdir.mkdir('cache')
-    local_cache_path = os.path.join(tmpdir, 'cache')
     generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
 
     dockerfile_template = textwrap.dedent(
@@ -607,15 +605,15 @@ def test_insert_cache_into_dockerfile_no_matching_line(tmpdir):
 
     generated_dockerfile.write(dockerfile_template)
     with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
-        opm_operations.insert_cache_into_dockerfile(generated_dockerfile, local_cache_path)
+        opm_operations.insert_cache_into_dockerfile(generated_dockerfile)
 
 
 def test_verify_cache_insertion_edit_dockerfile():
-    input_list = ['ADD /configs', 'COPY . .' 'COPY a/b /tmp/cache']
-    opm_operations.verify_cache_insertion_edit_dockerfile(input_list, 'a/b')
+    input_list = ['ADD /configs', 'COPY . .' 'COPY cache /tmp/cache']
+    opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
 
 
 def test_verify_cache_insertion_edit_dockerfile_failed():
     input_list = ['ADD /configs', 'COPY . .' 'RUN something']
     with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
-        opm_operations.verify_cache_insertion_edit_dockerfile(input_list, 'a/b')
+        opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
