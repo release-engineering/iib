@@ -58,8 +58,8 @@ class Config(object):
     iib_dogpile_arguments: Dict[str, List[str]] = {'url': ['127.0.0.1']}
     iib_skopeo_timeout: str = '300s'
     iib_total_attempts: int = 5
-    iib_retry_delay: int = 5
-    iib_retry_jitter: int = 5
+    iib_retry_delay: int = 10
+    iib_retry_jitter: int = 10
     iib_retry_multiplier: int = 5
     include: List[str] = [
         'iib.workers.tasks.build',
