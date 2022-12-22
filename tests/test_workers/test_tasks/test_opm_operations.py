@@ -587,7 +587,7 @@ def test_insert_cache_into_dockerfile(tmpdir):
     opm_operations.insert_cache_into_dockerfile(generated_dockerfile)
 
     assert generated_dockerfile.read_text('utf-8') == dockerfile_template.format(
-        run_command='COPY cache /tmp/cache'
+        run_command='COPY --chown=1001 cache /tmp/cache'
     )
 
 
@@ -609,7 +609,7 @@ def test_insert_cache_into_dockerfile_no_matching_line(tmpdir):
 
 
 def test_verify_cache_insertion_edit_dockerfile():
-    input_list = ['ADD /configs', 'COPY . .' 'COPY cache /tmp/cache']
+    input_list = ['ADD /configs', 'COPY . .' 'COPY --chown=1001 cache /tmp/cache']
     opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
 
 
