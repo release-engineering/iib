@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.8.2
+- Fix user permissions on the generated cache
+
 ## 6.8.1
 - Fix context issues for copying cache into the Dockerfile for FBC builds
 
