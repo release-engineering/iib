@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.8.3
+- Fixed setting GID 0 for cache directory
+
 ## 6.8.2
 - Fix user permissions on the generated cache
 
