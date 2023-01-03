@@ -427,7 +427,7 @@ def verify_cache_insertion_edit_dockerfile(file_list: list) -> None:
     :raises: IIBError when the Dockerfile edit is unsuccessful.
     """
     copied_cache_found = False
-    match_str = f'COPY --chown=1001 cache /tmp/cache'
+    match_str = f'COPY --chown=1001:0 cache /tmp/cache'
     for line in file_list:
         if match_str in line:
             copied_cache_found = True
@@ -447,7 +447,7 @@ def insert_cache_into_dockerfile(dockerfile_path: str) -> None:
 
     file_data = file_data.replace(
         'RUN ["/bin/opm", "serve", "/configs", "--cache-dir=/tmp/cache", "--cache-only"]',
-        'COPY --chown=1001 cache /tmp/cache',
+        'COPY --chown=1001:0 cache /tmp/cache',
     )
 
     with open(dockerfile_path, 'w') as f:
