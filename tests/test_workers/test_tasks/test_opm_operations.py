@@ -147,9 +147,11 @@ def test_serve_cmd_at_port_delayed_initialize(
 
 
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
+@mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_migrate(
     mock_run_cmd,
+    mock_gcl,
     moch_srmtree,
     tmpdir,
 ):
@@ -158,18 +160,21 @@ def test_opm_migrate(
     opm_operations.opm_migrate(index_db_file, tmpdir)
     moch_srmtree.assert_not_called()
 
+    fbc_dir = os.path.join(tmpdir, 'catalog')
+
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'migrate', index_db_file, os.path.join(tmpdir, 'catalog')],
+        ['opm', 'migrate', index_db_file, fbc_dir],
         {'cwd': tmpdir},
         exc_msg='Failed to migrate index.db to file-based catalog',
     )
 
+    mock_gcl.assert_called_once_with(tmpdir, fbc_dir, mock.ANY)
+
 
 @pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.insert_cache_into_dockerfile')
-def test_opm_generate_dockerfile(mock_icid, mock_gcl, mock_run_cmd, tmpdir, dockerfile):
+def test_opm_generate_dockerfile(mock_icid, mock_run_cmd, tmpdir, dockerfile):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
 
@@ -196,7 +201,6 @@ def test_opm_generate_dockerfile(mock_icid, mock_gcl, mock_run_cmd, tmpdir, dock
         assert any(line.find('/var/lib/iib/_hidden/do.not.edit.db') != -1 for line in f.readlines())
 
     mock_icid.assert_called_once_with(df_path)
-    mock_gcl.assert_called_once_with(tmpdir, fbc_dir, mock.ANY)
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
