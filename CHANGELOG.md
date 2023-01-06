@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 6.8.4
+- Generate catalog cache right after opm migrate
+
 ## 6.8.3
 - Fixed setting GID 0 for cache directory
 
