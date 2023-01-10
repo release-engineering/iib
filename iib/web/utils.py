@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from flask import request, url_for
 from flask_sqlalchemy import Pagination
+from typing import Optional
 
 from iib.web.iib_static_types import PaginationMetadata
 
@@ -17,10 +18,14 @@ def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMet
     """
     pagination_data: PaginationMetadata = {
         'first': url_for(
-            request.endpoint, page=1, per_page=pagination_query.per_page, _external=True, **kwargs
+            str(request.endpoint),
+            page=1,
+            per_page=pagination_query.per_page,
+            _external=True,
+            **kwargs,
         ),
         'last': url_for(
-            request.endpoint,
+            str(request.endpoint),
             page=pagination_query.pages,
             per_page=pagination_query.per_page,
             _external=True,
@@ -36,7 +41,7 @@ def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMet
 
     if pagination_query.has_prev:
         pagination_data['previous'] = url_for(
-            request.endpoint,
+            str(request.endpoint),
             page=pagination_query.prev_num,
             per_page=pagination_query.per_page,
             _external=True,
@@ -44,7 +49,7 @@ def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMet
         )
     if pagination_query.has_next:
         pagination_data['next'] = url_for(
-            request.endpoint,
+            str(request.endpoint),
             page=pagination_query.next_num,
             per_page=pagination_query.per_page,
             _external=True,
@@ -54,7 +59,7 @@ def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMet
     return pagination_data
 
 
-def str_to_bool(item: str) -> bool:
+def str_to_bool(item: Optional[str]) -> bool:
     """
     Convert a string to a boolean.
 
