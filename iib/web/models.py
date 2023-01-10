@@ -683,7 +683,7 @@ class Batch(db.Model):
         )
 
     @staticmethod
-    def validate_batch(batch_id: int) -> int:
+    def validate_batch(batch_id: Union[Optional[str], int]) -> int:
         """
         Validate the input batch ID.
 
@@ -694,14 +694,16 @@ class Batch(db.Model):
         :return: the validated batch ID
         :rtype: int
         """
-        rv = batch_id
+        rv: int
         error_msg = 'The batch must be a positive integer'
         if isinstance(batch_id, str):
             try:
                 rv = int(batch_id)
             except ValueError:
                 raise ValidationError(error_msg)
-        elif not isinstance(batch_id, int):
+        elif isinstance(batch_id, int):
+            rv = batch_id
+        else:
             raise ValidationError(error_msg)
 
         if rv < 1:

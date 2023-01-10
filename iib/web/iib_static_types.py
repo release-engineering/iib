@@ -339,6 +339,7 @@ class RegenerateBundleRequestResponse(APIPartImageBuildRequestResponse):
     """Datastructure of the response to request from /builds/regenerate-bundle API point."""
 
     bundle_image: Optional[str]
+    bundle_replacements: Optional[Dict[str, str]]
     from_bundle_image: str
     from_bundle_image_resolved: Optional[str]
     organization: str

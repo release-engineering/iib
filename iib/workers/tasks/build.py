@@ -510,7 +510,7 @@ def _opm_index_rm(
     operators: List[str],
     binary_image: str,
     from_index: str,
-    overwrite_from_index_token: str = None,
+    overwrite_from_index_token: Optional[str] = None,
 ) -> None:
     """
     Remove the input operators from the operator index.

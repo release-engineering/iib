@@ -86,13 +86,15 @@ def opm_serve(catalog_dir: str) -> Tuple[int, subprocess.Popen]:
         try:
             cmd = ['opm', 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
             cwd = os.path.abspath(os.path.join(catalog_dir, os.path.pardir))
-            return (
+            result = (
                 port,
                 _serve_cmd_at_port_defaults(cmd, cwd, port),
             )
+            break
         except AddressAlreadyInUse:
             log.debug('Port %s is already taken. Checking next one...', port)
             continue
+    return result
 
 
 def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
@@ -112,13 +114,15 @@ def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
         try:
             cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
             cwd = os.path.dirname(db_path)
-            return (
+            result = (
                 port,
                 _serve_cmd_at_port_defaults(cmd, cwd, port),
             )
+            break
         except AddressAlreadyInUse:
             log.debug('Port %s is already taken. Checking next one...', port)
             continue
+    return result
 
 
 def _serve_cmd_at_port_defaults(serve_cmd: List[str], cwd: str, port: int) -> subprocess.Popen:

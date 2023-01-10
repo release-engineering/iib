@@ -354,7 +354,7 @@ def get_builds() -> flask.Response:
 
     :rtype: flask.Response
     """
-    batch_id = flask.request.args.get('batch')
+    batch_id: Optional[str] = flask.request.args.get('batch')
     state = flask.request.args.get('state')
     verbose = str_to_bool(flask.request.args.get('verbose'))
     max_per_page = flask.current_app.config['IIB_MAX_PER_PAGE']
@@ -376,8 +376,8 @@ def get_builds() -> flask.Response:
 
     if batch_id is not None:
         query_params['batch'] = batch_id
-        batch_id = Batch.validate_batch(batch_id)
-        query = query.filter_by(batch_id=batch_id)
+        batch_id_checked: int = Batch.validate_batch(batch_id)
+        query = query.filter_by(batch_id=batch_id_checked)
 
     if request_type:
         query_params['request_type'] = request_type
@@ -481,7 +481,7 @@ def add_bundles() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: AddRequestPayload = flask.request.get_json()
+    payload: AddRequestPayload = cast(AddRequestPayload, flask.request.get_json())
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
@@ -659,7 +659,7 @@ def rm_operators() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RmRequestPayload = flask.request.get_json()
+    payload: RmRequestPayload = cast(RmRequestPayload, flask.request.get_json())
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
@@ -697,7 +697,7 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RegenerateBundlePayload = flask.request.get_json()
+    payload: RegenerateBundlePayload = cast(RegenerateBundlePayload, flask.request.get_json())
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
@@ -739,7 +739,9 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RegenerateBundleBatchPayload = flask.request.get_json()
+    payload: RegenerateBundleBatchPayload = cast(
+        RegenerateBundleBatchPayload, flask.request.get_json()
+    )
     Batch.validate_batch_request_params(payload)
 
     batch = Batch(annotations=payload.get('annotations'))
@@ -812,7 +814,7 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: AddRmBatchPayload = flask.request.get_json()
+    payload: AddRmBatchPayload = cast(AddRmBatchPayload, flask.request.get_json())
     Batch.validate_batch_request_params(payload)
 
     batch = Batch(annotations=payload.get('annotations'))
@@ -912,7 +914,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: MergeIndexImagesPayload = flask.request.get_json()
+    payload: MergeIndexImagesPayload = cast(MergeIndexImagesPayload, flask.request.get_json())
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
     request = RequestMergeIndexImage.from_json(payload)
@@ -959,7 +961,7 @@ def create_empty_index() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: CreateEmptyIndexPayload = flask.request.get_json()
+    payload: CreateEmptyIndexPayload = cast(CreateEmptyIndexPayload, flask.request.get_json())
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 
@@ -1001,7 +1003,9 @@ def recursive_related_bundles() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RecursiveRelatedBundlesRequestPayload = flask.request.get_json()
+    payload: RecursiveRelatedBundlesRequestPayload = cast(
+        RecursiveRelatedBundlesRequestPayload, flask.request.get_json()
+    )
     if not isinstance(payload, dict):
         raise ValidationError('The input data must be a JSON object')
 

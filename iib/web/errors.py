@@ -2,11 +2,12 @@
 from typing import List, NoReturn
 
 import kombu.exceptions
-from flask import current_app, jsonify, Request, Response
+from flask import current_app, jsonify, Response
 from werkzeug.exceptions import HTTPException
 
 from iib.exceptions import IIBError, ValidationError
 from iib.web import messaging, db
+from iib.web.models import Request
 
 
 def json_error(error: Exception) -> Response:
@@ -21,9 +22,11 @@ def json_error(error: Exception) -> Response:
         if error.code == 404:
             msg = 'The requested resource was not found'
         else:
-            msg = error.description
+            msg = str(error.description)
         response = jsonify({'error': msg})
-        response.status_code = error.code
+        # None cannot be set to response.status_code
+        if error.code:
+            response.status_code = error.code
     else:
         status_code = 500
         msg = str(error)
