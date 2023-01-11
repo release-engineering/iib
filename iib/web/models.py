@@ -1188,7 +1188,7 @@ class RequestRm(Request, RequestIndexImageMixin):
             or len(operators) == 0
             or any(not item or not isinstance(item, str) for item in operators)
         ):
-            raise ValidationError(f'"operators" should be a non-empty array of strings')
+            raise ValidationError('"operators" should be a non-empty array of strings')
 
         # cast to more wider type, see _from_json method
         cls._from_json(
@@ -1506,7 +1506,7 @@ class RequestMergeIndexImage(Request):
             not item or not isinstance(item, str) for item in request_kwargs.get('build_tags', [])
         ):
             raise ValidationError(
-                f'"build_tags" should be either an empty array or an array of non-empty strings'
+                '"build_tags" should be either an empty array or an array of non-empty strings'
             )
 
         # current_user.is_authenticated is only ever False when auth is disabled
