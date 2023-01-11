@@ -435,7 +435,7 @@ def verify_cache_insertion_edit_dockerfile(file_list: list) -> None:
     :raises: IIBError when the Dockerfile edit is unsuccessful.
     """
     copied_cache_found = False
-    match_str = f'COPY --chown=1001:0 cache /tmp/cache'
+    match_str = 'COPY --chown=1001:0 cache /tmp/cache'
     for line in file_list:
         if match_str in line:
             copied_cache_found = True
