@@ -624,3 +624,118 @@ def test_verify_cache_insertion_edit_dockerfile_failed():
     input_list = ['ADD /configs', 'COPY . .' 'RUN something']
     with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
         opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
+
+
+@pytest.mark.parametrize(
+    'is_operator_exists, index_db_path', [(True, "index_path"), (False, "index_path")]
+)
+@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.os.listdir')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
+@mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operator_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+def test_opm_registry_add_fbc_fragment(
+    mock_eff,
+    mock_voe,
+    mock_gcr,
+    mock_orr,
+    mock_om,
+    mock_ldr,
+    mock_cpt,
+    mock_rmt,
+    mock_gcc,
+    mock_ogd,
+    is_operator_exists,
+    index_db_path,
+    tmpdir,
+):
+    from_index = "example.com/test/index"
+    binary_image = "example.com/ose/binary"
+    fbc_fragment = "example.com/test/fragment"
+    fbc_fragment_operator = "test-operator"
+    mock_eff.return_value = (os.path.join(tmpdir, "fbc_fragment"), fbc_fragment_operator)
+    mock_voe.return_value = is_operator_exists, index_db_path
+    mock_gcr.return_value = os.path.join(tmpdir, "configs")
+    mock_om.return_value = os.path.join(tmpdir, "catalog"), None
+    mock_ldr.return_value = [
+        "package1",
+    ]
+    opm_operations.opm_registry_add_fbc_fragment(
+        tmpdir, from_index, binary_image, fbc_fragment, None
+    )
+    mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment)
+    mock_voe.assert_called_with(
+        from_index=from_index,
+        base_dir=tmpdir,
+        operator_package=fbc_fragment_operator,
+        overwrite_from_index_token=None,
+    )
+    mock_gcr.assert_called_with(from_index=from_index, base_dir=tmpdir)
+    if is_operator_exists:
+        mock_orr.assert_called_with(
+            index_db_path=index_db_path, operators=[fbc_fragment_operator], base_dir=tmpdir
+        )
+        mock_om.assert_called_with(index_db=index_db_path, base_dir=tmpdir, generate_cache=False)
+        mock_cpt.assert_has_calls(
+            [
+                mock.call(
+                    os.path.join(tmpdir, "catalog", mock_ldr.return_value[0]),
+                    os.path.join(tmpdir, "configs", mock_ldr.return_value[0]),
+                    dirs_exist_ok=True,
+                ),
+            ]
+        )
+        assert mock_cpt.call_count == 2
+    else:
+        assert mock_cpt.call_count == 1
+        assert mock_orr.call_count == 0
+
+    mock_cpt.assert_has_calls(
+        [
+            mock.call(
+                os.path.join(tmpdir, "fbc_fragment", fbc_fragment_operator),
+                os.path.join(tmpdir, "configs", fbc_fragment_operator),
+            )
+        ]
+    )
+    mock_gcc.assert_called_once()
+    mock_ogd.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'bundles_in_db, opr_exists',
+    [
+        (
+            '{"packageName": "test-operator", "version": "v1.0", "bundlePath":"bundle1"\n}'
+            '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
+            True,
+        ),
+        (
+            '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
+            '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
+            False,
+        ),
+    ],
+)
+@mock.patch('iib.workers.tasks.utils.terminate_process')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.opm_operations.opm_registry_serve')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+def test_verify_operator_exists(
+    mock_srt, mock_cffi, mock_ors, mock_rc, mock_tp, bundles_in_db, opr_exists, tmpdir
+):
+    from_index = "example.com/test/index"
+    mock_ors.return_value = 500, mock.MagicMock()
+    mock_rc.return_value = bundles_in_db
+    index_db_path = os.path.join(tmpdir, get_worker_config()['temp_index_db_path'])
+    package_exists, index_db_path = opm_operations.verify_operator_exists(
+        from_index, tmpdir, 'test-operator', None
+    )
+    mock_ors.assert_has_calls([mock.call(db_path=index_db_path)])
+    assert package_exists == opr_exists

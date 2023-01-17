@@ -6,7 +6,8 @@ from unittest import mock
 import pytest
 
 from iib.exceptions import IIBError
-from iib.workers.tasks.fbc_utils import is_image_fbc, merge_catalogs_dirs
+from iib.workers.config import get_worker_config
+from iib.workers.tasks.fbc_utils import is_image_fbc, merge_catalogs_dirs, extract_fbc_fragment
 
 
 @pytest.mark.parametrize(
@@ -138,3 +139,21 @@ def test_merge_catalogs_dirs_raise(mock_isdir, mock_cpt, tmpdir):
         merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
 
     mock_cpt.not_called()
+
+
+@pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2'], []])
+@mock.patch('os.listdir')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+def test_extract_fbc_fragment_one_operator(mock_cffi, mock_osldr, ldr_output, tmpdir):
+    test_fbc_fragment = "example.com/test/fbc_fragment:latest"
+    mock_osldr.return_value = ldr_output
+    fbc_fragment_path = os.path.join(tmpdir, get_worker_config()['temp_fbc_fragment_path'])
+
+    if len(ldr_output) != 1:
+        with pytest.raises(IIBError):
+            extract_fbc_fragment(tmpdir, test_fbc_fragment)
+
+    else:
+        extract_fbc_fragment(tmpdir, test_fbc_fragment)
+    mock_cffi.assert_has_calls([mock.call(test_fbc_fragment, '/configs', fbc_fragment_path)])
+    mock_osldr.assert_has_calls([mock.call(fbc_fragment_path)])

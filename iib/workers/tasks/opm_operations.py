@@ -16,7 +16,12 @@ from tenacity import (
 from iib.exceptions import AddressAlreadyInUse, IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, get_hidden_index_database
+from iib.workers.tasks.fbc_utils import (
+    is_image_fbc,
+    get_catalog_dir,
+    get_hidden_index_database,
+    extract_fbc_fragment,
+)
 
 log = logging.getLogger(__name__)
 
@@ -496,6 +501,8 @@ def generate_cache_locally(base_dir: str, fbc_dir: str, local_cache_path: str) -
     ]
 
     log.info('Generating cache for the file-based catalog')
+    if os.path.exists(local_cache_path):
+        shutil.rmtree(local_cache_path)
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to generate cache for file-based catalog')
 
     # Check if the opm command generated cache successfully
@@ -744,3 +751,134 @@ def opm_create_empty_fbc(
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
     )
+
+
+def opm_registry_add_fbc_fragment(
+    temp_dir: str,
+    from_index: str,
+    binary_image: str,
+    fbc_fragment: str,
+    overwrite_from_index_token: Optional[str],
+) -> None:
+    """
+    Add FBC fragment to from_index image.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+
+    :param str temp_dir: the base directory to generate the database and index.Dockerfile in.
+    :param str from_index: the pull specification of the container image containing the index that
+        the index image build will be based from.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from. This should point to a digest or stable tag.
+    :param str fbc_fragment: the pull specification of fbc fragment to be added in from_index.
+    :pararm str overwrite_from_index_token: token used to access the image
+    """
+    # fragment path will look like /tmp/iib-**/fbc-fragment
+    fragment_path, fragment_operator = extract_fbc_fragment(
+        temp_dir=temp_dir, fbc_fragment=fbc_fragment
+    )
+
+    is_operator_in_db, index_db_path = verify_operator_exists(
+        from_index=from_index,
+        base_dir=temp_dir,
+        operator_package=fragment_operator,
+        overwrite_from_index_token=overwrite_from_index_token,
+    )
+
+    # the dir where all the configs from from_index is stored
+    # this will look like /tmp/iib-**/configs
+    from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
+
+    log.info("The content of from_index configs located at %s", from_index_configs_dir)
+
+    if is_operator_in_db:
+        log.info('Removing %s from %s index.db ', fragment_operator, from_index)
+        _opm_registry_rm(
+            index_db_path=index_db_path, operators=[fragment_operator], base_dir=temp_dir
+        )
+        # migated_catalog_dir path will look like /tmp/iib-**/catalog
+        migated_catalog_dir, _ = opm_migrate(
+            index_db=index_db_path,
+            base_dir=temp_dir,
+            generate_cache=False,
+        )
+        log.info("Migated catalog after removing from db at %s", migated_catalog_dir)
+
+        # copy the content of migrated_catalog to from_index's config
+        log.info("Copying content of %s to %s", migated_catalog_dir, from_index_configs_dir)
+        for operator_package in os.listdir(migated_catalog_dir):
+            shutil.copytree(
+                os.path.join(migated_catalog_dir, operator_package),
+                os.path.join(from_index_configs_dir, operator_package),
+                dirs_exist_ok=True,
+            )
+
+    # copy fragment_operator to from_index configs
+    fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
+    fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
+    if os.path.exists(fragment_opr_dest_path):
+        shutil.rmtree(fragment_opr_dest_path)
+    log.info(
+        "Copying content of %s to %s",
+        fragment_opr_src_path,
+        fragment_opr_dest_path,
+    )
+    shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
+
+    local_cache_path = os.path.join(temp_dir, 'cache')
+    generate_cache_locally(
+        base_dir=temp_dir, fbc_dir=from_index_configs_dir, local_cache_path=local_cache_path
+    )
+
+    log.info("Dockerfile generated from %s", from_index_configs_dir)
+    opm_generate_dockerfile(
+        fbc_dir=from_index_configs_dir,
+        base_dir=temp_dir,
+        index_db=index_db_path,
+        binary_image=binary_image,
+        dockerfile_name='index.Dockerfile',
+    )
+
+
+def verify_operator_exists(
+    from_index: str,
+    base_dir: str,
+    operator_package: str,
+    overwrite_from_index_token: Optional[str],
+):
+    """
+    Check if operator exists in index image.
+
+    :pararm str from_index: index in which operator existence is checke
+    :param str base_dir: base temp directory for IIB request
+    :pararm str operator_package: operator_package to check
+    :pararm str overwrite_from_index_token: token used to access the image
+    :return is_package_in_index, index_db_path
+    :rtype: (str, str)
+    """
+    from iib.workers.tasks.build import terminate_process, get_bundle_json
+    from iib.workers.tasks.iib_static_types import BundleImage
+    from iib.workers.tasks.utils import run_cmd
+    from iib.workers.tasks.utils import set_registry_token
+
+    is_package_in_index = False
+
+    log.info("Verifying if operator package %s exists in index %s", operator_package, from_index)
+
+    # check if operater package exists in hidden index.db
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+        index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
+
+    port, rpc_proc = opm_registry_serve(db_path=index_db_path)
+    bundles = run_cmd(
+        ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
+        exc_msg='Failed to get bundle data from index image',
+    )
+    terminate_process(rpc_proc)
+    present_bundles: List[BundleImage] = get_bundle_json(bundles)
+
+    for bundle in present_bundles:
+        if bundle['packageName'] == operator_package:
+            is_package_in_index = True
+            log.info("operator package %s found in index_db %s", operator_package, index_db_path)
+    return is_package_in_index, index_db_path

@@ -41,6 +41,7 @@ from iib.workers.tasks.build import (
     handle_add_request,
     handle_rm_request,
 )
+from iib.workers.tasks.build_fbc_operations import handle_fbc_operation_request
 from iib.workers.tasks.build_recursive_related_bundles import (
     handle_recursive_related_bundles_request,
 )
@@ -1119,10 +1120,8 @@ def fbc_operations() -> Tuple[flask.Response, int]:
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_from_index = payload.get('overwrite_from_index', False)
-    # TODO - remove # noqa when worker implementation is done
-    celery_queue = _get_user_queue(serial=overwrite_from_index)  # noqa
+    celery_queue = _get_user_queue(serial=overwrite_from_index)
 
-    # TODO - update order based on worker implementation
     args = [
         request.id,
         payload['fbc_fragment'],
@@ -1134,18 +1133,12 @@ def fbc_operations() -> Tuple[flask.Response, int]:
         payload.get('build_tags'),
         payload.get('add_arches'),
     ]
-    # TODO - remove no-qa when worker implementation is done
-    safe_args = _get_safe_args(args, payload)  # noqa
-    error_callback = failed_request_callback.s(request.id)  # noqa
+    safe_args = _get_safe_args(args, payload)
+    error_callback = failed_request_callback.s(request.id)
     try:
-        # TODO - remove this line once worker is ready
-        raise NotImplementedError(
-            "Worker part handle_fbc_operation_request is not implemented yet."
+        handle_fbc_operation_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
         )
-        # TODO - update call of worker handle function once it is ready
-        # handle_fbc_operation_request.apply_async(
-        #     args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
-        # )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
 

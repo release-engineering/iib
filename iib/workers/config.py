@@ -67,10 +67,14 @@ class Config(object):
         'iib.workers.tasks.build_recursive_related_bundles',
         'iib.workers.tasks.build_regenerate_bundle',
         'iib.workers.tasks.build_create_empty_index',
+        'iib.workers.tasks.build_fbc_operations',
         'iib.workers.tasks.general',
     ]
     # Path to hidden location of SQLite database
     hidden_index_db_path: str = '/var/lib/iib/_hidden/do.not.edit.db'
+    # path where catalog resides in fbc_fragment
+    # might need to be changed, currently based on test fbc-fragment
+    fbc_fragment_catalog_path: str = '/configs'
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late: bool = True
@@ -81,6 +85,8 @@ class Config(object):
     task_reject_on_worker_lost: bool = True
     # Path to index.db in our temp directories used in IIB code
     temp_index_db_path: str = 'database/index.db'
+    # Path to fbc_fragment's catalog in our temp directories
+    temp_fbc_fragment_path = 'fbc-fragment'
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency: int = 1
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
