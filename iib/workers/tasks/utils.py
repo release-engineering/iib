@@ -355,6 +355,39 @@ class RequestConfigCreateIndexImage(RequestConfig):
         labels: Dict[str, str]
 
 
+class RequestConfigFBCOperation(RequestConfig):
+    """
+    Request config for FBC operation.
+
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for
+        non-privileged users to use ``overwrite_from_index``.
+        The format of the token must be
+        in the format "user:password".
+    :param str from_index: the pull specification of the container image
+        containing the index that the index image build
+        will be based from.
+    param set add_arches: the set of arches to build in addition to the
+        arches ``from_index`` is currently built for;
+        if ``from_index`` is ``None``, then this is used as the list of arches
+        to build the index image for
+    :param str frb_fragment: the fbc_fragment to add in index image
+    """
+
+    _attrs: List[str] = RequestConfig._attrs + [
+        "overwrite_from_index_token",
+        "from_index",
+        "add_arches",
+        "fbc_fragment",
+    ]
+    __slots__ = _attrs
+    if TYPE_CHECKING:
+        overwrite_from_index_token: str
+        from_index: str
+        add_arches: Set[str]
+        fbc_fragment: str
+
+
 def deprecate_bundles(
     bundles: List[str],
     base_dir: str,
