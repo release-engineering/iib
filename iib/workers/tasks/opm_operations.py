@@ -4,7 +4,7 @@ import random
 import shutil
 import subprocess
 import time
-from typing import List, Optional, Tuple, Generator
+from typing import List, Optional, Tuple, Generator, Union
 
 from tenacity import (
     before_sleep_log,
@@ -313,7 +313,7 @@ def deprecate_bundles_fbc(
         bundles=bundles,
     )
 
-    fbc_dir = opm_migrate(index_db_file, base_dir)
+    fbc_dir, _ = opm_migrate(index_db_file, base_dir)
     # we should keep generating Dockerfile here
     # to have the same behavior as we run `opm index deprecatetruncate` with '--generate' option
     opm_generate_dockerfile(
@@ -325,36 +325,42 @@ def deprecate_bundles_fbc(
     )
 
 
-def opm_migrate(index_db: str, base_dir: str) -> str:
+def opm_migrate(
+    index_db: str, base_dir: str, generate_cache: bool = True
+) -> Union[Tuple[str, str], Tuple[str, None]]:
     """
-    Migrate SQLite database to File-Based catalog using opm command.
+    Migrate SQLite database to File-Based catalog and generate cache using opm command.
 
     :param str index_db: path to SQLite index.db which should migrated to FBC.
     :param str base_dir: base directory where catalog should be created.
-    :return: Returns path to directory containing file-based catalog.
-    :rtype: str
+    :param bool generate_cache: if set cache will be generated
+    :return: Returns paths to directories for containing file-based catalog and it's cache
+    :rtype: str, str|None
     """
     from iib.workers.tasks.utils import run_cmd
 
     fbc_dir_path = os.path.join(base_dir, 'catalog')
-    local_cache_path = os.path.join(base_dir, 'cache')
 
-    # It may happen that we need to regenerate file-based catalog and cache
+    # It may happen that we need to regenerate file-based catalog
     # based on updated index.db therefore we have to remove the outdated catalog
-    # and cache to be able to generate new one
+    # to be able to generate new one
     if os.path.exists(fbc_dir_path):
         shutil.rmtree(fbc_dir_path)
-    if os.path.exists(local_cache_path):
-        shutil.rmtree(local_cache_path)
 
     cmd = ['opm', 'migrate', index_db, fbc_dir_path]
 
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to migrate index.db to file-based catalog')
     log.info("Migration to file-based catalog was completed.")
 
-    generate_cache_locally(base_dir, fbc_dir_path, local_cache_path)
+    if generate_cache:
+        # Remove outdated cache before generating new one
+        local_cache_path = os.path.join(base_dir, 'cache')
+        if os.path.exists(local_cache_path):
+            shutil.rmtree(local_cache_path)
+        generate_cache_locally(base_dir, fbc_dir_path, local_cache_path)
+        return fbc_dir_path, local_cache_path
 
-    return fbc_dir_path
+    return fbc_dir_path, None
 
 
 def opm_generate_dockerfile(
@@ -606,7 +612,7 @@ def opm_registry_add_fbc(
         container_tool=container_tool,
     )
 
-    fbc_dir = opm_migrate(index_db=index_db_file, base_dir=base_dir)
+    fbc_dir, _ = opm_migrate(index_db=index_db_file, base_dir=base_dir)
     # we should keep generating Dockerfile here
     # to have the same behavior as we run `opm index add` with '--generate' option
     opm_generate_dockerfile(
@@ -678,7 +684,7 @@ def opm_registry_rm_fbc(
         index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
 
     _opm_registry_rm(index_db_path, operators, base_dir)
-    fbc_dir = opm_migrate(index_db=index_db_path, base_dir=base_dir)
+    fbc_dir, _ = opm_migrate(index_db=index_db_path, base_dir=base_dir)
 
     opm_generate_dockerfile(
         fbc_dir=fbc_dir,
@@ -729,7 +735,7 @@ def opm_create_empty_fbc(
     _opm_registry_rm(index_db_path=index_db_path, operators=operators, base_dir=temp_dir)
 
     # Migrate the index to FBC
-    fbc_dir = opm_migrate(index_db=index_db_path, base_dir=temp_dir)
+    fbc_dir, _ = opm_migrate(index_db=index_db_path, base_dir=temp_dir)
 
     opm_generate_dockerfile(
         fbc_dir=fbc_dir,
