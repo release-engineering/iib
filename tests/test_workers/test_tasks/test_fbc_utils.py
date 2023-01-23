@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
+import tempfile
 from unittest import mock
 
 import pytest
 
-from iib.workers.tasks.fbc_utils import is_image_fbc
+from iib.exceptions import IIBError
+from iib.workers.tasks.fbc_utils import is_image_fbc, merge_catalogs_dirs
 
 
 @pytest.mark.parametrize(
@@ -86,3 +89,52 @@ def test_is_image_fbc(mock_si, skopeo_output, is_fbc):
 
     mock_si.return_value = skopeo_output
     assert is_image_fbc(image) is is_fbc
+
+
+def test_merge_catalogs_dirs(tmpdir):
+    source_dir = os.path.join(tmpdir, 'src')
+    destination_dir = os.path.join(tmpdir, 'dst')
+    os.makedirs(destination_dir, exist_ok=True)
+    operator_dir = os.path.join(source_dir, 'operator')
+    os.makedirs(operator_dir, exist_ok=True)
+
+    # create few temp files in operator directory
+    for _ in range(3):
+        tempfile.NamedTemporaryFile(dir=operator_dir, delete=False)
+
+    merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
+
+    for r, d, f in os.walk(source_dir):
+
+        root_dir = str(r).replace(f'{source_dir}/', '')
+        for dd in d:
+            # path to source directory
+            sdir = os.path.join(source_dir, root_dir, dd)
+            # path to destination directory
+            ddir = os.path.join(destination_dir, root_dir, dd)
+
+            assert os.path.isdir(ddir)
+            # check if source and destination permissions are the same
+            assert os.stat(ddir).st_mode == os.stat(sdir).st_mode
+        for df in f:
+            # path to source file
+            dfile = os.path.join(destination_dir, root_dir, df)
+            # path to destination file
+            sfile = os.path.join(source_dir, root_dir, df)
+
+            assert os.path.isfile(dfile)
+            # check if source and destination permissions are the same
+            assert os.stat(dfile).st_mode == os.stat(sfile).st_mode
+
+
+@mock.patch('shutil.copytree')
+@mock.patch('os.path.isdir')
+def test_merge_catalogs_dirs_raise(mock_isdir, mock_cpt, tmpdir):
+    mock_isdir.return_value = False
+    source_dir = os.path.join(tmpdir, 'src')
+    destination_dir = os.path.join(tmpdir, 'dst')
+
+    with pytest.raises(IIBError, match=f"config directory does not exist: {source_dir}"):
+        merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
+
+    mock_cpt.not_called()

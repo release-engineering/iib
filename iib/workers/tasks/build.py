@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import os
+import shutil
 import stat
 import tempfile
 from typing import Dict, List, Optional, Set, Tuple
@@ -20,13 +21,14 @@ from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
-from iib.workers.tasks.fbc_utils import is_image_fbc
+from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, merge_catalogs_dirs
 from iib.workers.tasks.opm_operations import (
     opm_serve_from_index,
     opm_registry_add_fbc,
     opm_migrate,
     opm_registry_rm_fbc,
     deprecate_bundles_fbc,
+    generate_cache_locally,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -951,8 +953,32 @@ def handle_add_request(
 
         if is_fbc:
             index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
-            # make sure FBC is generated right before build
-            opm_migrate(index_db=index_db_file, base_dir=temp_dir)
+            # get catalog from SQLite index.db (hidden db) - not opted in operators
+            catalog_from_db, _ = opm_migrate(
+                index_db=index_db_file,
+                base_dir=os.path.join(temp_dir, 'from_db'),
+                generate_cache=False,
+            )
+            # get catalog with opted-in operators
+            catalog_from_index = get_catalog_dir(
+                from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
+            )
+            # overwrite data in `catalog_from_index` by data from `catalog_from_db`
+            # this adds changes on not opted in operators to final
+            merge_catalogs_dirs(catalog_from_db, catalog_from_index)
+
+            fbc_dir_path = os.path.join(temp_dir, 'catalog')
+            # We need to regenerate file-based catalog because we merged changes
+            if os.path.exists(fbc_dir_path):
+                shutil.rmtree(fbc_dir_path)
+            # move migrated catalog to correct location expected in Dockerfile
+            shutil.move(catalog_from_index, fbc_dir_path)
+
+            # Remove outdated cache before generating new one
+            local_cache_path = os.path.join(temp_dir, 'cache')
+            if os.path.exists(local_cache_path):
+                shutil.rmtree(local_cache_path)
+            generate_cache_locally(temp_dir, fbc_dir_path, local_cache_path)
 
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
