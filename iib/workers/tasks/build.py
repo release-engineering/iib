@@ -1075,13 +1075,41 @@ def handle_rm_request(
 
         if image_is_fbc:
             log.info("Processing File-Based Catalog image")
-            opm_registry_rm_fbc(
+            fbc_dir, _ = opm_registry_rm_fbc(
                 base_dir=temp_dir,
                 from_index=from_index_resolved,
                 operators=operators,
                 binary_image=prebuild_info['binary_image'],
                 overwrite_from_index_token=overwrite_from_index_token,
+                generate_cache=False,
             )
+
+            # rename `catalog` directory because we need to use this name for
+            # final destination of catalog (defined in Dockerfile)
+            catalog_from_db = os.path.join(temp_dir, 'from_db')
+            os.rename(fbc_dir, catalog_from_db)
+
+            os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
+            # get catalog with opted-in operators
+            catalog_from_index = get_catalog_dir(
+                from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
+            )
+            # overwrite data in `catalog_from_index` by data from `catalog_from_db`
+            # this adds changes on not opted in operators to final
+            merge_catalogs_dirs(catalog_from_db, catalog_from_index)
+
+            fbc_dir_path = os.path.join(temp_dir, 'catalog')
+            # We need to regenerate file-based catalog because we merged changes
+            if os.path.exists(fbc_dir_path):
+                shutil.rmtree(fbc_dir_path)
+            # move migrated catalog to correct location expected in Dockerfile
+            shutil.move(catalog_from_index, fbc_dir_path)
+
+            # Remove outdated cache before generating new one
+            local_cache_path = os.path.join(temp_dir, 'cache')
+            if os.path.exists(local_cache_path):
+                shutil.rmtree(local_cache_path)
+            generate_cache_locally(temp_dir, fbc_dir_path, local_cache_path)
 
         else:
             _opm_index_rm(

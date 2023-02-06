@@ -373,7 +373,7 @@ def test_opm_registry_rm_fbc(
     )
 
     mock_srt.assert_called_once_with('some_token', 'some_index:latest', append=True)
-    mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)
+    mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir, generate_cache=True)
     mock_ogd.assert_called_once_with(
         fbc_dir=fbc_dir,
         base_dir=tmpdir,
