@@ -104,6 +104,7 @@ def test_handle_merge_request(
         'iib_api_url': 'http://iib-api:8080/api/v1/',
     }
     mock_gid.return_value = 'database/index.db'
+    mock_om.return_value = 'catalog', 'cache'
 
     # Simulate opm's behavior of creating files that cannot be deleted
     def side_effect(*args, base_dir, **kwargs):
@@ -258,6 +259,7 @@ def test_handle_merge_request_no_deprecate(
     mock_gbfdl.return_value = []
     mock_abmis.return_value = ([], invalid_bundles)
     mock_gid.return_value = 'database/index.db'
+    mock_om.return_value = 'catalog', 'cache'
 
     port = 0
     my_mock = mock.MagicMock()

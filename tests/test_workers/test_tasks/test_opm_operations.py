@@ -308,9 +308,10 @@ def test_opm_registry_add_fbc(
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
+    cache_dir = os.path.join(tmpdir, 'cache')
     mock_ghid.return_value = index_db_file
     mock_gid.return_value = index_db_file
-    mock_om.return_value = fbc_dir
+    mock_om.return_value = (fbc_dir, cache_dir)
     mock_iifbc.return_value = is_fbc
 
     opm_operations.opm_registry_add_fbc(
@@ -359,7 +360,7 @@ def test_opm_registry_rm_fbc(
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
     mock_ghid.return_value = index_db_file
-    mock_om.return_value = fbc_dir
+    mock_om.return_value = (fbc_dir, None)
 
     opm_operations.opm_registry_rm_fbc(
         tmpdir, from_index, operators, 'some:image', overwrite_from_index_token='some_token'
@@ -415,8 +416,9 @@ def test_opm_create_empty_fbc(
     mock_iif.return_value = is_fbc
     hidden_index_db_file = os.path.join(tmpdir, 'hidden/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
+    cache_dir = os.path.join(tmpdir, 'cache')
     mock_ghid.return_value = hidden_index_db_file
-    mock_om.return_value = fbc_dir
+    mock_om.return_value = (fbc_dir, cache_dir)
 
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     mock_gid.return_value = index_db_file
@@ -502,8 +504,9 @@ def test_deprecate_bundles_fbc(
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
+    cache_dir = os.path.join(tmpdir, 'cache')
     mock_gtidf.return_value = index_db_file
-    mock_om.return_value = fbc_dir
+    mock_om.return_value = (fbc_dir, cache_dir)
 
     opm_operations.deprecate_bundles_fbc(
         bundles=bundles,

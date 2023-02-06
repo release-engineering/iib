@@ -2,6 +2,7 @@
 # This file contains functions that are common for File-Based Catalog image type
 import os
 import logging
+import shutil
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
@@ -69,3 +70,20 @@ def get_hidden_index_database(from_index: str, base_dir: str) -> str:
     os.makedirs(os.path.dirname(base_db_file), exist_ok=True)
     _copy_files_from_image(from_index, conf['hidden_index_db_path'], base_db_file)
     return base_db_file
+
+
+def merge_catalogs_dirs(src_config: str, dest_config: str):
+    """
+    Merge two catalog directories by replacing everything from src_config over dest_config.
+
+    :param str src_config: source config directory
+    :param str dest_config: destination config directory
+    """
+    for conf_dir in (src_config, dest_config):
+        if not os.path.isdir(conf_dir):
+            msg = f"config directory does not exist: {conf_dir}"
+            log.error(msg)
+            raise IIBError(msg)
+
+    log.info("Merging config folders: %s to %s", src_config, dest_config)
+    shutil.copytree(src_config, dest_config, dirs_exist_ok=True)

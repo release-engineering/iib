@@ -320,7 +320,7 @@ def handle_merge_request(
         if target_fbc:
             index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
             # make sure FBC is generated right before build
-            fbc_dir = opm_migrate(index_db=index_db_file, base_dir=temp_dir)
+            fbc_dir, _ = opm_migrate(index_db=index_db_file, base_dir=temp_dir)
             if not source_fbc:
                 # when source image is not FBC, but final image should be an FBC image
                 # we have to generate Dockerfile for FBC (with hidden index.db)
