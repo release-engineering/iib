@@ -665,7 +665,8 @@ def opm_registry_rm_fbc(
     operators: List[str],
     binary_image: str,
     overwrite_from_index_token: Optional[str] = None,
-) -> None:
+    generate_cache: bool = True,
+) -> Union[Tuple[str, str], Tuple[str, None]]:
     """
     Remove operator/s from a File Based Catalog index image.
 
@@ -681,6 +682,11 @@ def opm_registry_rm_fbc(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required to use ``overwrite_from_index``.
         The format of the token must be in the format "user:password".
+    :param bool generate_cache: if set cache of migrated file-based catalog will be generated
+        The format of the token must be in the format "user:password".
+
+    :return: Returns paths to directories for containing file-based catalog and it's cache
+    :rtype: str, str|None
     """
     from iib.workers.tasks.utils import set_registry_token
 
@@ -691,7 +697,9 @@ def opm_registry_rm_fbc(
         index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
 
     _opm_registry_rm(index_db_path, operators, base_dir)
-    fbc_dir, _ = opm_migrate(index_db=index_db_path, base_dir=base_dir)
+    fbc_dir, cache_dir = opm_migrate(
+        index_db=index_db_path, base_dir=base_dir, generate_cache=generate_cache
+    )
 
     opm_generate_dockerfile(
         fbc_dir=fbc_dir,
@@ -700,6 +708,8 @@ def opm_registry_rm_fbc(
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
     )
+
+    return fbc_dir, cache_dir
 
 
 def opm_create_empty_fbc(

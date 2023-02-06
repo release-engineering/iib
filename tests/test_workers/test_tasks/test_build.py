@@ -1065,9 +1065,17 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.build.get_catalog_dir')
+@mock.patch('iib.workers.tasks.build.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('os.rename')
 def test_handle_rm_request_fbc(
+    mock_or,
     mock_ogd,
+    mock_gcl,
+    mock_mcd,
+    mock_gcd,
     mock_om,
     mock_ghid,
     mock_iifbc,
@@ -1097,7 +1105,8 @@ def test_handle_rm_request_fbc(
     mock_ghid.return_value = "/tmp/xyz/database/index.db"
     mock_ogd.return_value = "/tmp/xyz/index.Dockerfile"
     mock_om.return_value = "/tmp/xyz/catalog"
-    mock_orrf.return_value = "/tmp/xyz/index.Dockerfile"
+    mock_orrf.return_value = "/tmp/fbc_dir", "/tmp/cache_dir"
+    mock_gcd.return_value = "/some/path"
     build.handle_rm_request(
         operators=['some-operator'],
         request_id=5,
@@ -1116,6 +1125,10 @@ def test_handle_rm_request_fbc(
             distribution_scope=None,
         ),
     )
+    assert mock_or.call_count == 2
+    mock_gcd.assert_called_once()
+    mock_gcl.assert_called_once()
+    mock_mcd.assert_called_once_with(mock.ANY, '/some/path')
     mock_orrf.assert_called_once()
     assert mock_alti.call_count == 2
     assert mock_bi.call_count == 2
