@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 7.0.0
+- Fix flake8 and mypy bugs
+- Tweak Add and Rm worker logic to support the new fbc-operations endpoint
+- Add new fbc-operations API endpoint
+
 ## 6.8.4
 - Generate catalog cache right after opm migrate
 
