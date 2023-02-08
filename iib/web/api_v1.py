@@ -610,6 +610,8 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'bundle_image',
         'from_bundle_image_resolved',
         'from_index_resolved',
+        'fbc_fragment',
+        'fbc_fragment_resolved',
         'index_image',
         'index_image_resolved',
         'internal_index_image_copy',
