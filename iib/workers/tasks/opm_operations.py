@@ -666,7 +666,7 @@ def opm_registry_rm_fbc(
     binary_image: str,
     overwrite_from_index_token: Optional[str] = None,
     generate_cache: bool = True,
-) -> Union[Tuple[str, str], Tuple[str, None]]:
+) -> Tuple[str, Optional[str]]:
     """
     Remove operator/s from a File Based Catalog index image.
 
