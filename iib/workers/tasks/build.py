@@ -956,6 +956,7 @@ def handle_add_request(
         )
 
         if is_fbc:
+            os.makedirs(os.path.join(temp_dir, 'from_db'), exist_ok=True)
             index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
             # get catalog from SQLite index.db (hidden db) - not opted in operators
             catalog_from_db, _ = opm_migrate(
@@ -964,6 +965,7 @@ def handle_add_request(
                 generate_cache=False,
             )
             # get catalog with opted-in operators
+            os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
             catalog_from_index = get_catalog_dir(
                 from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
             )
