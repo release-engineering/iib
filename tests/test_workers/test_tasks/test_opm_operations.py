@@ -639,7 +639,9 @@ def test_verify_cache_insertion_edit_dockerfile_failed():
 @mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
 @mock.patch('iib.workers.tasks.opm_operations.verify_operator_exists')
 @mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
 def test_opm_registry_add_fbc_fragment(
+    mock_srs,
     mock_eff,
     mock_voe,
     mock_gcr,
@@ -666,7 +668,7 @@ def test_opm_registry_add_fbc_fragment(
         "package1",
     ]
     opm_operations.opm_registry_add_fbc_fragment(
-        tmpdir, from_index, binary_image, fbc_fragment, None
+        10, tmpdir, from_index, binary_image, fbc_fragment, None
     )
     mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment)
     mock_voe.assert_called_with(
@@ -694,7 +696,7 @@ def test_opm_registry_add_fbc_fragment(
     else:
         assert mock_cpt.call_count == 1
         assert mock_orr.call_count == 0
-
+    mock_srs.call_count == 2
     mock_cpt.assert_has_calls(
         [
             mock.call(

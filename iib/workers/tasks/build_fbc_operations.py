@@ -77,10 +77,13 @@ def handle_fbc_operation_request(
     from_index_resolved = prebuild_info['from_index_resolved']
     binary_image_resolved = prebuild_info['binary_image_resolved']
 
+    prebuild_info['fbc_fragment_resolved'] = resolved_fbc_fragment
+
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
         opm_registry_add_fbc_fragment(
+            request_id,
             temp_dir,
             from_index_resolved,
             binary_image_resolved,
