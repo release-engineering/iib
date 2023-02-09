@@ -557,6 +557,47 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/fbc-operation:
+    post:
+      description: >
+        Submit a request to add/update FBC fragment to an index image
+      requestBody:
+        description: The request to add FBC fragment
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FbcRequest'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FbcResponseVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"fbc_fragment" should be a non-empty string'
+        '401':
+          description: >
+            The user is not allowed to create a request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
   /builds/merge-index-image:
     post:
       description: Submit a build request to merge index images
@@ -1357,6 +1398,119 @@ components:
               example:
                 url: https://iib.domain.local/api/v1/builds/1/nested_bundles
                 expiration: '2019-09-19T19:35:15.722265Z'
+    FbcRequest:
+      type: object
+      properties:
+        add_arches:
+          type: array
+          description: >
+            This add_arches array is required when from_index is not provided.
+          items:
+            type: string
+          example:
+            - amd64
+            - s390x
+        binary_image:
+          type: string
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.26.3'
+        fbc_fragment:
+          type: string
+          description: >
+            fbc_fragment is required.
+          example: 'quay.io/iib-stage/fbc_fragment:4'
+        from_index:
+          type: string
+          description: >
+            from_index is required.
+          example: 'quay.io/iib-stage/iib:4'
+        overwrite_from_index:
+          type: boolean
+          description: >
+            Overwrites the input from_index image with the built index image. This can only be
+            performed when overwrite_from_index_token is provided.
+          default: false
+        overwrite_from_index_token:
+          type: string
+          description: >
+            The token used for reading and overwriting the input from_index image. This is required
+            to use overwrite_from_index. The format of the token is in the format "user:password".
+          example: token
+        distribution_scope:
+          description: >
+              The scope of distribution for the index created by the request.
+              This will determine what level of protection the addition will have.
+          type: string
+          example: 'prod'
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
+      required:
+        - bundles
+    FbcResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            binary_image:
+              type: string
+              example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+            binary_image_resolved:
+              type: string
+              example: >-
+                quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            from_index:
+              type: string
+              example: 'quay.io/iib-stage/iib:4'
+            from_index_resolved:
+              type: string
+              example: >-
+                quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            index_image:
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            index_image_resolved:
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            internal_index_image_copy:
+              description: >
+                The pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            internal_index_image_copy_resolved:
+              description: >
+                The resolved pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image_resolved when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            distribution_scope:
+              description: >
+                The scope of distribution for the index created by the request.
+                This determined what level of protection the addition or removal had.
+              type: string
+              example: 'prod'
+            build_tags:
+              description: >
+                Extra tags applied to intermediate index image
+              type: array
+              items:
+                type: string
+              example: ["v4.5-10-08-2021"]
+            request_type:
+              type: string
+              example: fbc-operations
+            fbc_fragment:
+              type: string
+              example: "quay.io/iib/fbc-fragment:v1.0"
+            fbc_fragment_resolved:
+              type: string
+              example: "quay.io/iib/fbc-fragment@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e"
     RequestUpdate:
       type: object
       properties:
@@ -1428,6 +1582,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/BaseResponseVerbose'
         - $ref: '#/components/schemas/ResponseCreateEmptyIndex'
+    FbcResponseVerbose:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/FbcResponse'
     StateHistory:
       type: object
       properties:
