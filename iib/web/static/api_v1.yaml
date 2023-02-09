@@ -799,30 +799,30 @@ components:
           type: string
           example: msdhoni@DOMAIN.LOCAL
     BaseResponseVerbose:
-      - type: object
-        properties:
-          batch_annotations:
-            type: object
-            description: >
-              An arbitrary JSON object created by the submitter associated with the batch.
-          state_history:
-            type: array
-            items:
-              $ref: '#/components/schemas/StateHistory'
-          logs:
-            type: object
-            properties:
-              url:
-                type: string
-                description: URL to fetch the logs for the request
-              expiration:
-                type: string
-                description: >-
-                  UTC timestamp in ISO format that indicates when the logs for the request are
-                  considered to be expired and will be removed.
-            example:
-              url: https://iib.domain.local/api/v1/builds/1/logs
-              expiration: '2019-09-19T19:35:15.722265Z'
+      type: object
+      properties:
+        batch_annotations:
+          type: object
+          description: >
+            An arbitrary JSON object created by the submitter associated with the batch.
+        state_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/StateHistory'
+        logs:
+          type: object
+          properties:
+            url:
+              type: string
+              description: URL to fetch the logs for the request
+            expiration:
+              type: string
+              description: >-
+                UTC timestamp in ISO format that indicates when the logs for the request are
+                considered to be expired and will be removed.
+          example:
+            url: https://iib.domain.local/api/v1/builds/1/logs
+            expiration: '2019-09-19T19:35:15.722265Z'
     AddRmResponse:
       allOf:
         - $ref: '#/components/schemas/BaseResponse'
