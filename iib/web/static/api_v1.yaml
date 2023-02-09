@@ -1275,7 +1275,7 @@ components:
               example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
             distribution_scope:
               type: string
-              exmaple: 'prod'
+              example: 'prod'
             from_index:
               type: string
               example: 'quay.io/iib-stage/iib:4'
