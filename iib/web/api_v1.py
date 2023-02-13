@@ -1134,6 +1134,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
         payload.get('overwrite_from_index_token'),
         payload.get('build_tags'),
         payload.get('add_arches'),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
