@@ -2548,3 +2548,84 @@ def test_fbc_operations_overwrite_not_allowed(mock_smfsc, client, db):
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ('binary_image', 'binary_image_config'),
+    (
+        ('from:variable', {'prod': {'v4.5': 'some_binary_image'}}),
+        ('', {'prod': {'v4.5': 'some_binary_image'}}),
+        (None, {'prod': {'v4.5': 'some_binary_image'}}),
+        ('from:variable', {}),
+        ('', {}),
+        (None, {}),
+    ),
+)
+@mock.patch('iib.web.api_v1.handle_fbc_operation_request.apply_async')
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_fbc_operations(
+    mock_smfc,
+    mock_hfor,
+    app,
+    auth_env,
+    client,
+    db,
+    binary_image,
+    binary_image_config,
+):
+    data = {
+        'binary_image': binary_image,
+        'from_index': 'from:index',
+        'fbc_fragment': 'fbc:fragment',
+    }
+    response_json = {
+        'arches': [],
+        'batch': 1,
+        'batch_annotations': None,
+        'binary_image': binary_image,
+        'binary_image_resolved': None,
+        'build_tags': [],
+        'distribution_scope': None,
+        'fbc_fragment': 'fbc:fragment',
+        'fbc_fragment_resolved': None,
+        'from_index': 'from:index',
+        'from_index_resolved': None,
+        'id': 1,
+        'index_image': None,
+        'index_image_resolved': None,
+        'internal_index_image_copy': None,
+        'internal_index_image_copy_resolved': None,
+        'request_type': 'fbc-operations',
+        'state': 'in_progress',
+        'logs': {
+            'url': 'http://localhost/api/v1/builds/1/logs',
+            'expiration': '2020-02-15T17:03:00Z',
+        },
+        'state_history': [
+            {
+                'state': 'in_progress',
+                'state_reason': 'The request was initiated',
+                'updated': '2020-02-12T17:03:00Z',
+            }
+        ],
+        'state_reason': 'The request was initiated',
+        'updated': '2020-02-12T17:03:00Z',
+        'user': 'tbrady@DOMAIN.LOCAL',
+    }
+    app.config['IIB_BINARY_IMAGE_CONFIG'] = binary_image_config
+    rv = client.post('/api/v1/builds/fbc-operations', json=data, environ_base=auth_env)
+    rv_json = rv.json
+    if binary_image or binary_image_config:
+        rv_json['state_history'][0]['updated'] = '2020-02-12T17:03:00Z'
+        rv_json['updated'] = '2020-02-12T17:03:00Z'
+        rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
+        response_json['binary_image'] = binary_image if binary_image else None
+        assert response_json == rv_json
+        assert 'overwrite_from_index_token' not in rv_json
+        mock_hfor.assert_called_once()
+        mock_smfc.assert_called_once_with(mock.ANY, new_batch_msg=True)
+    else:
+        assert rv.status_code == 400
+        assert 'The "binary_image" value must be a non-empty string' == rv.json['error']
+        mock_smfc.assert_not_called()
+        mock_hfor.assert_not_called()
