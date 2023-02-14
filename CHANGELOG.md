@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 7.0.1
+- Fix fbc-operations bug where the requests failed when binary_image is not submitted
+
 ## 7.0.0
 - Fix flake8 and mypy bugs
 - Tweak Add and Rm worker logic to support the new fbc-operations endpoint
