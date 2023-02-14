@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='iib',
-    version='7.0.0',
+    version='7.0.1',
     long_description=__doc__,
     packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
