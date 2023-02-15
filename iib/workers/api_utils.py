@@ -10,6 +10,7 @@ import requests_kerberos
 from iib.exceptions import IIBError
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
+from iib.common.tracing import instrument_tracing
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ def get_request(request_id: int) -> Dict[str, Any]:
     return rv.json()
 
 
+@instrument_tracing(span_name="workers.api_utils.set_request_state")
 def set_request_state(request_id: int, state: str, state_reason: str) -> Dict[str, Any]:
     """
     Set the state of the request using the IIB API.

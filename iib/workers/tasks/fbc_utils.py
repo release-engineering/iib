@@ -7,6 +7,7 @@ import shutil
 from typing import Tuple
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
+from iib.common.tracing import instrument_tracing
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ def is_image_fbc(image: str) -> bool:
     return bool(get_image_label(image, 'operators.operatorframework.io.index.configs.v1'))
 
 
+@instrument_tracing(span_name='iib.workers.tasks.fbc_utils.get_catalog_dir')
 def get_catalog_dir(from_index: str, base_dir: str) -> str:
     """
     Get file-based catalog directory from the specified index image and save it locally.

@@ -778,6 +778,7 @@ def handle_add_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     deprecation_list: Optional[List[str]] = None,
     build_tags: Optional[List[str]] = None,
+    traceparent: Optional[str] = None,
 ) -> None:
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -812,6 +813,7 @@ def handle_add_request(
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
         to ``None``.
     :param list build_tags: List of tags which will be applied to intermediate index images.
+    :param str traceparent: the traceparent header value to be used for tracing the request.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()

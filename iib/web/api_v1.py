@@ -574,7 +574,11 @@ def add_bundles() -> Tuple[flask.Response, int]:
 
     try:
         handle_add_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+            args=args,
+            link_error=error_callback,
+            argsrepr=repr(safe_args),
+            queue=celery_queue,
+            headers={'traceparent': flask.request.headers.get('traceparent')},
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)

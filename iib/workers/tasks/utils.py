@@ -43,6 +43,9 @@ from iib.workers.tasks.iib_static_types import (
     BundleImage,
 )
 
+# Add instrumentation
+from iib.common.tracing import instrument_tracing
+
 log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
 
@@ -1142,6 +1145,7 @@ def _validate_distribution_scope(resolved_distribution_scope: str, distribution_
     return distribution_scope
 
 
+@instrument_tracing(span_name='iib.workers.tasks.utils.prepare_request_for_build')
 def prepare_request_for_build(
     request_id: int,
     build_request_config: RequestConfig,
