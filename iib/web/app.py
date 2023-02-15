@@ -20,6 +20,13 @@ from iib.web.errors import json_error
 
 # Import the models here so that Alembic will be guaranteed to detect them
 import iib.web.models  # noqa: F401
+from opentelemetry.instrumentation.wsgi import OpenTelemetryMiddleware
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+#from opentelemetry.trace import get_tracer_provider, set_tracer_provider
+#from iib.common.tracing import instrument_tracing, get_tracer_provider
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
 
 
 def load_config(app: Flask) -> None:
@@ -216,6 +223,12 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     login_manager.init_app(app)
     login_manager.user_loader(user_loader)
     login_manager.request_loader(load_user_from_request)
+
+    # Add instrumentation for flask, sqlalchemy and logging
+    FlaskInstrumentor().instrument_app(app)
+    app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app)
+    SQLAlchemyInstrumentor().instrument(enable_commenter=True, commenter_options={})
+    LoggingInstrumentor().instrument()
 
     app.register_blueprint(docs)
     app.register_blueprint(api_v1, url_prefix='/api/v1')

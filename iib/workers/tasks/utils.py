@@ -45,6 +45,8 @@ from iib.workers.tasks.iib_static_types import (
 
 log = logging.getLogger(__name__)
 dogpile_cache_region = create_dogpile_region()
+# Add instrumentation
+from iib.common.tracing import instrument_tracing
 
 
 def _add_property_to_index(db_path: str, property: Dict[str, str]) -> None:
@@ -673,6 +675,7 @@ def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
         reset_docker_config()
 
 
+@instrument_tracing(service_name="iib_worker", span_name='skopeo_inspect')
 @retry(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
@@ -719,6 +722,7 @@ def skopeo_inspect(
     return json_output
 
 
+#@instrument_tracing(service_name="iib_worker", span_name='podman_pull')
 @retry(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,

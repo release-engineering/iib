@@ -2,6 +2,8 @@
 # environment variable IIB_COMPOSE_ENGINE.
 IIB_COMPOSE_ENGINE ?= docker-compose
 IIB_COMPOSE_RUNNER = ${IIB_COMPOSE_ENGINE} -f ${PWD}/compose-files/${IIB_COMPOSE_ENGINE}.yml
+OTEL_RESOURCE_ATTRIBUTES=service.name=iib
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector-http-traces.apps.ocp-c2.prod.psi.redhat.com
 
 # Declare non-file targets to avoid potential conflict with files
 # of the same name.

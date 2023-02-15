@@ -80,10 +80,21 @@ services:
         iib wait-for-db &&
         iib db upgrade &&
         flask run --reload --host 0.0.0.0 --port 8080
+      # opentelemetry-instrument flask run --port 8080 --host 0.0.0.0
+      #OTEL_TRACES_EXPORTER: otlp_proto_http
     environment:
       FLASK_ENV: development
       FLASK_APP: iib/web/wsgi.py
       IIB_DEV: 'true'
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+      OTEL_SERVICE_NAME: "iib-api"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,custom_request_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,custom_response_header"
+      OTEL_PROPAGATORS: "tracecontext,baggage"
+      OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test, service.name=iib"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com/v1/traces
     volumes:
       - ../:/src:z
       - ../docker/message_broker/certs:/broker-certs:ro,z
@@ -111,13 +122,21 @@ services:
         cat /registry-certs/minica.pem >> /etc/pki/tls/certs/ca-bundle.crt &&
         podman login --authfile ~/.docker/config.json.template -u iib \
           -p iibpassword registry:8443 &&
-        pip3 install watchdog[watchmedo] &&
+        pip3 install --trusted-host pypi.org --trusted-host files.pythonhosted.org watchdog[watchmedo] &&
         watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
           -- celery -A iib.workers.tasks worker --loglevel=info
     environment:
       IIB_DEV: 'true'
       REGISTRY_AUTH_FILE: '/root/.docker/config.json'
       REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
+      OTEL_SERVICE_NAME: "iib-workers"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,custom_request_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,custom_response_header"
+      OTEL_PROPAGATORS: "tracecontext,baggage"
+      OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test-worker, service.name=iib"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com/v1/traces
     # Make this privileged to be able to build container images
     privileged: true
     volumes:

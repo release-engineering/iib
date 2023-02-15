@@ -63,6 +63,8 @@ from iib.web.iib_static_types import (
     RegenerateBundlePayload,
     RmRequestPayload,
 )
+from iib.common.tracing import instrument_tracing
+
 
 api_v1 = flask.Blueprint('api_v1', __name__)
 
@@ -218,6 +220,7 @@ def _get_unique_bundles(bundles: List[str]) -> List[str]:
     return unique_bundles
 
 
+#@instrument_tracing
 @api_v1.route('/builds/<int:request_id>')
 def get_build(request_id: int) -> flask.Response:
     """
@@ -352,6 +355,7 @@ def get_related_bundles(request_id: int) -> flask.Response:
         return flask.Response(f.read(), mimetype='application/json')
 
 
+@instrument_tracing
 @api_v1.route('/builds')
 def get_builds() -> flask.Response:
     """
@@ -359,6 +363,7 @@ def get_builds() -> flask.Response:
 
     :rtype: flask.Response
     """
+
     batch_id: Optional[str] = flask.request.args.get('batch')
     state = flask.request.args.get('state')
     verbose = str_to_bool(flask.request.args.get('verbose'))
@@ -481,6 +486,9 @@ def get_healthcheck() -> flask.Response:
     try:
         with db.engine.connect() as connection:
             connection.execute(text('SELECT 1'))
+        # TODO : Remove?
+        # TraceContextTextMapPropagator().inject(carrier)
+        # header = {"traceparent": carrier["traceparent"]}
     except Exception:
         flask.current_app.logger.exception('DB test failed.')
         raise IIBError('Database health check failed.')

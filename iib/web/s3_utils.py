@@ -4,7 +4,10 @@ from typing import Optional
 
 import boto3
 from botocore.response import StreamingBody
+# AWS S3 utils instrumentation
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
 
+BotocoreInstrumentor().instrument()
 log = logging.getLogger(__name__)
 
 
