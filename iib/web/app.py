@@ -20,6 +20,12 @@ from iib.web.errors import json_error
 
 # Import the models here so that Alembic will be guaranteed to detect them
 import iib.web.models  # noqa: F401
+from opentelemetry.instrumentation.wsgi import OpenTelemetryMiddleware
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from iib.common.tracing import TracingWrapper
+
+tracerWrapper = TracingWrapper()
 
 
 def load_config(app: Flask) -> None:
@@ -225,4 +231,16 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     app.register_error_handler(ValidationError, json_error)
     app.register_error_handler(kombu.exceptions.KombuError, json_error)
 
+    # Add Auto-instrumentation
+    FlaskInstrumentor().instrument_app(
+        app, enable_commenter=True, commenter_options={}, tracer_provider=tracerWrapper.provider
+    )
+    app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app, tracer_provider=tracerWrapper.provider)
+    with app.app_context():
+        SQLAlchemyInstrumentor().instrument(
+            engine=db.engine,
+            enable_commenter=True,
+            commenter_options={'opentelemetry_values': True},
+            tracer_provider=tracerWrapper.provider,
+        )
     return app
