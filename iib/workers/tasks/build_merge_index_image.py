@@ -219,7 +219,7 @@ def handle_merge_request(
     target_index_resolved = prebuild_info['target_index_resolved']
     dockerfile_name = 'index.Dockerfile'
 
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         with set_registry_token(overwrite_target_index_token, target_index, append=True):
             source_fbc = is_image_fbc(source_from_index_resolved)
             target_fbc = is_image_fbc(target_index_resolved)

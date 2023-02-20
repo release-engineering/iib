@@ -100,7 +100,7 @@ def handle_create_empty_index_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
 
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         set_request_state(request_id, 'in_progress', 'Checking operators present in index image')
 
         operators = _get_present_operators(from_index_resolved, temp_dir)
