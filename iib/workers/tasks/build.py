@@ -597,7 +597,7 @@ def _overwrite_from_index(
             # of the manifest-tool to create the manifest list locally which means this workaround
             # can be removed.
             if output_pull_spec_registry == from_index_registry:
-                temp_dir = tempfile.TemporaryDirectory(prefix='iib-')
+                temp_dir = tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-')
                 new_index_src = f'oci:{temp_dir.name}'
                 log.info(
                     'The registry used by IIB (%s) is also the registry where from_index (%s) will '
@@ -856,7 +856,7 @@ def handle_add_request(
     _update_index_image_build_state(request_id, prebuild_info)
     present_bundles: List[BundleImage] = []
     present_bundles_pull_spec: List[str] = []
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         if from_index:
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
@@ -1071,7 +1071,7 @@ def handle_rm_request(
 
     from_index_resolved = prebuild_info['from_index_resolved']
 
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
             image_is_fbc = is_image_fbc(from_index_resolved)
 

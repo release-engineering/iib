@@ -101,7 +101,7 @@ def handle_regenerate_bundle_request(
         # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
         podman_pull(from_bundle_image_resolved)
 
-        with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+        with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
             manifests_path = os.path.join(temp_dir, 'manifests')
             _copy_files_from_image(from_bundle_image_resolved, '/manifests', manifests_path)
             metadata_path = os.path.join(temp_dir, 'metadata')

@@ -81,7 +81,7 @@ def handle_fbc_operation_request(
 
     _update_index_image_build_state(request_id, prebuild_info)
 
-    with tempfile.TemporaryDirectory(prefix='iib-') as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         opm_registry_add_fbc_fragment(
             request_id,
             temp_dir,
