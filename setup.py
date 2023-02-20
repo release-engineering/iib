@@ -16,6 +16,7 @@ setup(
         'flask-login',
         'flask-migrate',
         'flask-sqlalchemy',
+        'importlib-resources',
         'operator-manifest',
         'psycopg2-binary',
         'python-memcached ',
