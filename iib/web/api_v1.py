@@ -441,7 +441,8 @@ def get_healthcheck() -> flask.Response:
     """
     # Test DB connection
     try:
-        db.engine.execute(text('SELECT 1'))
+        with db.engine.connect() as connection:
+            connection.execute(text('SELECT 1'))
     except Exception:
         flask.current_app.logger.exception('DB test failed.')
         raise IIBError('Database health check failed.')

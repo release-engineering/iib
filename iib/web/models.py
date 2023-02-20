@@ -13,7 +13,7 @@ from flask_sqlalchemy.model import DefaultMeta
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import joinedload, load_only, validates
-from sqlalchemy.orm.strategy_options import _UnboundLoad
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 from sqlalchemy.orm.relationships import RelationshipProperty
 from sqlalchemy.sql.schema import Column
 from werkzeug.exceptions import Forbidden
@@ -716,7 +716,7 @@ class Batch(db.Model):
         return rv
 
 
-def get_request_query_options(verbose: Optional[bool] = False) -> List[_UnboundLoad]:
+def get_request_query_options(verbose: Optional[bool] = False) -> List[_AbstractLoad]:
     """
     Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
 
