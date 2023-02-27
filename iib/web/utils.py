@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from flask import request, url_for
-from flask_sqlalchemy import Pagination
+from flask_sqlalchemy.pagination import Pagination
 from typing import Optional
 
 from iib.web.iib_static_types import PaginationMetadata

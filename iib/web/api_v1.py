@@ -6,7 +6,7 @@ from datetime import datetime
 import flask
 import kombu
 from flask_login import current_user, login_required
-from sqlalchemy.orm import with_polymorphic
+from sqlalchemy.orm import aliased, with_polymorphic
 from sqlalchemy.sql import text
 from sqlalchemy import or_
 from werkzeug.exceptions import Forbidden, Gone, NotFound
@@ -396,24 +396,36 @@ def get_builds() -> flask.Response:
         query = query.join(Request.user).filter(User.username == user)
 
     if index_image:
+        # https://sqlalche.me/e/20/xaj2 - Create aliases for self-join (Sqlalchemy 2.0)
+        request_create_empty_index_alias = aliased(RequestCreateEmptyIndex, flat=True)
+        request_add_alias = aliased(RequestAdd, flat=True)
+        request_rm_alias = aliased(RequestRm, flat=True)
+        request_merge_index_image_alias = aliased(RequestMergeIndexImage, flat=True)
+
         query_params['index_image'] = index_image
         # Get the image id of the image to be searched
         image_result = Image.query.filter_by(pull_specification=index_image).first()
         if image_result:
             # join with the Request* tables to get the response as image_ids are stored there
             query = (
-                query.outerjoin(RequestCreateEmptyIndex, Request.id == RequestCreateEmptyIndex.id)
-                .outerjoin(RequestAdd, Request.id == RequestAdd.id)
-                .outerjoin(RequestMergeIndexImage, Request.id == RequestMergeIndexImage.id)
-                .outerjoin(RequestRm, Request.id == RequestRm.id)
+                query.outerjoin(
+                    request_create_empty_index_alias,
+                    Request.id == request_create_empty_index_alias.id,
+                )
+                .outerjoin(request_add_alias, Request.id == request_add_alias.id)
+                .outerjoin(
+                    request_merge_index_image_alias,
+                    Request.id == request_merge_index_image_alias.id,
+                )
+                .outerjoin(request_rm_alias, Request.id == request_rm_alias.id)
             )
 
             query = query.filter(
                 or_(
-                    RequestCreateEmptyIndex.index_image_id == image_result.id,
-                    RequestAdd.index_image_id == image_result.id,
-                    RequestMergeIndexImage.index_image_id == image_result.id,
-                    RequestRm.index_image_id == image_result.id,
+                    request_create_empty_index_alias.index_image_id == image_result.id,
+                    request_add_alias.index_image_id == image_result.id,
+                    request_merge_index_image_alias.index_image_id == image_result.id,
+                    request_rm_alias.index_image_id == image_result.id,
                 )
             )
         # if index_image is not found in image table, then raise an error
@@ -441,7 +453,8 @@ def get_healthcheck() -> flask.Response:
     """
     # Test DB connection
     try:
-        db.engine.execute(text('SELECT 1'))
+        with db.engine.connect() as connection:
+            connection.execute(text('SELECT 1'))
     except Exception:
         flask.current_app.logger.exception('DB test failed.')
         raise IIBError('Database health check failed.')

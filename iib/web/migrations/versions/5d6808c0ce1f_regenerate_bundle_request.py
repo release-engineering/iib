@@ -21,6 +21,9 @@ REQUEST_TYPE_REGENERATE_BUNDLE = 3
 
 # Create references to the tables used to migrate data during the upgrade
 # and the downgrade processes.
+
+# sqlalchemy 2.0: https://docs.sqlalchemy.org/en/20/changelog/migration_20.html#migration-core-usage
+# where clause parameter in select is not longer supported and list in select has been deprecated.
 request_table = sa.Table(
     'request',
     sa.MetaData(),
@@ -52,7 +55,7 @@ def downgrade():
     # there are no records of that type in the database since the data loss is
     # irreversible.
     regenerate_bundle_requests = connection.execute(
-        sa.select([sa.func.count()])
+        sa.select(sa.func.count())
         .select_from(request_table)
         .where(request_table.c.type == REQUEST_TYPE_REGENERATE_BUNDLE)
     ).scalar()

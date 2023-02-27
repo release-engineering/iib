@@ -25,7 +25,8 @@ REQUEST_TYPE_RM = 2
 # Create references to the various tables used to migrate data during
 # the upgrade and the downgrade processes.
 
-
+# sqlalchemy 2.0: https://docs.sqlalchemy.org/en/20/changelog/migration_20.html#migration-core-usage
+# where clause parameter in select is not longer supported and list in select has been deprecated.
 old_request_table = sa.Table(
     'request',
     sa.MetaData(),
@@ -216,24 +217,21 @@ def _upgrade_data():
                 'index_image_id',
             ],
             select(
-                [
-                    old_request_table.c.id,
-                    old_request_table.c.organization,
-                    old_request_table.c.binary_image_id,
-                    old_request_table.c.binary_image_resolved_id,
-                    old_request_table.c.from_index_id,
-                    old_request_table.c.from_index_resolved_id,
-                    old_request_table.c.index_image_id,
-                ],
-                old_request_table.c.type == REQUEST_TYPE_ADD,
-            ),
+                old_request_table.c.id,
+                old_request_table.c.organization,
+                old_request_table.c.binary_image_id,
+                old_request_table.c.binary_image_resolved_id,
+                old_request_table.c.from_index_id,
+                old_request_table.c.from_index_resolved_id,
+                old_request_table.c.index_image_id,
+            ).where(old_request_table.c.type == REQUEST_TYPE_ADD),
         )
     )
 
     connection.execute(
         request_add_bundle_table.insert().from_select(
             ['request_add_id', 'image_id'],
-            select([request_bundle_table.c.request_id, request_bundle_table.c.image_id]),
+            select(request_bundle_table.c.request_id, request_bundle_table.c.image_id),
         )
     )
 
@@ -248,23 +246,20 @@ def _upgrade_data():
                 'index_image_id',
             ],
             select(
-                [
-                    old_request_table.c.id,
-                    old_request_table.c.binary_image_id,
-                    old_request_table.c.binary_image_resolved_id,
-                    old_request_table.c.from_index_id,
-                    old_request_table.c.from_index_resolved_id,
-                    old_request_table.c.index_image_id,
-                ],
-                old_request_table.c.type == REQUEST_TYPE_RM,
-            ),
+                old_request_table.c.id,
+                old_request_table.c.binary_image_id,
+                old_request_table.c.binary_image_resolved_id,
+                old_request_table.c.from_index_id,
+                old_request_table.c.from_index_resolved_id,
+                old_request_table.c.index_image_id,
+            ).where(old_request_table.c.type == REQUEST_TYPE_RM),
         )
     )
 
     connection.execute(
         request_rm_operator_table.insert().from_select(
             ['request_rm_id', 'operator_id'],
-            select([request_operator_table.c.request_id, request_operator_table.c.operator_id]),
+            select(request_operator_table.c.request_id, request_operator_table.c.operator_id),
         )
     )
 
@@ -372,9 +367,7 @@ def _downgrade_data():
     connection.execute(
         request_bundle_table.insert().from_select(
             ['request_id', 'image_id'],
-            select(
-                [request_add_bundle_table.c.request_add_id, request_add_bundle_table.c.image_id]
-            ),
+            select(request_add_bundle_table.c.request_add_id, request_add_bundle_table.c.image_id),
         )
     )
 
@@ -402,7 +395,7 @@ def _downgrade_data():
         request_operator_table.insert().from_select(
             ['request_id', 'operator_id'],
             select(
-                [request_rm_operator_table.c.request_rm_id, request_rm_operator_table.c.operator_id]
+                request_rm_operator_table.c.request_rm_id, request_rm_operator_table.c.operator_id
             ),
         )
     )

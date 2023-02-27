@@ -12,10 +12,8 @@ from flask_login import UserMixin, current_user
 from flask_sqlalchemy.model import DefaultMeta
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import joinedload, load_only, validates
-from sqlalchemy.orm.strategy_options import _UnboundLoad
-from sqlalchemy.orm.relationships import RelationshipProperty
-from sqlalchemy.sql.schema import Column
+from sqlalchemy.orm import joinedload, load_only, Mapped, validates
+from sqlalchemy.orm.strategy_options import _AbstractLoad
 from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
@@ -141,15 +139,14 @@ class RequestMergeBundleDeprecation(db.Model):
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    merge_index_image_id = db.Column(
-        db.Integer,
+    merge_index_image_id: Mapped[int] = db.mapped_column(
         db.ForeignKey('request_merge_index_image.id'),
         autoincrement=False,
         index=True,
         primary_key=True,
     )
-    bundle_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    bundle_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
     )
 
     __table_args__ = (
@@ -164,15 +161,14 @@ class RequestAddBundleDeprecation(db.Model):
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_add_id = db.Column(
-        db.Integer,
+    request_add_id: Mapped[int] = db.mapped_column(
         db.ForeignKey('request_add.id'),
         autoincrement=False,
         index=True,
         primary_key=True,
     )
-    bundle_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    bundle_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
     )
 
     __table_args__ = (
@@ -185,8 +181,8 @@ class RequestAddBundleDeprecation(db.Model):
 class Architecture(db.Model):
     """An architecture associated with an image."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False, unique=True)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    name: Mapped[str] = db.mapped_column(unique=True)
 
     def __repr__(self) -> str:
         return '<Architecture name={0!r}>'.format(self.name)
@@ -212,11 +208,10 @@ class RequestArchitecture(db.Model):
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_id = db.Column(
-        db.Integer, db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
+    request_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, index=True, primary_key=True
     )
-    architecture_id = db.Column(
-        db.Integer,
+    architecture_id: Mapped[int] = db.mapped_column(
         db.ForeignKey('architecture.id'),
         autoincrement=False,
         index=True,
@@ -233,11 +228,11 @@ class Image(db.Model):
     This will typically point to a manifest list.
     """
 
-    id = db.Column(db.Integer, primary_key=True)
-    operator_id = db.Column(db.Integer, db.ForeignKey('operator.id'))
-    pull_specification = db.Column(db.String, nullable=False, index=True, unique=True)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    operator_id: Mapped[int] = db.mapped_column(db.ForeignKey('operator.id'))
+    pull_specification: Mapped[str] = db.mapped_column(index=True, unique=True)
 
-    operator = db.relationship('Operator')
+    operator: Mapped['Operator'] = db.relationship('Operator')
 
     def __repr__(self) -> str:
         return '<Image pull_specification={0!r}>'.format(self.pull_specification)
@@ -269,8 +264,8 @@ class Image(db.Model):
 class Operator(db.Model):
     """An operator that has been handled by IIB."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False, index=True, unique=True)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    name: Mapped[str] = db.mapped_column(index=True, unique=True)
 
     def __repr__(self) -> str:
         return '<Operator name={0!r}>'.format(self.name)
@@ -296,18 +291,18 @@ class Operator(db.Model):
 class BuildTag(db.Model):
     """Extra tag associated with built index image."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False, unique=False)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    name: Mapped[str] = db.mapped_column(unique=False)
 
 
 class RequestBuildTag(db.Model):
     """Association table for extra build tags and build request."""
 
-    request_id = db.Column(
-        db.Integer, db.ForeignKey('request.id'), index=True, nullable=False, primary_key=True
+    request_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), index=True, primary_key=True
     )
-    tag_id = db.Column(
-        db.Integer, db.ForeignKey('build_tag.id'), autoincrement=False, index=True, primary_key=True
+    tag_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('build_tag.id'), autoincrement=False, index=True, primary_key=True
     )
     __table_args__ = (db.UniqueConstraint('request_id', 'tag_id'),)
 
@@ -317,15 +312,14 @@ class RequestRmOperator(db.Model):
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_rm_id = db.Column(
-        db.Integer,
+    request_rm_id: Mapped[int] = db.mapped_column(
         db.ForeignKey('request_rm.id'),
         autoincrement=False,
         index=True,
         primary_key=True,
     )
-    operator_id = db.Column(
-        db.Integer, db.ForeignKey('operator.id'), autoincrement=False, index=True, primary_key=True
+    operator_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('operator.id'), autoincrement=False, index=True, primary_key=True
     )
 
     __table_args__ = (db.UniqueConstraint('request_rm_id', 'operator_id'),)
@@ -336,15 +330,14 @@ class RequestAddBundle(db.Model):
 
     # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
     # primary key is used on the two required columns
-    request_add_id = db.Column(
-        db.Integer,
+    request_add_id: Mapped[int] = db.mapped_column(
         db.ForeignKey('request_add.id'),
         autoincrement=False,
         index=True,
         primary_key=True,
     )
-    image_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    image_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
     )
 
     __table_args__ = (db.UniqueConstraint('request_add_id', 'image_id'),)
@@ -355,34 +348,34 @@ class Request(db.Model):
 
     __tablename__ = 'request'
 
-    id = db.Column(db.Integer, primary_key=True)
-    architectures = db.relationship(
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    architectures: Mapped[List['Architecture']] = db.relationship(
         'Architecture', order_by='Architecture.name', secondary=RequestArchitecture.__table__
     )
-    batch_id = db.Column(db.Integer, db.ForeignKey('batch.id'), index=True, nullable=False)
-    batch = db.relationship('Batch', back_populates='requests')
-    request_state_id = db.Column(
-        db.Integer, db.ForeignKey('request_state.id'), index=True, unique=True
+    batch_id: Mapped[int] = db.mapped_column(db.ForeignKey('batch.id'), index=True)
+    batch: Mapped['Batch'] = db.relationship('Batch', back_populates='requests')
+    request_state_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request_state.id'), index=True, unique=True
     )
     # This maps to a value in RequestTypeMapping
-    type = db.Column(db.Integer, nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    type: Mapped[int]
+    user_id: Mapped[int] = db.mapped_column(db.ForeignKey('user.id'))
 
-    state = db.relationship('RequestState', foreign_keys=[request_state_id])
-    states = db.relationship(
+    state: Mapped['RequestState'] = db.relationship('RequestState', foreign_keys=[request_state_id])
+    states: Mapped[List['RequestState']] = db.relationship(
         'RequestState',
         foreign_keys='RequestState.request_id',
         back_populates='request',
         order_by='RequestState.updated',
     )
-    user = db.relationship('User', back_populates='requests')
-    build_tags = db.relationship(
+    user: Mapped['User'] = db.relationship('User', back_populates='requests')
+    build_tags: Mapped[List['BuildTag']] = db.relationship(
         'BuildTag', order_by='BuildTag.name', secondary=RequestBuildTag.__table__
     )
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['generic'].value,
-        'polymorphic_on': type,
+        'polymorphic_on': 'type',
     }
 
     @validates('type')
@@ -574,10 +567,10 @@ class Request(db.Model):
 class Batch(db.Model):
     """A batch associated with one or more requests."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    _annotations = db.Column('annotations', db.Text, nullable=True)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    _annotations: Mapped[Optional[str]] = db.mapped_column('annotations', db.Text)
 
-    requests = db.relationship(
+    requests: Mapped[List['Request']] = db.relationship(
         'Request', foreign_keys=[Request.batch_id], back_populates='batch', order_by='Request.id'
     )
 
@@ -663,11 +656,15 @@ class Batch(db.Model):
         # in the batch
         requests = (
             db.session.query(Request)
-            .options(joinedload(Request.state).load_only(RequestState.state), load_only())
+            .options(
+                joinedload(Request.state).load_only(RequestState.state),
+                load_only(Request.id, Request.batch_id),
+            )
             .filter(Request.batch_id == self.id)
             .order_by(Request.id)
             .all()
         )
+
         return [RequestStateMapping(request.state.state).name for request in requests]
 
     @property
@@ -716,7 +713,7 @@ class Batch(db.Model):
         return rv
 
 
-def get_request_query_options(verbose: Optional[bool] = False) -> List[_UnboundLoad]:
+def get_request_query_options(verbose: Optional[bool] = False) -> List[_AbstractLoad]:
     """
     Get the query options for a SQLAlchemy query for one or more requests to output as JSON.
 
@@ -775,93 +772,93 @@ class RequestIndexImageMixin:
     """
 
     @declared_attr
-    def binary_image_id(cls: DefaultMeta) -> Column:
+    def binary_image_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the image that the opm binary comes from."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def binary_image_resolved_id(cls: DefaultMeta) -> Column:
+    def binary_image_resolved_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the resolved image that the opm binary comes from."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def binary_image(cls: DefaultMeta) -> RelationshipProperty:
+    def binary_image(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to the image that the opm binary comes from."""
         return db.relationship('Image', foreign_keys=[cls.binary_image_id], uselist=False)
 
     @declared_attr
-    def binary_image_resolved(cls: DefaultMeta) -> RelationshipProperty:
+    def binary_image_resolved(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to the resolved image that the opm binary comes from."""
         return db.relationship('Image', foreign_keys=[cls.binary_image_resolved_id], uselist=False)
 
     @declared_attr
-    def from_index_id(cls: DefaultMeta) -> Column:
+    def from_index_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the index image to base the request from."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def from_index_resolved_id(cls: DefaultMeta) -> Column:
+    def from_index_resolved_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the resolved index image  to base the request from."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def from_index(cls: DefaultMeta) -> RelationshipProperty:
+    def from_index(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship of the index image to base the request from."""
         return db.relationship('Image', foreign_keys=[cls.from_index_id], uselist=False)
 
     @declared_attr
-    def from_index_resolved(cls: DefaultMeta) -> Image:
+    def from_index_resolved(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship of the resolved index image to base the request from."""
         return db.relationship('Image', foreign_keys=[cls.from_index_resolved_id], uselist=False)
 
     @declared_attr
-    def index_image_id(cls: DefaultMeta) -> Column:
+    def index_image_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the built index image."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def index_image(cls: DefaultMeta) -> RelationshipProperty:
+    def index_image(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
     @declared_attr
-    def index_image_resolved_id(cls: DefaultMeta) -> Column:
+    def index_image_resolved_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of the resolved built index image."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def index_image_resolved(cls: DefaultMeta) -> RelationshipProperty:
+    def index_image_resolved(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to the built index image."""
         return db.relationship('Image', foreign_keys=[cls.index_image_resolved_id], uselist=False)
 
     @declared_attr
-    def internal_index_image_copy_id(cls: DefaultMeta) -> Column:
+    def internal_index_image_copy_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of IIB's internal copy of the built index image."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def internal_index_image_copy(cls: DefaultMeta) -> RelationshipProperty:
+    def internal_index_image_copy(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to IIB's internal copy of the built index image."""
         return db.relationship(
             'Image', foreign_keys=[cls.internal_index_image_copy_id], uselist=False
         )
 
     @declared_attr
-    def internal_index_image_copy_resolved_id(cls: DefaultMeta) -> Column:
+    def internal_index_image_copy_resolved_id(cls: DefaultMeta) -> Mapped[int]:
         """Return the ID of resolved IIB's internal copy of the built index image."""
-        return db.Column(db.Integer, db.ForeignKey('image.id'))
+        return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def internal_index_image_copy_resolved(cls: DefaultMeta) -> RelationshipProperty:
+    def internal_index_image_copy_resolved(cls: DefaultMeta) -> Mapped['Image']:
         """Return the relationship to resolved IIB's internal copy of the built index image."""
         return db.relationship(
             'Image', foreign_keys=[cls.internal_index_image_copy_resolved_id], uselist=False
         )
 
     @declared_attr
-    def distribution_scope(cls: DefaultMeta) -> Column:
+    def distribution_scope(cls: DefaultMeta) -> Mapped[str]:
         """Return the distribution_scope for the request."""
-        return db.Column(db.String, nullable=True)
+        return db.mapped_column(db.String, nullable=True)
 
     # Union for request_kwargs would require exhausting checking of the request_kwargs in the method
     @staticmethod
@@ -1034,12 +1031,16 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
     __tablename__ = 'request_add'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
-    bundles = db.relationship('Image', secondary=RequestAddBundle.__table__)
-    deprecation_list = db.relationship('Image', secondary=RequestAddBundleDeprecation.__table__)
-    organization = db.Column(db.String, nullable=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
+    bundles: Mapped[List['Image']] = db.relationship('Image', secondary=RequestAddBundle.__table__)
+    deprecation_list: Mapped[List['Image']] = db.relationship(
+        'Image', secondary=RequestAddBundleDeprecation.__table__
+    )
+    organization: Mapped[Optional[str]]
 
-    omps_operator_version = db.Column(db.String, nullable=True)
+    omps_operator_version: Mapped[Optional[str]]
 
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['add'].value}
 
@@ -1166,11 +1167,15 @@ class RequestRm(Request, RequestIndexImageMixin):
 
     __tablename__ = 'request_rm'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
     # The ID of the index image to base the request from. This is always
     # required for "rm" requests.
-    from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
-    operators = db.relationship('Operator', secondary=RequestRmOperator.__table__)
+    from_index_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    operators: Mapped[List['Operator']] = db.relationship(
+        'Operator', secondary=RequestRmOperator.__table__
+    )
 
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['rm'].value}
 
@@ -1246,22 +1251,30 @@ class RequestRegenerateBundle(Request):
 
     __tablename__ = 'request_regenerate_bundle'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
     # The ID of the regenerated bundle image
-    bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
-    bundle_image = db.relationship('Image', foreign_keys=[bundle_image_id], uselist=False)
+    bundle_image_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
+    bundle_image: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[bundle_image_id], uselist=False
+    )
     # The ID of the bundle image to be regenerated
-    from_bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
-    from_bundle_image = db.relationship('Image', foreign_keys=[from_bundle_image_id], uselist=False)
+    from_bundle_image_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    from_bundle_image: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[from_bundle_image_id], uselist=False
+    )
     # The ID of the resolved bundle image to be regenerated
-    from_bundle_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
-    from_bundle_image_resolved = db.relationship(
+    from_bundle_image_resolved_id: Mapped[Optional[int]] = db.mapped_column(
+        db.ForeignKey('image.id')
+    )
+    from_bundle_image_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[from_bundle_image_resolved_id], uselist=False
     )
     # The name of the organization the bundle should be regenerated for
-    organization = db.Column(db.String, nullable=True)
+    organization: Mapped[Optional[str]]
     # The mapping of bundle replacements to apply to the regeneration request
-    _bundle_replacements = db.Column('bundle_replacements', db.Text, nullable=True)
+    _bundle_replacements: Mapped[Optional[str]] = db.mapped_column('bundle_replacements', db.Text)
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value
@@ -1397,33 +1410,45 @@ class RequestMergeIndexImage(Request):
 
     __tablename__ = 'request_merge_index_image'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
-    binary_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    binary_image_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    binary_image = db.relationship('Image', foreign_keys=[binary_image_id], uselist=False)
-    binary_image_resolved = db.relationship(
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
+    binary_image_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    binary_image_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    binary_image: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[binary_image_id], uselist=False
+    )
+    binary_image_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[binary_image_resolved_id], uselist=False
     )
 
-    deprecation_list = db.relationship('Image', secondary=RequestMergeBundleDeprecation.__table__)
+    deprecation_list: Mapped[List['Image']] = db.relationship(
+        'Image', secondary=RequestMergeBundleDeprecation.__table__
+    )
 
-    index_image_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    index_image = db.relationship('Image', foreign_keys=[index_image_id], uselist=False)
+    index_image_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    index_image: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[index_image_id], uselist=False
+    )
 
-    source_from_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=False)
-    source_from_index_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    source_from_index = db.relationship('Image', foreign_keys=[source_from_index_id], uselist=False)
-    source_from_index_resolved = db.relationship(
+    source_from_index_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    source_from_index_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    source_from_index: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[source_from_index_id], uselist=False
+    )
+    source_from_index_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[source_from_index_resolved_id], uselist=False
     )
 
-    target_index_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
-    target_index_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    target_index = db.relationship('Image', foreign_keys=[target_index_id], uselist=False)
-    target_index_resolved = db.relationship(
+    target_index_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
+    target_index_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    target_index: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[target_index_id], uselist=False
+    )
+    target_index_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[target_index_resolved_id], uselist=False
     )
-    distribution_scope = db.Column(db.String, nullable=True)
+    distribution_scope: Mapped[Optional[str]]
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value
@@ -1587,14 +1612,16 @@ class RequestMergeIndexImage(Request):
 class RequestState(db.Model):
     """Represents a state (historical or present) of a request."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    request_id = db.Column(db.Integer, db.ForeignKey('request.id'), index=True, nullable=False)
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    request_id: Mapped[int] = db.mapped_column(db.ForeignKey('request.id'), index=True)
     # This maps to a value in RequestStateMapping
-    state = db.Column(db.Integer, nullable=False)
-    state_reason = db.Column(db.String, nullable=False)
-    updated = db.Column(db.DateTime(), nullable=False, default=sqlalchemy.func.now())
+    state: Mapped[int]
+    state_reason: Mapped[str]
+    updated: Mapped[datetime] = db.mapped_column(db.DateTime(), default=sqlalchemy.func.now())
 
-    request = db.relationship('Request', foreign_keys=[request_id], back_populates='states')
+    request: Mapped['Request'] = db.relationship(
+        'Request', foreign_keys=[request_id], back_populates='states'
+    )
 
     @property
     def state_name(self) -> Optional[str]:
@@ -1612,9 +1639,11 @@ class RequestState(db.Model):
 class User(db.Model, UserMixin):
     """Represents an external user that owns an IIB request."""
 
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String, index=True, unique=True, nullable=False)
-    requests = db.relationship('Request', foreign_keys=[Request.user_id], back_populates='user')
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    username: Mapped[str] = db.mapped_column(index=True, unique=True)
+    requests: Mapped[List['Request']] = db.relationship(
+        'Request', foreign_keys=[Request.user_id], back_populates='user'
+    )
 
     @classmethod
     def get_or_create(cls, username: str) -> User:
@@ -1711,8 +1740,10 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
 
     __tablename__ = 'request_create_empty_index'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
-    _labels = db.Column('labels', db.Text, nullable=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
+    _labels: Mapped[Optional[str]] = db.mapped_column('labels', db.Text)
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['create_empty_index'].value
@@ -1840,21 +1871,23 @@ class RequestRecursiveRelatedBundles(Request):
 
     __tablename__ = 'request_recursive_related_bundles'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
     # The ID of the parent bundle image
-    parent_bundle_image_id = db.Column(db.Integer, db.ForeignKey('image.id'), nullable=True)
-    parent_bundle_image = db.relationship(
+    parent_bundle_image_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
+    parent_bundle_image: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[parent_bundle_image_id], uselist=False
     )
     # The ID of the resolved parent bundle image
-    parent_bundle_image_resolved_id = db.Column(
-        db.Integer, db.ForeignKey('image.id'), nullable=True
+    parent_bundle_image_resolved_id: Mapped[Optional[int]] = db.mapped_column(
+        db.ForeignKey('image.id')
     )
-    parent_bundle_image_resolved = db.relationship(
+    parent_bundle_image_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[parent_bundle_image_resolved_id], uselist=False
     )
     # The name of the organization the related bundles should be found for
-    organization = db.Column(db.String, nullable=True)
+    organization: Mapped[Optional[str]]
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['recursive_related_bundles'].value
@@ -1956,12 +1989,16 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
 
     __tablename__ = 'request_fbc_operations'
 
-    id = db.Column(db.Integer, db.ForeignKey('request.id'), autoincrement=False, primary_key=True)
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
 
-    fbc_fragment_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    fbc_fragment_resolved_id = db.Column(db.Integer, db.ForeignKey('image.id'))
-    fbc_fragment = db.relationship('Image', foreign_keys=[fbc_fragment_id], uselist=False)
-    fbc_fragment_resolved = db.relationship(
+    fbc_fragment_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    fbc_fragment_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    fbc_fragment: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[fbc_fragment_id], uselist=False
+    )
+    fbc_fragment_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[fbc_fragment_resolved_id], uselist=False
     )
 

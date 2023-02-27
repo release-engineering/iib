@@ -16,8 +16,8 @@ def test_get_build(app, auth_env, client, db):
     with app.test_request_context(environ_base=auth_env):
         data = {
             'binary_image': 'quay.io/namespace/binary_image:latest',
-            'bundles': [f'quay.io/namespace/bundle:1.0-3'],
-            'from_index': f'quay.io/namespace/repo:latest',
+            'bundles': ['quay.io/namespace/bundle:1.0-3'],
+            'from_index': 'quay.io/namespace/repo:latest',
         }
         request = RequestAdd.from_json(data)
         request.binary_image_resolved = Image.get_or_create(
@@ -210,7 +210,7 @@ def test_get_builds_invalid_batch(batch, app, client, db):
     assert rv.json == {'error': 'The batch must be a positive integer'}
 
 
-@mock.patch('sqlalchemy.engine.base.Engine.execute')
+@mock.patch('sqlalchemy.engine.base.Engine.connect')
 def test_get_healthcheck_db_fail(mock_db_execute, app, client, db):
     mock_db_execute.side_effect = DisconnectionError('DB failed')
     rv = client.get('/api/v1/healthcheck')
