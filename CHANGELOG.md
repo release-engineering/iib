@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 7.1.0
+- Update dependabot.yml
+- Bump actions/checkout from 2 to 3
+- Add request id to prefix of iib temporary file
+- Upgrade deps : sqlalchemy 2.0.0 major migration and others
+
 ## 7.0.1
 - Fix fbc-operations bug where the requests failed when binary_image is not submitted
 
