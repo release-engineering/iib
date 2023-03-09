@@ -1096,6 +1096,12 @@ def handle_rm_request(
             catalog_from_index = get_catalog_dir(
                 from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
             )
+            # remove operators from from_index file-based catalog
+            for operator in operators:
+                operator_path = os.path.join(catalog_from_index, operator)
+                if os.path.exists(operator_path):
+                    log.debug('Removing operator from from_index FBC %s', operator_path)
+                    shutil.rmtree(operator_path)
             # overwrite data in `catalog_from_index` by data from `catalog_from_db`
             # this adds changes on not opted in operators to final
             merge_catalogs_dirs(catalog_from_db, catalog_from_index)
