@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 7.1.1
+- Fix RM API endpoint - remove operator from FBC 
+- Move cleanup function to the end of the request
+- Fixing Bandid test
+
 ## 7.1.0
 - Update dependabot.yml
 - Bump actions/checkout from 2 to 3
