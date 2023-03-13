@@ -883,7 +883,7 @@ def request_logger(func: Callable) -> Callable:
             request_log_handler = logging.FileHandler(log_file_path)
             request_log_handler.setLevel(log_level)
             request_log_handler.setFormatter(log_formatter)
-            os.chmod(log_file_path, 0o664)
+            os.chmod(log_file_path, 0o664)  # nosec
             logger = logging.getLogger()
             logger.addHandler(request_log_handler)
             worker_info = f'Host: {socket.getfqdn()}; User: {getpass.getuser()}'
