@@ -48,7 +48,7 @@ def gate_bundles(bundles: List[str], greenwave_config: GreenwaveConfig) -> None:
         )
 
         request_url = f'{conf["iib_greenwave_url"].rstrip("/")}/decision'
-        resp = requests.post(request_url, json=payload)
+        resp = requests.post(request_url, json=payload, timeout=30)
         try:
             data = resp.json()
         except json.JSONDecodeError:
