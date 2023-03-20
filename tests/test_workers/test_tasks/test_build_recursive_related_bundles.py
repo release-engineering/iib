@@ -66,7 +66,7 @@ def test_handle_recusrsive_related_bundles_request(
     build_recursive_related_bundles.handle_recursive_related_bundles_request(
         parent_bundle_image, org, request_id
     )
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     assert mock_gbm.call_count == 3
     assert mock_grbi.call_count == 3
     assert mock_ur.call_count == 3

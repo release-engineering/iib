@@ -136,7 +136,7 @@ def test_handle_merge_request(
     mock_om.called_once()
     mock_oraf.called_once()
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
         1,
         RequestConfigMerge(
@@ -279,7 +279,7 @@ def test_handle_merge_request_no_deprecate(
     mock_om.called_once()
     mock_oraf.called_once()
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
         1,
         RequestConfigMerge(

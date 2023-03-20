@@ -667,7 +667,7 @@ def test_handle_add_request(
         ]
     )
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
@@ -885,7 +885,7 @@ def test_handle_add_request_check_index_label_behavior(
         ]
     )
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_vl.assert_called_once()
     mock_prfb.assert_called_once_with(
         3,
@@ -942,7 +942,7 @@ def test_handle_add_request_gating_failure(
             None,
             greenwave_config,
         )
-    mock_cleanup.assert_called_once_with()
+    assert mock_cleanup.call_count == 1
     mock_srs2.assert_called_once()
     mock_vl.assert_called_once()
     mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
@@ -972,7 +972,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
             None,
             greenwave_config=greenwave_config,
         )
-    mock_cleanup.assert_called_once_with()
+    assert mock_cleanup.call_count == 1
     mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
 
@@ -1026,7 +1026,7 @@ def test_handle_rm_request(
         binary_image_config=binary_image_config,
     )
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
         3,
         RequestConfigAddRm(

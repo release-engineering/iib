@@ -123,6 +123,7 @@ def handle_fbc_operation_request(
         from_index_resolved,
         add_or_rm=True,
     )
+    _cleanup()
     set_request_state(
         request_id, 'complete', 'The FBC fragment was successfully added in the index image'
     )

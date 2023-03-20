@@ -14,7 +14,9 @@ from iib.workers.tasks import general
         (RuntimeError('I cannot run in the rain!'), 'An unknown error occurred'),
     ),
 )
+@mock.patch('iib.workers.tasks.general._cleanup')
 @mock.patch('iib.workers.tasks.general.set_request_state')
-def test_failed_request_callback(mock_srs, exc, expected_msg):
+def test_failed_request_callback(mock_srs, mock_cleanup, exc, expected_msg):
     general.failed_request_callback(None, exc, None, 3)
     mock_srs(3, expected_msg)
+    mock_cleanup.assert_called_once()

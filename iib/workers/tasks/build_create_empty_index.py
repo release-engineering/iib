@@ -151,4 +151,5 @@ def handle_create_empty_index_request(
         from_index=from_index,
         resolved_prebuild_from_index=from_index_resolved,
     )
+    _cleanup()
     set_request_state(request_id, 'complete', 'The empty index image was successfully created')

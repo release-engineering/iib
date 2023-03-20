@@ -375,6 +375,7 @@ def handle_merge_request(
         overwrite_target_index_token,
         target_index_resolved,
     )
+    _cleanup()
     set_request_state(
         request_id, 'complete', 'The index image was successfully cleaned and updated.'
     )
