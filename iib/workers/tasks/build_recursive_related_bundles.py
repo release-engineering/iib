@@ -121,6 +121,7 @@ def handle_recursive_related_bundles_request(
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
+    _cleanup()
     update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
 
 

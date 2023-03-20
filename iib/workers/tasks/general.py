@@ -8,6 +8,7 @@ from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import request_logger
+from iib.workers.tasks.build import _cleanup
 
 __all__ = ['failed_request_callback', 'set_request_state']
 
@@ -35,4 +36,5 @@ def failed_request_callback(
         msg = 'An unknown error occurred. See logs for details'
         log.error(msg, exc_info=exc)
 
+    _cleanup()
     set_request_state(request_id, 'failed', msg)

@@ -1012,6 +1012,7 @@ def handle_add_request(
         from_index_resolved,
         add_or_rm=True,
     )
+    _cleanup()
     set_request_state(
         request_id, 'complete', 'The operator bundle(s) were successfully added to the index image'
     )
@@ -1160,6 +1161,7 @@ def handle_rm_request(
         from_index_resolved,
         add_or_rm=True,
     )
+    _cleanup()
     set_request_state(
         request_id, 'complete', 'The operator(s) were successfully removed from the index image'
     )

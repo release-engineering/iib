@@ -87,7 +87,7 @@ def test_handle_regenerate_bundle_request(
         from_bundle_image, organization, request_id, bundle_replacements=bundle_replacements
     )
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
 
     mock_gri.assert_called_once()
     mock_gri.assert_called_with('bundle-image:latest')

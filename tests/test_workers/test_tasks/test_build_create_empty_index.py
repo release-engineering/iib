@@ -90,7 +90,7 @@ def test_handle_create_empty_index_request(
         binary_image_config=binary_image_config,
     )
 
-    mock_cleanup.assert_called_once()
+    assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
         3,
         RequestConfigCreateIndexImage(

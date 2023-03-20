@@ -153,6 +153,7 @@ def handle_regenerate_bundle_request(
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
+    _cleanup()
     update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
 
 
