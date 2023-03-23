@@ -9,6 +9,7 @@ import requests_kerberos
 
 from iib.exceptions import IIBError
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
+import time
 
 log = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ def update_request(
     :raises IIBError: if the request to the IIB API fails
     """
     # Prevent a circular import
+    start_time = time.time()
     from iib.workers.config import get_worker_config
 
     config = get_worker_config()
@@ -140,7 +142,9 @@ def update_request(
     log.info('Patching the request %d with %r', request_id, payload)
 
     try:
+        patch_start_time = time.time()
         rv = requests_auth_session.patch(request_url, json=payload, timeout=config.iib_api_timeout)
+        log.debug(f"Update_request patch duration: {time.time() - patch_start_time}")
     except requests.RequestException:
         msg = f'The connection failed when updating the request {request_id}'
         log.exception(msg)
@@ -159,6 +163,7 @@ def update_request(
             _exc_msg = f'The worker failed to update the request {request_id}'
         raise IIBError(_exc_msg)
 
+    log.debug(f"Update_request duration: {time.time() - start_time}")
     return rv.json()
 
 

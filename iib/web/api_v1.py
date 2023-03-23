@@ -2,6 +2,7 @@
 import copy
 import os
 from datetime import datetime
+import time
 
 import flask
 import kombu
@@ -541,6 +542,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     :raise NotFound: if the request is not found
     :raise ValidationError: if the JSON is invalid
     """
+    overall_start_time = time.time()
     allowed_users = flask.current_app.config['IIB_WORKER_USERNAMES']
     # current_user.is_authenticated is only ever False when auth is disabled
     if current_user.is_authenticated and current_user.username not in allowed_users:
@@ -553,7 +555,12 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     if not payload:
         raise ValidationError('At least one key must be specified to update the request')
 
+    start_time = time.time()
     request = Request.query.get_or_404(request_id)
+    flask.current_app.logger.debug(
+        f'Time for web/api_v1/559:Request.query.get_or_404(): {time.time() - start_time}'
+        f' time from start: {time.time() - overall_start_time}'
+    )
 
     invalid_keys = payload.keys() - request.get_mutable_keys()
     if invalid_keys:
@@ -603,13 +610,23 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         if request.state.state == new_state and request.state.state_reason == new_state_reason:
             flask.current_app.logger.info('Not adding a new state since it matches the last state')
         else:
+            start_time = time.time()
             request.add_state(new_state, new_state_reason)
+            flask.current_app.logger.debug(
+                f'Time for web/api_v1/614:request.add_state(): {time.time() - start_time}'
+                f' time from start: {time.time() - overall_start_time}'
+            )
             state_updated = True
 
     if 'omps_operator_version' in payload:
         # `omps_operator_version` is defined in RequestAdd only
         if request.type == RequestTypeMapping.add.value:
+            start_time = time.time()
             request_add = RequestAdd.query.get(request_id)
+            flask.current_app.logger.debug(
+                f'Time for web/api_v1/625:RequestAdd.query.get(): {time.time() - start_time}'
+                f' time from start: {time.time() - overall_start_time}'
+            )
             request_add.omps_operator_version = payload.get('omps_operator_version')
         else:
             raise ValidationError(
@@ -633,6 +650,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'source_from_index_resolved',
         'target_index_resolved',
     )
+    start_time = time.time()
     for key in image_keys:
         if key not in payload:
             continue
@@ -640,23 +658,47 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         key_object = Image.get_or_create(key_value)
         # SQLAlchemy will not add the object to the database if it's already present
         setattr(request, key, key_object)
+    flask.current_app.logger.debug(
+        f'Time for web/api_v1/661:key updates: {time.time() - start_time}'
+        f' time from start: {time.time() - overall_start_time}'
+    )
 
+    start_time = time.time()
     for arch in payload.get('arches', []):
         request.add_architecture(arch)
+    flask.current_app.logger.debug(
+        f'Time for web/api_v1/web/api_v1/668:request arch update: {time.time() - start_time}'
+        f' time from start: {time.time() - overall_start_time}'
+    )
 
+    start_time = time.time()
     for operator, bundles in payload.get('bundle_mapping', {}).items():
         operator_img = Operator.get_or_create(operator)
         for bundle in bundles:
             bundle_img = Image.get_or_create(bundle)
             bundle_img.operator = operator_img
+    flask.current_app.logger.debug(
+        f'Time for web/api_v1/675:bundle mapping process: {time.time() - start_time}'
+        f' time from start: {time.time() - overall_start_time}'
+    )
 
     if 'distribution_scope' in payload:
         request.distribution_scope = payload['distribution_scope']
 
+    start_time = time.time()
     db.session.commit()
+    flask.current_app.logger.debug(
+        f'Time for web/api_v1/689:db commit: {time.time()-start_time}'
+        f' time from start: {time.time() - overall_start_time}'
+    )
 
     if state_updated:
+        start_time = time.time()
         messaging.send_message_for_state_change(request)
+        flask.current_app.logger.debug(
+            f'Time for web/api_v1/697:send_message_for_state_change(): {time.time() - start_time},'
+            f' time from start: {time.time()-overall_start_time}'
+        )
 
     if current_user.is_authenticated:
         flask.current_app.logger.info(
@@ -665,6 +707,9 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     else:
         flask.current_app.logger.info('An anonymous user patched request %d', request.id)
 
+    flask.current_app.logger.debug(
+        f'Overall time for web/api_v1/534:patch_request(): {time.time() - overall_start_time}'
+    )
     return flask.jsonify(request.to_json()), 200
 
 
