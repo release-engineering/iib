@@ -22,11 +22,11 @@ from iib.web.errors import json_error
 import iib.web.models  # noqa: F401
 from opentelemetry.instrumentation.wsgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-#from opentelemetry.trace import get_tracer_provider, set_tracer_provider
-#from iib.common.tracing import instrument_tracing, get_tracer_provider
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from iib.common.tracing import TracingWrapper
 
+tracerWrapper = TracingWrapper()
 
 
 def load_config(app: Flask) -> None:
@@ -224,12 +224,6 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     login_manager.user_loader(user_loader)
     login_manager.request_loader(load_user_from_request)
 
-    # Add instrumentation for flask, sqlalchemy and logging
-    FlaskInstrumentor().instrument_app(app)
-    app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app)
-    SQLAlchemyInstrumentor().instrument(enable_commenter=True, commenter_options={})
-    LoggingInstrumentor().instrument()
-
     app.register_blueprint(docs)
     app.register_blueprint(api_v1, url_prefix='/api/v1')
     for code in default_exceptions.keys():
@@ -237,5 +231,19 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     app.register_error_handler(IIBError, json_error)
     app.register_error_handler(ValidationError, json_error)
     app.register_error_handler(kombu.exceptions.KombuError, json_error)
+
+    # Add Auto-instrumentation
+    FlaskInstrumentor().instrument_app(
+        app, enable_commenter=True, commenter_options={}, tracer_provider=tracerWrapper.provider
+    )
+    app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app, tracer_provider=tracerWrapper.provider)
+    with app.app_context():
+        SQLAlchemyInstrumentor().instrument(
+            engine=db.engine,
+            enable_commenter=True,
+            commenter_options={'opentelemetry_values': True},
+            tracer_provider=tracerWrapper.provider,
+        )
+    LoggingInstrumentor().instrument(tracer_provider=tracerWrapper.provider)
 
     return app

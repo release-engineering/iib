@@ -88,8 +88,8 @@ services:
       IIB_DEV: 'true'
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
       OTEL_SERVICE_NAME: "iib-api"
-      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,custom_request_header"
-      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,custom_response_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,traceparent,tracestate,custom_response_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,traceparent,tracestate,custom_response_header"
       OTEL_PROPAGATORS: "tracecontext,baggage"
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test, service.name=iib"
@@ -130,8 +130,8 @@ services:
       REGISTRY_AUTH_FILE: '/root/.docker/config.json'
       REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
       OTEL_SERVICE_NAME: "iib-workers"
-      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,custom_request_header"
-      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,custom_response_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST: "content-type,traceparent,tracestate,custom_response_header"
+      OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE: "content-type,traceparent,tracestate,custom_response_header"
       OTEL_PROPAGATORS: "tracecontext,baggage"
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test-worker, service.name=iib"

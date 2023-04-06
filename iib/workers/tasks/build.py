@@ -58,7 +58,6 @@ from iib.workers.tasks.iib_static_types import (
 )
 
 __all__ = ['handle_add_request', 'handle_rm_request']
-
 log = logging.getLogger(__name__)
 worker_config = get_worker_config()
 
@@ -778,6 +777,7 @@ def handle_add_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     deprecation_list: Optional[List[str]] = None,
     build_tags: Optional[List[str]] = None,
+    traceparent: Optional[str] = None,
 ) -> None:
     """
     Coordinate the the work needed to build the index image with the input bundles.
