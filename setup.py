@@ -45,8 +45,7 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
-    entry_points={
-        'console_scripts': ['iib=iib.web.manage:cli'],},
+    entry_points={'console_scripts': ['iib=iib.web.manage:cli']},
     license="GPLv3+",
     python_requires='>=3.8',
 )

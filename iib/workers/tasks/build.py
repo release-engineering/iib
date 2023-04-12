@@ -58,6 +58,7 @@ from iib.workers.tasks.iib_static_types import (
 )
 
 __all__ = ['handle_add_request', 'handle_rm_request']
+
 log = logging.getLogger(__name__)
 worker_config = get_worker_config()
 

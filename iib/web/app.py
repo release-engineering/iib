@@ -23,7 +23,6 @@ import iib.web.models  # noqa: F401
 from opentelemetry.instrumentation.wsgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from iib.common.tracing import TracingWrapper
 
 tracerWrapper = TracingWrapper()
@@ -244,6 +243,4 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
             commenter_options={'opentelemetry_values': True},
             tracer_provider=tracerWrapper.provider,
         )
-    LoggingInstrumentor().instrument(tracer_provider=tracerWrapper.provider)
-
     return app

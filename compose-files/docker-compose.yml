@@ -80,8 +80,6 @@ services:
         iib wait-for-db &&
         iib db upgrade &&
         flask run --reload --host 0.0.0.0 --port 8080
-      # opentelemetry-instrument flask run --port 8080 --host 0.0.0.0
-      #OTEL_TRACES_EXPORTER: otlp_proto_http
     environment:
       FLASK_ENV: development
       FLASK_APP: iib/web/wsgi.py
@@ -122,7 +120,7 @@ services:
         cat /registry-certs/minica.pem >> /etc/pki/tls/certs/ca-bundle.crt &&
         podman login --authfile ~/.docker/config.json.template -u iib \
           -p iibpassword registry:8443 &&
-        pip3 install --trusted-host pypi.org --trusted-host files.pythonhosted.org watchdog[watchmedo] &&
+        pip3 install watchdog[watchmedo] &&
         watchmedo auto-restart -d ./iib/workers -p '*.py' --recursive \
           -- celery -A iib.workers.tasks worker --loglevel=info
     environment:

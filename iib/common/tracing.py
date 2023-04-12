@@ -1,10 +1,11 @@
-"""
-Configures the Global Tracer Provider and exports the traces to the
-OpenTelemetry Collector. The OpenTelemetry Collector is configured to
-receive traces via OTLP over HTTP
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Configures the Global Tracer Provider and exports the traces to the OpenTelemetry Collector.
+
+The OpenTelemetry Collector is configured to receive traces via OTLP over HTTP.
 The OTLP exporter is configured to use the environment variables
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT and OTEL_EXPORTER_OTLP_TRACES_HEADERS
-to configure the endpoint and headers for the OTLP exporter.
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT and OTEL_EXPORTER_OTLP_TRACES_HEADERS to
+configure the endpoint and headers for the OTLP exporter.
 The OTLP* environment variables are configured in the docker-compose.yaml
 and podman-compose.yaml files for iib workers and api.
 
@@ -48,13 +49,12 @@ propagator = TraceContextTextMapPropagator()
 
 
 class TracingWrapper:
-    """
-    Wrapper class that will wrap all methods of a calls with the instrument_tracing decorator.
-    """
+    """Wrapper class that will wrap all methods of a calls with the instrument_tracing decorator."""
 
     __instance = None
 
     def __new__(cls):
+        """Create a new instance if one does not exist."""
         if TracingWrapper.__instance is None:
             log.info("Creating TracingWrapper instance")
             cls.__instance = super().__new__(cls)
@@ -78,12 +78,12 @@ def instrument_tracing(
     service_name: str = "",
     span_name: str = "",
     ignoreTracing=False,
-    attributes: Dict = None,
+    attributes: Dict = {},
     existing_tracer: Tracer = None,
     is_class=False,
 ):
-    """
-    Decorator to instrument a function or class with tracing.
+    """Instrument tracing for a function or class.
+
     :param func_or_class: The function or class to be decorated.
     :param service_name: The name of the service to be used.
     :param span_name: The name of the span to be created.
@@ -94,9 +94,7 @@ def instrument_tracing(
     """
 
     def instrument_class(cls):
-        """
-        Filters out all the methods that are to be instrumented
-        for a class with tracing.
+        """Instruments class and filters out all the methods of a class that are to be instrumented.
 
         :param cls: The class to be decorated.
         :return: The decorated class.
@@ -126,7 +124,7 @@ def instrument_tracing(
                 log.info(f"traceparent is {kwargs.get('traceparent')}")
                 carrier = {"traceparent": kwargs.get("traceparent")}
                 trace_context = propagator.extract(carrier)
-                log.info(f"Context is -------------------<> {trace_context}")
+                log.info(f"Context is {trace_context}")
             with tracer.start_as_current_span(
                 span_name or func.__name__, kind=SpanKind.SERVER
             ) as span:

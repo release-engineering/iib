@@ -42,6 +42,7 @@ from iib.workers.tasks.iib_static_types import (
     PrebuildInfo,
     BundleImage,
 )
+
 # Add instrumentation
 from iib.common.tracing import instrument_tracing
 

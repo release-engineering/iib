@@ -16,7 +16,9 @@ celeryd_init.connect(validate_celery_config)
 
 RequestsInstrumentor().instrument(trace_provider=tracerWrapper.provider)
 
+
 # Add the init_celery_tracing method with its annotation
 @worker_process_init.connect(weak=False)
 def init_celery_tracing(*args, **kwargs):
+    """Initialize the tracing for celery."""
     CeleryInstrumentor().instrument(trace_provider=tracerWrapper.provider)

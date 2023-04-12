@@ -498,3 +498,55 @@ Some of the options include:
 * `members` - automatically document the members in that Python module.
 * `private-members` - include private functions and methods.
 * `show-inheritance` - show the class inheritance.
+
+# Opentelemetry Instrumentation
+
+IIB is now implemented with Opentelemetry python instrumentation.
+This is done in order to collect detailed information about the behavior and performance of IIB
+By using a combination of automatic and manual instrumentation, it is possible to capture all relevant information about the application's behavior.
+
+## Environment setup
+The two most important packages to be installed are the `opentelemetry-api` and `opentelemetry-sdk`.
+Please see the requirements.in for more detailed list.
+
+```bash
+pip install virtualenv
+virtualenv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Traces
+The application is instrumented to collect traces using OpenTelemetry.
+The traces include information about the duration of each request, as well as any errors that may have occurred.
+
+## Opentelemetry Environment Variables
+These environment variables need to be defined in the `docker-compose.yml` and `podman-compose.yml`
+
+TODO: Test by adding the below parameters in `podman-compose.yml`
+
+* `OTEL_EXPORTER_OTLP_ENDPOINT` - The endpoint for the OpenTelemetry exporter. By default, this is set to http://localhost:4317.
+* `OTEL_RESOURCE_ATTRIBUTES` - Additional attributes to include in the OpenTelemetry resource. By default, this is set to service.name=flask-app.
+* `OTEL_SERVICE_NAME` - "iib-workers"
+* `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` - captures headers for the incoming requests
+* `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE` - captures headers for the outgoing requests
+* `OTEL_PROPAGATORS` - specifies the propagators that should be used by the OpenTelemetry tracer to propagate context across distributed systems.
+* `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` This to configure the protocol used by the OTLP exporter to send traces to a backend. We need to set it as "http/protobuf"`
+* `OTEL_RESOURCE_ATTRIBUTES` - Resource attributes provide contextual information about the environment in which the application is running. example:"deployment.environment=tracing-test-worker, service.name=iib"
+* `OTEL_EXPORTER_OTLP_ENDPOINT` - This is the URL where trace data will be sent for storage and analysis. T
+* `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` - Specify the endpoint URL for the OpenTelemetry exporter specifically for trace data.
+
+## Instrumentation
+
+The manual instrumentation decorator is added in `iib.common.tracing`.
+To be able add a new instrumentation, ensure to get the *trace_provider* from the `iib.common.tracing.TracingWrapper` class
+To fetch the `trace_provider`:
+```python
+tracerWrapper = TracingWrapper()
+tracerWrapper.provider
+```
+To add manual instrumentation to a function:
+```python
+@instrument_tracing(span_nam="test_instrumentation")
+def test_instrumentation():
+```

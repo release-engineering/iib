@@ -360,7 +360,6 @@ def get_builds() -> flask.Response:
 
     :rtype: flask.Response
     """
-
     batch_id: Optional[str] = flask.request.args.get('batch')
     state = flask.request.args.get('state')
     verbose = str_to_bool(flask.request.args.get('verbose'))
