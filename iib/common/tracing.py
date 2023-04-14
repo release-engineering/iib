@@ -25,7 +25,6 @@ Usage:
 import functools
 import inspect
 import logging
-import os
 from typing import Dict
 from opentelemetry import trace
 from opentelemetry.trace import Tracer
@@ -44,7 +43,6 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 
 
 log = logging.getLogger(__name__)
-os.environ["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"] = "http/protobuf"
 propagator = TraceContextTextMapPropagator()
 
 
@@ -59,7 +57,7 @@ class TracingWrapper:
             log.info("Creating TracingWrapper instance")
             cls.__instance = super().__new__(cls)
             otlp_exporter = OTLPSpanExporter(
-                endpoint="http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com/v1/traces",  # noqa: E501
+                endpoint="https://localhost:4317/v1/traces",  # noqa: E501
             )
             cls.provider = TracerProvider(
                 resource=Resource.create({SERVICE_NAME: "iib-auto-manual"})
@@ -82,7 +80,8 @@ def instrument_tracing(
     existing_tracer: Tracer = None,
     is_class=False,
 ):
-    """Instrument tracing for a function or class.
+    """
+    Instrument tracing for a function or class.
 
     :param func_or_class: The function or class to be decorated.
     :param service_name: The name of the service to be used.
@@ -94,7 +93,8 @@ def instrument_tracing(
     """
 
     def instrument_class(cls):
-        """Instruments class and filters out all the methods of a class that are to be instrumented.
+        """
+        Instruments class and filters out all the methods of a class that are to be instrumented.
 
         :param cls: The class to be decorated.
         :return: The decorated class.

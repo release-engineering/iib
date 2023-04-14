@@ -882,12 +882,13 @@ def test_add_bundle_custom_user_queue(
         data['from_index'] = 'index:image'
         data['overwrite_from_index'] = True
         data['overwrite_from_index_token'] = 'some_token'
+    headers = {'traceparent': "00-0000-00"}
 
-    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env, headers=headers)
     assert rv.status_code == 201, rv.json
     mock_har.apply_async.assert_called_once()
     mock_har.apply_async.assert_called_with(
-        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue
+        args=mock.ANY, argsrepr=mock.ANY, link_error=mock.ANY, queue=expected_queue, headers=headers
     )
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
@@ -2063,7 +2064,6 @@ def test_merge_index_image_fail_on_invalid_params(
 def test_create_empty_index_success(
     mock_smfsc, mock_hceir, db, auth_env, client, from_index, binary_image, labels
 ):
-
     data = {
         'binary_image': binary_image,
         'from_index': from_index,

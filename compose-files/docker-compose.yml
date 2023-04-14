@@ -91,8 +91,6 @@ services:
       OTEL_PROPAGATORS: "tracecontext,baggage"
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test, service.name=iib"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com/v1/traces
     volumes:
       - ../:/src:z
       - ../docker/message_broker/certs:/broker-certs:ro,z
@@ -133,8 +131,6 @@ services:
       OTEL_PROPAGATORS: "tracecontext,baggage"
       OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=tracing-test-worker, service.name=iib"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector-http-traces.apps.int.spoke.prod.us-east-1.aws.paas.redhat.com/v1/traces
     # Make this privileged to be able to build container images
     privileged: true
     volumes:
