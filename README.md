@@ -218,7 +218,8 @@ The custom configuration options for the REST API are listed below:
 * `IIB_RECURSIVE_REQUEST_RELATED_BUNDLES_DIR` - the directory to load the recursive-related-bundles
   request specific recursive related bundles files. This is a required config variable if
   `IIB_AWS_S3_BUCKET_NAME` is not specified.
-* `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)`, of usernames to celery task queues.
+* `IIB_USER_TO_QUEUE` - the mapping, `dict(<str>: <str>)` or `dict(<str>: dict(<str>: <str>))`, 
+  of usernames to celery task queues.
   This is useful in isolating the workload from certain users. Some celery tasks must execute
   serially, while others can execute in parallel. Add the prefix `SERIAL:` or `PARALLEL:` to the
   **username** key in this mapping to create queues based on serial vs parallel tasks. The default
