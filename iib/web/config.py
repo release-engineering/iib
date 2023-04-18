@@ -1,9 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
 import tempfile
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 TEST_DB_FILE = os.path.join(tempfile.gettempdir(), 'iib_recursive.db')
+
+
+def _get_empty_dict_str_str() -> Dict[str, str]:
+    # solving mypy error: Incompatible types in assignment
+    # (expression has type "Dict[<nothing>, <nothing>]",
+    # variable has type "Union[Dict[str, str], Dict[str, Dict[str, str]]]")
+    return {}
 
 
 class Config(object):
@@ -27,7 +34,7 @@ class Config(object):
     IIB_REQUEST_LOGS_DIR: Optional[str] = None
     IIB_REQUEST_RELATED_BUNDLES_DIR: Optional[str] = None
     IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR: Optional[str] = None
-    IIB_USER_TO_QUEUE: Dict[str, str] = {}
+    IIB_USER_TO_QUEUE: Union[Dict[str, str], Dict[str, Dict[str, str]]] = _get_empty_dict_str_str()
     IIB_WORKER_USERNAMES: List[str] = []
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
 

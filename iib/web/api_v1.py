@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import copy
+import logging
 import os
 from datetime import datetime
 import time
@@ -468,11 +469,14 @@ def get_healthcheck() -> flask.Response:
     return flask.jsonify({'status': 'Health check OK'})
 
 
-def _get_user_queue(serial: Optional[bool] = False) -> Optional[str]:
+def _get_user_queue(
+    serial: Optional[bool] = False, from_index_pull_spec: Union[str, None] = None
+) -> Optional[str]:
     """
     Return the name of the celery task queue mapped to the current user.
 
     :param bool serial: whether or not the task must run serially
+    :param str from_index_pull_spec: index image pull-spec
     :return: queue name to be used or None if the default queue should be used
     :rtype: str or None
     """
@@ -486,10 +490,33 @@ def _get_user_queue(serial: Optional[bool] = False) -> Optional[str]:
     else:
         labeled_username = f'PARALLEL:{username}'
 
-    queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(labeled_username)
-    if not queue:
-        queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(username)
-    return queue
+    index_queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(labeled_username)
+    if not index_queue:
+        index_queue = flask.current_app.config['IIB_USER_TO_QUEUE'].get(username)
+
+    if index_queue is None:
+        return index_queue
+
+    if isinstance(index_queue, str):
+        # keep original behavior for IIB_USER_TO_QUEUE of type dict[str,str])
+        return index_queue
+
+    if isinstance(index_queue, dict):
+        queue_default = index_queue.get('all')
+
+        queue = index_queue.get(from_index_pull_spec)
+        if not queue:
+            logging.debug(
+                'Queue for pull spec %s is not defined. Using default queue (all): %s',
+                from_index_pull_spec,
+                queue_default,
+            )
+            return queue_default
+
+        return queue
+
+    logging.warning('Unsupported type of IIB_USER_TO_QUEUE: %s', index_queue)
+    return None
 
 
 @api_v1.route('/builds/add', methods=['POST'])
@@ -518,7 +545,10 @@ def add_bundles() -> Tuple[flask.Response, int]:
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_from_index = payload.get('overwrite_from_index', False)
-    celery_queue = _get_user_queue(serial=overwrite_from_index)
+    from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
+    celery_queue = _get_user_queue(
+        serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+    )
     args = _get_add_args(payload, request, overwrite_from_index, celery_queue)
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
@@ -742,12 +772,16 @@ def rm_operators() -> Tuple[flask.Response, int]:
     safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
+    from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
     try:
         handle_rm_request.apply_async(
             args=args,
             link_error=error_callback,
             argsrepr=repr(safe_args),
-            queue=_get_user_queue(serial=overwrite_from_index),
+            queue=_get_user_queue(
+                serial=overwrite_from_index,
+                from_index_pull_spec=from_index_pull_spec,
+            ),
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
@@ -924,7 +958,10 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
         request_jsons.append(request.to_json())
 
         overwrite_from_index = build_request.get('overwrite_from_index', False)
-        celery_queue = _get_user_queue(serial=overwrite_from_index)
+        from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
+        celery_queue = _get_user_queue(
+            serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+        )
         if isinstance(request, RequestAdd):
             args: List[Any] = _get_add_args(
                 # cast Union[AddRequestPayload, RmRequestPayload] based on request variable
@@ -1185,7 +1222,10 @@ def fbc_operations() -> Tuple[flask.Response, int]:
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     overwrite_from_index = payload.get('overwrite_from_index', False)
-    celery_queue = _get_user_queue(serial=overwrite_from_index)
+    from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
+    celery_queue = _get_user_queue(
+        serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+    )
 
     args = [
         request.id,

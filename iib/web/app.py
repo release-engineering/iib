@@ -153,6 +153,27 @@ def validate_api_config(config: Config) -> None:
                 'These are used for read/write access to the s3 bucket by IIB'
             )
 
+    if config['IIB_USER_TO_QUEUE']:
+        user_to_queue = config['IIB_USER_TO_QUEUE']
+
+        if not isinstance(user_to_queue, dict):
+            raise ConfigError(
+                "Unsupported type of IIB_USER_TO_QUEUE "
+                "(must be dict[str] or dict[str, dict[str,str]])."
+            )
+
+        for user_queue in user_to_queue.values():
+            if isinstance(user_queue, dict):
+                if not user_queue.get('all'):
+                    raise ConfigError(
+                        'Users in "IIB_USER_TO_QUEUE" must have default queue `all` defined.'
+                    )
+            elif not isinstance(user_queue, str):
+                raise ConfigError(
+                    "Unsupported type of IIB_USER_TO_QUEUE "
+                    "(must be dict[str] or dict[str, dict[str,str]])."
+                )
+
 
 # See app factory pattern:
 #   http://flask.pocoo.org/docs/0.12/patterns/appfactories/

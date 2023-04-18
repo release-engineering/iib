@@ -812,6 +812,19 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
             'Buccaneers',
         ),
         (
+            {
+                'tbrady@DOMAIN.LOCAL': {'all': 'all_queue', 'index:image': 'index_queue'},
+                'not.tbrady@DOMAIN.LOCAL': {'all', 'all_queue2'},
+            },
+            True,
+            'index_queue',
+        ),
+        (
+            {'tbrady@DOMAIN.LOCAL': {'all': 'all_queue', 'index:image': 'index_queue'}},
+            False,
+            'all_queue',
+        ),
+        (
             {'tbrady@DOMAIN.LOCAL': 'Patriots', 'SERIAL:tbrady@DOMAIN.LOCAL': 'Buccaneers'},
             True,
             'Buccaneers',
