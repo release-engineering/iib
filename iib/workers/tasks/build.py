@@ -966,9 +966,10 @@ def handle_add_request(
             )
             # get catalog with opted-in operators
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
-            catalog_from_index = get_catalog_dir(
-                from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
-            )
+            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+                catalog_from_index = get_catalog_dir(
+                    from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
+                )
             # overwrite data in `catalog_from_index` by data from `catalog_from_db`
             # this adds changes on not opted in operators to final
             merge_catalogs_dirs(catalog_from_db, catalog_from_index)
@@ -1094,9 +1095,10 @@ def handle_rm_request(
 
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
             # get catalog with opted-in operators
-            catalog_from_index = get_catalog_dir(
-                from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
-            )
+            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+                catalog_from_index = get_catalog_dir(
+                    from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
+                )
             # remove operators from from_index file-based catalog
             for operator in operators:
                 operator_path = os.path.join(catalog_from_index, operator)
