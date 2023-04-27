@@ -8,7 +8,13 @@ import pytest
 from sqlalchemy.exc import DisconnectionError
 
 from iib.web.api_v1 import _get_unique_bundles
-from iib.web.models import Image, RequestAdd, RequestRm, RequestCreateEmptyIndex
+from iib.web.models import (
+    Image,
+    RequestAdd,
+    RequestRm,
+    RequestCreateEmptyIndex,
+    RequestFbcOperations,
+)
 
 
 def test_get_build(app, auth_env, client, db):
@@ -96,7 +102,8 @@ def test_get_build(app, auth_env, client, db):
 def test_get_builds(app, auth_env, client, db):
     total_create_requests = 5
     total_add_requests = 50
-    total_requests = total_create_requests + total_add_requests
+    total_fbc_operations_requests = 5
+    total_requests = total_create_requests + total_add_requests + total_fbc_operations_requests
     # flask_login.current_user is used in RequestAdd.from_json, which requires a request context
     with app.test_request_context(environ_base=auth_env):
         for i in range(total_add_requests):
@@ -115,6 +122,14 @@ def test_get_builds(app, auth_env, client, db):
                 'from_index': f'quay.io/namespace/repo:{i}',
             }
             request2 = RequestCreateEmptyIndex.from_json(data)
+            db.session.add(request2)
+        for i in range(total_fbc_operations_requests):
+            data = {
+                'binary_image': 'quay.io/namespace/binary_image:latest',
+                'from_index': f'quay.io/namespace/repo:{i}',
+                'fbc_fragment': f'quay.io/namespace/fbcfragment:{i}',
+            }
+            request2 = RequestFbcOperations.from_json(data)
             db.session.add(request2)
         db.session.commit()
 
@@ -151,6 +166,10 @@ def test_get_builds(app, auth_env, client, db):
     assert rv_json['meta']['total'] == total_add_requests
     assert rv_json['items'][0]['request_type'] == 'add'
 
+    rv_json = client.get('/api/v1/builds?request_type=fbc-operations').json
+    assert rv_json['meta']['total'] == total_fbc_operations_requests
+    assert rv_json['items'][0]['request_type'] == 'fbc-operations'
+
     rv_json = client.get('/api/v1/builds?request_type=create-empty-index').json
     assert rv_json['meta']['total'] == total_create_requests
     assert rv_json['items'][0]['request_type'] == 'create-empty-index'
@@ -160,7 +179,9 @@ def test_get_builds(app, auth_env, client, db):
     assert rv_json['items'][0]['user'] == 'tbrady@DOMAIN.LOCAL'
 
 
-def test_index_image_filter(app, client, db, minimal_request_add, minimal_request_rm):
+def test_index_image_filter(
+    app, client, db, minimal_request_add, minimal_request_rm, minimal_request_fbc_operations
+):
     minimal_request_add.add_state('in_progress', 'Starting things up!')
     minimal_request_add.index_image = Image.get_or_create('quay.io/namespace/index@sha256:fghijk')
     minimal_request_add.add_state('complete', 'The request is complete')
@@ -168,12 +189,21 @@ def test_index_image_filter(app, client, db, minimal_request_add, minimal_reques
     minimal_request_rm.add_state('in_progress', 'Starting things up!')
     minimal_request_rm.index_image = Image.get_or_create('quay.io/namespace/index@sha256:123456')
     minimal_request_rm.add_state('complete', 'The request is complete')
+
+    minimal_request_fbc_operations.add_state('in_progress', 'Starting things up!')
+    minimal_request_fbc_operations.index_image = Image.get_or_create(
+        'quay.io/namespace/index@sha256:fbcop'
+    )
+    minimal_request_fbc_operations.add_state('complete', 'The request is complete')
     db.session.commit()
 
     rv_json = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:fghijk').json
     assert rv_json['meta']['total'] == 1
 
     rv_json = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:123456').json
+    assert rv_json['meta']['total'] == 1
+
+    rv_json = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:fbcop').json
     assert rv_json['meta']['total'] == 1
 
     rv = client.get('/api/v1/builds?index_image=quay.io/namespace/index@sha256:abc')

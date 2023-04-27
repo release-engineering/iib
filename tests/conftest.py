@@ -159,6 +159,39 @@ def minimal_request_rm(db):
 
 
 @pytest.fixture()
+def minimal_request_fbc_operations(db):
+    """
+    Create and return an instance of the RequestFbcOperations class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestFbcOperations
+    """
+    binary_image = models.Image(pull_specification='quay.io/fbc_operations/binary-image:latest')
+    db.session.add(binary_image)
+    from_index_image = models.Image(pull_specification='quay.io/fbc_operations/index-image:latest')
+    db.session.add(from_index_image)
+    fbc_fragment_image = models.Image(
+        pull_specification='quay.io/fbc_operations/fbcfragment-image:latest'
+    )
+    db.session.add(fbc_fragment_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    request = models.RequestFbcOperations(
+        batch=batch,
+        binary_image=binary_image,
+        fbc_fragment=fbc_fragment_image,
+        from_index=from_index_image,
+    )
+    db.session.add(request)
+    db.session.commit()
+    return request
+
+
+@pytest.fixture()
 def minimal_request_regenerate_bundle(db):
     """
     Create and return an instance of the RequestRegenerateBundle class.
