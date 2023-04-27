@@ -366,7 +366,7 @@ def get_builds() -> flask.Response:
     request_type = flask.request.args.get('request_type')
     user = flask.request.args.get('user')
     index_image = flask.request.args.get('index_image')
-
+    from_index = flask.request.args.get('from_index')
     query_params = {}
 
     # Create an alias class to load the polymorphic classes
@@ -397,33 +397,55 @@ def get_builds() -> flask.Response:
         query_params['user'] = user
         query = query.join(Request.user).filter(User.username == user)
 
-    if index_image:
+    if index_image or from_index:
         # https://sqlalche.me/e/20/xaj2 - Create aliases for self-join (Sqlalchemy 2.0)
         request_create_empty_index_alias = aliased(RequestCreateEmptyIndex, flat=True)
         request_add_alias = aliased(RequestAdd, flat=True)
         request_rm_alias = aliased(RequestRm, flat=True)
-        request_merge_index_image_alias = aliased(RequestMergeIndexImage, flat=True)
         request_fbc_operations_alias = aliased(RequestFbcOperations, flat=True)
 
-        query_params['index_image'] = index_image
-        # Get the image id of the image to be searched
-        image_result = Image.query.filter_by(pull_specification=index_image).first()
-        if image_result:
+        # join with the Request* tables to get the response as image_ids are stored there
+        query = (
+            query.outerjoin(
+                request_create_empty_index_alias,
+                Request.id == request_create_empty_index_alias.id,
+            )
+            .outerjoin(request_add_alias, Request.id == request_add_alias.id)
+            .outerjoin(request_rm_alias, Request.id == request_rm_alias.id)
+            .outerjoin(request_fbc_operations_alias, Request.id == request_fbc_operations_alias.id)
+        )
+
+        if from_index:
+            query_params['from_index'] = from_index
+            # Get the image id of the image to be searched
+            from_index_result = Image.query.filter_by(pull_specification=from_index).first()
+            if not from_index_result:
+                # if from_index is not found in image table, then raise an error
+                raise ValidationError(f'from_index {from_index} is not a valid index image')
+
+            query = query.filter(
+                or_(
+                    request_create_empty_index_alias.from_index_id == from_index_result.id,
+                    request_add_alias.from_index_id == from_index_result.id,
+                    request_rm_alias.from_index_id == from_index_result.id,
+                    request_fbc_operations_alias.from_index_id == from_index_result.id,
+                )
+            )
+
+        if index_image:
+            # Get the image id of the image to be searched for
+            image_result = Image.query.filter_by(pull_specification=index_image).first()
+            if not image_result:
+                # if index_image is not found in image table, then raise an error
+                raise ValidationError(f'{index_image} is not a valid index image')
+
+            request_merge_index_image_alias = aliased(RequestMergeIndexImage, flat=True)
+            query_params['index_image'] = index_image
+
             # join with the Request* tables to get the response as image_ids are stored there
-            query = (
-                query.outerjoin(
-                    request_create_empty_index_alias,
-                    Request.id == request_create_empty_index_alias.id,
-                )
-                .outerjoin(request_add_alias, Request.id == request_add_alias.id)
-                .outerjoin(
-                    request_merge_index_image_alias,
-                    Request.id == request_merge_index_image_alias.id,
-                )
-                .outerjoin(request_rm_alias, Request.id == request_rm_alias.id)
-                .outerjoin(
-                    request_fbc_operations_alias, Request.id == request_fbc_operations_alias.id
-                )
+            query = query.outerjoin(
+                request_merge_index_image_alias,
+                Request.id == request_merge_index_image_alias.id,
             )
 
             query = query.filter(
@@ -435,9 +457,6 @@ def get_builds() -> flask.Response:
                     request_fbc_operations_alias.index_image_id == image_result.id,
                 )
             )
-        # if index_image is not found in image table, then raise an error
-        else:
-            raise ValidationError(f'{index_image} is not a valid index image')
 
     pagination_query = query.order_by(Request.id.desc()).paginate(max_per_page=max_per_page)
     requests = pagination_query.items
