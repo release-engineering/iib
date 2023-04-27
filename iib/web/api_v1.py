@@ -402,6 +402,7 @@ def get_builds() -> flask.Response:
         request_add_alias = aliased(RequestAdd, flat=True)
         request_rm_alias = aliased(RequestRm, flat=True)
         request_merge_index_image_alias = aliased(RequestMergeIndexImage, flat=True)
+        request_fbc_operations_alias = aliased(RequestFbcOperations, flat=True)
 
         query_params['index_image'] = index_image
         # Get the image id of the image to be searched
@@ -419,6 +420,9 @@ def get_builds() -> flask.Response:
                     Request.id == request_merge_index_image_alias.id,
                 )
                 .outerjoin(request_rm_alias, Request.id == request_rm_alias.id)
+                .outerjoin(
+                    request_fbc_operations_alias, Request.id == request_fbc_operations_alias.id
+                )
             )
 
             query = query.filter(
@@ -427,6 +431,7 @@ def get_builds() -> flask.Response:
                     request_add_alias.index_image_id == image_result.id,
                     request_merge_index_image_alias.index_image_id == image_result.id,
                     request_rm_alias.index_image_id == image_result.id,
+                    request_fbc_operations_alias.index_image_id == image_result.id,
                 )
             )
         # if index_image is not found in image table, then raise an error
