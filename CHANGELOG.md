@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.0.0
+- Add logs for time tracking by @xDaile in https://github.com/release-engineering/iib/pull/507
+- Bump sphinx from 5.3.0 to 6.1.3 by @dependabot in https://github.com/release-engineering/iib/pull/483
+- Add token overwrite in build.py by @xDaile in https://github.com/release-engineering/iib/pull/510
+- Bump sphinx from 6.1.3 to 6.2.0 by @dependabot in https://github.com/release-engineering/iib/pull/511
+- Adding image filtering for fbc_operations requests by @lipoja in https://github.com/release-engineering/iib/pull/514
+- Changing loading of user queue to accept new structure by @lipoja in https://github.com/release-engineering/iib/pull/509
+- Adding filtering builds based on `from_index` by @lipoja in https://github.com/release-engineering/iib/pull/513
+- Upgrade flask to 2.2.5 by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/516
+
 ## 7.1.1
 - Fix RM API endpoint - remove operator from FBC 
 - Move cleanup function to the end of the request
