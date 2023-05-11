@@ -64,7 +64,6 @@ from iib.web.iib_static_types import (
     RmRequestPayload,
 )
 
-
 api_v1 = flask.Blueprint('api_v1', __name__)
 
 

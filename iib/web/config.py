@@ -37,7 +37,6 @@ class Config(object):
     IIB_USER_TO_QUEUE: Union[Dict[str, str], Dict[str, Dict[str, str]]] = _get_empty_dict_str_str()
     IIB_WORKER_USERNAMES: List[str] = []
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: str = 'http://localhost:4317/v1/traces'
 
 
 class ProductionConfig(Config):

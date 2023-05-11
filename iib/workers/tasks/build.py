@@ -813,6 +813,7 @@ def handle_add_request(
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
         to ``None``.
     :param list build_tags: List of tags which will be applied to intermediate index images.
+    :param str traceparent: the traceparent header value to be used for tracing the request.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()

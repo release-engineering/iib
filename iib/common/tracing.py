@@ -3,31 +3,19 @@
 """Configures the Global Tracer Provider and exports the traces to the OpenTelemetry Collector.
 
 The OpenTelemetry Collector is configured to receive traces via OTLP over HTTP.
-The OTLP exporter is configured to use the environment variables
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT and OTEL_EXPORTER_OTLP_TRACES_HEADERS to
-configure the endpoint and headers for the OTLP exporter.
-The OTLP* environment variables are configured in the docker-compose.yaml
-and podman-compose.yaml files for iib workers and api.
+The OTLP exporter is configured to use the environment variables defined in the ansible playbook.
 
 Usage:
     @instrument_tracing()
     def func():
         pass
 
-    @instrument_tracing()
-    class MyClass:
-        def func1():
-            pass
-        def _func2():
-            pass
-
 """
+import os
 import functools
-import inspect
 import logging
 from typing import Dict
 from opentelemetry import trace
-from opentelemetry.trace import Tracer
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry.sdk.trace import TracerProvider
@@ -47,20 +35,20 @@ propagator = TraceContextTextMapPropagator()
 
 
 class TracingWrapper:
-    """Wrapper class that will wrap all methods of a calls with the instrument_tracing decorator."""
+    """Wrapper class that will wrap all methods of calls with the instrument_tracing decorator."""
 
     __instance = None
 
     def __new__(cls):
         """Create a new instance if one does not exist."""
         if TracingWrapper.__instance is None:
-            log.info("Creating TracingWrapper instance")
+            log.info('Creating TracingWrapper instance')
             cls.__instance = super().__new__(cls)
             otlp_exporter = OTLPSpanExporter(
-                endpoint="https://localhost:4317/v1/traces",  # noqa: E501
+                endpoint=f"{os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT')}/v1/traces",
             )
             cls.provider = TracerProvider(
-                resource=Resource.create({SERVICE_NAME: "iib-auto-manual"})
+                resource=Resource.create({SERVICE_NAME: os.getenv('OTEL_SERVICE_NAME') or 'iib'})
             )
             cls.processor = BatchSpanProcessor(otlp_exporter)
             cls.provider.add_span_processor(cls.processor)
@@ -72,66 +60,40 @@ class TracingWrapper:
 
 def instrument_tracing(
     func=None,
-    *,
-    service_name: str = "",
-    span_name: str = "",
-    ignoreTracing=False,
+    span_name: str = '',
     attributes: Dict = {},
-    existing_tracer: Tracer = None,
-    is_class=False,
 ):
     """
-    Instrument tracing for a function or class.
+    Instrument tracing for a function.
 
-    :param func_or_class: The function or class to be decorated.
-    :param service_name: The name of the service to be used.
+    :param func: The function to be decorated.
     :param span_name: The name of the span to be created.
-    :param ignoreTracing: If True, the function will not be traced.
     :param attributes: The attributes to be added to the span.
-    :param existing_tracer: The tracer to be used.
     :return: The decorated function or class.
     """
+    log.info('Instrumenting span for %s', span_name)
+    tracer = trace.get_tracer(__name__)
+    context = None
+    if trace.get_current_span():
+        context = trace.get_current_span().get_span_context()
+    else:
+        context = propagator.extract(carrier={})
 
-    def instrument_class(cls):
-        """
-        Instruments class and filters out all the methods of a class that are to be instrumented.
-
-        :param cls: The class to be decorated.
-        :return: The decorated class.
-        """
-        for name, method in cls.__dict__.items():
-            if (
-                callable(method)
-                and not method.__name__.startswith("_")
-                and not inspect.isclass(method)
-            ):
-                setattr(cls, name, instrument_tracing(method))
-        return cls
-
-    def instrument_span(func):
-        log.info(f"Instrumenting span for {span_name}")
-        tracer = trace.get_tracer(__name__)
-        context = None
-        if trace.get_current_span():
-            context = trace.get_current_span().get_span_context()
-        else:
-            context = propagator.extract(carrier={})
-
+    def decorator_instrument_tracing(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            log.info(f"Context inside {span_name}: {context}")
-            if kwargs.get("traceparent"):
-                log.info(f"traceparent is {kwargs.get('traceparent')}")
-                carrier = {"traceparent": kwargs.get("traceparent")}
+            log.debug('Context inside %s: %s', span_name, context)
+            if kwargs.get('traceparent'):
+                log.debug('traceparent is %s' % str(kwargs.get('traceparent')))
+                carrier = {'traceparent': kwargs.get('traceparent')}
                 trace_context = propagator.extract(carrier)
-                log.info(f"Context is {trace_context}")
+                log.debug('Context is %s', trace_context)
             with tracer.start_as_current_span(
                 span_name or func.__name__, kind=SpanKind.SERVER
             ) as span:
-                # span.set_attribute("function_name", func.__name__)
                 if func.__name__:  # If the function has a name
-                    log.info(f"function_name {func.__name__}")
-                    span.set_attribute("function_name", func.__name__)
+                    log.debug('function_name %s', func.__name__)
+                    span.set_attribute('function_name', func.__name__)
                 try:
                     result = func(*args, **kwargs)
                 except Exception as exc:
@@ -140,71 +102,34 @@ def instrument_tracing(
                     raise
                 else:
                     if result:
-                        log.info(f"result {result}")
-                        span.set_attribute("result_attributes", result)
-                    if args:
-                        log.info(f"arguments {args}")
-                        span.set_attribute("arguments", args)
+                        log.debug('result %s', result)
+                        span.set_attribute('result_attributes', result)
                     if kwargs:
                         # Need to handle all the types of kwargs
-                        if type(kwargs) == dict:
-                            for keys, values in kwargs.items():
-                                if keys == 'context':
-                                    continue
-                                if type(values) is dict:
-                                    for key, value in values.items():
-                                        log.info(f"Values is dict {key}, {value}")
-                                        span.set_attribute(key, value)
-                                elif type(values) is list:
-                                    for value in values:
-                                        if type(value) is dict:
-                                            for k, v in value.items():
-                                                log.info(
-                                                    f"Values is list, and value is dict => {k}, {v}"
-                                                )
-                                                span.set_attribute(k, v)
-                                        else:
-                                            log.info(f"Values is list, else => {value}")
-                                            span.set_attribute(keys, value)
-                                else:
-                                    span.set_attribute(keys, values)
-                        else:
-                            if kwargs["task_id"]:
-                                log.info(f"task_id {kwargs['task_id']}")
-                                span.set_attribute("task_id", kwargs["task_id"])
-                            if kwargs["task_name"]:
-                                log.info(f"task_name {kwargs['task_name']}")
-                                span.set_attribute("task_name", kwargs["task_name"])
-                            if kwargs["task_type"]:
-                                log.info(f"task_type {kwargs['task_type']}")
-                                span.set_attribute("task_type", kwargs["task_type"])
-                    if func.__doc__:
-                        log.info(f"Description is  {func.__doc__}")
-                        span.set_attribute("description", func.__doc__)
-                    span.add_event(f"{func.__name__} executed", {"result": result or "success"})
+                        if "task_id" in kwargs:
+                            log.debug('task_id is %s' % kwargs['task_id'])
+                            span.set_attribute('task_id', kwargs['task_id'])
+                        if "task_name" in kwargs:
+                            log.debug('task_name is %s' % kwargs['task_name'])
+                            span.set_attribute('task_name', kwargs['task_name'])
+                        if "task_type" in kwargs:
+                            log.debug('task_type is %s' % kwargs['task_type'])
+                            span.set_attribute('task_type', kwargs['task_type'])
+                    span.add_event(f'{func.__name__} executed', {'result': result or 'success'})
                     span.set_status(Status(StatusCode.OK))
                 finally:
                     # Add the span context from the current span to the link
                     span_id = span.get_span_context().span_id
                     trace_id = span.get_span_context().trace_id
-                    # Syntax of traceparent is f"00-{trace_id}-{span_id}-01"
-                    traceparent = f"00-{trace_id}-{span_id}-01"
+                    # Syntax of traceparent is f'00-{trace_id}-{span_id}-01'
+                    traceparent = f'00-{trace_id}-{span_id}-01'
                     headers = {'traceparent': traceparent}
                     propagator.inject(headers)
-                    log.info("Headers are: %s", headers)
+                    log.debug('Headers are: %s', headers)
                     set_span_in_context(span)
 
                 return result
 
-        wrapper = wrapper
         return wrapper
 
-    if ignoreTracing:
-        return func
-
-    if is_class:
-        # The decorator is being used to decorate a function
-        return instrument_class
-    else:
-        # The decorator is being used to decorate a class
-        return instrument_span
+    return decorator_instrument_tracing

@@ -22,7 +22,6 @@ from iib.workers.tasks.fbc_utils import (
     get_hidden_index_database,
     extract_fbc_fragment,
 )
-from iib.common.tracing import instrument_tracing
 
 log = logging.getLogger(__name__)
 
@@ -571,7 +570,6 @@ def _opm_registry_add(
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 
-@instrument_tracing(span_name="worker.tasks.opm_operations.opm_registry_add_fbc")
 @retry(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
