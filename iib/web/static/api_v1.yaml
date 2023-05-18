@@ -557,7 +557,7 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
-  /builds/fbc-operation:
+  /builds/fbc-operations:
     post:
       description: >
         Submit a request to add/update FBC fragment to an index image
