@@ -972,6 +972,24 @@ def handle_add_request(
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
+
+            # we have to remove all `deprecation_bundles` from `catalog_from_index`
+            # before merging catalogs otherwise if catalog was deprecated and
+            # removed from `index.db` it stays on FBC (from_index)
+            # Therefore we have to remove the directory before merging
+            for deprecate_bundle_pull_spec in deprecation_bundles:
+                # remove deprecated operators from FBC stored in index image
+                deprecate_bundle = get_image_label(
+                    deprecate_bundle_pull_spec, 'operators.operatorframework.io.bundle.package.v1'
+                )
+                bundle_from_index = os.path.join(catalog_from_index, deprecate_bundle)
+                if os.path.exists(bundle_from_index):
+                    log.debug(
+                        "Removing deprecated bundle from catalog before merging: %s",
+                        deprecate_bundle,
+                    )
+                    shutil.rmtree(bundle_from_index)
+
             # overwrite data in `catalog_from_index` by data from `catalog_from_db`
             # this adds changes on not opted in operators to final
             merge_catalogs_dirs(catalog_from_db, catalog_from_index)
