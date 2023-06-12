@@ -41,6 +41,7 @@ class Config(object):
     iib_log_level: str = 'INFO'
     iib_max_recursive_related_bundles = 15
     iib_organization_customizations: iib_organization_customizations_type = {}
+    iib_otel_tracing: bool = False
     iib_sac_queues: List[str] = []
     iib_request_logs_dir: Optional[str] = None
     iib_request_logs_format: str = (
@@ -318,6 +319,17 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
                 raise ConfigError(f'{directory} must exist and be a directory')
             if not os.access(iib_request_temp_data_dir, os.W_OK):
                 raise ConfigError(f'{directory}, is not writable!')
+
+    if conf.get('iib_otel_tracing'):
+        if not isinstance(conf.get('iib_otel_tracing'), bool):
+            raise ConfigError('"iib_otel_tracing" must be a valid boolean value')
+        if not os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT') or not os.getenv(
+            'OTEL_EXPORTER_SERVICE_NAME'
+        ):
+            raise ConfigError(
+                '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_EXPORTER_SERVICE_NAME" environment '
+                'variables must be set to valid strings when iib_otel_tracing is set to True.'
+            )
 
 
 def _validate_iib_org_customizations(

@@ -291,6 +291,37 @@ def test_validate_celery_config_invalid_s3_env_vars():
         validate_celery_config(conf)
 
 
+@pytest.mark.parametrize(
+    'config, error',
+    (
+        (
+            {'iib_otel_tracing': True},
+            (
+                '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_EXPORTER_SERVICE_NAME" environment '
+                'variables must be set to valid strings when iib_otel_tracing is set to True.'
+            ),
+        ),
+        (
+            {'iib_otel_tracing': 'random-str'},
+            '"iib_otel_tracing" must be a valid boolean value',
+        ),
+    ),
+)
+def test_validate_celery_config_invalid_otel_config(tmpdir, config, error):
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+        'iib_organization_customizations': {},
+        'iib_request_recursive_related_bundles_dir': tmpdir.join('some-dir'),
+    }
+    iib_request_recursive_related_bundles_dir = conf['iib_request_recursive_related_bundles_dir']
+    iib_request_recursive_related_bundles_dir.mkdir()
+    worker_config = {**conf, **config}
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(worker_config)
+
+
 def test_validate_celery_config_invalid_recursive_related_bundles_config():
     worker_config = {
         'iib_api_url': 'http://localhost:8080/api/v1/',

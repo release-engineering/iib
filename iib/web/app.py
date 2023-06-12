@@ -159,6 +159,17 @@ def validate_api_config(config: Config) -> None:
                 'These are used for read/write access to the s3 bucket by IIB'
             )
 
+    if config['IIB_OTEL_TRACING']:
+        if not isinstance(config['IIB_OTEL_TRACING'], bool):
+            raise ConfigError('"IIB_OTEL_TRACING" must be a valid boolean value')
+        if not os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT') or not os.getenv(
+            'OTEL_EXPORTER_SERVICE_NAME'
+        ):
+            raise ConfigError(
+                '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_EXPORTER_SERVICE_NAME" environment '
+                'variables must be set to valid strings when IIB_OTEL_TRACING is set to True.'
+            )
+
     if config['IIB_USER_TO_QUEUE']:
         user_to_queue = config['IIB_USER_TO_QUEUE']
 
@@ -232,15 +243,16 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     app.register_error_handler(kombu.exceptions.KombuError, json_error)
 
     # Add Auto-instrumentation
-    FlaskInstrumentor().instrument_app(
-        app, enable_commenter=True, commenter_options={}, tracer_provider=tracerWrapper.provider
-    )
-    app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app, tracer_provider=tracerWrapper.provider)
-    with app.app_context():
-        SQLAlchemyInstrumentor().instrument(
-            engine=db.engine,
-            enable_commenter=True,
-            commenter_options={'opentelemetry_values': True},
-            tracer_provider=tracerWrapper.provider,
+    if app.config['IIB_OTEL_TRACING']:
+        FlaskInstrumentor().instrument_app(
+            app, enable_commenter=True, commenter_options={}, tracer_provider=tracerWrapper.provider
         )
+        app.wsgi_app = OpenTelemetryMiddleware(app.wsgi_app, tracer_provider=tracerWrapper.provider)
+        with app.app_context():
+            SQLAlchemyInstrumentor().instrument(
+                engine=db.engine,
+                enable_commenter=True,
+                commenter_options={'opentelemetry_values': True},
+                tracer_provider=tracerWrapper.provider,
+            )
     return app
