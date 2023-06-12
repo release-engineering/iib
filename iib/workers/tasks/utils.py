@@ -1088,7 +1088,7 @@ def get_all_index_images_info(
     return infos
 
 
-def get_image_label(pull_spec: str, label: str) -> Optional[str]:
+def get_image_label(pull_spec: str, label: str) -> str:
     """
     Get a specific label from the container image.
 
@@ -1098,7 +1098,7 @@ def get_image_label(pull_spec: str, label: str) -> Optional[str]:
     :rtype: str
     """
     log.debug('Getting the label of %s from %s', label, pull_spec)
-    return get_image_labels(pull_spec).get(label)
+    return get_image_labels(pull_spec).get(label, '')
 
 
 def verify_labels(bundles: List[str]) -> None:
