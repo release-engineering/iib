@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.1.0
+- Adding missing 's' in fbc-operations endpoint documentation by @lipoja in https://github.com/release-engineering/iib/pull/519
+- Adding IIB Instrumentation by @raks-tt in https://github.com/release-engineering/iib/pull/508
+- Add Config variable which controls OpenTelemetry tracing by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/522
+- Fixing deprecation of operator in FBC image by @lipoja in https://github.com/release-engineering/iib/pull/520
+
 ## 8.0.0
 - Add logs for time tracking by @xDaile in https://github.com/release-engineering/iib/pull/507
 - Bump sphinx from 5.3.0 to 6.1.3 by @dependabot in https://github.com/release-engineering/iib/pull/483
