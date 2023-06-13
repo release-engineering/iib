@@ -13,7 +13,7 @@ recommonmark
 requests
 ruamel.yaml
 # https://github.com/sphinx-doc/sphinx/issues/2796
-sphinx==6.2.0
+sphinx==7.0.1
 sphinx_rtd_theme
 tenacity
 typing-extensions
