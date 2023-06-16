@@ -480,6 +480,32 @@ def test_get_build_logs_s3_configured(
                 'bundles': ['some:thing'],
                 'from_index': 'pull:spec',
                 'binary_image': 'binary:image',
+                'check_related_images': 123,
+            },
+            'The "check_related_images" parameter must be a boolean',
+        ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'check_related_images': "123",
+            },
+            'The "check_related_images" parameter must be a boolean',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'check_related_images': "123",
+            },
+            '"check_related_images" must be specified only when bundles are specified',
+        ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
                 'overwrite_from_index': True,
                 'overwrite_from_index_token': True,
             },

@@ -888,6 +888,7 @@ class RequestIndexImageMixin:
             'distribution_scope',
             'build_tags',
             'output_fbc',
+            'check_related_images',
         } | set(additional_optional_params or [])
 
         validate_request_params(
@@ -1073,6 +1074,19 @@ class RequestAdd(Request, RequestIndexImageMixin):
         if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
             raise ValidationError('"from_index" must be specified if no bundles are specified')
 
+        if (
+            request_kwargs.get('check_related_images') is not None
+            and request_kwargs.get('bundles') is None
+        ):
+            raise ValidationError(
+                '"check_related_images" must be specified only when bundles are specified'
+            )
+
+        # Verify that `check_related_images` is the correct type
+        check_related_images = request_kwargs.pop('check_related_images', False)
+        if not isinstance(check_related_images, bool):
+            raise ValidationError('The "check_related_images" parameter must be a boolean')
+
         ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'graph_update_mode', 'organization']] = (
             'cnr_token',
             'graph_update_mode',
@@ -1118,6 +1132,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 'deprecation_list',
                 'graph_update_mode',
                 'build_tags',
+                'check_related_images',
             ],
             batch=batch,
         )

@@ -4,9 +4,10 @@ import os
 import shutil
 import stat
 import tempfile
+import ruamel.yaml
 from typing import Dict, List, Optional, Set, Tuple
 
-from operator_manifest.operator import ImageName
+from operator_manifest.operator import ImageName, OperatorManifest
 from tenacity import (
     before_sleep_log,
     retry,
@@ -778,6 +779,44 @@ def _verify_index_image(
         )
 
 
+def inspect_related_images(bundles: List[str], request_id) -> None:
+    """
+    Verify if related_images in the bundle are pullable.
+
+    :param list bundles: a list of strings representing the pull specifications of the bundles to
+        add to the index image being built.
+    :param int request_id: the ID of the request this index image is for.
+    :raises IIBError: if one of the bundles does not have the pullable related_image.
+    """
+    from iib.workers.tasks.build_regenerate_bundle import _get_bundle_metadata
+
+    invalid_related_images = []
+    for bundle in bundles:
+        manifest_location = get_image_label(
+            bundle, "operators.operatorframework.io.bundle.manifests.v1"
+        )
+        with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
+            _copy_files_from_image(bundle, manifest_location, temp_dir)
+            manifest_path = os.path.join(temp_dir, manifest_location)
+            try:
+                operator_manifest = OperatorManifest.from_directory(manifest_path)
+            except (ruamel.yaml.YAMLError, ruamel.yaml.constructor.DuplicateKeyError) as e:
+                error = f'The Operator Manifest is not in a valid YAML format: {e}'
+                log.exception(error)
+                raise IIBError(error)
+            bundle_metadata = _get_bundle_metadata(operator_manifest, False)
+            for related_image in bundle_metadata['found_pullspecs']:
+                related_image_pull_spec = related_image.to_str()
+                try:
+                    skopeo_inspect(f"docker://{related_image_pull_spec}")
+                except IIBError as e:
+                    log.error(e)
+                    invalid_related_images.append(related_image_pull_spec)
+
+    if invalid_related_images:
+        raise IIBError(f"IIB cannot access the following related images {invalid_related_images}")
+
+
 @app.task
 @request_logger
 def handle_add_request(
@@ -797,6 +836,7 @@ def handle_add_request(
     deprecation_list: Optional[List[str]] = None,
     build_tags: Optional[List[str]] = None,
     graph_update_mode: Optional[str] = None,
+    check_related_images: bool = False,
     traceparent: Optional[str] = None,
 ) -> None:
     """
@@ -844,6 +884,8 @@ def handle_add_request(
     with set_registry_token(overwrite_from_index_token, from_index, append=True):
         resolved_bundles = get_resolved_bundles(bundles)
         verify_labels(resolved_bundles)
+        if check_related_images:
+            inspect_related_images(resolved_bundles, request_id)
 
     # Check if Gating passes for all the bundles
     if greenwave_config:
