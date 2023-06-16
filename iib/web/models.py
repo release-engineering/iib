@@ -1035,6 +1035,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         db.ForeignKey('request.id'), autoincrement=False, primary_key=True
     )
     bundles: Mapped[List['Image']] = db.relationship('Image', secondary=RequestAddBundle.__table__)
+    check_related_images: Mapped[Optional[bool]]
     deprecation_list: Mapped[List['Image']] = db.relationship(
         'Image', secondary=RequestAddBundleDeprecation.__table__
     )
@@ -1072,6 +1073,17 @@ class RequestAdd(Request, RequestIndexImageMixin):
         # if no bundles and no from index then an empty index will be created which is a no-op
         if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
             raise ValidationError('"from_index" must be specified if no bundles are specified')
+
+        # Verify that `check_related_images` is specified when bundles are specified
+        if request_kwargs.get('check_related_images') and not request_kwargs.get('bundles'):
+            raise ValidationError(
+                '"check_related_images" must be specified only when bundles are specified'
+            )
+
+        # Verify that `check_related_images` is the correct type
+        check_related_images = request_kwargs.get('check_related_images', False)
+        if not isinstance(check_related_images, bool):
+            raise ValidationError('The "check_related_images" parameter must be a boolean')
 
         ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'graph_update_mode', 'organization']] = (
             'cnr_token',
@@ -1118,6 +1130,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 'deprecation_list',
                 'graph_update_mode',
                 'build_tags',
+                'check_related_images',
             ],
             batch=batch,
         )
@@ -1156,6 +1169,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         if self.omps_operator_version:
             rv['omps_operator_version'] = json.loads(self.omps_operator_version)
         rv['graph_update_mode'] = self.graph_update_mode
+        rv['check_related_images'] = self.check_related_images
 
         for bundle in self.bundles:
             if bundle.operator:

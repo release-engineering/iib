@@ -12,6 +12,7 @@ from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
 from iib.workers.config import get_worker_config
+from operator_manifest.operator import ImageName
 
 worker_config = get_worker_config()
 
@@ -1340,3 +1341,120 @@ def test_get_no_present_bundles(
     assert bundle == []
     assert bundle_pull_spec == []
     mock_run_cmd.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir):
+    bundles = ['quay.io/repo/image@sha256:123', 'quay.io/repo2/image2@sha256:456']
+    request_id = 5
+    mock_gil.return_value = '/manifests'
+    mock_fd.return_value = mock.ANY
+
+    mock_gbd.side_effect = [
+        {
+            'found_pullspecs': set(
+                [
+                    ImageName.parse('quay.io/related/image@sha256:1'),
+                    ImageName.parse('quay.io/related/image@sha256:2'),
+                    ImageName.parse('quay.io/related/image@sha256:3'),
+                ]
+            )
+        },
+        {
+            'found_pullspecs': set(
+                [
+                    ImageName.parse('quay.io/related/image@sha256:4'),
+                    ImageName.parse('quay.io/related/image@sha256:5'),
+                ]
+            )
+        },
+    ]
+    build.inspect_related_images(bundles=bundles, request_id=request_id)
+
+    assert mock_si.call_count == 5
+    assert mock_gbd.call_count == 2
+    assert mock_gil.call_args_list == [
+        mock.call(
+            'quay.io/repo/image@sha256:123', 'operators.operatorframework.io.bundle.manifests.v1'
+        ),
+        mock.call(
+            'quay.io/repo2/image2@sha256:456', 'operators.operatorframework.io.bundle.manifests.v1'
+        ),
+    ]
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_inspect_related_images_fail(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_rc, tmpdir):
+    bundles = ['quay.io/repo/image@sha256:123']
+    request_id = 5
+    mock_gil.return_value = '/manifests'
+    mock_fd.return_value = mock.ANY
+    related_images = ['quay.io/related/image@sha256:1']
+
+    mock_gbd.return_value = {
+        'found_pullspecs': set(
+            [
+                ImageName.parse(related_images[0]),
+            ]
+        )
+    }
+
+    error_msg = f'IIB cannot access the following related images {related_images}'
+    with pytest.raises(IIBError, match=re.escape(error_msg)):
+        mock_rc.side_effect = IIBError('Image not accessible')
+        build.inspect_related_images(bundles=bundles, request_id=request_id)
+
+    assert mock_rc.call_count == 5
+    assert mock_gbd.call_count == 1
+    assert mock_gil.call_args_list == [
+        mock.call(
+            'quay.io/repo/image@sha256:123', 'operators.operatorframework.io.bundle.manifests.v1'
+        )
+    ]
+
+
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.inspect_related_images')
+def test_handle_add_request_check_related_images_fail(
+    mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
+):
+    bundles = ['some-bundle:2.3-1']
+    error_msg = 'IIB cannot access the following related images [quay.io/related/image@sha256:1]'
+    mock_grb.return_value = ['some-bundle@sha256:123']
+    mock_iri.side_effect = IIBError(error_msg)
+    with pytest.raises(IIBError, match=re.escape(error_msg)):
+        build.handle_add_request(
+            bundles=bundles,
+            request_id=3,
+            binary_image='binary-image:latest',
+            from_index='from-index:latest',
+            add_arches=['s390x'],
+            cnr_token='token',
+            organization='org',
+            force_backport=False,
+            overwrite_from_index=False,
+            overwrite_from_index_token=None,
+            distribution_scope=None,
+            greenwave_config=None,
+            binary_image_config={'prod': {'v4.5': 'some_image'}},
+            deprecation_list=[],
+            build_tags=None,
+            graph_update_mode=None,
+            check_related_images=True,
+        )
+    assert mock_cleanup.call_count == 1
+    mock_srs.assert_called_once()
+    mock_grb.assert_called_once_with(bundles)
+    mock_vl.assert_called_once()
+    mock_iri.assert_called_once_with(['some-bundle@sha256:123'], 3)

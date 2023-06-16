@@ -128,6 +128,7 @@ def _get_add_args(
         payload.get('deprecation_list', []),
         payload.get('build_tags', []),
         payload.get('graph_update_mode'),
+        payload.get('check_related_images', False),
     ]
 
 
