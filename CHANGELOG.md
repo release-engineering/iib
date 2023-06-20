@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.1.1
+- Add init file to iib/common module by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/524
+
 ## 8.1.0
 - Adding missing 's' in fbc-operations endpoint documentation by @lipoja in https://github.com/release-engineering/iib/pull/519
 - Adding IIB Instrumentation by @raks-tt in https://github.com/release-engineering/iib/pull/508
