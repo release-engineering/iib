@@ -208,8 +208,6 @@ The custom configuration options for the REST API are listed below:
 * `IIB_LOG_LEVEL` - the Python log level of the REST API (Flask). This defaults to `INFO`.
 * `IIB_MAX_PER_PAGE` - the maximum number of build requests that can be shown on a single page.
   This defaults to `20`.
-* `IIB_OTEL_TRACING` - the boolean value which indicates if OpenTelemetry tracing is enabled in IIB.
-  This defaults to `False`.
 * `IIB_REQUEST_DATA_DAYS_TO_LIVE` - the amount of days after which per request temmporary data is
   considered to be expired and may be removed. This defaults to `3`.
 * `IIB_REQUEST_LOGS_DIR` - the directory to load the request specific log files. If `None`, per
@@ -271,8 +269,12 @@ More info on these environment variables can be found in the [AWS User Guide](ht
 
 ### Opentelemetry Environment Variable
 
-To integrate IIB with Opentelemetery tracing, we will need the below two parameters.
+To integrate IIB with Opentelemetery tracing, we will need the following parameters as
+environment variables.
 
+* `IIB_OTEL_TRACING` - the boolean value which indicates if OpenTelemetry tracing is enabled in IIB.
+  This defaults to `False`. If this is set to `True`, `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME`
+  must be set.
 * `OTEL_EXPORTER_OTLP_ENDPOINT` - The endpoint for the OpenTelemetry exporter.
 * `OTEL_SERVICE_NAME` - "iib-api"
 
@@ -397,8 +399,6 @@ The custom configuration options for the Celery workers are listed below:
     }
   ```
 
-* `iib_otel_tracing` - the boolean value which indicates if OpenTelemetry tracing is enabled in IIB.
-  This defaults to `False`.
 * `iib_request_related_bundles_dir` - the directory to write the request specific related bundles
   file. If `None`, per request related bundles files are not created. This defaults to `None`.
 * `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per
@@ -433,8 +433,12 @@ More info on these environment variables can be found in the [AWS User Guide](ht
 
 ### Opentelemetry Environment Variable
 
-To integrate IIB with Opentelemetery tracing, we will need the below two parameters.
+To integrate IIB with Opentelemetery tracing, we will need the following parameters
+as environment variables.
 
+* `IIB_OTEL_TRACING` - the boolean value which indicates if OpenTelemetry tracing is enabled in IIB.
+  This defaults to `False`. If this is set to `True`, `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME`
+  must be set.
 * `OTEL_EXPORTER_OTLP_ENDPOINT` - The endpoint for the OpenTelemetry exporter.
 * `OTEL_SERVICE_NAME` - "iib-workers"
 

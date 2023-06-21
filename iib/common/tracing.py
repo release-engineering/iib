@@ -30,7 +30,6 @@ from opentelemetry.trace.propagation import (
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from iib.web.config import Config
 
 log = logging.getLogger(__name__)
 propagator = TraceContextTextMapPropagator()
@@ -43,7 +42,7 @@ class TracingWrapper:
 
     def __new__(cls):
         """Create a new instance if one does not exist."""
-        if not Config.IIB_OTEL_TRACING:
+        if not os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
             return None
 
         if TracingWrapper.__instance is None:
@@ -87,7 +86,7 @@ def instrument_tracing(
     def decorator_instrument_tracing(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            if not Config.IIB_OTEL_TRACING:
+            if not os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
                 return func(*args, **kwargs)
             log.debug('Context inside %s: %s', span_name, context)
             if kwargs.get('traceparent'):

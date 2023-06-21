@@ -159,9 +159,7 @@ def validate_api_config(config: Config) -> None:
                 'These are used for read/write access to the s3 bucket by IIB'
             )
 
-    if config['IIB_OTEL_TRACING']:
-        if not isinstance(config['IIB_OTEL_TRACING'], bool):
-            raise ConfigError('"IIB_OTEL_TRACING" must be a valid boolean value')
+    if os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
         if not os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT') or not os.getenv('OTEL_SERVICE_NAME'):
             raise ConfigError(
                 '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
@@ -241,7 +239,7 @@ def create_app(config_obj: Optional[str] = None) -> Flask:  # pragma: no cover
     app.register_error_handler(kombu.exceptions.KombuError, json_error)
 
     # Add Auto-instrumentation
-    if app.config['IIB_OTEL_TRACING']:
+    if os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
         FlaskInstrumentor().instrument_app(
             app, enable_commenter=True, commenter_options={}, tracer_provider=tracerWrapper.provider
         )

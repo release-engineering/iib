@@ -170,37 +170,19 @@ def test_validate_api_config_failure_aws_s3_params(config, error_msg):
         validate_api_config(config)
 
 
-@pytest.mark.parametrize(
-    'config, error_msg',
-    (
-        (
-            {
-                'IIB_AWS_S3_BUCKET_NAME': None,
-                'IIB_REQUEST_LOGS_DIR': 'some-dir',
-                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
-                'IIB_GREENWAVE_CONFIG': {},
-                'IIB_BINARY_IMAGE_CONFIG': {},
-                'IIB_OTEL_TRACING': True,
-            },
-            (
-                '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
-                'variables must be set to valid strings when IIB_OTEL_TRACING is set to True.'
-            ),
-        ),
-        (
-            {
-                'IIB_AWS_S3_BUCKET_NAME': None,
-                'IIB_REQUEST_LOGS_DIR': 'some-dir',
-                'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
-                'IIB_GREENWAVE_CONFIG': {},
-                'IIB_BINARY_IMAGE_CONFIG': {},
-                'IIB_OTEL_TRACING': 'some-str',
-            },
-            '"IIB_OTEL_TRACING" must be a valid boolean value',
-        ),
-    ),
-)
-def test_validate_api_config_failure_otel_params(config, error_msg):
+@mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'True'})
+def test_validate_api_config_failure_otel_params():
+    config = {
+        'IIB_AWS_S3_BUCKET_NAME': None,
+        'IIB_REQUEST_LOGS_DIR': 'some-dir',
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
+        'IIB_GREENWAVE_CONFIG': {},
+        'IIB_BINARY_IMAGE_CONFIG': {},
+    }
+    error_msg = (
+        '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
+        'variables must be set to valid strings when IIB_OTEL_TRACING is set to True.'
+    )
     with pytest.raises(ConfigError, match=error_msg):
         validate_api_config(config)
 

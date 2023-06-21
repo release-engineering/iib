@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from unittest.mock import patch
+from unittest import mock
 from io import BytesIO
 import os
 import re
@@ -37,6 +38,7 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     assert celery_app.conf.broker_connection_max_retries == 10
 
 
+@mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'some-str'})
 @patch('os.path.isdir', return_value=True)
 @patch('os.access', return_value=True)
 def test_validate_celery_config(mock_isdir, mock_isaccess):
@@ -291,23 +293,8 @@ def test_validate_celery_config_invalid_s3_env_vars():
         validate_celery_config(conf)
 
 
-@pytest.mark.parametrize(
-    'config, error',
-    (
-        (
-            {'iib_otel_tracing': True},
-            (
-                '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
-                'variables must be set to valid strings when iib_otel_tracing is set to True.'
-            ),
-        ),
-        (
-            {'iib_otel_tracing': 'random-str'},
-            '"iib_otel_tracing" must be a valid boolean value',
-        ),
-    ),
-)
-def test_validate_celery_config_invalid_otel_config(tmpdir, config, error):
+@mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'True'})
+def test_validate_celery_config_invalid_otel_config(tmpdir):
     conf = {
         'iib_api_url': 'http://localhost:8080/api/v1/',
         'iib_registry': 'registry',
@@ -315,11 +302,14 @@ def test_validate_celery_config_invalid_otel_config(tmpdir, config, error):
         'iib_organization_customizations': {},
         'iib_request_recursive_related_bundles_dir': tmpdir.join('some-dir'),
     }
+    error = (
+        '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
+        'variables must be set to valid strings when "IIB_OTEL_TRACING" is set to True.'
+    )
     iib_request_recursive_related_bundles_dir = conf['iib_request_recursive_related_bundles_dir']
     iib_request_recursive_related_bundles_dir.mkdir()
-    worker_config = {**conf, **config}
     with pytest.raises(ConfigError, match=error):
-        validate_celery_config(worker_config)
+        validate_celery_config(conf)
 
 
 def test_validate_celery_config_invalid_recursive_related_bundles_config():
