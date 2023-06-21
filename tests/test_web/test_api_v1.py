@@ -248,6 +248,38 @@ def test_from_index_filter(
     }
 
 
+def test_from_index_startswith_filter(
+    app, client, db, minimal_request_add, minimal_request_rm, minimal_request_fbc_operations
+):
+    _request_add_state_and_from_index(
+        minimal_request_add, 'quay.io/namespace/index@sha256:from_index'
+    )
+    _request_add_state_and_from_index(
+        minimal_request_rm, 'quay.io/namespace/from_index@sha256:123456'
+    )
+    _request_add_state_and_from_index(
+        minimal_request_fbc_operations,
+        'quay.io/namespace/from_index@sha256:fbcop',
+    )
+    db.session.commit()
+
+    rv_json = client.get('/api/v1/builds?from_index_startswith=quay.io/namespace/from_index').json
+    assert rv_json['meta']['total'] == 2
+
+    rv_json = client.get(
+        '/api/v1/builds?from_index_startswith=quay.io/namespace/index@sha256:from_index'
+    ).json
+    assert rv_json['meta']['total'] == 1
+
+    rv_json = client.get('/api/v1/builds?from_index_startswith=quay.io/namespace').json
+    assert rv_json['meta']['total'] == 3
+
+    rv = client.get('/api/v1/builds?from_index_startswith=quay.io/namespace/index@sha256:abc')
+    assert rv.json == {
+        'error': "Can\'t find any from_index starting with quay.io/namespace/index@sha256:abc"
+    }
+
+
 def test_get_builds_invalid_state(app, client, db):
     rv = client.get('/api/v1/builds?state=is_it_lunch_yet%3F')
     assert rv.status_code == 400

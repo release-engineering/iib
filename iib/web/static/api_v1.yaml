@@ -70,6 +70,13 @@ paths:
             type: string
             example: pull speci of the index image
             default: null
+        - name: from_index_startswith
+          in: query
+          description: The beginning of pull specification of from index image to filter the build requests by
+          schema:
+            type: string
+            example: pull specification of the from index image. Can be used to search from index without tag.
+            default: null
       responses:
         '200':
           description: A list of build requests
