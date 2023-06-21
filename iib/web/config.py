@@ -30,7 +30,6 @@ class Config(object):
     IIB_MESSAGING_DURABLE: bool = True
     IIB_MESSAGING_KEY: str = '/etc/iib/messaging.key'
     IIB_MESSAGING_TIMEOUT: int = 30
-    IIB_OTEL_TRACING: bool = False
     IIB_REQUEST_DATA_DAYS_TO_LIVE: int = 3
     IIB_REQUEST_LOGS_DIR: Optional[str] = None
     IIB_REQUEST_RELATED_BUNDLES_DIR: Optional[str] = None

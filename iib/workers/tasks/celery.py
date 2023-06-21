@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import os
+
 import celery
 from celery.signals import celeryd_init
 from opentelemetry.instrumentation.celery import CeleryInstrumentor
@@ -15,7 +17,7 @@ app = celery.Celery()
 configure_celery(app)
 celeryd_init.connect(validate_celery_config)
 
-if app.conf['iib_otel_tracing']:
+if os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
     RequestsInstrumentor().instrument(trace_provider=tracerWrapper.provider)
 
 
@@ -23,5 +25,5 @@ if app.conf['iib_otel_tracing']:
 @worker_process_init.connect(weak=False)
 def init_celery_tracing(*args, **kwargs):
     """Initialize the tracing for celery."""
-    if app.conf['iib_otel_tracing']:
+    if os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
         CeleryInstrumentor().instrument(trace_provider=tracerWrapper.provider)
