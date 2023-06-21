@@ -68,7 +68,7 @@ paths:
           description: The index image to filter the build requests by
           schema:
             type: string
-            example: pull speci of the index image
+            example: pull specification of the index image
             default: null
         - name: from_index
           in: query
