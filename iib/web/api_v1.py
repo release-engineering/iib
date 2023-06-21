@@ -367,6 +367,7 @@ def get_builds() -> flask.Response:
     user = flask.request.args.get('user')
     index_image = flask.request.args.get('index_image')
     from_index = flask.request.args.get('from_index')
+    from_index_startswith = flask.request.args.get('from_index_startswith')
     query_params = {}
 
     # Create an alias class to load the polymorphic classes
@@ -397,7 +398,7 @@ def get_builds() -> flask.Response:
         query_params['user'] = user
         query = query.join(Request.user).filter(User.username == user)
 
-    if index_image or from_index:
+    if index_image or from_index or from_index_startswith:
         # https://sqlalche.me/e/20/xaj2 - Create aliases for self-join (Sqlalchemy 2.0)
         request_create_empty_index_alias = aliased(RequestCreateEmptyIndex, flat=True)
         request_add_alias = aliased(RequestAdd, flat=True)
@@ -429,6 +430,30 @@ def get_builds() -> flask.Response:
                     request_add_alias.from_index_id == from_index_result.id,
                     request_rm_alias.from_index_id == from_index_result.id,
                     request_fbc_operations_alias.from_index_id == from_index_result.id,
+                )
+            )
+
+        if from_index_startswith:
+            query_params['from_index_startswith'] = from_index_startswith
+            from_index_startswith_results = Image.query.filter(
+                Image.pull_specification.startswith(from_index_startswith)
+            ).all()
+
+            if not from_index_startswith_results:
+                # if index_image is not found in image table, then raise an error
+                raise ValidationError(
+                    f'Can\'t find any from_index starting with {from_index_startswith}'
+                )
+
+            # Get id of the images to be searched
+            from_index_result_ids = [fir.id for fir in from_index_startswith_results]
+
+            query = query.filter(
+                or_(
+                    request_create_empty_index_alias.from_index_id.in_(from_index_result_ids),
+                    request_add_alias.from_index_id.in_(from_index_result_ids),
+                    request_rm_alias.from_index_id.in_(from_index_result_ids),
+                    request_fbc_operations_alias.from_index_id.in_(from_index_result_ids),
                 )
             )
 
