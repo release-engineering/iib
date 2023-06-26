@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.2.0
+- Adding from_index_startswith builds search filter by @lipoja in https://github.com/release-engineering/iib/pull/526
+- Convert IIB_OTEL_TRACING to an env variable by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/527
+
 ## 8.1.1
 - Add init file to iib/common module by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/524
 
