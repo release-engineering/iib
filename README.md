@@ -420,6 +420,9 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_retry_jitter` - the extra seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
 * `iib_retry_multiplier` - the constant in the `2^x * multiplier` formula, where x stands for attempt number. Formula is used to calculate the
   seconds to be added on delay between retry attempts. It's just used for buildah when receiving HTTP 50X errors. This defaults to `5`.
+* `iib_supported_archs` - the architectures supported by IIB. IIB can build index images for these
+  architectures. The dictionary has mapping of arch aliases with formal names like
+  `{"arm64": "aarch64"}`
 
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
