@@ -16,12 +16,17 @@ from iib.workers.config import get_worker_config
 worker_config = get_worker_config()
 
 
-@pytest.mark.parametrize('arch', ('amd64', 'ppc64le', 's390x', 'spam'))
+@pytest.mark.parametrize('arch', ('amd64', 'ppc64le', 's390x', 'arm64'))
+@mock.patch('iib.workers.tasks.build.get_image_label')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_build_image(mock_run_cmd, arch):
+def test_build_image(mock_run_cmd, mock_get_label, arch):
+    mock_run_cmd.return_value = None
+    mock_get_label.return_value = worker_config['iib_supported_archs'][arch]
     build._build_image('/some/dir', 'some.Dockerfile', 3, arch)
+    destination = f'iib-build:3-{arch}'
+    local_destination = f'containers-storage:localhost/{destination}'
 
-    mock_run_cmd.assert_called_once_with(
+    mock_run_cmd.assert_called_with(
         [
             'buildah',
             'bud',
@@ -33,13 +38,37 @@ def test_build_image(mock_run_cmd, arch):
             '--arch',
             arch,
             '-t',
-            f'iib-build:3-{arch}',
+            destination,
             '-f',
             '/some/dir/some.Dockerfile',
         ],
         {'cwd': '/some/dir'},
-        exc_msg=mock.ANY,
+        exc_msg=f"Failed to build the container image on the arch {arch}",
     )
+    mock_get_label.assert_called_with(local_destination, 'architecture')
+
+
+@mock.patch('iib.workers.tasks.build.get_image_label')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_build_image_incorrect_arch(mock_run_cmd, mock_get_label):
+    mock_get_label.side_effect = ['x86_64', 's390x']
+    mock_run_cmd.retuen_value = None
+    build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
+    # build_image retried once, hence buildah bud commands ran twice
+    assert mock_run_cmd.call_count == 2
+    assert mock_get_label.call_count == 2
+
+
+@mock.patch('iib.workers.tasks.build.get_image_label')
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_build_image_incorrect_arch_failure(mock_run_cmd, mock_get_label):
+    mock_get_label.side_effect = ['x86_64', 'x86_64', 'x86_64', 'x86_64', 'x86_64']
+    mock_run_cmd.return_value = None
+    with pytest.raises(ExternalServiceError):
+        build._build_image('/some/dir', 'some.Dockerfile', 3, "s390x")
+        # build_image retried multiple times as the incorrect arch was created for image always
+        assert mock_run_cmd.call_count == 5
+        assert mock_get_label.call_count == 5
 
 
 @mock.patch(

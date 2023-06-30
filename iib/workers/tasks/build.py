@@ -85,7 +85,8 @@ def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arc
     :param str arch: the architecture to build this image for
     :raises IIBError: if the build fails
     """
-    destination: str = _get_local_pull_spec(request_id, arch)
+    local_destination: str = _get_local_pull_spec(request_id, arch, include_transport=True)
+    destination: str = local_destination.split('/')[1]
     log.info(
         'Building the container image with the %s dockerfile for arch %s and tagging it as %s',
         dockerfile_name,
@@ -117,6 +118,16 @@ def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arc
         {'cwd': dockerfile_dir},
         exc_msg=f'Failed to build the container image on the arch {arch}',
     )
+    log.debug('Verifying that %s was built with expected arch %s', destination, arch)
+    archmap = get_worker_config()['iib_supported_archs']
+    destination_arch = get_image_label(local_destination, 'architecture')
+
+    if destination_arch not in archmap.values() or destination_arch != archmap.get(arch):
+        log.warning("Wrong arch created for %s", destination)
+        raise ExternalServiceError(
+            f'Wrong arch created, for image {destination} '
+            f'expected arch {archmap.get(arch)}, found {destination_arch}'
+        )
 
 
 def _cleanup() -> None:

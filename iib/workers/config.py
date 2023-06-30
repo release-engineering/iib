@@ -61,6 +61,12 @@ class Config(object):
     iib_retry_delay: int = 10
     iib_retry_jitter: int = 10
     iib_retry_multiplier: int = 5
+    iib_supported_archs: dict = {
+        "amd64": "x86_64",
+        "arm64": "aarch64",
+        "s390x": "s390x",
+        "ppc64le": "ppc64le",
+    }
     include: List[str] = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',

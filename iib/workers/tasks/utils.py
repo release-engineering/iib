@@ -548,7 +548,7 @@ def get_image_labels(pull_spec: str) -> Dict[str, str]:
     :return: the dictionary of the labels on the image
     :rtype: dict
     """
-    if pull_spec.startswith('docker://'):
+    if pull_spec.startswith('docker://') or pull_spec.startswith('containers-storage'):
         full_pull_spec = pull_spec
     else:
         full_pull_spec = f'docker://{pull_spec}'
