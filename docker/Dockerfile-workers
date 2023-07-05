@@ -24,7 +24,7 @@ RUN dnf -y install \
     && dnf update -y \
     && dnf clean all
 
-ADD https://github.com/operator-framework/operator-registry/releases/download/v1.26.2/linux-amd64-opm /usr/bin/opm
+ADD https://github.com/operator-framework/operator-registry/releases/download/v1.28.0/linux-amd64-opm /usr/bin/opm
 RUN chmod +x /usr/bin/opm
 ADD https://github.com/fullstorydev/grpcurl/releases/download/v1.8.5/grpcurl_1.8.5_linux_x86_64.tar.gz /src/grpcurl_1.8.5_linux_x86_64.tar.gz
 RUN cd /usr/bin && tar -xf /src/grpcurl_1.8.5_linux_x86_64.tar.gz grpcurl && rm -f /src/grpcurl_1.8.5_linux_x86_64.tar.gz
