@@ -6,6 +6,9 @@ import pytest
 
 from iib.exceptions import IIBError
 from iib.workers import api_utils
+from iib.workers.config import get_worker_config
+
+config = get_worker_config()
 
 
 @mock.patch('iib.workers.api_utils.requests_session')
@@ -76,6 +79,7 @@ def test_update_request_connection_failed(mock_session):
 
     with pytest.raises(IIBError, match='The connection failed.+'):
         api_utils.update_request(3, {'index_image': 'index-image:latest'})
+        assert mock_session.patch.call_count == config.iib_total_attempts
 
 
 @pytest.mark.parametrize(

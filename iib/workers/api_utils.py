@@ -6,13 +6,22 @@ from typing import Any, Dict, Optional
 import requests
 from requests.packages.urllib3.util.retry import Retry
 import requests_kerberos
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from iib.exceptions import IIBError
+from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
 from iib.common.tracing import instrument_tracing
 
 log = logging.getLogger(__name__)
+config = get_worker_config()
 
 
 def get_requests_session(auth: bool = False) -> requests.Session:
@@ -46,10 +55,6 @@ def get_request(request_id: int) -> Dict[str, Any]:
     :rtype: dict
     :raises IIBError: if the HTTP request fails
     """
-    # Prevent a circular import
-    from iib.workers.config import get_worker_config
-
-    config = get_worker_config()
     request_url = f'{config.iib_api_url.rstrip("/")}/builds/{request_id}'
     log.info('Getting the request %d', request_id)
 
@@ -120,6 +125,13 @@ def set_omps_operator_version(
     return update_request(request_id, payload, exc_msg=exc_msg)
 
 
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(config.iib_total_attempts),
+    wait=wait_exponential(config.iib_retry_multiplier),
+)
 def update_request(
     request_id: int,
     payload: UpdateRequestPayload,
@@ -137,9 +149,6 @@ def update_request(
     """
     # Prevent a circular import
     start_time = time.time()
-    from iib.workers.config import get_worker_config
-
-    config = get_worker_config()
     request_url = f'{config.iib_api_url.rstrip("/")}/builds/{request_id}'
     log.info('Patching the request %d with %r', request_id, payload)
 
