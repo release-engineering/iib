@@ -95,9 +95,9 @@ def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, str]:
     """
     Extract operator package from the fbc_fragment image.
 
-    :param str temp_dir: base temp directory for IIB request
-    :pararm str fbc_fragment: pull specification of fbc_fragment in the IIB request
-    :return fbc_fragment path, fbc_operator_package
+    :param str temp_dir: base temp directory for IIB request.
+    :param str fbc_fragment: pull specification of fbc_fragment in the IIB request.
+    :return: fbc_fragment path, fbc_operator_package.
     :rtype: tuple
     """
     from iib.workers.tasks.build import _copy_files_from_image

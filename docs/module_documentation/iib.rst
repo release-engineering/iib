@@ -6,6 +6,7 @@ Subpackages
 
 .. toctree::
 
+   iib.common
    iib.web
    iib.workers
 
