@@ -426,6 +426,8 @@ paths:
                   description: >
                     An arbitrary JSON object associated with the batch. This is accessed by the
                     "batch_annotations" key's value on a build request in the batch.
+                  example:
+                    example_batch_annotation: batch:448787
                 build_requests:
                   type: array
                   items:
@@ -531,6 +533,8 @@ paths:
                   description: >
                     An arbitrary JSON object associated with the batch. This is accessed by the
                     "batch_annotations" key's value on a build request in the batch.
+                  example:
+                    example_batch_annotation: batch:448787
                 build_requests:
                   type: array
                   description: Request objects of type Add or Rm
@@ -860,6 +864,8 @@ components:
           type: object
           description: >
             An arbitrary JSON object created by the submitter associated with the batch.
+          example:
+            example_batch_annotation: batch:448787
         state_history:
           type: array
           items:
@@ -971,6 +977,8 @@ components:
         binary_image:
           type: string
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
         bundles:
           type: array
           description: >
@@ -1052,6 +1060,8 @@ components:
       properties:
         add_arches:
           type: array
+          description: >
+            The set of arches to build in addition to the arches from_index is currently built for.
           items:
             type: string
           example:
@@ -1060,11 +1070,18 @@ components:
         binary_image:
           type: string
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
         from_index:
           type: string
           example: 'quay.io/iib-stage/iib:4'
+          description: >
+            The pull specification of the container image containing the index,
+            that the index image build will be based from.
         operators:
           type: array
+          description: >
+            A list of strings representing the name of the operators to remove from the index image.
           items:
             type: string
           example:
@@ -1141,7 +1158,9 @@ components:
           example:
             quay.io/foo/bar@sha256:123456: quay.io/foo/bar@sha256:654321
         related_bundles:
-          type: object
+          type: Array of dictionaries
+          description: >
+            List, where each item represents a specific bundle related to the request.
           properties:
             url:
               type: string
@@ -1181,6 +1200,8 @@ components:
                 quay.io/user/openshift-bundle-example-container@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
             related_bundles:
               type: object
+              description: >
+                List, where each item represents a specific bundle related to the request.
               properties:
                 url:
                   type: string
@@ -1195,6 +1216,8 @@ components:
       properties:
         binary_image:
           type: string
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
         deprecation_list:
           type: array
@@ -1300,14 +1323,21 @@ components:
       properties:
         binary_image:
           type: string
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
         from_index:
           type: string
+          description: >
+            The pull specification of the container image containing the index,
+            that the index image build will be based from.
           example: 'quay.io/iib-stage/iib:4'
         labels:
           type: object
           additionalProperties:
             type: string
+          description: >
+            The dict of labels required to be added to a new index image.
           example:
             version: 'v4.6'
         output_fbc:
@@ -1426,6 +1456,8 @@ components:
             - s390x
         binary_image:
           type: string
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
           example: 'quay.io/operator-framework/upstream-registry-builder:v1.26.3'
         fbc_fragment:
           type: string
