@@ -58,6 +58,14 @@ iib.web.errors module
    :private-members:
    :show-inheritance:
 
+iib.web.iib\_static\_types module
+---------------------------------
+
+.. automodule:: iib.web.iib_static_types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.web.manage module
 ---------------------
 
@@ -67,6 +75,14 @@ iib.web.manage module
    :private-members:
    :show-inheritance:
 
+iib.web.messaging module
+------------------------
+
+.. automodule:: iib.web.messaging
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.web.models module
 ---------------------
 
@@ -74,6 +90,14 @@ iib.web.models module
    :ignore-module-all:
    :members:
    :private-members:
+   :show-inheritance:
+
+iib.web.s3\_utils module
+------------------------
+
+.. automodule:: iib.web.s3_utils
+   :members:
+   :undoc-members:
    :show-inheritance:
 
 iib.web.utils module
@@ -93,7 +117,6 @@ iib.web.wsgi module
    :members:
    :private-members:
    :show-inheritance:
-
 
 Module contents
 ---------------
