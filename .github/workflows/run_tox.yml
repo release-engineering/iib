@@ -34,6 +34,9 @@ jobs:
       - name: Run unit tests with tox
         run: |
           tox -m test
+      - name: Run documentation build test with tox
+        run: |
+          tox -m docs
       - name: Run security checks with tox
         run: |
           tox -m security
