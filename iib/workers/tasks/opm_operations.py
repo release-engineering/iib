@@ -783,7 +783,7 @@ def opm_registry_add_fbc_fragment(
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from. This should point to a digest or stable tag.
     :param str fbc_fragment: the pull specification of fbc fragment to be added in from_index.
-    :pararm str overwrite_from_index_token: token used to access the image
+    :param str overwrite_from_index_token: token used to access the image
     """
     set_request_state(request_id, 'in_progress', 'Extracting operator package from fbc_fragment')
     # fragment path will look like /tmp/iib-**/fbc-fragment
@@ -863,11 +863,11 @@ def verify_operator_exists(
     """
     Check if operator exists in index image.
 
-    :pararm str from_index: index in which operator existence is checke
+    :param str from_index: index in which operator existence is checked
     :param str base_dir: base temp directory for IIB request
-    :pararm str operator_package: operator_package to check
-    :pararm str overwrite_from_index_token: token used to access the image
-    :return is_package_in_index, index_db_path
+    :param str operator_package: operator_package to check
+    :param str overwrite_from_index_token: token used to access the image
+    :return: is_package_in_index, index_db_path
     :rtype: (str, str)
     """
     from iib.workers.tasks.build import terminate_process, get_bundle_json

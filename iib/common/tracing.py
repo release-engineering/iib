@@ -7,8 +7,8 @@ The OTLP exporter is configured to use the environment variables defined in the 
 
 Usage:
     @instrument_tracing()
-    def func():
-        pass
+      def func():
+          pass
 
 """
 import os

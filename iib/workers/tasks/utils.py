@@ -370,7 +370,7 @@ class RequestConfigFBCOperation(RequestConfig):
     :param str from_index: the pull specification of the container image
         containing the index that the index image build
         will be based from.
-    param set add_arches: the set of arches to build in addition to the
+    :param set add_arches: the set of arches to build in addition to the
         arches ``from_index`` is currently built for;
         if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
@@ -929,8 +929,8 @@ def chmod_recursively(dir_path: str, dir_mode: int, file_mode: int) -> None:
     """Change file mode bits recursively.
 
     :param str dir_path: the path to the starting directory to apply the file mode bits
-    :param dir_mode int: the mode, as defined in the stat module, to apply to directories
-    :param file_mode int: the mode, as defined in the stat module, to apply to files
+    :param int dir_mode: the mode, as defined in the stat module, to apply to directories
+    :param int file_mode: the mode, as defined in the stat module, to apply to files
     """
     for dirpath, dirnames, filenames in os.walk(dir_path):
         os.chmod(dirpath, dir_mode)
