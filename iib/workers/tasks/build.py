@@ -453,6 +453,7 @@ def _opm_index_add(
     bundles: List[str],
     binary_image: str,
     from_index: Optional[str] = None,
+    graph_update_mode: Optional[str] = None,
     overwrite_from_index_token: Optional[str] = None,
     overwrite_csv: bool = False,
     container_tool: Optional[str] = None,
@@ -469,6 +470,8 @@ def _opm_index_add(
         gets copied from. This should point to a digest or stable tag.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required to use ``overwrite_from_index``.
         The format of the token must be in the format "user:password".
@@ -496,6 +499,10 @@ def _opm_index_add(
     if container_tool:
         cmd.append('--container-tool')
         cmd.append(container_tool)
+
+    if graph_update_mode:
+        log.info('Using %s mode to update the channel graph in the index', graph_update_mode)
+        cmd.extend(['--mode', graph_update_mode])
 
     log.info('Generating the database file with the following bundle(s): %s', ', '.join(bundles))
     if from_index:
@@ -789,6 +796,7 @@ def handle_add_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     deprecation_list: Optional[List[str]] = None,
     build_tags: Optional[List[str]] = None,
+    graph_update_mode: Optional[str] = None,
     traceparent: Optional[str] = None,
 ) -> None:
     """
@@ -824,6 +832,8 @@ def handle_add_request(
     :param list deprecation_list: list of deprecated bundles for the target index image. Defaults
         to ``None``.
     :param list build_tags: List of tags which will be applied to intermediate index images.
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     :param str traceparent: the traceparent header value to be used for tracing the request.
     :raises IIBError: if the index image build fails.
     """
@@ -898,6 +908,7 @@ def handle_add_request(
                 bundles=resolved_bundles,
                 binary_image=prebuild_info['binary_image_resolved'],
                 from_index=from_index_resolved,
+                graph_update_mode=graph_update_mode,
                 overwrite_from_index_token=overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
             )
@@ -907,6 +918,7 @@ def handle_add_request(
                 bundles=resolved_bundles,
                 binary_image=prebuild_info['binary_image_resolved'],
                 from_index=from_index_resolved,
+                graph_update_mode=graph_update_mode,
                 overwrite_from_index_token=overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
             )

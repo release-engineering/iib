@@ -286,6 +286,7 @@ def test_opm_registry_add(
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
+@pytest.mark.parametrize('graph_update_mode', (None, 'semver-skippatch'))
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
@@ -303,6 +304,7 @@ def test_opm_registry_add_fbc(
     bundles,
     overwrite_csv,
     container_tool,
+    graph_update_mode,
     is_fbc,
     tmpdir,
 ):
@@ -319,6 +321,7 @@ def test_opm_registry_add_fbc(
         bundles=bundles,
         binary_image="some:image",
         from_index=from_index,
+        graph_update_mode=graph_update_mode,
         overwrite_csv=overwrite_csv,
         container_tool=container_tool,
     )
@@ -329,6 +332,7 @@ def test_opm_registry_add_fbc(
         bundles=bundles,
         overwrite_csv=overwrite_csv,
         container_tool=container_tool,
+        graph_update_mode=graph_update_mode,
     )
 
     mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)

@@ -1012,6 +1012,14 @@ components:
           description: >
             from_index is required when add_arches is not provided.
           example: 'quay.io/iib-stage/iib:4'
+        graph_update_mode:
+          type: string
+          description: >
+            Graph update mode that defines how channel graphs are updated in the index. It must be one
+            of "replaces", "semver" or "semver-skippatch". This attribute can only be used on index
+            image pull specs configured in IIB_GRAPH_MODE_INDEX_ALLOW_LIST in the IIB API Config. If not
+            specified, "--mode" will not be added to OPM commands to add the bundle(s) to the index.
+          default: None
         organization:
           type: string
           description: >
@@ -1055,6 +1063,9 @@ components:
               example: add
             omps_operator_version:
               $ref: '#/components/schemas/OMPSOperatorVersion'
+            graph_update_mode:
+              type: string
+              example: semver
     RmRequest:
       type: object
       properties:
