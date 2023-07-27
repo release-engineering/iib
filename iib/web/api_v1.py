@@ -127,6 +127,7 @@ def _get_add_args(
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('deprecation_list', []),
         payload.get('build_tags', []),
+        payload.get('graph_update_mode'),
     ]
 
 

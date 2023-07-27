@@ -66,6 +66,7 @@ def test_get_build(app, auth_env, client, db):
         'distribution_scope': None,
         'from_index': 'quay.io/namespace/repo:latest',
         'from_index_resolved': 'quay.io/namespace/from_index@sha256:defghi',
+        'graph_update_mode': None,
         'id': 1,
         'index_image': 'quay.io/namespace/index@sha256:fghijk',
         'index_image_resolved': None,
@@ -496,11 +497,22 @@ def test_get_build_logs_s3_configured(
             {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'force_backport': 'spam'},
             '"force_backport" must be a boolean',
         ),
+        (
+            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'graph_update_mode': 123},
+            '"graph_update_mode" must be a string',
+        ),
+        (
+            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'graph_update_mode': 'Hi'},
+            (
+                '"graph_update_mode" must be set to one of these: [\'replaces\', \'semver\''
+                ', \'semver-skippatch\']'
+            ),
+        ),
     ),
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundles_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
-    rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -517,6 +529,30 @@ def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
     rv = client.post(f'/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
     assert rv.status_code == 403
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize('from_index', (None, 'some-common-index'))
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_bundles_graph_update_mode_not_allowed(
+    mock_smfsc, app, client, auth_env, db, from_index
+):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['some-unique-index']
+    data = {
+        'binary_image': 'binary:image',
+        'bundles': ['some:thing'],
+        'from_index': from_index,
+        'graph_update_mode': 'semver',
+        'overwrite_from_index': True,
+        'overwrite_from_index_token': "somettoken",
+    }
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 403
+    error_msg = (
+        '"graph_update_mode" can only be used on the'
+        ' following "from_index" pullspecs: [\'some-unique-index\']'
+    )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
 
@@ -732,12 +768,13 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
         'bundles',
         'from_index',
         'distribution_scope',
+        'graph_update_mode',
     ),
     (
-        (False, None, ['some:thing'], None, None),
-        (False, None, [], 'some:thing', 'Prod'),
-        (True, 'username:password', ['some:thing'], 'some:thing', 'StagE'),
-        (True, 'username:password', [], 'some:thing', 'DeV'),
+        (False, None, ['some:thing'], None, None, 'semver'),
+        (False, None, [], 'some:thing', 'Prod', 'semver-skippatch'),
+        (True, 'username:password', ['some:thing'], 'some:thing', 'StagE', 'replaces'),
+        (True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_add_request')
@@ -745,6 +782,7 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
 def test_add_bundle_success(
     mock_smfsc,
     mock_har,
+    app,
     overwrite_from_index,
     overwrite_from_index_token,
     db,
@@ -753,7 +791,9 @@ def test_add_bundle_success(
     bundles,
     from_index,
     distribution_scope,
+    graph_update_mode,
 ):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = [from_index]
     data = {
         'binary_image': 'binary:image',
         'add_arches': ['s390x'],
@@ -762,6 +802,7 @@ def test_add_bundle_success(
         'overwrite_from_index': overwrite_from_index,
         'overwrite_from_index_token': overwrite_from_index_token,
         'from_index': from_index,
+        'graph_update_mode': graph_update_mode,
     }
 
     expected_distribution_scope = None
@@ -786,6 +827,7 @@ def test_add_bundle_success(
         'distribution_scope': expected_distribution_scope,
         'from_index': from_index,
         'from_index_resolved': None,
+        'graph_update_mode': graph_update_mode,
         'id': 1,
         'index_image': None,
         'index_image_resolved': None,
@@ -860,9 +902,9 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-7] is True
+    assert mock_har.apply_async.call_args[1]['args'][-8] is True
     # Third to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-6] == token
+    assert mock_har.apply_async.call_args[1]['args'][-7] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -1134,6 +1176,7 @@ def test_patch_request_add_success(
         'distribution_scope': distribution_scope,
         'from_index': None,
         'from_index_resolved': None,
+        'graph_update_mode': None,
         'id': minimal_request_add.id,
         'index_image': 'index:image',
         'index_image_resolved': 'index:image-resolved',
@@ -1753,12 +1796,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     {},
                     [],
                     [],
+                    None,
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
                     "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None, {}, [], []]"
+                    "'hello-operator', None, True, '*****', None, None, {}, [], [], None]"
                 ),
                 link_error=mock.ANY,
                 queue=None,

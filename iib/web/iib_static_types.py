@@ -65,6 +65,7 @@ PossiblePayloadParameters = Sequence[
         'force_backport',
         'from_bundle_image',
         'from_index',
+        'graph_update_mode',
         'labels',
         'operators',
         'organization',
@@ -92,6 +93,7 @@ class AddRequestPayload(TypedDict):
     distribution_scope: NotRequired[str]
     force_backport: NotRequired[bool]
     from_index: NotRequired[str]
+    graph_update_mode: NotRequired[str]
     organization: NotRequired[str]
     overwrite_from_index: NotRequired[bool]
     overwrite_from_index_token: NotRequired[str]
@@ -344,6 +346,7 @@ class AddRmRequestResponseBase(CommonIndexImageResponseBase, APIPartImageBuildRe
 class AddRequestResponse(AddRmRequestResponseBase):
     """Datastructure of the response to request from /builds/add API point."""
 
+    graph_update_mode: str
     omps_operator_version: Dict[str, Any]
 
 

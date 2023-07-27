@@ -1038,6 +1038,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
     deprecation_list: Mapped[List['Image']] = db.relationship(
         'Image', secondary=RequestAddBundleDeprecation.__table__
     )
+    graph_update_mode: Mapped[Optional[str]]
     organization: Mapped[Optional[str]]
 
     omps_operator_version: Mapped[Optional[str]]
@@ -1072,8 +1073,9 @@ class RequestAdd(Request, RequestIndexImageMixin):
         if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
             raise ValidationError('"from_index" must be specified if no bundles are specified')
 
-        ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'organization']] = (
+        ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'graph_update_mode', 'organization']] = (
             'cnr_token',
+            'graph_update_mode',
             'organization',
         )
         for param in ALLOWED_KEYS_1:
@@ -1082,6 +1084,21 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
             if not isinstance(request_kwargs[param], str):
                 raise ValidationError(f'"{param}" must be a string')
+
+            if param == 'graph_update_mode':
+                graph_mode_options = current_app.config['IIB_GRAPH_MODE_OPTIONS']
+                if request_kwargs[param] not in graph_mode_options:
+                    raise ValidationError(
+                        f'"{param}" must be set to one of these: {graph_mode_options}'
+                    )
+                allowed_from_indexes: List[str] = current_app.config[
+                    'IIB_GRAPH_MODE_INDEX_ALLOW_LIST'
+                ]
+                if request_kwargs.get('from_index') not in allowed_from_indexes:
+                    raise Forbidden(
+                        '"graph_update_mode" can only be used on the'
+                        f' following "from_index" pullspecs: {allowed_from_indexes}'
+                    )
 
         if not isinstance(request_kwargs.get('force_backport', False), bool):
             raise ValidationError('"force_backport" must be a boolean')
@@ -1099,6 +1116,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 'bundles',
                 'distribution_scope',
                 'deprecation_list',
+                'graph_update_mode',
                 'build_tags',
             ],
             batch=batch,
@@ -1137,6 +1155,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
         rv['omps_operator_version'] = {}
         if self.omps_operator_version:
             rv['omps_operator_version'] = json.loads(self.omps_operator_version)
+        rv['graph_update_mode'] = self.graph_update_mode
 
         for bundle in self.bundles:
             if bundle.operator:

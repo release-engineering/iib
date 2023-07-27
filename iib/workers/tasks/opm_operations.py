@@ -524,6 +524,7 @@ def _opm_registry_add(
     bundles: List[str],
     overwrite_csv: bool = False,
     container_tool: Optional[str] = None,
+    graph_update_mode: Optional[str] = None,
 ) -> None:
     """
     Add the input bundles to an operator index database.
@@ -537,6 +538,8 @@ def _opm_registry_add(
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
     :param str container_tool: the container tool to be used to operate on the index image
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     """
     from iib.workers.tasks.utils import run_cmd
 
@@ -561,6 +564,10 @@ def _opm_registry_add(
         cmd.append('--container-tool')
         cmd.append(container_tool)
 
+    if graph_update_mode:
+        log.info('Using %s mode to update the channel graph in the index', graph_update_mode)
+        cmd.extend(['--mode', graph_update_mode])
+
     log.info('Generating the database file with the following bundle(s): %s', ', '.join(bundles))
 
     if overwrite_csv:
@@ -581,6 +588,7 @@ def opm_registry_add_fbc(
     bundles: List[str],
     binary_image: str,
     from_index: Optional[str] = None,
+    graph_update_mode: Optional[str] = None,
     overwrite_csv: bool = False,
     overwrite_from_index_token: Optional[str] = None,
     container_tool: Optional[str] = None,
@@ -597,6 +605,8 @@ def opm_registry_add_fbc(
         gets copied from. This should point to a digest or stable tag.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
         already exists.
     :param str overwrite_from_index_token: the token used for overwriting the input
@@ -617,6 +627,7 @@ def opm_registry_add_fbc(
         bundles=bundles,
         overwrite_csv=overwrite_csv,
         container_tool=container_tool,
+        graph_update_mode=graph_update_mode,
     )
 
     fbc_dir, _ = opm_migrate(index_db=index_db_file, base_dir=base_dir)

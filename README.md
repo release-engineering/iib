@@ -199,6 +199,13 @@ The custom configuration options for the REST API are listed below:
   to another dictionary mapping ocp_version label to a binary image pull specification.
   This is useful in setting up customized binary image for different index image images thus
   reducing complexity for the end user. This defaults to `{}`.
+* `IIB_GRAPH_MODE_INDEX_ALLOW_LIST` - the list of index image pull specs on which using the
+  `graph_update_mode` parameter while submitting an IIB request is permitted. This defaults to `[]`
+  . Please check out the [API Documentation](http://release-engineering.github.io/iib) for more
+  information on how to use "graph_update_mode" for Add requests.
+* `IIB_GRAPH_MODE_OPTIONS` - the list of valid options for the `graph_update_mode` parameter in
+  the Add API endpoint. It defaults to `['replaces', 'semver', 'semver-skippatch']` i.e. the list
+  of modes supported by OPM.
 * `IIB_GREENWAVE_CONFIG` - the mapping, `dict(<str>: dict(<str>:<str>))`, of celery task queues to
   another dictionary of [Greenwave](https://docs.pagure.org/greenwave/) query parameters to their
   values. This is useful in setting up customized gating for each queue. This defaults to `{}`. Use
