@@ -20,6 +20,8 @@ class Config(object):
     IIB_ADDITIONAL_LOGGERS: List[str] = []
     IIB_AWS_S3_BUCKET_NAME: Optional[str] = None
     IIB_BINARY_IMAGE_CONFIG: Dict[str, Dict[str, str]] = {}
+    IIB_GRAPH_MODE_INDEX_ALLOW_LIST: List[str] = []
+    IIB_GRAPH_MODE_OPTIONS: List[str] = ['replaces', 'semver', 'semver-skippatch']
     IIB_GREENWAVE_CONFIG: Dict[str, str] = {}
     IIB_LOG_FORMAT: str = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger

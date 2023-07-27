@@ -334,14 +334,18 @@ def test_get_local_pull_spec(request_id, arch):
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
+@pytest.mark.parametrize('graph_update_mode', (None, 'semver'))
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool):
+def test_opm_index_add(
+    mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool, graph_update_mode
+):
     build._opm_index_add(
         '/tmp/somedir',
         bundles,
         'binary-image:latest',
         from_index,
+        graph_update_mode,
         'user:pass',
         overwrite_csv,
         container_tool=container_tool,
@@ -368,6 +372,11 @@ def test_opm_index_add(mock_run_cmd, mock_srt, from_index, bundles, overwrite_cs
         assert container_tool in opm_args
     else:
         assert '--container-tool' not in opm_args
+    if graph_update_mode:
+        assert '--mode' in opm_args
+        assert graph_update_mode in opm_args
+    else:
+        assert '--mode' not in opm_args
     assert "--enable-alpha" in opm_args
 
     mock_srt.assert_called_once_with('user:pass', from_index, append=True)
