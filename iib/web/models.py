@@ -229,7 +229,7 @@ class Image(db.Model):
     """
 
     id: Mapped[int] = db.mapped_column(primary_key=True)
-    operator_id: Mapped[int] = db.mapped_column(db.ForeignKey('operator.id'))
+    operator_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('operator.id'))
     pull_specification: Mapped[str] = db.mapped_column(index=True, unique=True)
 
     operator: Mapped['Operator'] = db.relationship('Operator')
@@ -354,12 +354,12 @@ class Request(db.Model):
     )
     batch_id: Mapped[int] = db.mapped_column(db.ForeignKey('batch.id'), index=True)
     batch: Mapped['Batch'] = db.relationship('Batch', back_populates='requests')
-    request_state_id: Mapped[int] = db.mapped_column(
+    request_state_id: Mapped[Optional[int]] = db.mapped_column(
         db.ForeignKey('request_state.id'), index=True, unique=True
     )
     # This maps to a value in RequestTypeMapping
     type: Mapped[int]
-    user_id: Mapped[int] = db.mapped_column(db.ForeignKey('user.id'))
+    user_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('user.id'))
 
     state: Mapped['RequestState'] = db.relationship('RequestState', foreign_keys=[request_state_id])
     states: Mapped[List['RequestState']] = db.relationship(
@@ -772,12 +772,12 @@ class RequestIndexImageMixin:
     """
 
     @declared_attr
-    def binary_image_id(cls: DefaultMeta) -> Mapped[int]:
+    def binary_image_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the image that the opm binary comes from."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def binary_image_resolved_id(cls: DefaultMeta) -> Mapped[int]:
+    def binary_image_resolved_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the resolved image that the opm binary comes from."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -792,12 +792,12 @@ class RequestIndexImageMixin:
         return db.relationship('Image', foreign_keys=[cls.binary_image_resolved_id], uselist=False)
 
     @declared_attr
-    def from_index_id(cls: DefaultMeta) -> Mapped[int]:
+    def from_index_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the index image to base the request from."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
     @declared_attr
-    def from_index_resolved_id(cls: DefaultMeta) -> Mapped[int]:
+    def from_index_resolved_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the resolved index image  to base the request from."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -812,7 +812,7 @@ class RequestIndexImageMixin:
         return db.relationship('Image', foreign_keys=[cls.from_index_resolved_id], uselist=False)
 
     @declared_attr
-    def index_image_id(cls: DefaultMeta) -> Mapped[int]:
+    def index_image_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the built index image."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -822,7 +822,7 @@ class RequestIndexImageMixin:
         return db.relationship('Image', foreign_keys=[cls.index_image_id], uselist=False)
 
     @declared_attr
-    def index_image_resolved_id(cls: DefaultMeta) -> Mapped[int]:
+    def index_image_resolved_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of the resolved built index image."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -832,7 +832,7 @@ class RequestIndexImageMixin:
         return db.relationship('Image', foreign_keys=[cls.index_image_resolved_id], uselist=False)
 
     @declared_attr
-    def internal_index_image_copy_id(cls: DefaultMeta) -> Mapped[int]:
+    def internal_index_image_copy_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of IIB's internal copy of the built index image."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -844,7 +844,7 @@ class RequestIndexImageMixin:
         )
 
     @declared_attr
-    def internal_index_image_copy_resolved_id(cls: DefaultMeta) -> Mapped[int]:
+    def internal_index_image_copy_resolved_id(cls: DefaultMeta) -> Mapped[Optional[int]]:
         """Return the ID of resolved IIB's internal copy of the built index image."""
         return db.mapped_column(db.Integer, db.ForeignKey('image.id'))
 
@@ -1274,7 +1274,9 @@ class RequestRegenerateBundle(Request):
     # The name of the organization the bundle should be regenerated for
     organization: Mapped[Optional[str]]
     # The mapping of bundle replacements to apply to the regeneration request
-    _bundle_replacements: Mapped[Optional[str]] = db.mapped_column('bundle_replacements', db.Text)
+    _bundle_replacements: Mapped[Optional[str]] = db.mapped_column(
+        'bundle_replacements', db.VARCHAR
+    )
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['regenerate_bundle'].value
@@ -1413,8 +1415,8 @@ class RequestMergeIndexImage(Request):
     id: Mapped[int] = db.mapped_column(
         db.ForeignKey('request.id'), autoincrement=False, primary_key=True
     )
-    binary_image_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
-    binary_image_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    binary_image_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
+    binary_image_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
     binary_image: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[binary_image_id], uselist=False
     )
@@ -1426,13 +1428,15 @@ class RequestMergeIndexImage(Request):
         'Image', secondary=RequestMergeBundleDeprecation.__table__
     )
 
-    index_image_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    index_image_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
     index_image: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[index_image_id], uselist=False
     )
 
     source_from_index_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
-    source_from_index_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    source_from_index_resolved_id: Mapped[Optional[int]] = db.mapped_column(
+        db.ForeignKey('image.id')
+    )
     source_from_index: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[source_from_index_id], uselist=False
     )
@@ -1441,7 +1445,7 @@ class RequestMergeIndexImage(Request):
     )
 
     target_index_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
-    target_index_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    target_index_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
     target_index: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[target_index_id], uselist=False
     )
@@ -1993,8 +1997,8 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         db.ForeignKey('request.id'), autoincrement=False, primary_key=True
     )
 
-    fbc_fragment_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
-    fbc_fragment_resolved_id: Mapped[int] = db.mapped_column(db.ForeignKey('image.id'))
+    fbc_fragment_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
+    fbc_fragment_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
     fbc_fragment: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[fbc_fragment_id], uselist=False
     )
