@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.3.0
+- Retry buildah if incorrect arch created by @chandwanitulsi in https://github.com/release-engineering/iib/pull/529
+- Update Grpcio and Protobuf versions by @xDaile in https://github.com/release-engineering/iib/pull/533
+- Upgrade OPM to 1.28.0 by @chandwanitulsi in https://github.com/release-engineering/iib/pull/530
+- Retry update_request with back-off factor  on failure by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/531
+- Revert "Upgrade OPM to 1.28.0" by @chandwanitulsi in https://github.com/release-engineering/iib/pull/534
+- Update Sphinx documentation by @xDaile in https://github.com/release-engineering/iib/pull/532
+- Configure Renovate by @renovate in https://github.com/release-engineering/iib/pull/535
+- Update dependency cryptography to v41 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/538
+- Update dependency requests to v2.31.0 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/536
+- Update dependency certifi to v2023 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/537
+- Fix bugs in models post flask-sqlalchemy 3.0 and SQLAlchemy 2.0 migration by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/550
+- Add support for "graph_update_mode" parameter in Add request by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/551
+- Update dependency cryptography to v41.0.3 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/553
+
 ## 8.2.0
 - Adding from_index_startswith builds search filter by @lipoja in https://github.com/release-engineering/iib/pull/526
 - Convert IIB_OTEL_TRACING to an env variable by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/527
