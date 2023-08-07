@@ -14,7 +14,9 @@ Usage:
 import os
 import functools
 import logging
-from typing import Dict
+from copy import deepcopy
+from typing import Any, Dict
+
 
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -29,10 +31,26 @@ from opentelemetry.trace.propagation import (
 )
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.util.types import Attributes
 
 
 log = logging.getLogger(__name__)
 propagator = TraceContextTextMapPropagator()
+
+
+def normalize_data_for_span(data: Dict[str, Any]) -> Attributes:
+    """
+    Normalize any dictionary to a open-telemetry usable dictionary.
+
+    :param Dict[str, Any] data: The dictionary to be converted.
+    :return: Normalized dictionary.
+    :rtype: Attributes
+    """
+    span_data = deepcopy(data)
+    for key, value in span_data.items():
+        if type(value) in [type(None), dict, list]:
+            span_data[key] = str(value)
+    return span_data
 
 
 class TracingWrapper:
@@ -102,6 +120,7 @@ def instrument_tracing(
                     span.set_attribute('function_name', func.__name__)
                 try:
                     result = func(*args, **kwargs)
+                    span_result = normalize_data_for_span(result)
                 except Exception as exc:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(exc)
@@ -109,7 +128,7 @@ def instrument_tracing(
                 else:
                     if result:
                         log.debug('result %s', result)
-                        span.set_attribute('result_attributes', result)
+                        span.set_attributes(span_result)
                     if kwargs:
                         # Need to handle all the types of kwargs
                         if "task_id" in kwargs:
@@ -121,7 +140,7 @@ def instrument_tracing(
                         if "task_type" in kwargs:
                             log.debug('task_type is %s' % kwargs['task_type'])
                             span.set_attribute('task_type', kwargs['task_type'])
-                    span.add_event(f'{func.__name__} executed', {'result': result or 'success'})
+                    span.add_event(f'{func.__name__} executed', span_result)
                     span.set_status(Status(StatusCode.OK))
                 finally:
                     # Add the span context from the current span to the link
