@@ -16,7 +16,6 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.build_regenerate_bundle import (
     _adjust_operator_bundle,
-    _get_bundle_metadata,
     get_related_bundle_images,
     write_related_bundles_file,
 )
@@ -27,6 +26,7 @@ from iib.workers.tasks.utils import (
     podman_pull,
     request_logger,
     set_registry_auths,
+    get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 
@@ -163,5 +163,5 @@ def process_parent_bundle_image(
             log.exception(error)
             raise IIBError(error)
 
-        bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib=False)
+        bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib=False)
         return get_related_bundle_images(bundle_metadata)

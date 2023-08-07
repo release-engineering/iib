@@ -50,6 +50,7 @@ from iib.workers.tasks.utils import (
     verify_labels,
     prepare_request_for_build,
     terminate_process,
+    get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import (
     PrebuildInfo,
@@ -795,8 +796,6 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
     :param int request_id: the ID of the request this index image is for.
     :raises IIBError: if one of the bundles does not have the pullable related_image.
     """
-    from iib.workers.tasks.build_regenerate_bundle import _get_bundle_metadata
-
     invalid_related_images = []
     for bundle in bundles:
         manifest_location = get_image_label(
@@ -811,7 +810,7 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
                 error = f'The Operator Manifest is not in a valid YAML format: {e}'
                 log.exception(error)
                 raise IIBError(error)
-            bundle_metadata = _get_bundle_metadata(operator_manifest, False)
+            bundle_metadata = get_bundle_metadata(operator_manifest, False)
             for related_image in bundle_metadata['found_pullspecs']:
                 related_image_pull_spec = related_image.to_str()
                 try:
