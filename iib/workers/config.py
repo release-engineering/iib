@@ -95,6 +95,11 @@ class Config(object):
     temp_fbc_fragment_path = 'fbc-fragment'
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency: int = 1
+    # Before each task execution, instruct the worker to check if this task is a duplicate message.
+    # Deduplication occurs only with tasks that have the same identifier,
+    # enabled late acknowledgment, were redelivered by the message broker
+    # and their state is SUCCESS in the result backend.
+    worker_deduplicate_successful_tasks: bool = True
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
     # other tasks aren't starved. This will only be useful once more workers are enabled.
     worker_prefetch_multiplier: int = 1
