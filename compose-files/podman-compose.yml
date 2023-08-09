@@ -37,7 +37,7 @@ services:
         condition: service_completed_successfully
 
   db:
-    image: postgres:9.6
+    image: postgres:14.7
     environment:
       POSTGRES_USER: iib
       POSTGRES_PASSWORD: iib
