@@ -119,8 +119,15 @@ def _build_image(dockerfile_dir: str, dockerfile_name: str, request_id: int, arc
         exc_msg=f'Failed to build the container image on the arch {arch}',
     )
     log.debug('Verifying that %s was built with expected arch %s', destination, arch)
-    archmap = get_worker_config()['iib_supported_archs']
+    archmap = worker_config['iib_supported_archs']
     destination_arch = get_image_label(local_destination, 'architecture')
+
+    if not destination_arch:
+        log.warn(
+            'The "architecture" label was not found under "Labels".'
+            'Skipping the check that confirms if the architecture label was set correctly.'
+        )
+        return
 
     if destination_arch not in archmap.values() or destination_arch != archmap.get(arch):
         log.warning("Wrong arch created for %s", destination)
