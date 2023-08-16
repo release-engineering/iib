@@ -21,7 +21,12 @@ worker_config = get_worker_config()
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image(mock_run_cmd, mock_get_label, arch):
     mock_run_cmd.return_value = None
-    mock_get_label.return_value = worker_config['iib_supported_archs'][arch]
+
+    if arch == 'arm64':
+        mock_get_label.return_value = ''
+    else:
+        mock_get_label.return_value = worker_config['iib_supported_archs'][arch]
+
     build._build_image('/some/dir', 'some.Dockerfile', 3, arch)
     destination = f'iib-build:3-{arch}'
     local_destination = f'containers-storage:localhost/{destination}'
