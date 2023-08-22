@@ -60,6 +60,7 @@ PossiblePayloadParameters = Sequence[
         'build_tags',
         'bundles',
         'cnr_token',
+        'check_related_images',
         'deprecation_list',
         'distribution_scope',
         'force_backport',
@@ -89,6 +90,7 @@ class AddRequestPayload(TypedDict):
     build_tags: NotRequired[List[str]]
     bundles: List[str]
     cnr_token: NotRequired[str]
+    check_related_images: NotRequired[bool]
     deprecation_list: NotRequired[List[str]]
     distribution_scope: NotRequired[str]
     force_backport: NotRequired[bool]
@@ -199,6 +201,7 @@ class RequestPayload(TypedDict):
     build_tags: NotRequired[List[str]]
     bundles: NotRequired[Optional[List[str]]]
     cnr_token: NotRequired[str]
+    check_related_images: NotRequired[bool]
     deprecation_list: NotRequired[List[str]]
     distribution_scope: NotRequired[str]
     fbc_fragment: NotRequired[bool]
@@ -346,6 +349,7 @@ class AddRmRequestResponseBase(CommonIndexImageResponseBase, APIPartImageBuildRe
 class AddRequestResponse(AddRmRequestResponseBase):
     """Datastructure of the response to request from /builds/add API point."""
 
+    check_related_images: bool
     graph_update_mode: str
     omps_operator_version: Dict[str, Any]
 

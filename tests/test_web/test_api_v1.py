@@ -62,6 +62,7 @@ def test_get_build(app, auth_env, client, db):
         'build_tags': ['build-tag-1'],
         'bundle_mapping': {},
         'bundles': ['quay.io/namespace/bundle:1.0-3'],
+        'check_related_images': None,
         'deprecation_list': [],
         'distribution_scope': None,
         'from_index': 'quay.io/namespace/repo:latest',
@@ -480,6 +481,32 @@ def test_get_build_logs_s3_configured(
                 'bundles': ['some:thing'],
                 'from_index': 'pull:spec',
                 'binary_image': 'binary:image',
+                'check_related_images': 123,
+            },
+            'The "check_related_images" parameter must be a boolean',
+        ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'check_related_images': "123",
+            },
+            'The "check_related_images" parameter must be a boolean',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'check_related_images': "123",
+            },
+            '"check_related_images" must be specified only when bundles are specified',
+        ),
+        (
+            {
+                'bundles': ['some:thing'],
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
                 'overwrite_from_index': True,
                 'overwrite_from_index_token': True,
             },
@@ -823,6 +850,7 @@ def test_add_bundle_success(
         'build_tags': [],
         'bundle_mapping': {},
         'bundles': bundles,
+        'check_related_images': None,
         'deprecation_list': [],
         'distribution_scope': expected_distribution_scope,
         'from_index': from_index,
@@ -901,10 +929,10 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     rv_json = rv.json
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    # Fourth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-8] is True
-    # Third to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-7] == token
+    # Ninth to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-9] is True
+    # Eighth to last element in args is the overwrite_from_index_token parameter
+    assert mock_har.apply_async.call_args[1]['args'][-8] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -1172,6 +1200,7 @@ def test_patch_request_add_success(
         'build_tags': [],
         'bundle_mapping': bundle_mapping,
         'bundles': bundles,
+        'check_related_images': None,
         'deprecation_list': [],
         'distribution_scope': distribution_scope,
         'from_index': None,
@@ -1797,12 +1826,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     [],
                     [],
                     None,
+                    False,
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
                     "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None, {}, [], [], None]"
+                    "'hello-operator', None, True, '*****', None, None, {}, [], [], None, False]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
