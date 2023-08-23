@@ -8,7 +8,7 @@ from operator_manifest.operator import OperatorManifest, ImageName
 import pytest
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build_regenerate_bundle
+from iib.workers.tasks import build_regenerate_bundle, utils
 
 
 # Re-use the yaml instance to ensure configuration is also used in tests
@@ -994,7 +994,7 @@ def test_replace_image_name_from_labels(mock_gil, name_label, tmpdir):
         )
     )
     operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
-    bundle_metadata = build_regenerate_bundle._get_bundle_metadata(operator_manifest, False)
+    bundle_metadata = utils.get_bundle_metadata(operator_manifest, False)
     build_regenerate_bundle._replace_image_name_from_labels(
         bundle_metadata, '{name}-original-{version}'
     )
@@ -1045,7 +1045,7 @@ def test_replace_image_name_from_labels_invalid_labels(mock_gil, tmpdir):
         )
     )
     operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
-    bundle_metadata = build_regenerate_bundle._get_bundle_metadata(operator_manifest, False)
+    bundle_metadata = utils.get_bundle_metadata(operator_manifest, False)
     expected = (
         r' is missing one or more label\(s\) required in the '
         r'image_name_from_labels {name}-original-{unknown_label}. Available labels: name, version'
@@ -1099,7 +1099,7 @@ def test_apply_repo_enclosure(original_image, eclosure_namespace, expected_image
         )
     )
     operator_manifest = OperatorManifest.from_directory(str(manifests_dir))
-    bundle_metadata = build_regenerate_bundle._get_bundle_metadata(operator_manifest, False)
+    bundle_metadata = utils.get_bundle_metadata(operator_manifest, False)
     build_regenerate_bundle._apply_repo_enclosure(bundle_metadata, eclosure_namespace, '----')
     assert csv1.read_text('utf-8') == csv_related_images_template.format(
         registry='quay.io',

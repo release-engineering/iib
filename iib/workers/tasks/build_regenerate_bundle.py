@@ -29,6 +29,7 @@ from iib.workers.tasks.utils import (
     request_logger,
     set_registry_auths,
     get_image_arches,
+    get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import BundleMetadata, UpdateRequestPayload
 
@@ -280,7 +281,7 @@ def _adjust_operator_bundle(
             registry_replacements = customization.get('replacements', {})
             if registry_replacements:
                 log.info('Applying registry replacements')
-                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+                bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _apply_registry_replacements(bundle_metadata, registry_replacements)
         elif customization_type == 'csv_annotations' and organization:
             org_csv_annotations = customization.get('annotations')
@@ -290,7 +291,7 @@ def _adjust_operator_bundle(
         elif customization_type == 'image_name_from_labels':
             org_image_name_template = customization.get('template', '')
             if org_image_name_template:
-                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+                bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _replace_image_name_from_labels(bundle_metadata, org_image_name_template)
         elif customization_type == 'enclose_repo':
             org_enclose_repo_namespace = customization.get('namespace')
@@ -303,7 +304,7 @@ def _adjust_operator_bundle(
                     org_enclose_repo_glue,
                     organization,
                 )
-                bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+                bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
                 _apply_repo_enclosure(
                     bundle_metadata, org_enclose_repo_namespace, org_enclose_repo_glue
                 )
@@ -323,7 +324,7 @@ def _adjust_operator_bundle(
                 )
                 return labels
             log.info('Applying related_bundles customization')
-            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
             related_bundle_images = get_related_bundle_images(bundle_metadata=bundle_metadata)
             write_related_bundles_file(
                 related_bundle_images,
@@ -333,11 +334,11 @@ def _adjust_operator_bundle(
             )
         elif customization_type == 'resolve_image_pullspecs':
             log.info('Resolving image pull specs')
-            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
             _resolve_image_pull_specs(bundle_metadata, labels, pinned_by_iib)
         elif customization_type == 'perform_bundle_replacements':
             log.info('Performing bundle replacements')
-            bundle_metadata = _get_bundle_metadata(operator_manifest, pinned_by_iib)
+            bundle_metadata = get_bundle_metadata(operator_manifest, pinned_by_iib)
             replacement_pullspecs = {}
             if bundle_replacements:
                 for old, new in bundle_replacements.items():
@@ -346,43 +347,6 @@ def _adjust_operator_bundle(
                 _replace_csv_pullspecs(bundle_metadata, replacement_pullspecs)
 
     return labels
-
-
-def _get_bundle_metadata(
-    operator_manifest: OperatorManifest,
-    pinned_by_iib: bool,
-) -> BundleMetadata:
-    """
-    Get bundle metadata i.e. CSV's and all relatedImages pull specifications.
-
-    If the bundle is already pinned by IIB, it will be pinned again and the relatedImages will
-    be regenerated.
-
-    :param operator_manifest.operator.OperatorManifest operator_manifest: the operator manifest
-        object.
-    :param bool pinned_by_iib: whether or not the bundle image has already been processed by
-        IIB to perform image pinning of related images.
-    :raises IIBError: if the operator manifest has invalid entries
-    :return: a dictionary of CSV's and relatedImages pull specifications
-    :rtype: dict
-    """
-    bundle_metadata: BundleMetadata = {'found_pullspecs': set(), 'operator_csvs': []}
-    for operator_csv in operator_manifest.files:
-        if pinned_by_iib:
-            # If the bundle image has already been previously pinned by IIB, the relatedImages
-            # section will be populated and there may be related image environment variables.
-            # This behavior is now valid and the images will be pinned again and the relatedImages
-            # will be regenerated.
-            log.info(
-                'Bundle has been pinned by IIB. '
-                'Pinning will be done again and relatedImages will be regenerated'
-            )
-
-        bundle_metadata['operator_csvs'].append(operator_csv)
-
-        for pullspec in operator_csv.get_pullspecs():
-            bundle_metadata['found_pullspecs'].add(pullspec)
-    return bundle_metadata
 
 
 def _get_package_annotations(metadata_path: str) -> Dict[str, Any]:

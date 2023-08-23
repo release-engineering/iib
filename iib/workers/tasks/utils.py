@@ -23,7 +23,7 @@ from tenacity import (
     wait_chain,
 )
 from celery.app.log import TaskFormatter
-from operator_manifest.operator import ImageName
+from operator_manifest.operator import ImageName, OperatorManifest
 
 from iib.workers.dogpile_cache import (
     create_dogpile_region,
@@ -41,6 +41,7 @@ from iib.workers.tasks.iib_static_types import (
     AllIndexImagesInfo,
     PrebuildInfo,
     BundleImage,
+    BundleMetadata,
 )
 
 # Add instrumentation
@@ -1266,3 +1267,40 @@ def grpcurl_get_db_data(from_index: str, base_dir: str, endpoint: str) -> str:
     )
     terminate_process(rpc_proc)
     return result
+
+
+def get_bundle_metadata(
+    operator_manifest: OperatorManifest,
+    pinned_by_iib: bool,
+) -> BundleMetadata:
+    """
+    Get bundle metadata i.e. CSV's and all relatedImages pull specifications.
+
+    If the bundle is already pinned by IIB, it will be pinned again and the relatedImages will
+    be regenerated.
+
+    :param operator_manifest.operator.OperatorManifest operator_manifest: the operator manifest
+        object.
+    :param bool pinned_by_iib: whether or not the bundle image has already been processed by
+        IIB to perform image pinning of related images.
+    :raises IIBError: if the operator manifest has invalid entries
+    :return: a dictionary of CSV's and relatedImages pull specifications
+    :rtype: dict
+    """
+    bundle_metadata: BundleMetadata = {'found_pullspecs': set(), 'operator_csvs': []}
+    for operator_csv in operator_manifest.files:
+        if pinned_by_iib:
+            # If the bundle image has already been previously pinned by IIB, the relatedImages
+            # section will be populated and there may be related image environment variables.
+            # This behavior is now valid and the images will be pinned again and the relatedImages
+            # will be regenerated.
+            log.info(
+                'Bundle has been pinned by IIB. '
+                'Pinning will be done again and relatedImages will be regenerated'
+            )
+
+        bundle_metadata['operator_csvs'].append(operator_csv)
+
+        for pullspec in operator_csv.get_pullspecs():
+            bundle_metadata['found_pullspecs'].add(pullspec)
+    return bundle_metadata

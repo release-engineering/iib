@@ -1344,7 +1344,7 @@ def test_get_no_present_bundles(
 
 
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
-@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')
@@ -1388,7 +1388,7 @@ def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si,
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.build_regenerate_bundle._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.build.get_image_label')

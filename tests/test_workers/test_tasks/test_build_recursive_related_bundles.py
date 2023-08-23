@@ -23,7 +23,7 @@ yaml = build_recursive_related_bundles.yaml
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_worker_config')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.update_request')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_related_bundle_images')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.write_related_bundles_file')
 def test_handle_recusrsive_related_bundles_request(
@@ -93,7 +93,7 @@ def test_handle_recusrsive_related_bundles_request(
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_worker_config')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.update_request')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_related_bundle_images')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.write_related_bundles_file')
 def test_handle_recusrsive_related_bundles_request_max_bundles_reached(
