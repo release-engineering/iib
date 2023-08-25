@@ -164,9 +164,9 @@ decorator==4.4.2 \
     # via
     #   dogpile-cache
     #   gssapi
-deprecated==1.2.13 \
-    --hash=sha256:43ac5335da90c31c24ba028af536a91d41d53f9e6901ddb021bcc572ce44e38d \
-    --hash=sha256:64756e3e14c8c5eea9795d93c524551432a0be75629f8f29e67ab8caf076c76d
+Deprecated==1.2.14 \
+    --hash=sha256:6fac8b097794a90302bdbb17b9b815e732d3c4720583ff1b198499d78470466c \
+    --hash=sha256:e5323eb936458dccc2582dc6f9c322c852a775a27065ff2b0c4970b9d53d01b3
     # via opentelemetry-api
 dogpile-cache==1.0.2 \
     --hash=sha256:64fda39d25b46486a4876417ca03a4af06f35bfadba9f59613f9b3d748aa21ef
