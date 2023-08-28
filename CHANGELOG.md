@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.4.0
+- Enable celery task deduplication by @lipoja in https://github.com/release-engineering/iib/pull/558
+- Remove Dependabot and Reconfigure Renovate bot by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/552
+- Fix opentelemetry span type bug by @xDaile in https://github.com/release-engineering/iib/pull/557
+- Update dependency sqlalchemy to v2.0.19 by @renovate in https://github.com/release-engineering/iib/pull/549
+- Upgrade PostgreSQL development version by @xDaile in https://github.com/release-engineering/iib/pull/559
+- Log a warning message when "architecture" label is missing under "Labels" by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/561
+- Add related_images check in IIB by @chandwanitulsi in https://github.com/release-engineering/iib/pull/556
+- Move get_bundle_metadata to utils by @chandwanitulsi in https://github.com/release-engineering/iib/pull/560
+- Update dependency deprecated to v1.2.14 by @renovate in https://github.com/release-engineering/iib/pull/540
+- Update dependency grpcio to v1.57.0 by @renovate in https://github.com/release-engineering/iib/pull/542
+- Update dependency mako to v1.2.4 by @renovate in https://github.com/release-engineering/iib/pull/543
+
 ## 8.3.0
 - Retry buildah if incorrect arch created by @chandwanitulsi in https://github.com/release-engineering/iib/pull/529
 - Update Grpcio and Protobuf versions by @xDaile in https://github.com/release-engineering/iib/pull/533
