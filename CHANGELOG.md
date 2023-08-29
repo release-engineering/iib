@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.4.1
+- Fix normalization bug when return value is non-dict by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/563
+
 ## 8.4.0
 - Enable celery task deduplication by @lipoja in https://github.com/release-engineering/iib/pull/558
 - Remove Dependabot and Reconfigure Renovate bot by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/552
