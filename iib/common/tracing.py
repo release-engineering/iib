@@ -120,14 +120,18 @@ def instrument_tracing(
                     span.set_attribute('function_name', func.__name__)
                 try:
                     result = func(*args, **kwargs)
-                    span_result = normalize_data_for_span(result)
+                    if isinstance(result, dict):
+                        span_result = normalize_data_for_span(result)
+                    else:
+                        # If the returned result is not of type dict, create one
+                        span_result = {'result': result or 'success'}
                 except Exception as exc:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(exc)
                     raise
                 else:
-                    if result:
-                        log.debug('result %s', result)
+                    if span_result:
+                        log.debug('result %s', span_result)
                         span.set_attributes(span_result)
                     if kwargs:
                         # Need to handle all the types of kwargs
