@@ -187,9 +187,9 @@ flask-migrate==4.0.4 \
     --hash=sha256:73293d40b10ac17736e715b377e7b7bde474cb8105165d77474df4c3619b10b3 \
     --hash=sha256:77580f27ab39bc68be4906a43c56d7674b45075bc4f883b1d0b985db5164d58f
     # via iib (setup.py)
-flask-sqlalchemy==3.0.3 \
-    --hash=sha256:2764335f3c9d7ebdc9ed6044afaf98aae9fa50d7a074cef55dde307ec95903ec \
-    --hash=sha256:add5750b2f9cd10512995261ee2aa23fab85bd5626061aa3c564b33bb4aa780a
+Flask-SQLAlchemy==3.1.1 \
+    --hash=sha256:4ba4be7f419dc72f4efd8802d69974803c37259dd42f3913b0dcf75c9447e0a0 \
+    --hash=sha256:e4b68bb881802dda1a7d878b2fc84c06d1ee57fb40b874d3dc97dabfa36b8312
     # via
     #   flask-migrate
     #   iib (setup.py)
