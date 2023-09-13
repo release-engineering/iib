@@ -63,6 +63,15 @@ services:
       # The RabbitMQ management console
       - 8081:15672
 
+  jaeger:
+    image: jaegertracing/all-in-one
+    container_name: jaeger
+    ports:
+      - 4318:4318
+      - 16686:16686 # web
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
   iib-api:
     build:
       context: ..
@@ -84,6 +93,11 @@ services:
       FLASK_ENV: development
       FLASK_APP: iib/web/wsgi.py
       IIB_DEV: 'true'
+      # enable OpenTelemetry for dev-env
+      IIB_OTEL_TRACING: 'true'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_TRACES_INSECURE: 'true'
+      OTEL_SERVICE_NAME: "iib-api"
     volumes:
       - ../:/src:z
       - ../docker/message_broker/certs:/broker-certs:ro,z
@@ -95,6 +109,7 @@ services:
     depends_on:
       - db
       - message-broker
+      - jaeger
 
   iib-worker:
     build:
@@ -118,7 +133,12 @@ services:
       IIB_DEV: 'true'
       REGISTRY_AUTH_FILE: '/root/.docker/config.json'
       REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
-    # Make this privileged to be able to build container images
+      # Make this privileged to be able to build container images
+      # enable OpenTelemetry for dev-env
+      IIB_OTEL_TRACING: 'true'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+      OTEL_EXPORTER_OTLP_TRACES_INSECURE: 'true'
+      OTEL_SERVICE_NAME: "iib-worker"
     privileged: true
     volumes:
       - ../:/src:z
@@ -133,6 +153,7 @@ services:
       - registry
       - minica
       - memcached
+      - jaeger
 
   # This is an external message broker used to publish messages about state changes
   message-broker:

@@ -283,9 +283,12 @@ environment variables.
   This defaults to `False`. If this is set to `True`, `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME`
   must be set.
 * `OTEL_EXPORTER_OTLP_ENDPOINT` - The endpoint for the OpenTelemetry exporter.
-* `OTEL_SERVICE_NAME` - "iib-api"
+* `OTEL_SERVICE_NAME` - "iib-api" / "iib-worker"
 
 For more info on these environment variables, please refer to [Opentelemetry Guide](https://opentelemetry.io/docs/concepts/sdk-configuration/otlp-exporter-configuration/)
+
+Dev-env supports Opentelemetry tracing by default. It uses Jaeger for collecting and exporting traces.
+WEB UI is accessible on port 16686 - `http://localhost:16686/`
 
 ## Configuring the Worker(s)
 
