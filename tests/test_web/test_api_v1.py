@@ -1234,7 +1234,8 @@ def test_patch_request_add_success(
     }
 
     for bundle in bundles:
-        minimal_request_add.bundles.append(Image.get_or_create(bundle))
+        img = Image.get_or_create(bundle)
+        minimal_request_add.bundles.append(img)
     minimal_request_add.add_state('in_progress', 'Starting things up')
     db.session.commit()
 

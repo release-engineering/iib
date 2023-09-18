@@ -257,6 +257,13 @@ class Image(db.Model):
         if not image:
             image = Image(pull_specification=pull_specification)
             db.session.add(image)
+            try:
+                db.session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                current_app.logger.info(
+                    'Image pull specification is already in database. "%s"', pull_specification
+                )
+            image = cls.query.filter_by(pull_specification=pull_specification).first()
 
         return image
 
@@ -284,6 +291,11 @@ class Operator(db.Model):
         if not operator:
             operator = Operator(name=name)
             db.session.add(operator)
+            try:
+                db.session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                current_app.logger.info('Operators is already in database. "%s"', name)
+            operator = cls.query.filter_by(name=name).first()
 
         return operator
 
@@ -1696,6 +1708,11 @@ class User(db.Model, UserMixin):
         if not user:
             user = User(username=username)
             db.session.add(user)
+            try:
+                db.session.commit()
+            except sqlalchemy.exc.IntegrityError:
+                current_app.logger.info('User is already in database. "%s"', username)
+            user = cls.query.filter_by(username=username).first()
 
         return user
 
