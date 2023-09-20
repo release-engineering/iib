@@ -86,7 +86,10 @@ def test_update_request_connection_failed(mock_session):
     'exc_msg, expected',
     (
         (None, 'The worker failed to update the request 3'),
-        ('Failed to set index_image={index_image}', 'Failed to set index_image=index-image:latest'),
+        (
+            'Failed to set index_image={index_image} on request {request_id}',
+            'Failed to set index_image=index-image:latest on request 3',
+        ),
     ),
 )
 @mock.patch('iib.workers.api_utils.requests_auth_session')
