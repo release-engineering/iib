@@ -169,7 +169,7 @@ def update_request(
             rv.text,
         )
         if exc_msg:
-            _exc_msg = exc_msg.format(**payload)
+            _exc_msg = exc_msg.format(**payload, request_id=request_id)
         else:
             _exc_msg = f'The worker failed to update the request {request_id}'
         raise IIBError(_exc_msg)
