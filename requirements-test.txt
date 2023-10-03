@@ -493,7 +493,7 @@ prompt-toolkit==3.0.39 \
     # via
     #   -r requirements.txt
     #   click-repl
-psycopg2-binary==2.9.3 \
+psycopg2-binary==2.9.9 \
     --hash=sha256:01310cf4cf26db9aea5158c217caa92d291f0500051a6469ac52166e1a16f5b7 \
     --hash=sha256:083a55275f09a62b8ca4902dd11f4b33075b743cf0d360419e2051a8a5d5ff76 \
     --hash=sha256:090f3348c0ab2cceb6dfbe6bf721ef61262ddf518cd6cc6ecc7d334996d64efa \
