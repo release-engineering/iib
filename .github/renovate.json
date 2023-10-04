@@ -1,4 +1,7 @@
 {
+  "constraints": {
+    "python": "==3.9"
+  },
   "enabled": true,
   "enabledManagers": ["docker-compose", "dockerfile", "github-actions", "pip_requirements", "pyenv"],
   "branchConcurrentLimit": 5,
