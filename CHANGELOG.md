@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.4.2
+* Update dependency flask-sqlalchemy to v3.1.1 by @renovate in https://github.com/release-engineering/iib/pull/541
+* Update dependency markupsafe to v2.1.3 by @renovate in https://github.com/release-engineering/iib/pull/544
+* Update dependency prompt-toolkit to v3.0.39 by @renovate in https://github.com/release-engineering/iib/pull/545
+* Fixing IIB KeyError when updating request state by @lipoja in https://github.com/release-engineering/iib/pull/569
+* Adding OpenTelemetry collector/exporter for dev-env by @lipoja in https://github.com/release-engineering/iib/pull/565
+* Pinning werkzeug to allow generation of docs. by @lipoja in https://github.com/release-engineering/iib/pull/572
+* Flush request to database  by @lipoja in https://github.com/release-engineering/iib/pull/566
+* Use py3.9 for Renovate bot runs by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/574
+* Update dependency cryptography to v41.0.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/570
+* Update dependency urllib3 to v1.26.17 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/571
+* Upgrade opentelemetry-instrumentation to 0.41b0 by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/575
+
 ## 8.4.1
 - Fix normalization bug when return value is non-dict by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/563
 
