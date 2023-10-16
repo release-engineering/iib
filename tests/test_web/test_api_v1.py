@@ -578,7 +578,7 @@ def test_add_bundles_graph_update_mode_not_allowed(
     assert rv.status_code == 403
     error_msg = (
         '"graph_update_mode" can only be used on the'
-        ' following "from_index" pullspecs: [\'some-unique-index\']'
+        ' following index image: [\'some-unique-index\']'
     )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -1937,14 +1937,16 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
 @mock.patch('iib.web.api_v1.handle_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_success(
-    mock_smfsc, mock_merge, db, auth_env, client, distribution_scope
+    mock_smfsc, mock_merge, app, db, auth_env, client, distribution_scope
 ):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
     data = {
         'deprecation_list': ['some@sha256:bundle'],
         'binary_image': 'binary:image',
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
         'build_tags': [],
+        'graph_update_mode': 'semver',
     }
 
     if distribution_scope:
@@ -1959,6 +1961,7 @@ def test_merge_index_image_success(
         'build_tags': [],
         'deprecation_list': ['some@sha256:bundle'],
         'distribution_scope': distribution_scope,
+        'graph_update_mode': 'semver',
         'id': 1,
         'index_image': None,
         'logs': {
@@ -1998,12 +2001,14 @@ def test_merge_index_image_success(
 def test_merge_index_image_overwrite_token_redacted(
     mock_smfsc, mock_merge, app, auth_env, client, db
 ):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
     token = 'username:password'
     data = {
         'deprecation_list': ['some@sha256:bundle'],
         'binary_image': 'binary:image',
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
+        'graph_update_mode': 'replaces',
         'overwrite_target_index': True,
         'overwrite_target_index_token': token,
     }
@@ -2054,12 +2059,14 @@ def test_merge_index_image_custom_user_queue(
     overwrite_from_index,
     expected_queue,
 ):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
         'deprecation_list': ['some@sha256:bundle'],
         'binary_image': 'binary:image',
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
+        'graph_update_mode': 'replaces',
     }
     if overwrite_from_index:
         data['overwrite_target_index'] = True

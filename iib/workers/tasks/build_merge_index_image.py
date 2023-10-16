@@ -60,6 +60,7 @@ def _add_bundles_missing_in_source(
     arch: str,
     ocp_version: str,
     distribution_scope: str,
+    graph_update_mode: Optional[str] = None,
     target_index=None,
     overwrite_target_index_token: Optional[str] = None,
 ) -> Tuple[List[BundleImage], List[BundleImage]]:
@@ -77,6 +78,8 @@ def _add_bundles_missing_in_source(
     :param int request_id: the ID of the IIB build request.
     :param str arch: the architecture to build this image for.
     :param str ocp_version: ocp version which will be added as a label to the image.
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     :param str target_index: the pull specification of the container image
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``source_from_index`` image. This is required to use ``overwrite_target_index``.
@@ -138,6 +141,7 @@ def _add_bundles_missing_in_source(
                 bundles=missing_bundle_paths,
                 binary_image=binary_image,
                 from_index=source_from_index,
+                graph_update_mode=graph_update_mode,
                 container_tool='podman',
             )
         else:
@@ -146,6 +150,7 @@ def _add_bundles_missing_in_source(
                 bundles=missing_bundle_paths,
                 binary_image=binary_image,
                 from_index=source_from_index,
+                graph_update_mode=graph_update_mode,
                 # Use podman until opm's default mechanism is more resilient:
                 #   https://bugzilla.redhat.com/show_bug.cgi?id=1937097
                 container_tool='podman',
@@ -179,6 +184,7 @@ def handle_merge_request(
     distribution_scope: Optional[str] = None,
     binary_image_config: Optional[str] = None,
     build_tags: Optional[List[str]] = None,
+    graph_update_mode: Optional[str] = None,
 ) -> None:
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
@@ -199,6 +205,8 @@ def handle_merge_request(
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
     :param build_tags: list of extra tag to use for intermetdiate index image
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
@@ -265,6 +273,7 @@ def handle_merge_request(
             request_id=request_id,
             arch=arch,
             ocp_version=prebuild_info['target_ocp_version'],
+            graph_update_mode=graph_update_mode,
             target_index=target_index,
             overwrite_target_index_token=overwrite_target_index_token,
             distribution_scope=prebuild_info['distribution_scope'],

@@ -400,6 +400,7 @@ def test_add_bundles_missing_in_source(
         'amd64',
         '4.6',
         'dev',
+        'replaces',
     )
     assert missing_bundles == [
         {
@@ -436,6 +437,7 @@ def test_add_bundles_missing_in_source(
         binary_image='binary-image:4.5',
         from_index='index-image:4.6',
         container_tool='podman',
+        graph_update_mode='replaces',
     )
     assert mock_gil.call_count == 5
     assert mock_aolti.call_count == 2
@@ -545,6 +547,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
             'amd64',
             '4.6',
             'dev',
+            'semver',
         )
 
 
@@ -611,6 +614,7 @@ def test_add_bundles_missing_in_source_none_missing(
         'amd64',
         '4.6',
         'dev',
+        'semver',
     )
     assert missing_bundles == []
     assert invalid_bundles == [
@@ -634,6 +638,7 @@ def test_add_bundles_missing_in_source_none_missing(
         binary_image='binary-image:4.5',
         from_index='index-image:4.6',
         container_tool='podman',
+        graph_update_mode='semver',
     )
     assert mock_gil.call_count == 4
     assert mock_aolti.call_count == 2

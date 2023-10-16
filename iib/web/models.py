@@ -775,6 +775,30 @@ def get_request_query_options(verbose: Optional[bool] = False) -> List[_Abstract
     return query_options
 
 
+def validate_graph_mode(graph_update_mode: Optional[str], index_image: Optional[str]):
+    """
+    Validate graph mode and check if index image is allowed to use different graph mode.
+
+    :param str graph_update_mode: one of the graph mode options
+    :param str index_image: pullspec of index image to which graph mode should be applied to
+    :raises: ValidationError when incorrect graph_update_mode is set
+    :raises: Forbidden when graph_mode can't be used for given index image
+
+    """
+    if graph_update_mode:
+        graph_mode_options = current_app.config['IIB_GRAPH_MODE_OPTIONS']
+        if graph_update_mode not in graph_mode_options:
+            raise ValidationError(
+                f'"graph_update_mode" must be set to one of these: {graph_mode_options}'
+            )
+        allowed_from_indexes: List[str] = current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
+        if index_image not in allowed_from_indexes:
+            raise Forbidden(
+                '"graph_update_mode" can only be used on the'
+                f' following index image: {allowed_from_indexes}'
+            )
+
+
 class RequestIndexImageMixin:
     """
     A class for shared functionality between index image requests.
@@ -1110,19 +1134,7 @@ class RequestAdd(Request, RequestIndexImageMixin):
                 raise ValidationError(f'"{param}" must be a string')
 
             if param == 'graph_update_mode':
-                graph_mode_options = current_app.config['IIB_GRAPH_MODE_OPTIONS']
-                if request_kwargs[param] not in graph_mode_options:
-                    raise ValidationError(
-                        f'"{param}" must be set to one of these: {graph_mode_options}'
-                    )
-                allowed_from_indexes: List[str] = current_app.config[
-                    'IIB_GRAPH_MODE_INDEX_ALLOW_LIST'
-                ]
-                if request_kwargs.get('from_index') not in allowed_from_indexes:
-                    raise Forbidden(
-                        '"graph_update_mode" can only be used on the'
-                        f' following "from_index" pullspecs: {allowed_from_indexes}'
-                    )
+                validate_graph_mode(request_kwargs[param], request_kwargs.get('from_index'))
 
         if not isinstance(request_kwargs.get('force_backport', False), bool):
             raise ValidationError('"force_backport" must be a boolean')
@@ -1498,6 +1510,7 @@ class RequestMergeIndexImage(Request):
         'Image', foreign_keys=[target_index_resolved_id], uselist=False
     )
     distribution_scope: Mapped[Optional[str]]
+    graph_update_mode: Mapped[Optional[str]]
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value
@@ -1535,6 +1548,9 @@ class RequestMergeIndexImage(Request):
         request_kwargs['source_from_index'] = Image.get_or_create(
             pull_specification=source_from_index
         )
+
+        graph_update_mode = request_kwargs.get('graph_update_mode')
+        validate_graph_mode(graph_update_mode, request_kwargs.get('target_index'))
 
         target_index = request_kwargs.pop('target_index', None)
         if target_index:
@@ -1623,6 +1639,7 @@ class RequestMergeIndexImage(Request):
             self.binary_image_resolved, 'pull_specification', None
         )
         rv['deprecation_list'] = [bundle.pull_specification for bundle in self.deprecation_list]
+        rv['graph_update_mode'] = self.graph_update_mode
         rv['index_image'] = getattr(self.index_image, 'pull_specification', None)
         rv['source_from_index'] = self.source_from_index.pull_specification
         rv['source_from_index_resolved'] = getattr(
