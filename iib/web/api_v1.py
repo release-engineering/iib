@@ -1090,6 +1090,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
         request.distribution_scope,
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
+        payload.get('graph_update_mode'),
     ]
     safe_args = _get_safe_args(args, payload)
 

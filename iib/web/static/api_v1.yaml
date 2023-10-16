@@ -1338,6 +1338,14 @@ components:
                 This determined what level of protection the addition or removal had.
               type: string
               example: 'prod'
+            graph_update_mode:
+              type: string
+              description: >
+                Graph update mode that defines how channel graphs are updated in the index. It must be one
+                of "replaces", "semver" or "semver-skippatch". This attribute can only be used on index
+                image pull specs configured in IIB_GRAPH_MODE_INDEX_ALLOW_LIST in the IIB API Config. If not
+                specified, "--mode" will not be added to OPM commands to add the bundle(s) to the index.
+              default: None
     RequestCreateEmptyIndex:
       type: object
       properties:

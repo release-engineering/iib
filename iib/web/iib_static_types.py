@@ -162,6 +162,7 @@ class MergeIndexImagesPayload(TypedDict):
     build_tags: NotRequired[List[str]]
     deprecation_list: NotRequired[List[str]]
     distribution_scope: NotRequired[str]
+    graph_update_mode: NotRequired[GRAPH_MODE_LITERAL]
     overwrite_target_index: NotRequired[bool]
     overwrite_target_index_token: NotRequired[str]
     source_from_index: str
@@ -389,6 +390,7 @@ class MergeIndexImageRequestResponse(APIPartImageBuildRequestResponse):
     build_tags: List[str]
     deprecation_list: List[str]
     distribution_scope: str
+    graph_update_mode: GRAPH_MODE_LITERAL
     index_image: Optional[str]
     source_from_index: str
     source_from_index_resolved: Optional[str]
