@@ -5,6 +5,7 @@ from typing_extensions import NotRequired, TypedDict, Literal
 from proton._message import Message
 
 IIB_BINARY_IMAGE_CONFIG_TYPE = Dict[str, Dict[str, str]]
+GRAPH_MODE_LITERAL = Literal['replaces', 'semver', 'semver-skippatch']
 
 
 class PaginationMetadata(TypedDict):
@@ -95,7 +96,7 @@ class AddRequestPayload(TypedDict):
     distribution_scope: NotRequired[str]
     force_backport: NotRequired[bool]
     from_index: NotRequired[str]
-    graph_update_mode: NotRequired[str]
+    graph_update_mode: NotRequired[GRAPH_MODE_LITERAL]
     organization: NotRequired[str]
     overwrite_from_index: NotRequired[bool]
     overwrite_from_index_token: NotRequired[str]
@@ -350,7 +351,7 @@ class AddRequestResponse(AddRmRequestResponseBase):
     """Datastructure of the response to request from /builds/add API point."""
 
     check_related_images: bool
-    graph_update_mode: str
+    graph_update_mode: GRAPH_MODE_LITERAL
     omps_operator_version: Dict[str, Any]
 
 
