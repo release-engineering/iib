@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.4.3
+* Update dependency gssapi to v1.8.3 by @renovate in https://github.com/release-engineering/iib/pull/583
+* Update dependency cryptography to v41.0.5 by @renovate in https://github.com/release-engineering/iib/pull/582
+* Update dependency urllib3 to v1.26.18 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/580
+* urllib3 is solo package by @lipoja in https://github.com/release-engineering/iib/pull/579
+* Adding graph update mode for merge index image API endpoint by @lipoja in https://github.com/release-engineering/iib/pull/578
+* Upgrade OPM to v1.26.4 by @chandwanitulsi in https://github.com/release-engineering/iib/pull/577
+
 ## 8.4.2
 * Update dependency flask-sqlalchemy to v3.1.1 by @renovate in https://github.com/release-engineering/iib/pull/541
 * Update dependency markupsafe to v2.1.3 by @renovate in https://github.com/release-engineering/iib/pull/544
