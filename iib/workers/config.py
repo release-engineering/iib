@@ -40,6 +40,8 @@ class Config(object):
     iib_index_image_output_registry: Optional[str] = None
     iib_log_level: str = 'INFO'
     iib_max_recursive_related_bundles = 15
+    # list of index images to which we can add bundles without "com.redhat.openshift.versions" label
+    iib_no_ocp_label_allow_list: List[str] = []
     iib_organization_customizations: iib_organization_customizations_type = {}
     iib_sac_queues: List[str] = []
     iib_request_logs_dir: Optional[str] = None

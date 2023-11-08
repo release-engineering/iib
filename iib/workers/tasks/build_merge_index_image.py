@@ -124,8 +124,13 @@ def _add_bundles_missing_in_source(
             missing_bundles.append(bundle)
             missing_bundle_paths.append(bundle['bundlePath'])
 
+    allow_no_ocp_version = any(
+        target_index.startswith(index)
+        for index in get_worker_config()['iib_no_ocp_label_allow_list']
+    )
+
     for bundle in itertools.chain(missing_bundles, source_index_bundles):
-        if not is_bundle_version_valid(bundle['bundlePath'], ocp_version):
+        if not is_bundle_version_valid(bundle['bundlePath'], ocp_version, allow_no_ocp_version):
             invalid_bundles.append(bundle)
 
     if invalid_bundles:
@@ -390,12 +395,16 @@ def handle_merge_request(
     )
 
 
-def is_bundle_version_valid(bundle_path: str, valid_ocp_version: str) -> bool:
+def is_bundle_version_valid(
+    bundle_path: str, valid_ocp_version: str, allow_no_ocp_version: bool
+) -> bool:
     """
     Check if the version label of the bundle satisfies the index ocp_version.
 
     :param str bundle_path: pull specification of the bundle to be validated.
     :param str valid_ocp_version: the index ocp version against which the bundles will be validated.
+    :param bool allow_no_ocp_version: when set to tue True
+        we allow validating bundles without "com.redhat.openshift.versions" label
     :return: a boolean indicating if the bundle_path satisfies the index ocp_version
     :rtype: bool
 
@@ -415,6 +424,12 @@ def is_bundle_version_valid(bundle_path: str, valid_ocp_version: str) -> bool:
         raise IIBError(f'Invalid OCP version, "{valid_ocp_version}", specified in Index Image')
     try:
         bundle_version_label = get_image_label(bundle_path, 'com.redhat.openshift.versions')
+        if allow_no_ocp_version and not bundle_version_label:
+            log.info(
+                'Marking bundle %s without label `com.redhat.openshift.versions` as valid.',
+                bundle_path,
+            )
+            return True
         # MYPY error: Item "None" of "Optional[str]" has no attribute "replace"
         bundle_version = bundle_version_label.replace('v', '')  # type: ignore
         log.debug(f'Bundle version {bundle_version}, Index image version {valid_ocp_version}')
