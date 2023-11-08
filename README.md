@@ -339,6 +339,8 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_max_recursive_related_bundles` - the maximum number of recursive related bundles IIB will
   recurse through. This is to avoid DOS attacks.
+* `iib_no_ocp_label_allow_list` - list of index images to which we can add bundles 
+  without "com.redhat.openshift.versions" label
 * `iib_organization_customizations` - this is used to customize aspects of the bundle being
   regenerated. The format is a dictionary where each key is an organization that requires
   customizations. Each value is a list of dictionaries with the ``type`` key set to one of the

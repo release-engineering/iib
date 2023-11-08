@@ -648,22 +648,28 @@ def test_add_bundles_missing_in_source_none_missing(
 
 
 @pytest.mark.parametrize(
-    'version_label, ocp_version, result',
+    'version_label, ocp_version, allow_no_ocp_version, result',
     (
-        ('=v4.5', 'v4.6', False),
-        ('v4.5-v4.7', 'v4.6', True),
-        ('v4.5-v4.7', 'v4.8', False),
-        ('v4.6', 'v4.6', True),
-        ('v=4.6', 'v4.6', False),
-        ('v4.5,v4.6', 'v4.6', True),
-        ('v4.6,v4.5', 'v4.10', True),
-        ('tom_brady', 'v4.6', False),
+        ('=v4.5', 'v4.6', False, False),
+        ('v4.5-v4.7', 'v4.6', False, True),
+        ('v4.5-v4.7', 'v4.8', False, False),
+        ('v4.6', 'v4.6', False, True),
+        ('v=4.6', 'v4.6', False, False),
+        ('v4.5,v4.6', 'v4.6', False, True),
+        ('v4.6,v4.5', 'v4.10', False, True),
+        ('tom_brady', 'v4.6', False, False),
+        ('', 'v4.6', False, False),
+        ('', 'v4.6', True, True),
     ),
 )
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
-def test_is_bundle_version_valid(mock_gil, version_label, ocp_version, result):
+def test_is_bundle_version_valid(
+    mock_gil, version_label, ocp_version, allow_no_ocp_version, result
+):
     mock_gil.return_value = version_label
-    is_valid = build_merge_index_image.is_bundle_version_valid('some_bundle', ocp_version)
+    is_valid = build_merge_index_image.is_bundle_version_valid(
+        'some_bundle', ocp_version, allow_no_ocp_version
+    )
     assert is_valid == result
 
 
@@ -673,7 +679,7 @@ def test_is_bundle_version_valid(mock_gil, version_label, ocp_version, result):
 def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
     match_str = f'Invalid OCP version, "{version_label}", specified in Index Image'
     with pytest.raises(IIBError, match=match_str):
-        build_merge_index_image.is_bundle_version_valid('some_bundle', version_label)
+        build_merge_index_image.is_bundle_version_valid('some_bundle', version_label, False)
 
 
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
