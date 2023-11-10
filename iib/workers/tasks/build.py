@@ -814,7 +814,7 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
             for related_image in bundle_metadata['found_pullspecs']:
                 related_image_pull_spec = related_image.to_str()
                 try:
-                    skopeo_inspect(f"docker://{related_image_pull_spec}")
+                    skopeo_inspect(f'docker://{related_image_pull_spec}', '--raw')
                 except IIBError as e:
                     log.error(e)
                     invalid_related_images.append(related_image_pull_spec)
