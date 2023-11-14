@@ -27,4 +27,4 @@ sphinx==6.2.1
 sphinx_rtd_theme
 tenacity
 typing-extensions
-werkzeug==2.2.3
+werkzeug==2.3.8
