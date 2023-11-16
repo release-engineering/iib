@@ -253,12 +253,24 @@ class Image(db.Model):
                 f'Image {pull_specification} should have a tag or a digest specified.'
             )
 
-        image = cls.query.filter_by(pull_specification=pull_specification).first()
+        # cls.query triggers an auto-flush of the session by default. So if there are
+        # multiple requests with same parameters submitted to IIB, call to query pre-maturely
+        # flushes the contents of the session not allowing our handlers to resolve conflicts.
+        # https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.params.autoflush
+        with db.session.no_autoflush:
+            image = cls.query.filter_by(pull_specification=pull_specification).first()
+
         if not image:
             image = Image(pull_specification=pull_specification)
-            db.session.add(image)
             try:
-                db.session.commit()
+                # This is a SAVEPOINT so that the rest of the session is not rolled back when
+                # adding the image conflicts with an already existing row added by another request
+                # with similar pullspecs is submitted at the same time. When the context manager
+                # completes, the objects local to it are committed. If an error is raised, it
+                # rolls back objects local to it while keeping the parent session unaffected.
+                # https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#using-savepoint
+                with db.session.begin_nested():
+                    db.session.add(image)
             except sqlalchemy.exc.IntegrityError:
                 current_app.logger.info(
                     'Image pull specification is already in database. "%s"', pull_specification
@@ -287,12 +299,23 @@ class Operator(db.Model):
             added to the database session, but not committed, if it was created
         :rtype: Operator
         """
-        operator = cls.query.filter_by(name=name).first()
+        # cls.query triggers an auto-flush of the session by default. So if there are
+        # multiple requests with same parameters submitted to IIB, call to query pre-maturely
+        # flushes the contents of the session not allowing our handlers to resolve conflicts.
+        # https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.params.autoflush
+        with db.session.no_autoflush:
+            operator = cls.query.filter_by(name=name).first()
         if not operator:
             operator = Operator(name=name)
-            db.session.add(operator)
             try:
-                db.session.commit()
+                # This is a SAVEPOINT so that the rest of the session is not rolled back when
+                # adding the image conflicts with an already existing row added by another request
+                # with similar pullspecs is submitted at the same time. When the context manager
+                # completes, the objects local to it are committed. If an error is raised, it
+                # rolls back objects local to it while keeping the parent session unaffected.
+                # https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#using-savepoint
+                with db.session.begin_nested():
+                    db.session.add(operator)
             except sqlalchemy.exc.IntegrityError:
                 current_app.logger.info('Operators is already in database. "%s"', name)
             operator = cls.query.filter_by(name=name).first()
@@ -1721,12 +1744,23 @@ class User(db.Model, UserMixin):
             added to the database session, but not committed, if it was created
         :rtype: User
         """
-        user = cls.query.filter_by(username=username).first()
+        # cls.query triggers an auto-flush of the session by default. So if there are
+        # multiple requests with same parameters submitted to IIB, call to query pre-maturely
+        # flushes the contents of the session not allowing our handlers to resolve conflicts.
+        # https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.params.autoflush
+        with db.session.no_autoflush:
+            user = cls.query.filter_by(username=username).first()
         if not user:
             user = User(username=username)
-            db.session.add(user)
             try:
-                db.session.commit()
+                # This is a SAVEPOINT so that the rest of the session is not rolled back when
+                # adding the image conflicts with an already existing row added by another request
+                # with similar pullspecs is submitted at the same time. When the context manager
+                # completes, the objects local to it are committed. If an error is raised, it
+                # rolls back objects local to it while keeping the parent session unaffected.
+                # https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#using-savepoint
+                with db.session.begin_nested():
+                    db.session.add(user)
             except sqlalchemy.exc.IntegrityError:
                 current_app.logger.info('User is already in database. "%s"', username)
             user = cls.query.filter_by(username=username).first()
