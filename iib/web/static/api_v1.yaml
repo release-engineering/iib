@@ -1143,6 +1143,7 @@ components:
               type: string
               example: rm
     RegenerateBundleRequest:
+      $ref: '#/components/schemas/RegenerateBundleResponseVerbose'
       type: object
       properties:
         from_bundle_image:
