@@ -1376,6 +1376,7 @@ def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si,
     build.inspect_related_images(bundles=bundles, request_id=request_id)
 
     assert mock_si.call_count == 5
+    mock_si.assert_any_call('docker://quay.io/related/image@sha256:5', '--raw')
     assert mock_gbd.call_count == 2
     assert mock_gil.call_args_list == [
         mock.call(
