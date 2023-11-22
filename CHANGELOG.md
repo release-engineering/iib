@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.4.4
+* Fixing github actions by @lipoja in https://github.com/release-engineering/iib/pull/590
+* Adding config variable to allow adding bundles without ocp version label by @lipoja in https://github.com/release-engineering/iib/pull/589
+* Allow skopeo inspect to check for images for any arch @chandwanitulsi in https://github.com/release-engineering/iib/pull/588
+
 ## 8.4.3
 * Update dependency gssapi to v1.8.3 by @renovate in https://github.com/release-engineering/iib/pull/583
 * Update dependency cryptography to v41.0.5 by @renovate in https://github.com/release-engineering/iib/pull/582
