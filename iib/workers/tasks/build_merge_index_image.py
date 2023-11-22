@@ -63,6 +63,7 @@ def _add_bundles_missing_in_source(
     graph_update_mode: Optional[str] = None,
     target_index=None,
     overwrite_target_index_token: Optional[str] = None,
+    ignore_bundle_ocp_version: Optional[bool] = False,
 ) -> Tuple[List[BundleImage], List[BundleImage]]:
     """
     Rebuild index image with bundles missing from source image but present in target image.
@@ -84,6 +85,9 @@ def _add_bundles_missing_in_source(
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``source_from_index`` image. This is required to use ``overwrite_target_index``.
         The format of the token must be in the format "user:password".
+    :param bool ignore_bundle_ocp_version: When set to `true` and image set as target_index is
+        listed in `iib_no_ocp_label_allow_list` config then bundles without
+        "com.redhat.openshift.versions" label set will be added in the result `index_image`.
     :return: tuple where the first value is a list of bundles which were added to the index image
         and the second value is a list of bundles in the new index whose ocp_version range does not
         satisfy the ocp_version value of the target index.
@@ -124,10 +128,13 @@ def _add_bundles_missing_in_source(
             missing_bundles.append(bundle)
             missing_bundle_paths.append(bundle['bundlePath'])
 
-    allow_no_ocp_version = any(
-        target_index.startswith(index)
-        for index in get_worker_config()['iib_no_ocp_label_allow_list']
-    )
+    if ignore_bundle_ocp_version and target_index is not None:
+        allow_no_ocp_version = any(
+            target_index.startswith(index)
+            for index in get_worker_config()['iib_no_ocp_label_allow_list']
+        )
+    else:
+        allow_no_ocp_version = False
 
     for bundle in itertools.chain(missing_bundles, source_index_bundles):
         if not is_bundle_version_valid(bundle['bundlePath'], ocp_version, allow_no_ocp_version):
@@ -190,6 +197,7 @@ def handle_merge_request(
     binary_image_config: Optional[str] = None,
     build_tags: Optional[List[str]] = None,
     graph_update_mode: Optional[str] = None,
+    ignore_bundle_ocp_version: Optional[bool] = False,
 ) -> None:
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
@@ -212,6 +220,9 @@ def handle_merge_request(
     :param build_tags: list of extra tag to use for intermetdiate index image
     :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
         in the index.
+    :param bool ignore_bundle_ocp_version: When set to `true` and image set as target_index is
+        listed in `iib_no_ocp_label_allow_list` config then bundles without
+        "com.redhat.openshift.versions" label set will be added in the result `index_image`.
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
@@ -282,6 +293,7 @@ def handle_merge_request(
             target_index=target_index,
             overwrite_target_index_token=overwrite_target_index_token,
             distribution_scope=prebuild_info['distribution_scope'],
+            ignore_bundle_ocp_version=ignore_bundle_ocp_version,
         )
 
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]

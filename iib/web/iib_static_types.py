@@ -391,6 +391,7 @@ class MergeIndexImageRequestResponse(APIPartImageBuildRequestResponse):
     deprecation_list: List[str]
     distribution_scope: str
     graph_update_mode: GRAPH_MODE_LITERAL
+    ignore_bundle_ocp_version: Optional[bool]
     index_image: Optional[str]
     source_from_index: str
     source_from_index_resolved: Optional[str]

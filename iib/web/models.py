@@ -1534,6 +1534,7 @@ class RequestMergeIndexImage(Request):
     )
     distribution_scope: Mapped[Optional[str]]
     graph_update_mode: Mapped[Optional[str]]
+    ignore_bundle_ocp_version: Mapped[Optional[bool]]
 
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value
@@ -1663,6 +1664,7 @@ class RequestMergeIndexImage(Request):
         )
         rv['deprecation_list'] = [bundle.pull_specification for bundle in self.deprecation_list]
         rv['graph_update_mode'] = self.graph_update_mode
+        rv['ignore_bundle_ocp_version'] = self.ignore_bundle_ocp_version
         rv['index_image'] = getattr(self.index_image, 'pull_specification', None)
         rv['source_from_index'] = self.source_from_index.pull_specification
         rv['source_from_index_resolved'] = getattr(
