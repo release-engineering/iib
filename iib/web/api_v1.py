@@ -1091,6 +1091,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
         payload.get('graph_update_mode'),
+        payload.get('ignore_bundle_ocp_version'),
     ]
     safe_args = _get_safe_args(args, payload)
 

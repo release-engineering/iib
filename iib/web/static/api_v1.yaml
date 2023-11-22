@@ -1287,6 +1287,13 @@ components:
           items:
             type: string
           example: ["v4.5-10-08-2021"]
+        ignore_bundle_ocp_version:
+          type: boolean
+          description: >
+            When `ignore_bundle_ocp_version` is set to `true` and image set as target_index
+            is listed in `iib_no_ocp_label_allow_list` config then bundles without
+            "com.redhat.openshift.versions" label set will be added in the result `index_image`.
+          example: 'true'
       required:
         - source_from_index
     MergeIndexImageResponse:
@@ -1347,6 +1354,14 @@ components:
                 image pull specs configured in IIB_GRAPH_MODE_INDEX_ALLOW_LIST in the IIB API Config. If not
                 specified, "--mode" will not be added to OPM commands to add the bundle(s) to the index.
               default: None
+            ignore_bundle_ocp_version:
+              type: boolean
+              description: >
+                When `ignore_bundle_ocp_version` is set to `true` and image set as target_index
+                is listed in `iib_no_ocp_label_allow_list` config then bundles without
+                "com.redhat.openshift.versions" label set will be added in the result `index_image`.
+              example: 'true'
+              default: False
     RequestCreateEmptyIndex:
       type: object
       properties:

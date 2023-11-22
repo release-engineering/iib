@@ -1963,6 +1963,7 @@ def test_merge_index_image_success(
         'distribution_scope': distribution_scope,
         'graph_update_mode': 'semver',
         'id': 1,
+        'ignore_bundle_ocp_version': None,
         'index_image': None,
         'logs': {
             'expiration': '2020-02-15T17:03:00Z',
@@ -2067,6 +2068,7 @@ def test_merge_index_image_custom_user_queue(
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
         'graph_update_mode': 'replaces',
+        'ignore_bundle_ocp_version': True,
     }
     if overwrite_from_index:
         data['overwrite_target_index'] = True

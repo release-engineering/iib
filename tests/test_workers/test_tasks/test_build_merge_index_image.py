@@ -331,6 +331,7 @@ def test_handle_merge_request_no_deprecate(
     mock_run_cmd.assert_not_called()
 
 
+@mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
@@ -340,7 +341,7 @@ def test_handle_merge_request_no_deprecate(
 @mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc, mock_gwc
 ):
     source_bundles = [
         {
@@ -387,8 +388,19 @@ def test_add_bundles_missing_in_source(
             'bundlePath': 'quay.io/bundle4@sha256:569854',
             'csvName': 'bundle5-5.0',
         },
+        {
+            'packageName': 'bundle6-ignore-ocp-failed',
+            'version': '14.0',
+            'bundlePath': 'quay.io/ignore-ocp-failed-bundle4@sha256:567890',
+            'csvName': 'bundle6-ignore-ocp-failed-14.0',
+        },
     ]
-    mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6']
+
+    mock_gwc.iib_api_url.return_value = {
+        'iib_no_ocp_label_allow_list': ['quay.io/bundle'],
+    }
+
+    mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6', '']
     mock_iifbc.return_value = False
     missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
@@ -401,6 +413,7 @@ def test_add_bundles_missing_in_source(
         '4.6',
         'dev',
         'replaces',
+        ignore_bundle_ocp_version=True,
     )
     assert missing_bundles == [
         {
@@ -415,6 +428,12 @@ def test_add_bundles_missing_in_source(
             'bundlePath': 'quay.io/bundle4@sha256:567890',
             'csvName': 'bundle4-4.0',
         },
+        {
+            'bundlePath': 'quay.io/ignore-ocp-failed-bundle4@sha256:567890',
+            'csvName': 'bundle6-ignore-ocp-failed-14.0',
+            'packageName': 'bundle6-ignore-ocp-failed',
+            'version': '14.0',
+        },
     ]
     assert invalid_bundles == [
         {
@@ -424,22 +443,32 @@ def test_add_bundles_missing_in_source(
             'csvName': 'bundle3-3.0',
         },
         {
-            'packageName': 'bundle1',
-            'version': '1.0',
-            'bundlePath': 'quay.io/bundle1@sha256:123456',
-            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle6-ignore-ocp-failed',
+            'version': '14.0',
+            'bundlePath': 'quay.io/ignore-ocp-failed-bundle4@sha256:567890',
+            'csvName': 'bundle6-ignore-ocp-failed-14.0',
+        },
+        {
+            'packageName': 'bundle5',
+            'version': '5.0-2',
+            'bundlePath': 'quay.io/bundle2@sha256:456132',
+            'csvName': 'bundle5-5.0',
         },
     ]
     mock_srs.assert_called_once()
     mock_oia.assert_called_once_with(
         base_dir='some_dir',
-        bundles=['quay.io/bundle3@sha256:456789', 'quay.io/bundle4@sha256:567890'],
+        bundles=[
+            'quay.io/bundle3@sha256:456789',
+            'quay.io/bundle4@sha256:567890',
+            'quay.io/ignore-ocp-failed-bundle4@sha256:567890',
+        ],
         binary_image='binary-image:4.5',
         from_index='index-image:4.6',
         container_tool='podman',
         graph_update_mode='replaces',
     )
-    assert mock_gil.call_count == 5
+    assert mock_gil.call_count == 6
     assert mock_aolti.call_count == 2
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
