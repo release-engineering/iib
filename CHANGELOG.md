@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.5.0
+* Add guardrails for UniqueViolation caused by parallel requests by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/592
+* Adding parameter ignore_bundle_ocp_version to merge-index API by @lipoja in https://github.com/release-engineering/iib/pull/593
+* Update dependency cryptography to v41.0.6 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/595
+
 ## 8.4.4
 * Fixing github actions by @lipoja in https://github.com/release-engineering/iib/pull/590
 * Adding config variable to allow adding bundles without ocp version label by @lipoja in https://github.com/release-engineering/iib/pull/589
