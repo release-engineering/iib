@@ -325,3 +325,16 @@ def test_validate_celery_config_invalid_recursive_related_bundles_config():
     )
     with pytest.raises(ConfigError, match=error):
         validate_celery_config(worker_config)
+
+
+def test_validate_celery_config_invalid_iib_no_ocp_label_allow_list():
+    worker_config = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_required_labels': {},
+        'iib_no_ocp_label_allow_list': [''],
+    }
+
+    error = 'Empty string is not allowed in iib_no_ocp_label_allow_list'
+    with pytest.raises(ConfigError, match=error):
+        validate_celery_config(worker_config)

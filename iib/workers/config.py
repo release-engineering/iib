@@ -284,6 +284,10 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
     if not isinstance(conf['iib_required_labels'], dict):
         raise ConfigError('iib_required_labels must be a dictionary')
 
+    if conf.get('iib_no_ocp_label_allow_list'):
+        if any(not index for index in conf['iib_no_ocp_label_allow_list']):
+            raise ConfigError('Empty string is not allowed in iib_no_ocp_label_allow_list')
+
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
 
     if conf.get('iib_aws_s3_bucket_name'):
