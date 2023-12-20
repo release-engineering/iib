@@ -119,7 +119,13 @@ def handle_create_empty_index_request(
             )
         else:
             set_request_state(request_id, 'in_progress', 'Removing operators from index image')
-            _opm_index_rm(temp_dir, operators, prebuild_info['binary_image'], from_index_resolved)
+            _opm_index_rm(
+                temp_dir,
+                operators,
+                prebuild_info['binary_image'],
+                from_index_resolved,
+                container_tool='podman',
+            )
 
         set_request_state(
             request_id, 'in_progress', 'Getting and updating labels for new index image'
