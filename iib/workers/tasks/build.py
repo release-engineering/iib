@@ -540,6 +540,7 @@ def _opm_index_rm(
     binary_image: str,
     from_index: str,
     overwrite_from_index_token: Optional[str] = None,
+    container_tool: Optional[str] = None,
 ) -> None:
     """
     Remove the input operators from the operator index.
@@ -556,6 +557,7 @@ def _opm_index_rm(
     :param str overwrite_from_index_token: the token used for overwriting the input
         ``from_index`` image. This is required to use ``overwrite_from_index``.
         The format of the token must be in the format "user:password".
+    :param str container_tool: the container tool to be used to operate on the index image
     :raises IIBError: if the ``opm index rm`` command fails.
     """
     cmd = [
@@ -570,6 +572,10 @@ def _opm_index_rm(
         '--operators',
         ','.join(operators),
     ]
+
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
 
     log.info(
         'Generating the database file from an existing database %s and excluding'
@@ -969,6 +975,7 @@ def handle_add_request(
                 graph_update_mode=graph_update_mode,
                 overwrite_from_index_token=overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
+                container_tool='podman',
             )
 
         # Add the max ocp version property
@@ -1220,6 +1227,7 @@ def handle_rm_request(
                 binary_image=prebuild_info['binary_image'],
                 from_index=from_index_resolved,
                 overwrite_from_index_token=overwrite_from_index_token,
+                container_tool='podman',
             )
 
         _add_label_to_index(
@@ -1240,6 +1248,15 @@ def handle_rm_request(
         for arch in sorted(arches):
             _build_image(temp_dir, 'index.Dockerfile', request_id, arch)
             _push_image(request_id, arch)
+
+        # If the container-tool podman is used in the opm commands above, opm will create temporary
+        # files and directories without the write permission. This will cause the context manager
+        # to fail to delete these files. Adjust the file modes to avoid this error.
+        chmod_recursively(
+            temp_dir,
+            dir_mode=(stat.S_IRWXU | stat.S_IRWXG),
+            file_mode=(stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP),
+        )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
