@@ -28,6 +28,8 @@ setup(
         'tenacity',
         'typing-extensions',
         'packaging',
+        'pydantic',
+        'annotated-types',
         'opentelemetry-api',
         'opentelemetry-sdk',
         'opentelemetry-exporter-otlp',
