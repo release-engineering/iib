@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.5.1
+* Update dependency prompt-toolkit to v3.0.43 renovate[bot]
+* Update dependency cryptography to v41.0.7 renovate[bot]
+* Update dependency wcwidth to v0.2.12 renovate[bot]
+* Update dependency flask-login to v0.6.3 renovate[bot]
+* Update dependency tomli to v1.2.3 renovate[bot]
+* Fixing logging for allow_no_ocp_version Jan Lipovský 
+* Use container-tool podman for _opm_index_add and _opm_index_rm commands Yashvardhan Nanavati
+* Prevent empty string in iib_no_ocp_label_allow_list Jan Lipovský
+* Check if source_from_index is in iib_no_ocp_label_allow_list Jan Lipovský
+
 ## 8.5.0
 * Add guardrails for UniqueViolation caused by parallel requests by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/592
 * Adding parameter ignore_bundle_ocp_version to merge-index API by @lipoja in https://github.com/release-engineering/iib/pull/593
