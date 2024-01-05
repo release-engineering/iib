@@ -832,9 +832,9 @@ vine==5.0.0 \
     #   amqp
     #   celery
     #   kombu
-wcwidth==0.2.5 \
-    --hash=sha256:beb4802a9cebb9144e99086eff703a642a13d6a0052920003a230f3294bbe784 \
-    --hash=sha256:c4d647b99872929fdb7bdcaa4fbe7f01413ed3d98077df798530e5b04f116c83
+wcwidth==0.2.12 \
+    --hash=sha256:f01c104efdf57971bcb756f054dd58ddec5204dd15fa31d6503ea57947d97c02 \
+    --hash=sha256:f26ec43d96c8cbfed76a5075dac87680124fa84e0855195a6184da9c187f133c
     # via prompt-toolkit
 Werkzeug==2.3.8 \
     --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \
