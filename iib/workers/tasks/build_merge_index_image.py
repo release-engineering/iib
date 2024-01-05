@@ -134,9 +134,12 @@ def _add_bundles_missing_in_source(
             target_index_tmp.startswith(index) or source_from_index.startswith(index)
             for index in get_worker_config()['iib_no_ocp_label_allow_list']
         )
-        log.info('Adding bundles without "com.redhat.openshift.versions" label is allowed.')
     else:
         allow_no_ocp_version = False
+
+    if allow_no_ocp_version:
+        log.info('Adding bundles without "com.redhat.openshift.versions" label is allowed.')
+    else:
         log.info('Bundles without "com.redhat.openshift.versions" label will not be added.')
 
     for bundle in itertools.chain(missing_bundles, source_index_bundles):
