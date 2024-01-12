@@ -32,6 +32,7 @@ from iib.workers.tasks.utils import (
     get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import BundleMetadata, UpdateRequestPayload
+from iib.common.pydantic_models import RegenerateBundlePydanticModel
 
 
 __all__ = ['handle_regenerate_bundle_request']
@@ -52,11 +53,8 @@ log = logging.getLogger(__name__)
 @app.task
 @request_logger
 def handle_regenerate_bundle_request(
-    from_bundle_image: str,
-    organization: str,
+    payload: RegenerateBundlePydanticModel,
     request_id: int,
-    registry_auths: Optional[Dict[str, Any]] = None,
-    bundle_replacements: Optional[Dict[str, str]] = {},
 ) -> None:
     """
     Coordinate the work needed to regenerate the operator bundle image.
@@ -74,8 +72,8 @@ def handle_regenerate_bundle_request(
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
 
-    with set_registry_auths(registry_auths):
-        from_bundle_image_resolved = get_resolved_image(from_bundle_image)
+    with set_registry_auths(payload.registry_auths):
+        from_bundle_image_resolved = get_resolved_image(payload.from_bundle_image)
 
         arches: Set[str] = get_image_arches(from_bundle_image_resolved)
         if not arches:
@@ -111,9 +109,9 @@ def handle_regenerate_bundle_request(
                 manifests_path,
                 metadata_path,
                 request_id,
-                organization=organization,
+                organization=payload.organization,
                 pinned_by_iib=pinned_by_iib,
-                bundle_replacements=bundle_replacements,
+                bundle_replacements=payload.bundle_replacements,
             )
 
             with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:

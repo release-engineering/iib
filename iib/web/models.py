@@ -18,30 +18,21 @@ from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
-
+from iib.common.pydantic_models import (
+    UnionPydanticRequestType,
+)
 
 from iib.web.iib_static_types import (
-    AddRequestPayload,
     AddRequestResponse,
-    AddRmBatchPayload,
     AddRmRequestResponseBase,
     BaseClassRequestResponse,
     BuildRequestState,
     CommonIndexImageResponseBase,
-    CreateEmptyIndexPayload,
     CreateEmptyIndexRequestResponse,
-    MergeIndexImageRequestResponse,
-    MergeIndexImagesPayload,
-    RequestPayload,
-    PayloadTypesUnion,
-    RecursiveRelatedBundlesRequestPayload,
-    RecursiveRelatedBundlesRequestResponse,
-    RegenerateBundleBatchPayload,
-    RegenerateBundlePayload,
-    RegenerateBundleRequestResponse,
-    RmRequestPayload,
-    FbcOperationRequestPayload,
     FbcOperationRequestResponse,
+    MergeIndexImageRequestResponse,
+    RecursiveRelatedBundlesRequestResponse,
+    RegenerateBundleRequestResponse,
 )
 
 
@@ -413,6 +404,7 @@ class Request(db.Model):
         'polymorphic_on': 'type',
     }
 
+
     @validates('type')
     def validate_type(self, key: Optional[str], type_num: int) -> int:
         """
@@ -493,21 +485,65 @@ class Request(db.Model):
         if arch not in self.architectures:
             self.architectures.append(arch)
 
-    @abstractmethod
-    def from_json(
+    @classmethod
+    def from_json_replacement(
         cls,
-        kwargs: PayloadTypesUnion,
-    ) -> Request:
+        payload: UnionPydanticRequestType,
+        batch: Optional[Batch] = None,
+        build_tags_allowed: Optional[bool] = False,
+    ):
         """
-        Handle JSON requests for a request API endpoint.
+        Handle JSON requests for the builds/* API endpoint.
 
-        Child classes MUST override this method.
-
-        :param PayloadTypesUnion kwargs: the user provided parameters to create a Request
-        :return: an object representation of the request
-        :retype: Request
+        :param UnionPydanticRequestType payload: the Pydantic model representing the request.
+        :param Batch batch: the batch to specify with the request.
         """
-        raise NotImplementedError('{} does not implement from_json'.format(cls.__name__))
+
+        keys_to_check = payload.get_keys_to_check_in_db()
+        for key in keys_to_check:
+            if key in [
+                'binary_image',
+                'fbc_fragment',
+                'from_index',
+                'from_bundle_image',
+                'source_from_index',
+                'target_index',
+                'parent_bundle_image',
+            ]:
+                payload.__setattr__(key, Image.get_or_create(pull_specification=payload.__getattribute__(key)))
+
+            elif key in ["bundles", "deprecation_list"]:
+                payload.__setattr__(key, [
+                    Image.get_or_create(pull_specification=image) for image in payload.__getattribute__(key)
+                ])
+
+            elif key == "operators":
+                payload.__setattr__(key, [Operator.get_or_create(name=item) for item in payload.__getattribute__(key)])
+
+            else:
+                raise ValidationError(f"Unexpected key: {key} during from_json() method.")
+
+        request_kwargs = payload.get_json_for_request()
+
+        # current_user.is_authenticated is only ever False when auth is disabled
+        if current_user.is_authenticated:
+            request_kwargs['user'] = current_user
+
+        # Add the request to a new batch
+
+        batch = batch or Batch()
+        db.session.add(batch)
+        request_kwargs['batch'] = batch
+
+        request = cls(**request_kwargs)
+
+        if build_tags_allowed:
+            for bt in payload.build_tags:
+                request.add_build_tag(bt)
+
+        request.add_state('in_progress', 'The request was initiated')
+        return request
+
 
     # return value is BaseClassRequestResponse, however because of LSP, we need other types here too
     def to_json(
@@ -626,31 +662,6 @@ class Batch(db.Model):
         self._annotations = (
             json.dumps(annotations, sort_keys=True) if annotations is not None else None
         )
-
-    @staticmethod
-    def validate_batch_request_params(
-        payload: Union[AddRmBatchPayload, RegenerateBundleBatchPayload]
-    ) -> None:
-        """
-        Validate batch specific parameters from the input JSON payload.
-
-        The requests in the "build_requests" key's value are not validated. Those should be
-        validated separately.
-
-        :raises ValidationError: if the payload is invalid
-        """
-        if (
-            not isinstance(payload, dict)
-            or not isinstance(payload.get('build_requests'), list)
-            or not payload['build_requests']
-        ):
-            raise ValidationError(
-                'The input data must be a JSON object and the "build_requests" value must be a '
-                'non-empty array'
-            )
-
-        if not isinstance(payload.get('annotations', {}), dict):
-            raise ValidationError('The value of "annotations" must be a JSON object')
 
     @property
     def state(self) -> str:
@@ -798,30 +809,6 @@ def get_request_query_options(verbose: Optional[bool] = False) -> List[_Abstract
     return query_options
 
 
-def validate_graph_mode(graph_update_mode: Optional[str], index_image: Optional[str]):
-    """
-    Validate graph mode and check if index image is allowed to use different graph mode.
-
-    :param str graph_update_mode: one of the graph mode options
-    :param str index_image: pullspec of index image to which graph mode should be applied to
-    :raises: ValidationError when incorrect graph_update_mode is set
-    :raises: Forbidden when graph_mode can't be used for given index image
-
-    """
-    if graph_update_mode:
-        graph_mode_options = current_app.config['IIB_GRAPH_MODE_OPTIONS']
-        if graph_update_mode not in graph_mode_options:
-            raise ValidationError(
-                f'"graph_update_mode" must be set to one of these: {graph_mode_options}'
-            )
-        allowed_from_indexes: List[str] = current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
-        if index_image not in allowed_from_indexes:
-            raise Forbidden(
-                '"graph_update_mode" can only be used on the'
-                f' following index image: {allowed_from_indexes}'
-            )
-
-
 class RequestIndexImageMixin:
     """
     A class for shared functionality between index image requests.
@@ -919,111 +906,6 @@ class RequestIndexImageMixin:
         """Return the distribution_scope for the request."""
         return db.mapped_column(db.String, nullable=True)
 
-    # Union for request_kwargs would require exhausting checking of the request_kwargs in the method
-    @staticmethod
-    def _from_json(
-        request_kwargs: RequestPayload,
-        additional_required_params: Optional[List[str]] = None,
-        additional_optional_params: Optional[List[str]] = None,
-        batch: Optional[Batch] = None,
-    ) -> None:
-        """
-        Validate and process request agnostic parameters.
-
-        As part of the processing, the input ``request_kwargs`` parameter
-        is updated to reference database objects where appropriate.
-
-        :param dict request_kwargs: copy of args provided in API request
-        :param Batch batch: the batch to specify with the request. If one is not specified, one will
-            be created automatically.
-        """
-        # Validate all required parameters are present
-        required_params = set(additional_required_params or [])
-        optional_params = {
-            'add_arches',
-            'binary_image',
-            'overwrite_from_index',
-            'overwrite_from_index_token',
-            'distribution_scope',
-            'build_tags',
-            'output_fbc',
-        } | set(additional_optional_params or [])
-
-        validate_request_params(
-            request_kwargs, required_params=required_params, optional_params=optional_params
-        )
-
-        # Check if both `from_index` and `add_arches` are not specified
-        if not request_kwargs.get('from_index') and not request_kwargs.get('add_arches'):
-            raise ValidationError('One of "from_index" or "add_arches" must be specified')
-
-        # Verify that `overwrite_from_index` is the correct type
-        overwrite = request_kwargs.pop('overwrite_from_index', False)
-        if not isinstance(overwrite, bool):
-            raise ValidationError('The "overwrite_from_index" parameter must be a boolean')
-
-        # Verify that `overwrite_from_index_token` is the correct type
-        overwrite_token = request_kwargs.pop('overwrite_from_index_token', None)
-        if overwrite_token:
-            if not isinstance(overwrite_token, str):
-                raise ValidationError('The "overwrite_from_index_token" parameter must be a string')
-            if overwrite_token and not overwrite:
-                raise ValidationError(
-                    'The "overwrite_from_index" parameter is required when'
-                    ' the "overwrite_from_index_token" parameter is used'
-                )
-
-        distribution_scope = request_kwargs.pop('distribution_scope', None)
-        if distribution_scope:
-            distribution_scope = distribution_scope.lower()
-            if distribution_scope not in ['prod', 'stage', 'dev']:
-                raise ValidationError(
-                    'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
-                )
-            request_kwargs['distribution_scope'] = distribution_scope
-
-        # Prevent duplicated items in "deprecation_list"
-        deprecation_list = request_kwargs.pop('deprecation_list', None)
-        if deprecation_list:
-            request_kwargs['deprecation_list'] = list(set(deprecation_list))
-
-        # Verify the user is authorized to use overwrite_from_index
-        # current_user.is_authenticated is only ever False when auth is disabled
-        if current_user.is_authenticated:
-            if overwrite and not overwrite_token:
-                raise Forbidden(
-                    'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
-                )
-
-        # Validate add_arches are correctly provided
-        add_arches = request_kwargs.pop('add_arches', [])
-        Architecture.validate_architecture_json(add_arches)
-
-        # Validate binary_image is correctly provided
-        binary_image = request_kwargs.pop('binary_image', None)
-        if binary_image is not None and not isinstance(binary_image, str):
-            raise ValidationError('The "binary_image" value must be a string')
-        elif not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
-            raise ValidationError('The "binary_image" value must be a non-empty string')
-
-        if binary_image:
-            request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
-
-        if 'from_index' in request_kwargs:
-            if not isinstance(request_kwargs['from_index'], str):
-                raise ValidationError('"from_index" must be a string')
-            request_kwargs['from_index'] = Image.get_or_create(
-                pull_specification=request_kwargs['from_index']
-            )
-
-        # current_user.is_authenticated is only ever False when auth is disabled
-        if current_user.is_authenticated:
-            request_kwargs['user'] = current_user
-
-        # Add the request to a new batch
-        batch = batch or Batch()
-        db.session.add(batch)
-        request_kwargs['batch'] = batch
 
     def get_common_index_image_json(self) -> CommonIndexImageResponseBase:
         """
@@ -1105,101 +987,6 @@ class RequestAdd(Request, RequestIndexImageMixin):
 
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['add'].value}
 
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: AddRequestPayload,
-        batch: Optional[Batch] = None,
-    ) -> RequestAdd:
-        """
-        Handle JSON requests for the Add API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request.
-        """
-        request_kwargs = deepcopy(kwargs)
-
-        for key in ('bundles', 'deprecation_list'):
-            value = request_kwargs.get(key, [])
-            if not isinstance(value, list) or any(
-                not item or not isinstance(item, str) for item in value
-            ):
-                raise ValidationError(
-                    f'"{key}" should be either an empty array or an array of non-empty strings'
-                )
-
-        # Check if no bundles and `from_index is specified
-        # if no bundles and no from index then an empty index will be created which is a no-op
-        if not (request_kwargs.get('bundles') or request_kwargs.get('from_index')):
-            raise ValidationError('"from_index" must be specified if no bundles are specified')
-
-        # Verify that `check_related_images` is specified when bundles are specified
-        if request_kwargs.get('check_related_images') and not request_kwargs.get('bundles'):
-            raise ValidationError(
-                '"check_related_images" must be specified only when bundles are specified'
-            )
-
-        # Verify that `check_related_images` is the correct type
-        check_related_images = request_kwargs.get('check_related_images', False)
-        if not isinstance(check_related_images, bool):
-            raise ValidationError('The "check_related_images" parameter must be a boolean')
-
-        ALLOWED_KEYS_1: Sequence[Literal['cnr_token', 'graph_update_mode', 'organization']] = (
-            'cnr_token',
-            'graph_update_mode',
-            'organization',
-        )
-        for param in ALLOWED_KEYS_1:
-            if param not in request_kwargs:
-                continue
-
-            if not isinstance(request_kwargs[param], str):
-                raise ValidationError(f'"{param}" must be a string')
-
-            if param == 'graph_update_mode':
-                validate_graph_mode(request_kwargs[param], request_kwargs.get('from_index'))
-
-        if not isinstance(request_kwargs.get('force_backport', False), bool):
-            raise ValidationError('"force_backport" must be a boolean')
-
-        # Remove attributes that are not stored in the database
-        request_kwargs.pop('cnr_token', None)
-        request_kwargs.pop('force_backport', None)
-
-        # cast to more wider type, see _from_json method
-        cls._from_json(
-            cast(RequestPayload, request_kwargs),
-            additional_optional_params=[
-                'from_index',
-                'organization',
-                'bundles',
-                'distribution_scope',
-                'deprecation_list',
-                'graph_update_mode',
-                'build_tags',
-                'check_related_images',
-            ],
-            batch=batch,
-        )
-
-        ALLOWED_KEYS_2: Sequence[Literal['bundles', 'deprecation_list']] = (
-            'bundles',
-            'deprecation_list',
-        )
-        for key in ALLOWED_KEYS_2:
-            request_kwargs[key] = [
-                Image.get_or_create(pull_specification=item)
-                for item in request_kwargs.get(key, [])  # type: ignore
-            ]
-        build_tags = request_kwargs.pop('build_tags', [])
-        request = cls(**request_kwargs)
-
-        for bt in build_tags:
-            request.add_build_tag(bt)
-
-        request.add_state('in_progress', 'The request was initiated')
-        return request
-
     def to_json(self, verbose: Optional[bool] = True) -> AddRequestResponse:
         """
         Provide the JSON representation of an "add" build request.
@@ -1258,46 +1045,6 @@ class RequestRm(Request, RequestIndexImageMixin):
     )
 
     __mapper_args__ = {'polymorphic_identity': RequestTypeMapping.__members__['rm'].value}
-
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: RmRequestPayload,
-        batch: Optional[Batch] = None,
-    ) -> RequestRm:
-        """
-        Handle JSON requests for the Remove API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request.
-        """
-        request_kwargs = deepcopy(kwargs)
-
-        operators = request_kwargs.get('operators', [])
-        if (
-            not isinstance(operators, list)
-            or len(operators) == 0
-            or any(not item or not isinstance(item, str) for item in operators)
-        ):
-            raise ValidationError('"operators" should be a non-empty array of strings')
-
-        # cast to more wider type, see _from_json method
-        cls._from_json(
-            cast(RequestPayload, request_kwargs),
-            additional_required_params=['operators', 'from_index'],
-            batch=batch,
-        )
-
-        request_kwargs['operators'] = [Operator.get_or_create(name=item) for item in operators]
-
-        build_tags = request_kwargs.pop('build_tags', [])
-        request = cls(**request_kwargs)
-        request.add_state('in_progress', 'The request was initiated')
-
-        for bt in build_tags:
-            request.add_build_tag(bt)
-
-        return request
 
     def to_json(self, verbose: Optional[bool] = True) -> AddRmRequestResponseBase:
         """
@@ -1380,70 +1127,6 @@ class RequestRegenerateBundle(Request):
         self._bundle_replacements = (
             json.dumps(bundle_replacements, sort_keys=True) if bundle_replacements else None
         )
-
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: RegenerateBundlePayload,
-        batch: Optional[Batch] = None,
-    ) -> RequestRegenerateBundle:
-        """
-        Handle JSON requests for the Regenerate Bundle API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request. If one is not specified, one will
-            be created automatically.
-        """
-        batch = batch or Batch()
-        request_kwargs = deepcopy(kwargs)
-
-        validate_request_params(
-            request_kwargs,
-            required_params={'from_bundle_image'},
-            optional_params={'bundle_replacements', 'organization', 'registry_auths'},
-        )
-        # Validate bundle_replacements is correctly provided
-        bundle_replacements = request_kwargs.get('bundle_replacements', {})
-        if bundle_replacements:
-            if not isinstance(bundle_replacements, dict):
-                raise ValidationError('The value of "bundle_replacements" must be a JSON object')
-
-            for key, value in bundle_replacements.items():
-                if not isinstance(value, str) or not isinstance(key, str):
-                    raise ValidationError(f'The key and value of "{key}" must be a string')
-
-        # Validate organization is correctly provided
-        organization = request_kwargs.get('organization')
-        if organization and not isinstance(organization, str):
-            raise ValidationError('"organization" must be a string')
-
-        # Validate from_bundle_image is correctly provided
-        from_bundle_image = request_kwargs.get('from_bundle_image')
-        if not isinstance(from_bundle_image, str):
-            raise ValidationError('"from_bundle_image" must be a string')
-
-        # Remove attributes that are not stored in the database
-        registry_auths = request_kwargs.pop('registry_auths', None)
-
-        # Check that registry_auths were provided in valid format
-        if registry_auths:
-            validate_registry_auths(registry_auths)
-
-        request_kwargs['from_bundle_image'] = Image.get_or_create(
-            pull_specification=from_bundle_image
-        )
-
-        # current_user.is_authenticated is only ever False when auth is disabled
-        if current_user.is_authenticated:
-            request_kwargs['user'] = current_user
-
-        # Add the request to a new batch
-        db.session.add(batch)
-        request_kwargs['batch'] = batch
-
-        request = cls(**request_kwargs)
-        request.add_state('in_progress', 'The request was initiated')
-        return request
 
     def to_json(self, verbose: Optional[bool] = True) -> RegenerateBundleRequestResponse:
         """
@@ -1539,114 +1222,6 @@ class RequestMergeIndexImage(Request):
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['merge_index_image'].value
     }
-
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: MergeIndexImagesPayload,
-        batch: Optional[Batch] = None,
-    ) -> RequestMergeIndexImage:
-        """
-        Handle JSON requests for the merge-index-image API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request.
-        """
-        request_kwargs = deepcopy(kwargs)
-
-        deprecation_list = request_kwargs.pop('deprecation_list', [])
-        if not isinstance(deprecation_list, list) or any(
-            not item or not isinstance(item, str) for item in deprecation_list
-        ):
-            raise ValidationError(
-                'The "deprecation_list" value should be an empty array or an array of strings'
-            )
-
-        request_kwargs['deprecation_list'] = [
-            Image.get_or_create(pull_specification=item) for item in deprecation_list
-        ]
-
-        source_from_index = request_kwargs.get('source_from_index', None)
-        if not (isinstance(source_from_index, str) and source_from_index):
-            raise ValidationError('The "source_from_index" value must be a string')
-        request_kwargs['source_from_index'] = Image.get_or_create(
-            pull_specification=source_from_index
-        )
-
-        graph_update_mode = request_kwargs.get('graph_update_mode')
-        validate_graph_mode(graph_update_mode, request_kwargs.get('target_index'))
-
-        target_index = request_kwargs.pop('target_index', None)
-        if target_index:
-            if not isinstance(target_index, str):
-                raise ValidationError('The "target_index" value must be a string')
-            request_kwargs['target_index'] = Image.get_or_create(pull_specification=target_index)
-
-        # Verify that `overwrite_target_index` is the correct type
-        overwrite = request_kwargs.pop('overwrite_target_index', False)
-        if not isinstance(overwrite, bool):
-            raise ValidationError('The "overwrite_target_index" value must be a boolean')
-
-        # Verify that `overwrite_target_index_token` is the correct type
-        overwrite_token = request_kwargs.pop('overwrite_target_index_token', None)
-        if overwrite_token:
-            if not isinstance(overwrite_token, str):
-                raise ValidationError('The "overwrite_target_index_token" value must be a string')
-            if overwrite_token and not overwrite:
-                raise ValidationError(
-                    'The "overwrite_target_index" value is required when'
-                    ' the "overwrite_target_index_token" value is used'
-                )
-        elif overwrite:
-            raise ValidationError(
-                'The "overwrite_target_index_token" value is required when'
-                ' the "overwrite_target_index" value is set'
-            )
-
-        # Validate binary_image is correctly provided
-        binary_image = request_kwargs.pop('binary_image', None)
-        if binary_image is not None and not isinstance(binary_image, str):
-            raise ValidationError('The "binary_image" value must be a string')
-        elif not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
-            raise ValidationError('The "binary_image" value must be a non-empty string')
-
-        if binary_image:
-            request_kwargs['binary_image'] = Image.get_or_create(pull_specification=binary_image)
-
-        distribution_scope = request_kwargs.pop('distribution_scope', None)
-        if distribution_scope:
-            distribution_scope = distribution_scope.lower()
-            if distribution_scope not in ['prod', 'stage', 'dev']:
-                raise ValidationError(
-                    'The "distribution_scope" value must be one of "dev", "stage", or "prod"'
-                )
-            request_kwargs['distribution_scope'] = distribution_scope
-
-        if not isinstance(request_kwargs.get('build_tags', []), list) or any(
-            not item or not isinstance(item, str) for item in request_kwargs.get('build_tags', [])
-        ):
-            raise ValidationError(
-                '"build_tags" should be either an empty array or an array of non-empty strings'
-            )
-
-        # current_user.is_authenticated is only ever False when auth is disabled
-        if current_user.is_authenticated:
-            request_kwargs['user'] = current_user
-
-        # Add the request to a new batch
-        batch = batch or Batch()
-        db.session.add(batch)
-        request_kwargs['batch'] = batch
-
-        request = cls(**request_kwargs)
-
-        build_tags = request_kwargs.pop('build_tags', [])
-
-        for bt in build_tags:
-            request.add_build_tag(bt)
-
-        request.add_state('in_progress', 'The request was initiated')
-        return request
 
     def to_json(self, verbose: Optional[bool] = True) -> MergeIndexImageRequestResponse:
         """
@@ -1770,78 +1345,6 @@ class User(db.Model, UserMixin):
         return user
 
 
-def validate_request_params(
-    request_params: Union[RequestPayload, PayloadTypesUnion],
-    required_params: Set[str],
-    optional_params: Set[str],
-) -> None:
-    """
-    Validate parameters for a build request.
-
-    All required parameters must be set in the request_params and
-    unknown parameters are not allowed.
-
-    :param Union[RequestPayload, PayloadTypesUnion] request_params: the request parameters
-                                                               provided by the user
-    :param set required_params: the set of required parameters
-    :param set optional_params: the set of optional parameters
-    :raises iib.exceptions.ValidationError: if validation of parameters fails
-    """
-    missing_params = required_params - request_params.keys()
-    if missing_params:
-        raise ValidationError('Missing required parameter(s): {}'.format(', '.join(missing_params)))
-
-    # Don't allow the user to set arbitrary columns or relationships
-    invalid_params = request_params.keys() - required_params - optional_params
-    if invalid_params:
-        raise ValidationError(
-            'The following parameters are invalid: {}'.format(', '.join(invalid_params))
-        )
-
-    # Verify that all the required parameters are set and not empty
-    for param in required_params:
-        if not request_params.get(param):
-            raise ValidationError(f'"{param}" must be set')
-
-    # If any optional parameters are set but are empty, just remove them since they are
-    # treated as null values
-    for param in optional_params:
-        if (
-            param in request_params
-            and not isinstance(request_params.get(param), bool)
-            and not request_params[param]  # type: ignore
-        ):
-            del request_params[param]  # type: ignore
-
-
-def validate_registry_auths(registry_auths: Dict[str, Any]) -> None:
-    """
-    Validate registry_auths for a build request.
-
-    Only auth item in dockerconfig.json is supported for iib.
-
-    :param dict registry_auths: User provided dockerconfig for authentication
-      to private registries
-    :raises ValidationError: if registry_auths are not in valid format
-    """
-    auths = 'auths'
-    if not isinstance(registry_auths, dict):
-        raise ValidationError('"registry_auths" must be a dict')
-    if list(registry_auths.keys()) != [auths]:
-        raise ValidationError(f'"registry_auths" must contain single key "{auths}"')
-    if not registry_auths[auths] or not isinstance(registry_auths[auths], dict):
-        raise ValidationError(f'"registry_auths.{auths}" must be a non-empty dict')
-    for reg, auth_dict in registry_auths[auths].items():
-        err_msg = (
-            f'{reg} in registry_auths has auth value in incorrect format. '
-            'See the API docs for details on the expected format'
-        )
-        if not isinstance(auth_dict, dict) or len(auth_dict) != 1:
-            raise ValidationError(err_msg)
-        if not all(k == 'auth' and isinstance(v, str) for (k, v) in auth_dict.items()):
-            raise ValidationError(err_msg)
-
-
 class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
     """An "create-empty-index" image build request."""
 
@@ -1873,64 +1376,6 @@ class RequestCreateEmptyIndex(Request, RequestIndexImageMixin):
         :param dict labels: the dictionary of the labels or ``None``
         """
         self._labels = json.dumps(labels, sort_keys=True) if labels is not None else None
-
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: CreateEmptyIndexPayload,
-        batch: Optional[Batch] = None,
-    ) -> RequestCreateEmptyIndex:
-        """
-        Handle JSON requests for the create-empty-index API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request.
-        """
-        request_kwargs = deepcopy(kwargs)
-        if request_kwargs.get('from_index') is None:
-            raise ValidationError('"from_index" must be a specified')
-        if (
-            not isinstance(request_kwargs.get('from_index'), str)
-            or len(str(request_kwargs.get('from_index'))) == 0
-        ):
-            raise ValidationError('"from_index" must be a non-empty string')
-        if request_kwargs.get('output_fbc') and not isinstance(
-            request_kwargs.get('output_fbc'), bool
-        ):
-            raise ValidationError('"output_fbc" should be boolean')
-
-        new_labels = request_kwargs.get('labels')
-        if new_labels is not None:
-            if not isinstance(new_labels, dict):
-                raise ValidationError('The value of "labels" must be a JSON object')
-
-            for key, value in new_labels.items():
-                if not isinstance(value, str) or not isinstance(key, str):
-                    raise ValidationError(f'The key and value of "{key}" must be a string')
-
-        for arg in (
-            'add_arches',
-            'overwrite_from_index',
-            'overwrite_from_index_token',
-            'build_tags',
-        ):
-            if arg in request_kwargs:
-                raise ValidationError(
-                    f'The "{arg}" arg is invalid for the create-empty-index endpoint.'
-                )
-
-        # cast to more wider type, see _from_json method
-        cls._from_json(
-            cast(RequestPayload, request_kwargs),
-            additional_required_params=['from_index'],
-            additional_optional_params=['labels'],
-            batch=batch,
-        )
-
-        request = cls(**request_kwargs)
-        request.add_state('in_progress', 'The request was initiated')
-
-        return request
 
     def to_json(self, verbose: Optional[bool] = True) -> CreateEmptyIndexRequestResponse:
         """
@@ -2001,61 +1446,6 @@ class RequestRecursiveRelatedBundles(Request):
     }
     build_tags = None
 
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: RecursiveRelatedBundlesRequestPayload,
-        batch: Optional[Batch] = None,
-    ):
-        """
-        Handle JSON requests for the Recursive Related Bundles API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        :param Batch batch: the batch to specify with the request. If one is not specified, one will
-            be created automatically.
-        """
-        batch = batch or Batch()
-        request_kwargs = deepcopy(kwargs)
-
-        validate_request_params(
-            request_kwargs,
-            required_params={'parent_bundle_image'},
-            optional_params={'organization', 'registry_auths'},
-        )
-
-        # Validate organization is correctly provided
-        organization = request_kwargs.get('organization')
-        if organization and not isinstance(organization, str):
-            raise ValidationError('"organization" must be a string')
-
-        # Validate parent_bundle_image is correctly provided
-        parent_bundle_image = request_kwargs.get('parent_bundle_image')
-        if not isinstance(parent_bundle_image, str):
-            raise ValidationError('"parent_bundle_image" must be a string')
-
-        # Remove attributes that are not stored in the database
-        registry_auths = request_kwargs.pop('registry_auths', None)
-
-        # Check that registry_auths were provided in valid format
-        if registry_auths:
-            validate_registry_auths(registry_auths)
-
-        request_kwargs['parent_bundle_image'] = Image.get_or_create(
-            pull_specification=parent_bundle_image
-        )
-
-        # current_user.is_authenticated is only ever False when auth is disabled
-        if current_user.is_authenticated:
-            request_kwargs['user'] = current_user
-
-        # Add the request to a new batch
-        db.session.add(batch)
-        request_kwargs['batch'] = batch
-
-        request = cls(**request_kwargs)
-        request.add_state('in_progress', 'The request was initiated')
-        return request
-
     def to_json(self, verbose: Optional[bool] = True) -> RecursiveRelatedBundlesRequestResponse:
         """
         Provide the JSON representation of a "recursive-related-bundles" build request.
@@ -2112,57 +1502,6 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
     __mapper_args__ = {
         'polymorphic_identity': RequestTypeMapping.__members__['fbc_operations'].value
     }
-
-    @classmethod
-    def from_json(  # type: ignore[override] # noqa: F821
-        cls,
-        kwargs: FbcOperationRequestPayload,
-    ):
-        """
-        Handle JSON requests for the fbc-operations API endpoint.
-
-        :param dict kwargs: the JSON payload of the request.
-        """
-        request_kwargs = deepcopy(kwargs)
-
-        validate_request_params(
-            request_kwargs,
-            required_params={'fbc_fragment', 'from_index'},
-            optional_params={
-                'add_arches',
-                'binary_image',
-                'distribution_scope',
-                'build_tags',
-                'overwrite_from_index',
-                'overwrite_from_index_token',
-            },
-        )
-
-        # Validate parent_bundle_image is correctly provided
-        fbc_fragment = request_kwargs.get('fbc_fragment')
-        if not isinstance(fbc_fragment, str):
-            raise ValidationError('The "fbc_fragment" must be a string')
-        request_kwargs['fbc_fragment'] = Image.get_or_create(pull_specification=fbc_fragment)
-
-        # cast to more wider type, see _from_json method
-        cls._from_json(
-            cast(RequestPayload, request_kwargs),
-            additional_optional_params=[
-                'bundles',
-                'fbc_fragment',
-                'from_index',
-                'organization',
-            ],
-        )
-
-        build_tags = request_kwargs.pop('build_tags', [])
-        request = cls(**request_kwargs)
-
-        for bt in build_tags:
-            request.add_build_tag(bt)
-
-        request.add_state('in_progress', 'The request was initiated')
-        return request
 
     def to_json(self, verbose: Optional[bool] = True) -> FbcOperationRequestResponse:
         """

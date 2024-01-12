@@ -58,6 +58,7 @@ from iib.workers.tasks.iib_static_types import (
     GreenwaveConfig,
     UpdateRequestPayload,
 )
+from iib.common.pydantic_models import AddPydanticModel, RmPydanticModel
 
 __all__ = ['handle_add_request', 'handle_rm_request']
 
@@ -832,24 +833,10 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
 @app.task
 @request_logger
 def handle_add_request(
-    bundles: List[str],
+    payload: AddPydanticModel,
     request_id: int,
-    binary_image: Optional[str] = None,
-    from_index: Optional[str] = None,
-    add_arches: Optional[Set[str]] = None,
-    cnr_token: Optional[str] = None,
-    organization: Optional[str] = None,
-    force_backport: bool = False,
-    overwrite_from_index: bool = False,
-    overwrite_from_index_token: Optional[str] = None,
-    distribution_scope: Optional[str] = None,
     greenwave_config: Optional[GreenwaveConfig] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
-    deprecation_list: Optional[List[str]] = None,
-    build_tags: Optional[List[str]] = None,
-    graph_update_mode: Optional[str] = None,
-    check_related_images: bool = False,
-    traceparent: Optional[str] = None,
 ) -> None:
     """
     Coordinate the the work needed to build the index image with the input bundles.
@@ -893,10 +880,10 @@ def handle_add_request(
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
 
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
-        resolved_bundles = get_resolved_bundles(bundles)
+    with set_registry_token(payload.overwrite_from_index_token, payload.from_index, append=True):
+        resolved_bundles = get_resolved_bundles(payload.bundles)
         verify_labels(resolved_bundles)
-        if check_related_images:
+        if payload.check_related_images:
             inspect_related_images(resolved_bundles, request_id)
 
     # Check if Gating passes for all the bundles
@@ -908,23 +895,23 @@ def handle_add_request(
     prebuild_info = prepare_request_for_build(
         request_id,
         RequestConfigAddRm(
-            _binary_image=binary_image,
-            from_index=from_index,
-            overwrite_from_index_token=overwrite_from_index_token,
-            add_arches=add_arches,
-            bundles=bundles,
-            distribution_scope=distribution_scope,
+            _binary_image=payload.binary_image,
+            from_index=payload.from_index,
+            overwrite_from_index_token=payload.overwrite_from_index_token,
+            add_arches=payload.add_arches,
+            bundles=payload.bundles,
+            distribution_scope=payload.distribution_scope,
             binary_image_config=binary_image_config,
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
-    with set_registry_token(overwrite_from_index_token, from_index_resolved):
-        is_fbc = is_image_fbc(from_index_resolved) if from_index else False
+    with set_registry_token(payload.overwrite_from_index_token, from_index_resolved):
+        is_fbc = is_image_fbc(from_index_resolved) if payload.from_index else False
         if is_fbc:
             # logging requested by stakeholders do not delete
             log.info("Processing File-Based Catalog image")
 
-    if (cnr_token and organization) or force_backport:
+    if (payload.cnr_token and payload.organization) or payload.force_backport:
         log.warning(
             "Legacy support is deprecated in IIB. "
             "cnr_token, organization and force_backport parameters will be ignored."
@@ -934,12 +921,12 @@ def handle_add_request(
     present_bundles: List[BundleImage] = []
     present_bundles_pull_spec: List[str] = []
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        if from_index:
+        if payload.from_index:
             msg = 'Checking if bundles are already present in index image'
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
 
-            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
                 present_bundles, present_bundles_pull_spec = _get_present_bundles(
                     from_index_resolved, temp_dir
                 )
@@ -962,8 +949,8 @@ def handle_add_request(
                 bundles=resolved_bundles,
                 binary_image=prebuild_info['binary_image_resolved'],
                 from_index=from_index_resolved,
-                graph_update_mode=graph_update_mode,
-                overwrite_from_index_token=overwrite_from_index_token,
+                graph_update_mode=payload.graph_update_mode,
+                overwrite_from_index_token=payload.overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
             )
         else:
@@ -972,8 +959,8 @@ def handle_add_request(
                 bundles=resolved_bundles,
                 binary_image=prebuild_info['binary_image_resolved'],
                 from_index=from_index_resolved,
-                graph_update_mode=graph_update_mode,
-                overwrite_from_index_token=overwrite_from_index_token,
+                graph_update_mode=payload.graph_update_mode,
+                overwrite_from_index_token=payload.overwrite_from_index_token,
                 overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
                 container_tool='podman',
             )
@@ -986,7 +973,7 @@ def handle_add_request(
             add_max_ocp_version_property(resolved_bundles, temp_dir)
 
         deprecation_bundles = get_bundles_from_deprecation_list(
-            present_bundles_pull_spec + resolved_bundles, deprecation_list or []
+            present_bundles_pull_spec + resolved_bundles, payload.deprecation_list or []
         )
 
         arches = prebuild_info['arches']
@@ -1010,7 +997,7 @@ def handle_add_request(
                 )
 
                 with set_registry_token(
-                    overwrite_from_index_token, from_index_resolved, append=True
+                    payload.overwrite_from_index_token, from_index_resolved, append=True
                 ):
                     deprecate_bundles(
                         bundles=deprecation_bundles,
@@ -1046,7 +1033,7 @@ def handle_add_request(
             )
             # get catalog with opted-in operators
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
-            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
@@ -1099,15 +1086,15 @@ def handle_add_request(
         )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, payload.build_tags)
 
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
+        payload.from_index,
+        payload.overwrite_from_index,
+        payload.overwrite_from_index_token,
         from_index_resolved,
         add_or_rm=True,
     )
@@ -1120,16 +1107,9 @@ def handle_add_request(
 @app.task
 @request_logger
 def handle_rm_request(
-    operators: List[str],
+    payload: RmPydanticModel,
     request_id: int,
-    from_index: str,
-    binary_image: Optional[str] = None,
-    add_arches: Optional[Set[str]] = None,
-    overwrite_from_index: bool = False,
-    overwrite_from_index_token: Optional[str] = None,
-    distribution_scope: Optional[str] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
-    build_tags: Optional[List[str]] = None,
 ) -> None:
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -1159,11 +1139,11 @@ def handle_rm_request(
     prebuild_info = prepare_request_for_build(
         request_id,
         RequestConfigAddRm(
-            _binary_image=binary_image,
-            from_index=from_index,
-            overwrite_from_index_token=overwrite_from_index_token,
-            add_arches=add_arches,
-            distribution_scope=distribution_scope,
+            _binary_image=payload.binary_image,
+            from_index=payload.from_index,
+            overwrite_from_index_token=payload.overwrite_from_index_token,
+            add_arches=payload.add_arches,
+            distribution_scope=payload.distribution_scope,
             binary_image_config=binary_image_config,
         ),
     )
@@ -1172,7 +1152,7 @@ def handle_rm_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+        with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
             image_is_fbc = is_image_fbc(from_index_resolved)
 
         if image_is_fbc:
@@ -1180,9 +1160,9 @@ def handle_rm_request(
             fbc_dir, _ = opm_registry_rm_fbc(
                 base_dir=temp_dir,
                 from_index=from_index_resolved,
-                operators=operators,
+                operators=payload.operators,
                 binary_image=prebuild_info['binary_image'],
-                overwrite_from_index_token=overwrite_from_index_token,
+                overwrite_from_index_token=payload.overwrite_from_index_token,
                 generate_cache=False,
             )
 
@@ -1193,12 +1173,12 @@ def handle_rm_request(
 
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
             # get catalog with opted-in operators
-            with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
             # remove operators from from_index file-based catalog
-            for operator in operators:
+            for operator in payload.operators:
                 operator_path = os.path.join(catalog_from_index, operator)
                 if os.path.exists(operator_path):
                     log.debug('Removing operator from from_index FBC %s', operator_path)
@@ -1223,10 +1203,10 @@ def handle_rm_request(
         else:
             _opm_index_rm(
                 base_dir=temp_dir,
-                operators=operators,
+                operators=payload.operators,
                 binary_image=prebuild_info['binary_image'],
                 from_index=from_index_resolved,
-                overwrite_from_index_token=overwrite_from_index_token,
+                overwrite_from_index_token=payload.overwrite_from_index_token,
                 container_tool='podman',
             )
 
@@ -1259,15 +1239,15 @@ def handle_rm_request(
         )
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, payload.build_tags)
 
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
+        payload.from_index,
+        payload.overwrite_from_index,
+        payload.overwrite_from_index_token,
         from_index_resolved,
         add_or_rm=True,
     )

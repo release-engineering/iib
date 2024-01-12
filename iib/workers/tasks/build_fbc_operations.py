@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import tempfile
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
@@ -22,7 +22,7 @@ from iib.workers.tasks.utils import (
     set_registry_token,
     RequestConfigFBCOperation,
 )
-
+from iib.common.pydantic_models import FbcOperationsPydanticModel
 __all__ = ['handle_fbc_operation_request']
 
 log = logging.getLogger(__name__)
@@ -31,15 +31,8 @@ log = logging.getLogger(__name__)
 @app.task
 @request_logger
 def handle_fbc_operation_request(
+    payload: FbcOperationsPydanticModel,
     request_id: int,
-    fbc_fragment: str,
-    from_index: Optional[str] = None,
-    binary_image: Optional[str] = None,
-    distribution_scope: Optional[str] = None,
-    overwrite_from_index: bool = False,
-    overwrite_from_index_token: Optional[str] = None,
-    build_tags: Optional[Set[str]] = None,
-    add_arches: Optional[Set[str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> None:
     """
@@ -58,18 +51,18 @@ def handle_fbc_operation_request(
     _cleanup()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragment')
 
-    with set_registry_token(overwrite_from_index_token, fbc_fragment, append=True):
-        resolved_fbc_fragment = get_resolved_image(fbc_fragment)
+    with set_registry_token(payload.overwrite_from_index_token, payload.fbc_fragment, append=True):
+        resolved_fbc_fragment = get_resolved_image(payload.fbc_fragment)
 
     prebuild_info = prepare_request_for_build(
         request_id,
         RequestConfigFBCOperation(
-            _binary_image=binary_image,
-            from_index=from_index,
-            overwrite_from_index_token=overwrite_from_index_token,
-            add_arches=add_arches,
-            fbc_fragment=fbc_fragment,
-            distribution_scope=distribution_scope,
+            _binary_image=payload.binary_image,
+            from_index=payload.from_index,
+            overwrite_from_index_token=payload.overwrite_from_index_token,
+            add_arches=payload.add_arches,
+            fbc_fragment=payload.fbc_fragment,
+            distribution_scope=payload.distribution_scope,
             binary_image_config=binary_image_config,
         ),
     )
@@ -88,7 +81,7 @@ def handle_fbc_operation_request(
             from_index_resolved,
             binary_image_resolved,
             resolved_fbc_fragment,
-            overwrite_from_index_token,
+            payload.overwrite_from_index_token,
         )
 
         _add_label_to_index(
@@ -111,15 +104,15 @@ def handle_fbc_operation_request(
             _push_image(request_id, arch)
 
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
-    output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
+    output_pull_spec = _create_and_push_manifest_list(request_id, arches, payload.build_tags)
 
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
+        payload.from_index,
+        payload.overwrite_from_index,
+        payload.overwrite_from_index_token,
         from_index_resolved,
         add_or_rm=True,
     )
