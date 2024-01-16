@@ -1153,7 +1153,6 @@ def fbc_operations() -> Tuple[flask.Response, int]:
 
     request = RequestFbcOperations.from_json_replacement(
         payload=request_payload,
-        batch_disabled=True,
         build_tags_allowed=True,
     )
 

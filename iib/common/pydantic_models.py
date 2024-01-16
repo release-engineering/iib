@@ -66,7 +66,7 @@ class AddPydanticModel(PydanticModel):
         AfterValidator(images_format_check),
     ]
     cnr_token: Optional[SecretStr] = None  # deprecated
-    check_related_images: Optional[bool] = False
+    check_related_images: Optional[bool] = None  # old request without this parameter will not have False but None
     deprecation_list: Annotated[
         Optional[List[str]],
         AfterValidator(get_unique_deprecation_list_items),
@@ -123,6 +123,7 @@ class AddPydanticModel(PydanticModel):
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
+           # include=["deprecation_list"],
             exclude=[
                 "add_arches",
                 "build_tags",
@@ -131,7 +132,7 @@ class AddPydanticModel(PydanticModel):
                 "overwrite_from_index",
                 "overwrite_from_index_token",
             ],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
 
@@ -167,7 +168,7 @@ class RmPydanticModel(PydanticModel):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
             exclude=["add_arches", "build_tags", "overwrite_from_index", "overwrite_from_index_token"],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
     def _get_all_keys_to_check_in_db(self):
@@ -191,7 +192,7 @@ class RegenerateBundlePydanticModel(PydanticModel):
     """Datastructure of the request to /builds/regenerate-bundle API point."""
 
     # BUNDLE_IMAGE, from_bundle_image_resolved, build_tags?
-    bundle_replacements: Optional[Dict[str, str]] = {}
+    bundle_replacements: Optional[Dict[str, str]] = None
     from_bundle_image: Annotated[str, AfterValidator(image_format_check)]
     organization: Optional[str] = None
     registry_auths: Optional[RegistryAuths] = None  # not in db
@@ -200,7 +201,7 @@ class RegenerateBundlePydanticModel(PydanticModel):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
             exclude=["registry_auths"],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
     def _get_all_keys_to_check_in_db(self):
@@ -255,7 +256,7 @@ class MergeIndexImagePydanticModel(PydanticModel):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
             exclude=["build_tags", "overwrite_target_index", "overwrite_target_index_token"],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
     def _get_all_keys_to_check_in_db(self):
@@ -275,13 +276,13 @@ class CreateEmptyIndexPydanticModel(PydanticModel):
         AfterValidator(image_format_check),
         AfterValidator(length_validator),
     ]
-    labels: Optional[Dict[str, str]] = {}
-    output_fbc: Optional[bool] = False
+    labels: Optional[Dict[str, str]] = None # old request without this parameter will not have empty labels
+    output_fbc: Optional[bool] = None # old request without this parameter will not have empty output_fbc
 
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
     def _get_all_keys_to_check_in_db(self):
@@ -301,7 +302,7 @@ class RecursiveRelatedBundlesPydanticModel(PydanticModel):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
             exclude=["registry_auths"],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
 
@@ -321,7 +322,7 @@ class FbcOperationsPydanticModel(PydanticModel):
         AfterValidator(length_validator),
         AfterValidator(get_unique_bundles),
         AfterValidator(images_format_check),
-    ] = []
+    ] = None  # old request without this parameter will not have empty list but None
     build_tags: Optional[List[str]] = []
     distribution_scope: Annotated[
         Optional[DISTRIBUTION_SCOPE_LITERAL], BeforeValidator(distribution_scope_lower),
@@ -349,7 +350,7 @@ class FbcOperationsPydanticModel(PydanticModel):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
             exclude=["add_arches", "build_tags", "overwrite_from_index", "overwrite_from_index_token"],
-            exclude_defaults=True,
+            exclude_none=True,
         )
 
     def _get_all_keys_to_check_in_db(self):
