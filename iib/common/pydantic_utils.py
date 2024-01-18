@@ -15,9 +15,7 @@ DISTRIBUTION_SCOPE_LITERAL = Literal['prod', 'stage', 'dev']
 # TODO add regex in future to not allow following values ":s", "s:", ":"?
 def image_format_check(image_name: str) -> str:
     if '@' not in image_name and ':' not in image_name:
-        raise ValidationError(
-            f'Image {image_name} should have a tag or a digest specified.'
-        )
+        raise ValidationError(f'Image {image_name} should have a tag or a digest specified.')
     return image_name
 
 
@@ -48,7 +46,10 @@ def get_unique_deprecation_list_items(deprecation_list: Optional[List[str]]) -> 
     return list(set(deprecation_list))
 
 
-def validate_graph_mode_index_image(graph_update_mode: str, index_image: str) -> 'MergeIndexImageRequestPayload':
+def validate_graph_mode_index_image(
+    graph_update_mode: str,
+    index_image: str,
+) -> 'MergeIndexImageRequestPayload':
     """
     Validate graph mode and check if index image is allowed to use different graph mode.
 
@@ -57,9 +58,9 @@ def validate_graph_mode_index_image(graph_update_mode: str, index_image: str) ->
     :raises: ValidationError when incorrect graph_update_mode is set
     :raises: Forbidden when graph_mode can't be used for given index image
     """
-
     if graph_update_mode:
-        allowed_from_indexes: List[str] = ["REMOVE_#:r"]  # current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
+        # TODO remove this comment, replace value with current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
+        allowed_from_indexes: List[str] = ["REMOVE_#:r"]
         if index_image not in allowed_from_indexes:
             raise Forbidden(
                 '"graph_update_mode" can only be used on the'
@@ -70,9 +71,7 @@ def validate_graph_mode_index_image(graph_update_mode: str, index_image: str) ->
 
 # RequestIndexImageMixin
 def from_index_add_arches(model: 'AddRequestPydanticModel') -> 'AddRequestPydanticModel':
-    """
-    Check if both `from_index` and `add_arches` are not specified
-    """
+    """Check if both `from_index` and `add_arches` are not specified."""
     if not model.from_index and not model.add_arches:
         raise ValidationError('One of "from_index" or "add_arches" must be specified')
     return model
@@ -81,7 +80,7 @@ def from_index_add_arches(model: 'AddRequestPydanticModel') -> 'AddRequestPydant
 # RequestIndexImageMixin
 def binary_image_check(binary_image: str) -> str:
     """
-    # Validate binary_image is correctly provided
+    # Validate binary_image is correctly provided.
     """
     if not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
         raise ValidationError('The "binary_image" value must be a non-empty string')
@@ -95,9 +94,7 @@ def validate_overwrite_params(
     disable_auth_check: Optional[bool] = False,
 ) -> None:
     """
-     Check if both `overwrite_index_image` and `overwrite_index_image_token` are specified
-
-
+    Check if both `overwrite_index_image` and `overwrite_index_image_token` are specified.
     """
     if overwrite_index_image_token and not overwrite_index_image:
         raise ValidationError(
@@ -122,5 +119,7 @@ def distribution_scope_lower(distribution_scope: str) -> str:
 
 def length_validator(model_property: Any) -> Any:
     if len(model_property) == 0:
-        raise ValidationError(f"The {type(model_property)} {model_property} should have at least 1 item.")
+        raise ValidationError(
+            f"The {type(model_property)} {model_property} should have at least 1 item."
+        )
     return model_property

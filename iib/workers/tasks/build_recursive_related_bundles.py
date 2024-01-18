@@ -8,6 +8,7 @@ from typing import List, Optional
 from operator_manifest.operator import OperatorManifest
 import ruamel.yaml
 
+from iib.common.pydantic_models import RecursiveRelatedBundlesPydanticModel
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.tasks.build import (
@@ -29,7 +30,6 @@ from iib.workers.tasks.utils import (
     get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
-from iib.common.pydantic_models import RecursiveRelatedBundlesPydanticModel
 
 
 __all__ = ['handle_recursive_related_bundles_request']

@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
-from copy import deepcopy
 from datetime import datetime, timedelta
 from enum import Enum
 import json
-from typing import Any, cast, Dict, List, Literal, Optional, Sequence, Set, Union
-from abc import abstractmethod
+from typing import Any, cast, Dict, List, Optional, Set, Union
 
 from flask import current_app, url_for
 from flask_login import UserMixin, current_user
@@ -14,7 +12,6 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import joinedload, load_only, Mapped, validates
 from sqlalchemy.orm.strategy_options import _AbstractLoad
-from werkzeug.exceptions import Forbidden
 
 from iib.exceptions import ValidationError
 from iib.web import db
@@ -404,7 +401,6 @@ class Request(db.Model):
         'polymorphic_on': 'type',
     }
 
-
     @validates('type')
     def validate_type(self, key: Optional[str], type_num: int) -> int:
         """
@@ -490,7 +486,6 @@ class Request(db.Model):
         cls,
         payload: UnionPydanticRequestType,
         batch: Optional[Batch] = None,
-        build_tags_allowed: Optional[bool] = False,
     ):
         """
         Handle JSON requests for the builds/* API endpoint.
@@ -498,7 +493,6 @@ class Request(db.Model):
         :param UnionPydanticRequestType payload: the Pydantic model representing the request.
         :param Batch batch: the batch to specify with the request.
         """
-
         keys_to_check = payload.get_keys_to_check_in_db()
         for key in keys_to_check:
             if key in [
@@ -510,15 +504,25 @@ class Request(db.Model):
                 'target_index',
                 'parent_bundle_image',
             ]:
-                payload.__setattr__(key, Image.get_or_create(pull_specification=payload.__getattribute__(key)))
+                payload.__setattr__(
+                    key,
+                    Image.get_or_create(pull_specification=payload.__getattribute__(key)),
+                )
 
             elif key in ["bundles", "deprecation_list"]:
-                payload.__setattr__(key, [
-                    Image.get_or_create(pull_specification=image) for image in payload.__getattribute__(key)
-                ])
+                payload.__setattr__(
+                    key,
+                    [
+                        Image.get_or_create(pull_specification=image)
+                        for image in payload.__getattribute__(key)
+                    ],
+                )
 
             elif key == "operators":
-                payload.__setattr__(key, [Operator.get_or_create(name=item) for item in payload.__getattribute__(key)])
+                payload.__setattr__(
+                    key,
+                    [Operator.get_or_create(name=item) for item in payload.__getattribute__(key)],
+                )
 
             else:
                 raise ValidationError(f"Unexpected key: {key} during from_json() method.")
@@ -537,13 +541,11 @@ class Request(db.Model):
 
         request = cls(**request_kwargs)
 
-        if build_tags_allowed:
-            for bt in payload.build_tags:
-                request.add_build_tag(bt)
+        for bt in payload.build_tags:
+            request.add_build_tag(bt)
 
         request.add_state('in_progress', 'The request was initiated')
         return request
-
 
     # return value is BaseClassRequestResponse, however because of LSP, we need other types here too
     def to_json(
@@ -905,7 +907,6 @@ class RequestIndexImageMixin:
     def distribution_scope(cls: DefaultMeta) -> Mapped[str]:
         """Return the distribution_scope for the request."""
         return db.mapped_column(db.String, nullable=True)
-
 
     def get_common_index_image_json(self) -> CommonIndexImageResponseBase:
         """

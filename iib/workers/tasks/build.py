@@ -17,6 +17,7 @@ from tenacity import (
     wait_incrementing,
 )
 
+from iib.common.pydantic_models import AddPydanticModel, RmPydanticModel
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
@@ -58,7 +59,6 @@ from iib.workers.tasks.iib_static_types import (
     GreenwaveConfig,
     UpdateRequestPayload,
 )
-from iib.common.pydantic_models import AddPydanticModel, RmPydanticModel
 
 __all__ = ['handle_add_request', 'handle_rm_request']
 
@@ -880,7 +880,11 @@ def handle_add_request(
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
 
-    with set_registry_token(payload.overwrite_from_index_token, payload.from_index, append=True):
+    with set_registry_token(
+        payload.overwrite_from_index_token,
+        payload.from_index,
+        append=True,
+    ):
         resolved_bundles = get_resolved_bundles(payload.bundles)
         verify_labels(resolved_bundles)
         if payload.check_related_images:
@@ -926,7 +930,11 @@ def handle_add_request(
             log.info(msg)
             set_request_state(request_id, 'in_progress', msg)
 
-            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(
+                payload.overwrite_from_index_token,
+                from_index_resolved,
+                append=True,
+            ):
                 present_bundles, present_bundles_pull_spec = _get_present_bundles(
                     from_index_resolved, temp_dir
                 )
@@ -1033,7 +1041,11 @@ def handle_add_request(
             )
             # get catalog with opted-in operators
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
-            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(
+                payload.overwrite_from_index_token,
+                from_index_resolved,
+                append=True,
+            ):
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
@@ -1152,7 +1164,11 @@ def handle_rm_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
+        with set_registry_token(
+            payload.overwrite_from_index_token,
+            from_index_resolved,
+            append=True,
+        ):
             image_is_fbc = is_image_fbc(from_index_resolved)
 
         if image_is_fbc:
@@ -1173,7 +1189,11 @@ def handle_rm_request(
 
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
             # get catalog with opted-in operators
-            with set_registry_token(payload.overwrite_from_index_token, from_index_resolved, append=True):
+            with set_registry_token(
+                payload.overwrite_from_index_token,
+                from_index_resolved,
+                append=True,
+            ):
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )

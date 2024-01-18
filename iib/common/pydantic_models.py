@@ -37,16 +37,14 @@ UnionPydanticRequestType = Union[
 
 
 class PydanticModel(BaseModel):
-
     @classmethod
     def _get_all_keys_to_check_in_db(cls):
+        """Class that returns request specific keys to check."""
         raise NotImplementedError("Not implemented")
 
     def get_keys_to_check_in_db(self):
         """Filter keys, which need to be checked in db. Return only a keys that are set to values."""
-        return [
-            k for k in self._get_all_keys_to_check_in_db() if getattr(self, k, None)
-        ]
+        return [k for k in self._get_all_keys_to_check_in_db() if getattr(self, k, None)]
 
 
 class AddPydanticModel(PydanticModel):
@@ -66,14 +64,16 @@ class AddPydanticModel(PydanticModel):
         AfterValidator(images_format_check),
     ]
     cnr_token: Optional[SecretStr] = None  # deprecated
-    check_related_images: Optional[bool] = None  # old request without this parameter will not have False but None
+    # TODO remove this comment -> old request without this parameter will not have False but None
+    check_related_images: Optional[bool] = None
     deprecation_list: Annotated[
         Optional[List[str]],
         AfterValidator(get_unique_deprecation_list_items),
         AfterValidator(images_format_check),
     ] = []  # deprecated
     distribution_scope: Annotated[
-        Optional[DISTRIBUTION_SCOPE_LITERAL], BeforeValidator(distribution_scope_lower),
+        Optional[DISTRIBUTION_SCOPE_LITERAL],
+        BeforeValidator(distribution_scope_lower),
     ] = None
     force_backport: Optional[bool] = False  # deprecated
     from_index: Annotated[str, AfterValidator(image_format_check)]
@@ -102,7 +102,7 @@ class AddPydanticModel(PydanticModel):
     @model_validator(mode='after')
     def from_index_needed_if_no_bundles(self) -> 'AddPydanticModel':
         """
-        Check if no bundles and `from_index is specified
+        Check if no bundles and `from_index is specified.
 
         if no bundles and no from index then an empty index will be created which is a no-op
         """
@@ -113,7 +113,7 @@ class AddPydanticModel(PydanticModel):
     # TODO remove this comment -> Validator from RequestADD class
     @model_validator(mode='after')
     def bundles_needed_with_check_related_images(self) -> 'AddPydanticModel':
-        """Verify that `check_related_images` is specified when bundles are specified"""
+        """Verify that `check_related_images` is specified when bundles are specified."""
         if self.check_related_images and not self.bundles:
             raise ValidationError(
                 '"check_related_images" must be specified only when bundles are specified'
@@ -123,7 +123,6 @@ class AddPydanticModel(PydanticModel):
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
-           # include=["deprecation_list"],
             exclude=[
                 "add_arches",
                 "build_tags",
@@ -134,7 +133,6 @@ class AddPydanticModel(PydanticModel):
             ],
             exclude_none=True,
         )
-
 
     def _get_all_keys_to_check_in_db(self):
         return ["binary_image", "bundles", "deprecation_list", "from_index"]
@@ -150,7 +148,8 @@ class RmPydanticModel(PydanticModel):
     ] = None
     build_tags: Optional[List[str]] = []
     distribution_scope: Annotated[
-        Optional[DISTRIBUTION_SCOPE_LITERAL], BeforeValidator(distribution_scope_lower),
+        Optional[DISTRIBUTION_SCOPE_LITERAL],
+        BeforeValidator(distribution_scope_lower),
     ] = None
     from_index: Annotated[str, AfterValidator(image_format_check)]
     operators: Annotated[List[str], AfterValidator(length_validator)]
@@ -167,7 +166,12 @@ class RmPydanticModel(PydanticModel):
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
-            exclude=["add_arches", "build_tags", "overwrite_from_index", "overwrite_from_index_token"],
+            exclude=[
+                "add_arches",
+                "build_tags",
+                "overwrite_from_index",
+                "overwrite_from_index_token",
+            ],
             exclude_none=True,
         )
 
@@ -228,10 +232,11 @@ class MergeIndexImagePydanticModel(PydanticModel):
         AfterValidator(images_format_check),
     ] = []
     distribution_scope: Annotated[
-        Optional[DISTRIBUTION_SCOPE_LITERAL], BeforeValidator(distribution_scope_lower),
+        Optional[DISTRIBUTION_SCOPE_LITERAL],
+        BeforeValidator(distribution_scope_lower),
     ] = None
     graph_update_mode: Optional[GRAPH_MODE_LITERAL] = None
-    overwrite_target_index: Optional[bool] = False  # Why do we need this bool? Isn't the token enough?
+    overwrite_target_index: Optional[bool] = False
     overwrite_target_index_token: Optional[SecretStr] = None
     source_from_index: Annotated[str, AfterValidator(image_format_check)]
     target_index: Annotated[Optional[str], AfterValidator(image_format_check)] = None
@@ -260,7 +265,13 @@ class MergeIndexImagePydanticModel(PydanticModel):
         )
 
     def _get_all_keys_to_check_in_db(self):
-        return ["binary_image", "deprecation_list", "source_from_index", "target_index", "target_index"]
+        return [
+            "binary_image",
+            "deprecation_list",
+            "source_from_index",
+            "target_index",
+            "target_index",
+        ]
 
 
 class CreateEmptyIndexPydanticModel(PydanticModel):
@@ -276,8 +287,10 @@ class CreateEmptyIndexPydanticModel(PydanticModel):
         AfterValidator(image_format_check),
         AfterValidator(length_validator),
     ]
-    labels: Optional[Dict[str, str]] = None # old request without this parameter will not have empty labels
-    output_fbc: Optional[bool] = None # old request without this parameter will not have empty output_fbc
+    # TODO (remove comment) old request without this parameter will not have empty labels
+    labels: Optional[Dict[str, str]] = None
+    # TODO (remove comment) old request without this parameter will not have empty output_fbc
+    output_fbc: Optional[bool] = None
 
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
@@ -305,7 +318,6 @@ class RecursiveRelatedBundlesPydanticModel(PydanticModel):
             exclude_none=True,
         )
 
-
     def _get_all_keys_to_check_in_db(self):
         return ["parent_bundle_image"]
 
@@ -317,15 +329,17 @@ class FbcOperationsPydanticModel(PydanticModel):
         AfterValidator(image_format_check),
         AfterValidator(binary_image_check),
     ] = None
+    # TODO (remove comment) old request without this parameter will not have empty list but None
     bundles: Annotated[
         Optional[List[str]],
         AfterValidator(length_validator),
         AfterValidator(get_unique_bundles),
         AfterValidator(images_format_check),
-    ] = None  # old request without this parameter will not have empty list but None
+    ] = None
     build_tags: Optional[List[str]] = []
     distribution_scope: Annotated[
-        Optional[DISTRIBUTION_SCOPE_LITERAL], BeforeValidator(distribution_scope_lower),
+        Optional[DISTRIBUTION_SCOPE_LITERAL],
+        BeforeValidator(distribution_scope_lower),
     ] = None
     fbc_fragment: Annotated[
         str,
@@ -349,7 +363,12 @@ class FbcOperationsPydanticModel(PydanticModel):
     def get_json_for_request(self):
         """Return json with the parameters we store in the db."""
         return self.model_dump(
-            exclude=["add_arches", "build_tags", "overwrite_from_index", "overwrite_from_index_token"],
+            exclude=[
+                "add_arches",
+                "build_tags",
+                "overwrite_from_index",
+                "overwrite_from_index_token",
+            ],
             exclude_none=True,
         )
 

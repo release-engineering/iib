@@ -452,10 +452,10 @@ def add_bundles() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-
     try:
         request_payload = AddPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -463,7 +463,6 @@ def add_bundles() -> Tuple[flask.Response, int]:
 
     request = RequestAdd.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
     db.session.add(request)
     db.session.commit()
@@ -690,7 +689,8 @@ def rm_operators() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = RmPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -698,7 +698,6 @@ def rm_operators() -> Tuple[flask.Response, int]:
 
     request = RequestRm.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
     db.session.add(request)
     db.session.commit()
@@ -738,7 +737,8 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = RegenerateBundlePydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -746,7 +746,6 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
 
     request = RequestRegenerateBundle.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
 
     db.session.add(request)
@@ -781,10 +780,10 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-
     try:
         request_payload_batch = RegenerateBundleBatchPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -800,7 +799,6 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
         request = RequestRegenerateBundle.from_json_replacement(
             payload=request_payload,
             batch=batch,
-            build_tags_allowed=True,
         )
         db.session.add(request)
         requests.append(request)
@@ -853,7 +851,8 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload_batch = AddRmBatchPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -870,13 +869,11 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
             request = RequestAdd.from_json_replacement(
                 payload=request_payload,
                 batch=batch,
-                build_tags_allowed=True,
             )
         else:
             request = RequestRm.from_json_replacement(
                 payload=request_payload,
                 batch=batch,
-                build_tags_allowed=True,
             )
 
         db.session.add(request)
@@ -946,7 +943,8 @@ def merge_index_image() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = MergeIndexImagePydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -954,7 +952,6 @@ def merge_index_image() -> Tuple[flask.Response, int]:
 
     request = RequestMergeIndexImage.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
 
     db.session.add(request)
@@ -970,9 +967,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
 
     error_callback = failed_request_callback.s(request.id)
     try:
-        handle_merge_request.apply_async(
-            args=args, link_error=error_callback, queue=celery_queue
-        )
+        handle_merge_request.apply_async(args=args, link_error=error_callback, queue=celery_queue)
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
 
@@ -993,7 +988,8 @@ def create_empty_index() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = CreateEmptyIndexPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -1001,7 +997,6 @@ def create_empty_index() -> Tuple[flask.Response, int]:
 
     request = RequestCreateEmptyIndex.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
 
     db.session.add(request)
@@ -1039,7 +1034,8 @@ def recursive_related_bundles() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = RecursiveRelatedBundlesPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -1047,7 +1043,6 @@ def recursive_related_bundles() -> Tuple[flask.Response, int]:
 
     request = RequestRecursiveRelatedBundles.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
 
     db.session.add(request)
@@ -1145,7 +1140,8 @@ def fbc_operations() -> Tuple[flask.Response, int]:
     """
     try:
         request_payload = FbcOperationsPydanticModel.model_validate(
-            flask.request.get_json(), strict=True,
+            flask.request.get_json(),
+            strict=True,
         )
     except ValidationError as e:
         # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
@@ -1153,7 +1149,6 @@ def fbc_operations() -> Tuple[flask.Response, int]:
 
     request = RequestFbcOperations.from_json_replacement(
         payload=request_payload,
-        build_tags_allowed=True,
     )
 
     db.session.add(request)

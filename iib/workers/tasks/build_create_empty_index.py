@@ -5,6 +5,7 @@ import json
 import re
 from typing import Dict, List, Optional
 
+from iib.common.pydantic_models import CreateEmptyIndexPydanticModel
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
@@ -27,7 +28,6 @@ from iib.workers.tasks.utils import (
     grpcurl_get_db_data,
 )
 from iib.workers.tasks.iib_static_types import PrebuildInfo
-from iib.common.pydantic_models import CreateEmptyIndexPydanticModel
 
 __all__ = ['handle_create_empty_index_request']
 

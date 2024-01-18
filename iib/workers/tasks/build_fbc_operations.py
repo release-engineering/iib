@@ -3,6 +3,7 @@ import logging
 import tempfile
 from typing import Dict, Optional
 
+from iib.common.pydantic_models import FbcOperationsPydanticModel
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _add_label_to_index,
@@ -22,7 +23,7 @@ from iib.workers.tasks.utils import (
     set_registry_token,
     RequestConfigFBCOperation,
 )
-from iib.common.pydantic_models import FbcOperationsPydanticModel
+
 __all__ = ['handle_fbc_operation_request']
 
 log = logging.getLogger(__name__)

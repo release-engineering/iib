@@ -15,6 +15,7 @@ from iib.workers.tasks.opm_operations import (
 )
 from packaging.version import Version
 
+from iib.common.pydantic_models import MergeIndexImagePydanticModel
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
@@ -43,7 +44,6 @@ from iib.workers.tasks.utils import (
     RequestConfigMerge,
 )
 from iib.workers.tasks.iib_static_types import BundleImage
-from iib.common.pydantic_models import MergeIndexImagePydanticModel
 
 
 __all__ = ['handle_merge_request']
@@ -224,7 +224,11 @@ def handle_merge_request(
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
-    with set_registry_token(payload.overwrite_target_index_token, payload.target_index, append=True):
+    with set_registry_token(
+        payload.overwrite_target_index_token,
+        payload.target_index,
+        append=True,
+    ):
         prebuild_info = prepare_request_for_build(
             request_id,
             RequestConfigMerge(
@@ -242,7 +246,11 @@ def handle_merge_request(
     dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        with set_registry_token(payload.overwrite_target_index_token, payload.target_index, append=True):
+        with set_registry_token(
+            payload.overwrite_target_index_token,
+            payload.target_index,
+            append=True,
+        ):
             source_fbc = is_image_fbc(source_from_index_resolved)
             target_fbc = is_image_fbc(target_index_resolved)
 
@@ -262,7 +270,11 @@ def handle_merge_request(
         set_request_state(request_id, 'in_progress', 'Getting bundles present in the index images')
         log.info('Getting bundles present in the source index image')
 
-        with set_registry_token(payload.overwrite_target_index_token, payload.target_index, append=True):
+        with set_registry_token(
+            payload.overwrite_target_index_token,
+            payload.target_index,
+            append=True,
+        ):
             source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
                 source_from_index_resolved, temp_dir
             )
