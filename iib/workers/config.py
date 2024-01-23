@@ -102,6 +102,10 @@ class Config(object):
     # enabled late acknowledgment, were redelivered by the message broker
     # and their state is SUCCESS in the result backend.
     worker_deduplicate_successful_tasks: bool = True
+    # The result_backend and result_persistent must be set when
+    # worker_deduplicate_successful_tasks is set to True
+    result_backend: str = 'rpc://'
+    result_persistent: bool = False
     # Don't allow the worker to fetch more messages than it can handle at a time. This is so that
     # other tasks aren't starved. This will only be useful once more workers are enabled.
     worker_prefetch_multiplier: int = 1
