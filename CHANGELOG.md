@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 8.5.2
+* Adding result_backend config by @lipoja in https://github.com/release-engineering/iib/pull/610
+* Update dependency jinja2 to v3.1.3 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/609
+* Update dependency backoff to v1.11.1 by @renovate in https://github.com/release-engineering/iib/pull/608
+* Update dependency alembic to v1.13.1 by @renovate in https://github.com/release-engineering/iib/pull/606
+* Update dependency amqp to v5.2.0 by @renovate in https://github.com/release-engineering/iib/pull/607
+* Update dependency MarkupSafe to v2.1.4 by @renovate in https://github.com/release-engineering/iib/pull/612
+* Update dependency wcwidth to v0.2.13 by @renovate in https://github.com/release-engineering/iib/pull/613
+* Batch update of requirements, Changed version of Python for GitHub Actions. by @lipoja in https://github.com/release-engineering/iib/pull/617
+
 ## 8.5.1
 * Check if source_from_index is in iib_no_ocp_label_allow_list by @lipoja in https://github.com/release-engineering/iib/pull/599
 * Use container-tool podman for _opm_index_add commands by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/600
