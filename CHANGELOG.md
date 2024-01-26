@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 8.5.2
+Changed version of Python for GitHub Actions. Jan Lipovský Today 12:46 PM
+Batch update of requirements Jan Lipovský Today 11:09 AM
+Update dependency wcwidth to v0.2.13 renovate[bot]* Yesterday 3:02 PM
+Update dependency MarkupSafe to v2.1.4 renovate[bot]* Yesterday 2:39 PM
+Update dependency amqp to v5.2.0 renovate[bot]* Yesterday 2:31 PM
+Update dependency alembic to v1.13.1 renovate[bot]* Yesterday 2:22 PM
+Update dependency backoff to v1.11.1 renovate[bot]* Yesterday 2:06 PM
+Update dependency jinja2 to v3.1.3 [SECURITY] renovate[bot]* 1/24/24, 3:21 PM
+Adding result_backend config which is necessary for worker_deduplicate_successful_tasks. Jan Lipovský 1/23/24, 12:23 PM
+
 ## 8.5.1
 * Check if source_from_index is in iib_no_ocp_label_allow_list by @lipoja in https://github.com/release-engineering/iib/pull/599
 * Use container-tool podman for _opm_index_add commands by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/600
