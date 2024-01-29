@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+## 8.5.3
+* Fixing Python3.8 compatibility Jan Lipovský Today 10:37 AM
+* Update dependency boto3 to v1.34.29 renovate[bot]* Today 10:40 AM
+* Update dependency botocore to v1.34.29 renovate[bot]* 1/27/24, 2:17 AM
+
 ## 8.5.2
 * Adding result_backend config by @lipoja in https://github.com/release-engineering/iib/pull/610
 * Update dependency jinja2 to v3.1.3 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/609
