@@ -5,13 +5,20 @@ import flask_migrate
 import pytest
 
 from iib.web.models import (
+    Request,
     RequestAdd,
     RequestMergeIndexImage,
     RequestRegenerateBundle,
     RequestRm,
     RequestCreateEmptyIndex,
 )
-
+from iib.common.pydantic_models import (
+    AddPydanticModel,
+    RmPydanticModel,
+    MergeIndexImagePydanticModel,
+    RegenerateBundlePydanticModel,
+    CreateEmptyIndexPydanticModel,
+)
 
 INITIAL_DB_REVISION = '274ba38408e8'
 
@@ -25,19 +32,19 @@ def test_migrate_to_polymorphic_requests(app, auth_env, client, db):
         for i in range(total_requests):
             request_class = random.choice((RequestAdd, RequestRm))
             if request_class == RequestAdd:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'bundles': [f'quay.io/namespace/bundle:{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestAdd.from_json(data)
+                data = AddPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    bundles=[f'quay.io/namespace/bundle:{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestAdd.from_json_replacement(payload=data)
             elif request_class == RequestRm:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'operators': [f'operator-{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestRm.from_json(data)
+                data = RmPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    operators=[f'operator-{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestRm.from_json_replacement(data)
 
             if i % 5 == 0:
                 # Simulate failed request
@@ -63,26 +70,26 @@ def test_migrate_to_merge_index_endpoints(app, auth_env, client, db):
         for i in range(total_requests):
             request_class = random.choice((RequestAdd, RequestMergeIndexImage, RequestRm))
             if request_class == RequestAdd:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'bundles': [f'quay.io/namespace/bundle:{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestAdd.from_json(data)
+                data = AddPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    bundles=[f'quay.io/namespace/bundle:{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestAdd.from_json_replacement(data)
             elif request_class == RequestRm:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'operators': [f'operator-{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestRm.from_json(data)
+                data = RmPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    operators=[f'operator-{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestRm.from_json_replacement(data)
             elif request_class == RequestMergeIndexImage:
-                data = {
-                    'source_from_index': f'quay.io/namespace/repo:{i}',
-                    'target_index': f'quay.io/namespace/repo:{i}',
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                }
-                request = RequestMergeIndexImage.from_json(data)
+                data = MergeIndexImagePydanticModel(
+                    source_from_index=f'quay.io/namespace/repo:{i}',
+                    target_index=f'quay.io/namespace/repo:{i}',
+                    binary_image='quay.io/namespace/binary_image:latest',
+                )
+                request = RequestMergeIndexImage.from_json_replacement(data)
 
             if i % 5 == 0:
                 # Simulate failed request
@@ -104,31 +111,35 @@ def test_abort_when_downgrading_from_regenerate_bundle_request(app, auth_env, cl
     # flask_login.current_user is used in Request*.from_json which requires a request context
     with app.test_request_context(environ_base=auth_env):
         # Always add a RequestRegenerateBundle to ensure sufficient test data is available
-        data = {'from_bundle_image': 'quay.io/namespace/bundle-image:latest'}
-        request = RequestRegenerateBundle.from_json(data)
+        data = RegenerateBundlePydanticModel(
+            from_bundle_image='quay.io/namespace/bundle-image:latest'
+        )
+        request = RequestRegenerateBundle.from_json_replacement(data)
         db.session.add(request)
 
         # One request was already added, let's add the remaining ones
         for i in range(total_requests - 1):
             request_class = random.choice((RequestAdd, RequestRm, RequestRegenerateBundle))
             if request_class == RequestAdd:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'bundles': [f'quay.io/namespace/bundle:{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestAdd.from_json(data)
+                data = AddPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    bundles=[f'quay.io/namespace/bundle:{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestAdd.from_json_replacement(data)
 
             elif request_class == RequestRm:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'operators': [f'operator-{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestRm.from_json(data)
+                data = RmPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    operators=[f'operator-{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestRm.from_json_replacement(data)
             else:
-                data = {'from_bundle_image': 'quay.io/namespace/bundle-image:latest'}
-                request = RequestRegenerateBundle.from_json(data)
+                data = RegenerateBundlePydanticModel(
+                    from_bundle_image='quay.io/namespace/bundle-image:latest'
+                )
+                request = RequestRegenerateBundle.from_json_replacement(data)
             db.session.add(request)
 
         db.session.commit()
@@ -148,35 +159,35 @@ def test_create_empty_index_image_request(app, auth_env, client, db):
     # which requires a request context
     with app.test_request_context(environ_base=auth_env):
         # Generate some data to verify migration
-        data = {
-            'from_index': 'quay.io/namespace/index_image:latest',
-            'binary_image': 'quay.io/namespace/binary_image:latest',
-        }
-        request = RequestCreateEmptyIndex.from_json(data)
+        data = CreateEmptyIndexPydanticModel(
+            from_index='quay.io/namespace/index_image:latest',
+            binary_image='quay.io/namespace/binary_image:latest',
+        )
+        request = RequestCreateEmptyIndex.from_json_replacement(data)
         db.session.add(request)
 
         for i in range(total_requests):
             request_class = random.choice((RequestAdd, RequestRm, RequestCreateEmptyIndex))
             if request_class == RequestAdd:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'bundles': [f'quay.io/namespace/bundle:{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestAdd.from_json(data)
+                data = AddPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    bundles=[f'quay.io/namespace/bundle:{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestAdd.from_json_replacement(data)
             elif request_class == RequestRm:
-                data = {
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                    'operators': [f'operator-{i}'],
-                    'from_index': f'quay.io/namespace/repo:{i}',
-                }
-                request = RequestRm.from_json(data)
+                data = RmPydanticModel(
+                    binary_image='quay.io/namespace/binary_image:latest',
+                    operators=[f'operator-{i}'],
+                    from_index=f'quay.io/namespace/repo:{i}',
+                )
+                request = RequestRm.from_json_replacement(data)
             elif request_class == RequestCreateEmptyIndex:
-                data = {
-                    'from_index': f'quay.io/namespace/index_image:{i}',
-                    'binary_image': 'quay.io/namespace/binary_image:latest',
-                }
-                request = RequestCreateEmptyIndex.from_json(data)
+                data = CreateEmptyIndexPydanticModel(
+                    from_index=f'quay.io/namespace/index_image:{i}',
+                    binary_image='quay.io/namespace/binary_image:latest',
+                )
+                request = RequestCreateEmptyIndex.from_json_replacement(data)
 
             if i % 5 == 0:
                 # Simulate failed request

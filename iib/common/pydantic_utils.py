@@ -118,7 +118,7 @@ def distribution_scope_lower(distribution_scope: str) -> str:
 
 def length_validator(model_property: Any) -> Any:
     """Validate length of the given model property."""
-    if len(model_property) == 0:
+    if model_property is not None and len(model_property) == 0:
         raise ValidationError(
             f"The {type(model_property)} {model_property} should have at least 1 item."
         )

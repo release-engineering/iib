@@ -6,6 +6,7 @@ import pytest
 from iib.exceptions import IIBError
 from iib.workers.tasks import build_create_empty_index
 from iib.workers.tasks.utils import RequestConfigCreateIndexImage
+from iib.common.pydantic_models import CreateEmptyIndexPydanticModel
 
 
 @mock.patch('iib.workers.tasks.build_create_empty_index.grpcurl_get_db_data')
@@ -81,12 +82,15 @@ def test_handle_create_empty_index_request(
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
 
-    build_create_empty_index.handle_create_empty_index_request(
+    create_empty_index_pydantic_model = CreateEmptyIndexPydanticModel.model_construct(
         from_index=from_index,
-        request_id=3,
         output_fbc=False,
         binary_image=binary_image,
         labels=labels,
+    )
+    build_create_empty_index.handle_create_empty_index_request(
+        payload=create_empty_index_pydantic_model,
+        request_id=3,
         binary_image_config=binary_image_config,
     )
 
@@ -141,12 +145,16 @@ def test_handle_create_empty_index_request_raises(mock_prfb, mock_iifbc, mock_c)
         IIBError, match=('Cannot create SQLite index image from File-Based Catalog index image')
     ):
         mock_iifbc.return_value = True
-        build_create_empty_index.handle_create_empty_index_request(
+
+        create_empty_index_pydantic_model = CreateEmptyIndexPydanticModel.model_construct(
             from_index=from_index,
-            request_id=3,
             output_fbc=False,
             binary_image=binary_image,
             labels={"version": "v4.5"},
+        )
+        build_create_empty_index.handle_create_empty_index_request(
+            payload=create_empty_index_pydantic_model,
+            request_id=3,
             binary_image_config={'prod': {'v4.5': 'some_image'}},
         )
 
@@ -194,12 +202,15 @@ def test_handle_create_empty_index_request_fbc(
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
 
-    build_create_empty_index.handle_create_empty_index_request(
+    create_empty_index_pydantic_model = CreateEmptyIndexPydanticModel.model_construct(
         from_index=from_index,
-        request_id=3,
         output_fbc=True,
         binary_image=binary_image,
         labels={"version": "v4.5"},
+    )
+    build_create_empty_index.handle_create_empty_index_request(
+        payload=create_empty_index_pydantic_model,
+        request_id=3,
         binary_image_config={'prod': {'v4.5': 'some_image'}},
     )
 

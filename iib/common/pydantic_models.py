@@ -62,7 +62,7 @@ class AddPydanticModel(PydanticRequestBaseModel):
         AfterValidator(length_validator),
         AfterValidator(binary_image_check),
     ] = None
-    build_tags: Optional[List[str]] = []
+    build_tags: Optional[List[str]] = None
     bundles: Annotated[
         List[str],
         AfterValidator(length_validator),
@@ -156,7 +156,7 @@ class RmPydanticModel(PydanticRequestBaseModel):
         Optional[str],
         AfterValidator(binary_image_check),
     ] = None
-    build_tags: Optional[List[str]] = []
+    build_tags: Optional[List[str]] = None
     distribution_scope: Annotated[
         Optional[DISTRIBUTION_SCOPE_LITERAL],
         BeforeValidator(distribution_scope_lower),
@@ -256,7 +256,7 @@ class MergeIndexImagePydanticModel(PydanticRequestBaseModel):
         AfterValidator(image_format_check),
         AfterValidator(binary_image_check),
     ] = None
-    build_tags: Optional[List[str]] = []
+    build_tags: Optional[List[str]] = None
     deprecation_list: Annotated[
         Optional[List[str]],
         AfterValidator(get_unique_deprecation_list_items),
@@ -267,6 +267,7 @@ class MergeIndexImagePydanticModel(PydanticRequestBaseModel):
         BeforeValidator(distribution_scope_lower),
     ] = None
     graph_update_mode: Optional[GRAPH_MODE_LITERAL] = None
+    ignore_bundle_ocp_version: Optional[bool] = None
     overwrite_target_index: Optional[bool] = False
     overwrite_target_index_token: Optional[SecretStr] = None
     source_from_index: Annotated[str, AfterValidator(image_format_check)]
@@ -302,7 +303,6 @@ class MergeIndexImagePydanticModel(PydanticRequestBaseModel):
             "binary_image",
             "deprecation_list",
             "source_from_index",
-            "target_index",
             "target_index",
         ]
 
@@ -373,7 +373,7 @@ class FbcOperationsPydanticModel(PydanticRequestBaseModel):
         AfterValidator(get_unique_bundles),
         AfterValidator(images_format_check),
     ] = None
-    build_tags: Optional[List[str]] = []
+    build_tags: Optional[List[str]] = None
     distribution_scope: Annotated[
         Optional[DISTRIBUTION_SCOPE_LITERAL],
         BeforeValidator(distribution_scope_lower),

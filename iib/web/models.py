@@ -540,9 +540,9 @@ class Request(db.Model):
         request_kwargs['batch'] = batch
 
         request = cls(**request_kwargs)
-
-        for bt in payload.build_tags:
-            request.add_build_tag(bt)
+        if payload.model_fields.get("build_tags") and payload.build_tags:
+            for bt in payload.build_tags:
+                request.add_build_tag(bt)
 
         request.add_state('in_progress', 'The request was initiated')
         return request
