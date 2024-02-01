@@ -14,18 +14,21 @@ DISTRIBUTION_SCOPE_LITERAL = Literal['prod', 'stage', 'dev']
 
 # TODO add regex in future to not allow following values ":s", "s:", ":"?
 def image_format_check(image_name: str) -> str:
+    """Check format of the index image."""
     if '@' not in image_name and ':' not in image_name:
         raise ValidationError(f'Image {image_name} should have a tag or a digest specified.')
     return image_name
 
 
 def images_format_check(image_list: List[str]) -> List[str]:
+    """Check multiple image names."""
     for image_name in image_list:
         image_format_check(image_name)
     return image_list
 
 
 def get_unique_bundles(bundles: List[str]) -> List[str]:
+    """Check and possibly remove duplicates from a list of bundles."""
     if not bundles:
         return bundles
 
@@ -42,14 +45,15 @@ def get_unique_bundles(bundles: List[str]) -> List[str]:
 
 
 # RequestIndexImageMixin
-def get_unique_deprecation_list_items(deprecation_list: Optional[List[str]]) -> Optional[List[str]]:
+def get_unique_deprecation_list_items(deprecation_list: List[str]) -> List[str]:
+    """Return a list of unique items."""
     return list(set(deprecation_list))
 
 
 def validate_graph_mode_index_image(
-    graph_update_mode: str,
-    index_image: str,
-) -> 'MergeIndexImageRequestPayload':
+    graph_update_mode: Optional[GRAPH_MODE_LITERAL],
+    index_image: Optional[str],
+) -> Optional[str]:
     """
     Validate graph mode and check if index image is allowed to use different graph mode.
 
@@ -59,8 +63,7 @@ def validate_graph_mode_index_image(
     :raises: Forbidden when graph_mode can't be used for given index image
     """
     if graph_update_mode:
-        # TODO remove this comment, replace value with current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
-        allowed_from_indexes: List[str] = ["REMOVE_#:r"]
+        allowed_from_indexes: List[str] = current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
         if index_image not in allowed_from_indexes:
             raise Forbidden(
                 '"graph_update_mode" can only be used on the'
@@ -70,18 +73,15 @@ def validate_graph_mode_index_image(
 
 
 # RequestIndexImageMixin
-def from_index_add_arches(model: 'AddRequestPydanticModel') -> 'AddRequestPydanticModel':
+def from_index_add_arches(from_index: Optional[str], add_arches: Optional[List[str]]) -> None:
     """Check if both `from_index` and `add_arches` are not specified."""
-    if not model.from_index and not model.add_arches:
+    if not from_index and not add_arches:
         raise ValidationError('One of "from_index" or "add_arches" must be specified')
-    return model
 
 
 # RequestIndexImageMixin
 def binary_image_check(binary_image: str) -> str:
-    """
-    # Validate binary_image is correctly provided.
-    """
+    """Validate binary_image is correctly provided."""
     if not binary_image and not current_app.config['IIB_BINARY_IMAGE_CONFIG']:
         raise ValidationError('The "binary_image" value must be a non-empty string')
     return binary_image
@@ -93,9 +93,7 @@ def validate_overwrite_params(
     overwrite_index_image_token: Optional[str],
     disable_auth_check: Optional[bool] = False,
 ) -> None:
-    """
-    Check if both `overwrite_index_image` and `overwrite_index_image_token` are specified.
-    """
+    """Check if both `overwrite_index_image` and `overwrite_index_image_token` are specified."""
     if overwrite_index_image_token and not overwrite_index_image:
         raise ValidationError(
             'The "overwrite_from_index" parameter is required when'
@@ -114,10 +112,12 @@ def validate_overwrite_params(
 
 # RequestIndexImageMixin
 def distribution_scope_lower(distribution_scope: str) -> str:
+    """Transform distribution_scope parameter to lowercase."""
     return distribution_scope.lower()
 
 
 def length_validator(model_property: Any) -> Any:
+    """Validate length of the given model property."""
     if len(model_property) == 0:
         raise ValidationError(
             f"The {type(model_property)} {model_property} should have at least 1 item."

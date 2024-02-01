@@ -89,13 +89,13 @@ def handle_regenerate_bundle_request(
         arches_str = ', '.join(sorted(arches))
         log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
 
-        payload: UpdateRequestPayload = {
+        update_payload: UpdateRequestPayload = {
             'from_bundle_image_resolved': from_bundle_image_resolved,
             'state': 'in_progress',
             'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
         }
         exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
-        update_request(request_id, payload, exc_msg=exc_msg)
+        update_request(request_id, update_payload, exc_msg=exc_msg)
 
         # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
         podman_pull(from_bundle_image_resolved)
@@ -146,14 +146,18 @@ def handle_regenerate_bundle_request(
             output_pull_spec,
         )
 
-    payload = {
+    update_payload = {
         'arches': list(arches),
         'bundle_image': output_pull_spec,
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
     _cleanup()
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
 
 
 def _apply_package_name_suffix(

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from typing import Any, Dict, List, NamedTuple, Optional, Union, Sequence, Set
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set
 from typing_extensions import NotRequired, TypedDict, Literal
 
 from proton._message import Message

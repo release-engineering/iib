@@ -291,16 +291,20 @@ def _update_index_image_pull_spec(
     else:
         index_image = output_pull_spec
 
-    payload: UpdateRequestPayload = {'arches': list(arches), 'index_image': index_image}
+    update_payload: UpdateRequestPayload = {'arches': list(arches), 'index_image': index_image}
 
     if add_or_rm:
         with set_registry_token(overwrite_from_index_token, from_index, append=True):
             index_image_resolved = get_resolved_image(index_image)
-        payload['index_image_resolved'] = index_image_resolved
-        payload['internal_index_image_copy'] = output_pull_spec
-        payload['internal_index_image_copy_resolved'] = get_resolved_image(output_pull_spec)
+        update_payload['index_image_resolved'] = index_image_resolved
+        update_payload['internal_index_image_copy'] = output_pull_spec
+        update_payload['internal_index_image_copy_resolved'] = get_resolved_image(output_pull_spec)
 
-    update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the index image on the request',
+    )
 
 
 def _get_external_arch_pull_spec(
@@ -670,7 +674,7 @@ def _update_index_image_build_state(
         image.
     """
     arches_str = ', '.join(sorted(prebuild_info['arches']))
-    payload: UpdateRequestPayload = {
+    update_payload: UpdateRequestPayload = {
         'binary_image': prebuild_info['binary_image'],
         'binary_image_resolved': prebuild_info['binary_image_resolved'],
         'state': 'in_progress',
@@ -680,26 +684,26 @@ def _update_index_image_build_state(
 
     bundle_mapping: Optional[Dict[str, List[str]]] = prebuild_info.get('bundle_mapping')
     if bundle_mapping:
-        payload['bundle_mapping'] = bundle_mapping
+        update_payload['bundle_mapping'] = bundle_mapping
 
     from_index_resolved = prebuild_info.get('from_index_resolved')
     if from_index_resolved:
-        payload['from_index_resolved'] = from_index_resolved
+        update_payload['from_index_resolved'] = from_index_resolved
 
     source_from_index_resolved = prebuild_info.get('source_from_index_resolved')
     if source_from_index_resolved:
-        payload['source_from_index_resolved'] = source_from_index_resolved
+        update_payload['source_from_index_resolved'] = source_from_index_resolved
 
     target_index_resolved = prebuild_info.get('target_index_resolved')
     if target_index_resolved:
-        payload['target_index_resolved'] = target_index_resolved
+        update_payload['target_index_resolved'] = target_index_resolved
 
     fbc_fragment_resolved = prebuild_info.get('fbc_fragment_resolved')
     if fbc_fragment_resolved:
-        payload['fbc_fragment_resolved'] = fbc_fragment_resolved
+        update_payload['fbc_fragment_resolved'] = fbc_fragment_resolved
 
     exc_msg = 'Failed setting the resolved images on the request'
-    update_request(request_id, payload, exc_msg)
+    update_request(request_id, update_payload, exc_msg)
 
 
 @retry(

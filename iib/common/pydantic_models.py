@@ -36,18 +36,24 @@ UnionPydanticRequestType = Union[
 ]
 
 
-class PydanticModel(BaseModel):
+class PydanticRequestBaseModel(BaseModel):
+    """Base model representing IIB request."""
+
     @classmethod
     def _get_all_keys_to_check_in_db(cls):
         """Class that returns request specific keys to check."""
         raise NotImplementedError("Not implemented")
 
     def get_keys_to_check_in_db(self):
-        """Filter keys, which need to be checked in db. Return only a keys that are set to values."""
+        """
+        Filter keys, which need to be checked in db.
+
+        Return only a keys that are set to values.
+        """
         return [k for k in self._get_all_keys_to_check_in_db() if getattr(self, k, None)]
 
 
-class AddPydanticModel(PydanticModel):
+class AddPydanticModel(PydanticRequestBaseModel):
     """Datastructure of the request to /builds/add API point."""
 
     add_arches: Optional[List[str]] = None
@@ -76,18 +82,22 @@ class AddPydanticModel(PydanticModel):
         BeforeValidator(distribution_scope_lower),
     ] = None
     force_backport: Optional[bool] = False  # deprecated
-    from_index: Annotated[str, AfterValidator(image_format_check)]
+    from_index: Annotated[Optional[str], AfterValidator(image_format_check)] = None
     graph_update_mode: Optional[GRAPH_MODE_LITERAL] = None
     organization: Optional[str] = None  # deprecated
     overwrite_from_index: Optional[bool] = False
     overwrite_from_index_token: Optional[SecretStr] = None
 
-    _from_index_add_arches_check = model_validator(mode='after')(from_index_add_arches)
+    @model_validator(mode='after')
+    def verify_from_index_add_arches_combination(self) -> 'AddPydanticModel':
+        """Check the 'overwrite_from_index' parameter with 'overwrite_from_index_token' param."""
+        from_index_add_arches(self.from_index, self.add_arches)
+        return self
 
     # TODO remove this comment -> Validator from RequestIndexImageMixin class
     @model_validator(mode='after')
     def verify_overwrite_from_index_token(self) -> 'AddPydanticModel':
-        """Check the 'overwrite_from_index' parameter in combination with 'overwrite_from_index_token' parameter."""
+        """Check the 'overwrite_from_index' parameter with 'overwrite_from_index_token' param."""
         validate_overwrite_params(self.overwrite_from_index, self.overwrite_from_index_token)
         return self
 
@@ -138,7 +148,7 @@ class AddPydanticModel(PydanticModel):
         return ["binary_image", "bundles", "deprecation_list", "from_index"]
 
 
-class RmPydanticModel(PydanticModel):
+class RmPydanticModel(PydanticRequestBaseModel):
     """Datastructure of the request to /builds/rm API point."""
 
     add_arches: Optional[List[str]] = None
@@ -151,16 +161,24 @@ class RmPydanticModel(PydanticModel):
         Optional[DISTRIBUTION_SCOPE_LITERAL],
         BeforeValidator(distribution_scope_lower),
     ] = None
-    from_index: Annotated[str, AfterValidator(image_format_check)]
+    from_index: Annotated[Optional[str], AfterValidator(image_format_check)] = None
     operators: Annotated[List[str], AfterValidator(length_validator)]
     overwrite_from_index: Optional[bool] = False
     overwrite_from_index_token: Optional[SecretStr] = None
 
-    _from_index_add_arches_check = model_validator(mode='after')(from_index_add_arches)
+    @model_validator(mode='after')
+    def verify_from_index_add_arches_combination(self) -> 'AddPydanticModel':
+        """Check the 'overwrite_from_index' parameter with 'overwrite_from_index_token' param."""
+        from_index_add_arches(self.from_index, self.add_arches)
+        return self
 
     @model_validator(mode='after')
     def verify_overwrite_from_index_token(self) -> 'RmPydanticModel':
-        validate_overwrite_params(self.overwrite_from_index, self.overwrite_from_index_token)
+        """Validate overwrite_from_index and overwrite_from_index_token param combination."""
+        validate_overwrite_params(
+            self.overwrite_from_index,
+            self.overwrite_from_index_token,
+        )
         return self
 
     def get_json_for_request(self):
@@ -180,19 +198,30 @@ class RmPydanticModel(PydanticModel):
 
 
 class AddRmBatchPydanticModel(BaseModel):
+    """Datastructure of the request to /builds/add-rm-batch API point."""
+
     annotations: Dict[str, Any]
     build_requests: List[Union[AddPydanticModel, RmPydanticModel]]
 
 
 class RegistryAuth(BaseModel):
+    """Datastructure representing private registry token."""
+
     auth: SecretStr
 
 
-class RegistryAuths(BaseModel):  # is {"auths":{}} allowed?
+class RegistryAuths(BaseModel):
+    """
+    Datastructure used within recursive-related-bundles.
+
+    Provide the dockerconfig.json for authentication to private registries.
+    Non-auth information in the dockerconfig.json is not allowed.
+    """
+
     auths: Annotated[Dict[SecretStr, RegistryAuth], AfterValidator(length_validator)]
 
 
-class RegenerateBundlePydanticModel(PydanticModel):
+class RegenerateBundlePydanticModel(PydanticRequestBaseModel):
     """Datastructure of the request to /builds/regenerate-bundle API point."""
 
     # BUNDLE_IMAGE, from_bundle_image_resolved, build_tags?
@@ -213,12 +242,14 @@ class RegenerateBundlePydanticModel(PydanticModel):
 
 
 class RegenerateBundleBatchPydanticModel(BaseModel):
+    """Datastructure of the request to /builds/regenerate-bundle-batch API point."""
+
     build_requests: List[RegenerateBundlePydanticModel]
     annotations: Dict[str, Any]
 
 
-class MergeIndexImagePydanticModel(PydanticModel):
-    """Datastructure of the request to /builds/regenerate-bundle API point."""
+class MergeIndexImagePydanticModel(PydanticRequestBaseModel):
+    """Datastructure of the request to /builds/merge-index-image API point."""
 
     binary_image: Annotated[
         Optional[str],
@@ -245,11 +276,13 @@ class MergeIndexImagePydanticModel(PydanticModel):
 
     @model_validator(mode='after')
     def verify_graph_update_mode_with_target_index(self) -> 'MergeIndexImagePydanticModel':
+        """Validate graph_update_mode with target_index param combination."""
         validate_graph_mode_index_image(self.graph_update_mode, self.target_index)
         return self
 
     @model_validator(mode='after')
     def verify_overwrite_from_index_token(self) -> 'MergeIndexImagePydanticModel':
+        """Validate overwrite_target_index with overwrite_target_index_token param combination."""
         validate_overwrite_params(
             self.overwrite_target_index,
             self.overwrite_target_index_token,
@@ -274,8 +307,8 @@ class MergeIndexImagePydanticModel(PydanticModel):
         ]
 
 
-class CreateEmptyIndexPydanticModel(PydanticModel):
-    """Datastructure of the request to /builds/regenerate-bundle API point."""
+class CreateEmptyIndexPydanticModel(PydanticRequestBaseModel):
+    """Datastructure of the request to /builds/create-empty-index API point."""
 
     binary_image: Annotated[
         Optional[str],
@@ -302,7 +335,9 @@ class CreateEmptyIndexPydanticModel(PydanticModel):
         return ["binary_image", "from_index"]
 
 
-class RecursiveRelatedBundlesPydanticModel(PydanticModel):
+class RecursiveRelatedBundlesPydanticModel(PydanticRequestBaseModel):
+    """Datastructure of the request to /builds/recursive-related-bundles API point."""
+
     organization: Optional[str] = None
     parent_bundle_image: Annotated[
         str,
@@ -322,7 +357,9 @@ class RecursiveRelatedBundlesPydanticModel(PydanticModel):
         return ["parent_bundle_image"]
 
 
-class FbcOperationsPydanticModel(PydanticModel):
+class FbcOperationsPydanticModel(PydanticRequestBaseModel):
+    """Datastructure of the request to /builds/fbc-operations API point."""
+
     add_arches: Optional[List[str]] = []
     binary_image: Annotated[
         Optional[str],
@@ -357,6 +394,7 @@ class FbcOperationsPydanticModel(PydanticModel):
 
     @model_validator(mode='after')
     def verify_overwrite_from_index_token(self) -> 'FbcOperationsPydanticModel':
+        """Validate overwrite_from_index and overwrite_from_index_token param combination."""
         validate_overwrite_params(self.overwrite_from_index, self.overwrite_from_index_token)
         return self
 

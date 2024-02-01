@@ -71,14 +71,14 @@ def handle_recursive_related_bundles_request(
     with set_registry_auths(payload.registry_auths):
         parent_bundle_image_resolved = get_resolved_image(payload.parent_bundle_image)
 
-        payload: UpdateRequestPayload = {
+        update_payload: UpdateRequestPayload = {
             'parent_bundle_image_resolved': parent_bundle_image_resolved,
             'state': 'in_progress',
             'state_reason': (
                 f'Finding recursive related bundles for the bundle: {payload.parent_bundle_image}'
             ),
         }
-        update_request(request_id, payload)
+        update_request(request_id, update_payload)
 
         recursive_related_bundles = [parent_bundle_image_resolved]
         current_level_related_bundles = [parent_bundle_image_resolved]
@@ -102,11 +102,15 @@ def handle_recursive_related_bundles_request(
             if not current_level_related_bundles:
                 traversal_completed = True
 
-    payload = {
+    update_payload = {
         'state': 'in_progress',
         'state_reason': 'Writing recursive related bundles to a file',
     }
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
     # Reverse the list while writing because we did a top to bottom level traversal of a tree.
     # The return value should be a bottom to top level traversal.
     write_related_bundles_file(
@@ -116,12 +120,16 @@ def handle_recursive_related_bundles_request(
         'recursive_related_bundles',
     )
 
-    payload = {
+    update_payload = {
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
     _cleanup()
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
 
 
 def process_parent_bundle_image(
