@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FinalStateAlreadyReached
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
@@ -168,6 +168,14 @@ def update_request(
             rv.status_code,
             rv.text,
         )
+        rv_error = rv.json().get('error', None)
+        if rv_error in [
+            "A failed request cannot change states",
+            "A complete request cannot change states",
+        ]:
+            raise FinalStateAlreadyReached(
+                f"Request cannot be updated, as the request is already in the final state"
+            )
         if exc_msg:
             _exc_msg = exc_msg.format(**payload, request_id=request_id)
         else:

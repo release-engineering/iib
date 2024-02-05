@@ -13,6 +13,10 @@ class IIBError(BaseException):
     """An error was encountered in IIB."""
 
 
+class FinalStateAlreadyReached(BaseException):
+    """Request is already in the final state."""
+
+
 class ValidationError(BaseException):
     """Denote invalid input."""
 

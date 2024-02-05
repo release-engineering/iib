@@ -4,7 +4,7 @@ from unittest import mock
 import requests
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FinalStateAlreadyReached
 from iib.workers import api_utils
 from iib.workers.config import get_worker_config
 
@@ -98,3 +98,21 @@ def test_update_request_not_ok(mock_session, exc_msg, expected):
 
     with pytest.raises(IIBError, match=expected):
         api_utils.update_request(3, {'index_image': 'index-image:latest'}, exc_msg=exc_msg)
+
+
+@pytest.mark.parametrize('state', ("failed", 'complete'))
+@mock.patch('iib.workers.api_utils.requests_auth_session')
+def test_update_request_with_final_state(mock_session, state):
+    mock_session.patch.return_value.ok = False
+    mock_session.patch.return_value.json.return_value = {
+        "error": f"A {state} request cannot change states"
+    }
+    exc_msg = "Request cannot be updated, as the request is already in the final state"
+    with pytest.raises(FinalStateAlreadyReached, match=exc_msg):
+        api_utils.update_request(3, {'index_image': 'index-image:latest'})
+
+
+@mock.patch('iib.workers.api_utils.requests_auth_session')
+def test_update_request_with_non_final_state(mock_session):
+    mock_session.patch.return_value.ok = True
+    api_utils.update_request(3, {'index_image': 'index-image:latest'})

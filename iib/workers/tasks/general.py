@@ -4,7 +4,7 @@ from typing import Any
 
 import celery.app.task
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FinalStateAlreadyReached
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import request_logger
@@ -32,6 +32,8 @@ def failed_request_callback(
     """
     if isinstance(exc, IIBError):
         msg = str(exc)
+    elif isinstance(exc, FinalStateAlreadyReached):
+        return
     else:
         msg = 'An unknown error occurred. See logs for details'
         log.error(msg, exc_info=exc)
