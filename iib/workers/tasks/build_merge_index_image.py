@@ -6,6 +6,8 @@ import stat
 import tempfile
 from typing import List, Optional, Tuple
 
+from iib.common.common_utils import get_binary_versions
+from iib.common.tracing import instrument_tracing
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
@@ -191,6 +193,9 @@ def _add_bundles_missing_in_source(
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.build.handle_merge_request", attributes=get_binary_versions()
+)
 def handle_merge_request(
     source_from_index: str,
     deprecation_list: List[str],
