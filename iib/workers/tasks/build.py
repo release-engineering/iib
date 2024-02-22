@@ -17,6 +17,8 @@ from tenacity import (
     wait_incrementing,
 )
 
+from iib.common.common_utils import get_binary_versions
+from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
@@ -831,6 +833,7 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
 
 @app.task
 @request_logger
+@instrument_tracing(span_name="workers.tasks.handle_add_request", attributes=get_binary_versions())
 def handle_add_request(
     bundles: List[str],
     request_id: int,
@@ -1119,6 +1122,7 @@ def handle_add_request(
 
 @app.task
 @request_logger
+@instrument_tracing(span_name="workers.tasks.handle_rm_request", attributes=get_binary_versions())
 def handle_rm_request(
     operators: List[str],
     request_id: int,

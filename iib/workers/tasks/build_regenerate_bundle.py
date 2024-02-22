@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from operator_manifest.operator import ImageName, OperatorManifest, OperatorCSV
 import ruamel.yaml
 
+from iib.common.common_utils import get_binary_versions
+from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state, update_request
@@ -51,6 +53,10 @@ log = logging.getLogger(__name__)
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.build.handle_regenerate_bundle_request",
+    attributes=get_binary_versions(),
+)
 def handle_regenerate_bundle_request(
     from_bundle_image: str,
     organization: str,

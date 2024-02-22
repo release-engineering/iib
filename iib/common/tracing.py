@@ -13,7 +13,9 @@ Usage:
 """
 import os
 import functools
+import getpass
 import logging
+import socket
 from copy import deepcopy
 from typing import Any, Dict
 
@@ -114,6 +116,11 @@ def instrument_tracing(
             with tracer.start_as_current_span(
                 span_name or func.__name__, kind=SpanKind.SERVER
             ) as span:
+                for attr in attributes:
+                    span.set_attribute(attr, attributes[attr])
+                span.set_attribute('host', socket.getfqdn())
+                span.set_attribute('user', getpass.getuser())
+
                 if func.__name__:  # If the function has a name
                     log.debug('function_name %s', func.__name__)
                     span.set_attribute('function_name', func.__name__)
