@@ -89,7 +89,7 @@ def opm_serve(catalog_dir: str) -> Tuple[int, subprocess.Popen]:
 
     for port in _gen_port_for_grpc():
         try:
-            cmd = ['opm', 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
+            cmd = [Opm.opm_version, 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
             cwd = os.path.abspath(os.path.join(catalog_dir, os.path.pardir))
             result = (
                 port,
@@ -117,7 +117,17 @@ def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
 
     for port in _gen_port_for_grpc():
         try:
-            cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
+            cmd = [
+                Opm.opm_version,
+                'registry',
+                'serve',
+                '-p',
+                str(port),
+                '-d',
+                db_path,
+                '-t',
+                '/dev/null',
+            ]
             cwd = os.path.dirname(db_path)
             result = (
                 port,
@@ -281,7 +291,7 @@ def opm_registry_deprecatetruncate(base_dir: str, index_db: str, bundles: List[s
     )
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'registry',
         'deprecatetruncate',
         '--database',
@@ -352,7 +362,7 @@ def opm_migrate(
     if os.path.exists(fbc_dir_path):
         shutil.rmtree(fbc_dir_path)
 
-    cmd = ['opm', 'migrate', index_db, fbc_dir_path]
+    cmd = [Opm.opm_version, 'migrate', index_db, fbc_dir_path]
 
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to migrate index.db to file-based catalog')
     log.info("Migration to file-based catalog was completed.")
@@ -403,7 +413,7 @@ def opm_generate_dockerfile(
         return dockerfile_path
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'generate',
         'dockerfile',
         os.path.abspath(fbc_dir),
@@ -491,7 +501,7 @@ def generate_cache_locally(base_dir: str, fbc_dir: str, local_cache_path: str) -
     from iib.workers.tasks.utils import run_cmd
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'serve',
         os.path.abspath(fbc_dir),
         f'--cache-dir={local_cache_path}',
@@ -548,7 +558,7 @@ def _opm_registry_add(
     bundle_str = ','.join(bundles) or '""'
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'registry',
         'add',
         '--database',
@@ -664,7 +674,7 @@ def _opm_registry_rm(index_db_path: str, operators: List[str], base_dir: str) ->
     from iib.workers.tasks.utils import run_cmd
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'registry',
         'rm',
         '--database',
@@ -965,7 +975,7 @@ def opm_index_add(
 
     bundle_str = ','.join(bundles) or '""'
     cmd = [
-        'opm',
+        Opm.opm_version,
         'index',
         'add',
         # This enables substitutes-for functionality for rebuilds. See
@@ -1035,7 +1045,7 @@ def opm_index_rm(
     from iib.workers.tasks.utils import run_cmd, set_registry_token
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'index',
         'rm',
         '--generate',
@@ -1087,7 +1097,7 @@ def deprecate_bundles(
     from iib.workers.tasks.utils import run_cmd, set_registry_token
 
     cmd = [
-        'opm',
+        Opm.opm_version,
         'index',
         'deprecatetruncate',
         '--generate',
@@ -1104,3 +1114,33 @@ def deprecate_bundles(
         cmd.append(container_tool)
     with set_registry_token(overwrite_target_index_token, from_index):
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
+
+
+class Opm:
+    """A class to store the opm version for the IIB operation."""
+
+    opm_version = get_worker_config().get('iib_default_opm')
+
+    @classmethod
+    def set_opm_version(cls, from_index: Optional[str] = None):
+        """
+        Set the opm version to be used for the entire IIB operation.
+
+        opm version is based on from_index/target_index.
+
+        :param str from_index: from_index_image for the request
+        """
+        from iib.workers.tasks.utils import get_image_label
+
+        log.info("Determining the OPM version to use")
+        opm_versions_config = get_worker_config().get('iib_ocp_opm_mapping')
+        if opm_versions_config is None or from_index is None:
+            log.warning(
+                "Either iib_ocp_opm_mapping config or from_index/target_index"
+                " is not set, using the default opm"
+            )
+            return
+        index_version = get_image_label(from_index, 'com.redhat.index.delivery.version')
+        if index_version in opm_versions_config:
+            Opm.opm_version = opm_versions_config.get(index_version)
+        log.info("OPM version set to %s", Opm.opm_version)

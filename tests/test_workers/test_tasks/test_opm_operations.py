@@ -22,6 +22,12 @@ def mock_config():
         yield mc
 
 
+@pytest.fixture(autouse=True)
+def ensure_opm_default():
+    # Fixture to ensure every test starts with a default opm
+    opm_operations.Opm.opm_version = get_worker_config().get('iib_default_opm')
+
+
 def test_gen_port_for_grp():
     conf = get_worker_config()
     port_start = conf['iib_grpc_start_port']
@@ -149,6 +155,7 @@ def test_serve_cmd_at_port_delayed_initialize(
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
 def test_opm_migrate(
     mock_run_cmd,
     mock_gcl,
@@ -163,7 +170,7 @@ def test_opm_migrate(
     fbc_dir = os.path.join(tmpdir, 'catalog')
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'migrate', index_db_file, fbc_dir],
+        ['opm-v1.26.8', 'migrate', index_db_file, fbc_dir],
         {'cwd': tmpdir},
         exc_msg='Failed to migrate index.db to file-based catalog',
     )
@@ -204,6 +211,7 @@ def test_opm_generate_dockerfile(mock_icid, mock_run_cmd, tmpdir, dockerfile):
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
+@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_db_file):
     index_db_file = os.path.join(tmpdir, 'database/index.db') if set_index_db_file else None
@@ -219,7 +227,7 @@ def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_d
         )
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
+        ['opm-v1.26.8', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
         {'cwd': tmpdir},
         exc_msg='Failed to generate Dockerfile for file-based catalog',
     )
@@ -764,7 +772,14 @@ def test_verify_operator_exists(
 @mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_index_add(
-    mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool, graph_update_mode
+    mock_run_cmd,
+    mock_srt,
+    from_index,
+    bundles,
+    overwrite_csv,
+    container_tool,
+    graph_update_mode,
+    tmpdir,
 ):
     opm_operations.opm_index_add(
         '/tmp/somedir',
@@ -833,3 +848,30 @@ def test_opm_index_rm(mock_run_cmd, mock_srt, container_tool):
     else:
         assert '--container-tool' not in opm_args
     mock_srt.assert_called_once_with('user:pass', 'some_index:latest', append=True)
+
+
+@pytest.mark.parametrize(
+    'from_index, index_version',
+    [('from_index@sha:415', 'v4.15'), ('from_index@sha:qeimage', 'v4.11')],
+)
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_set_opm_version(mock_gil, from_index, index_version):
+    mock_gil.return_value = index_version
+    opm_operations.Opm.set_opm_version(from_index=from_index)
+    assert (
+        opm_operations.Opm.opm_version
+        == get_worker_config().get('iib_ocp_opm_mapping')[index_version]
+    )
+
+
+@pytest.mark.parametrize(
+    'from_index, index_version',
+    [(None, None), ('from_index@sha:absentinconfig', 'v4.00')],
+)
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_set_opm_version_default(mock_gil, from_index, index_version):
+    mock_gil.return_value = index_version
+    opm_operations.Opm.set_opm_version(from_index=from_index)
+    assert opm_operations.Opm.opm_version == get_worker_config().get('iib_default_opm')
+    if from_index is None:
+        assert mock_gil.call_count == 0

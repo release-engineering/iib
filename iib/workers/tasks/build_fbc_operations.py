@@ -16,7 +16,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.opm_operations import opm_registry_add_fbc_fragment
+from iib.workers.tasks.opm_operations import opm_registry_add_fbc_fragment, Opm
 from iib.workers.tasks.utils import (
     get_resolved_image,
     prepare_request_for_build,
@@ -81,6 +81,7 @@ def handle_fbc_operation_request(
 
     from_index_resolved = prebuild_info['from_index_resolved']
     binary_image_resolved = prebuild_info['binary_image_resolved']
+    Opm.set_opm_version(from_index_resolved)
 
     prebuild_info['fbc_fragment_resolved'] = resolved_fbc_fragment
 

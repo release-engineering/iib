@@ -35,6 +35,7 @@ from iib.workers.tasks.opm_operations import (
     opm_index_add,
     opm_index_rm,
     deprecate_bundles,
+    Opm,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -786,6 +787,7 @@ def handle_add_request(
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
+    Opm.set_opm_version(from_index_resolved)
     with set_registry_token(overwrite_from_index_token, from_index_resolved):
         is_fbc = is_image_fbc(from_index_resolved) if from_index else False
         if is_fbc:
@@ -1039,6 +1041,7 @@ def handle_rm_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     from_index_resolved = prebuild_info['from_index_resolved']
+    Opm.set_opm_version(from_index_resolved)
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):

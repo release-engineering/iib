@@ -16,6 +16,7 @@ from iib.workers.tasks.opm_operations import (
     deprecate_bundles_fbc,
     opm_index_add,
     deprecate_bundles,
+    Opm,
 )
 from packaging.version import Version
 
@@ -249,9 +250,11 @@ def handle_merge_request(
                 binary_image_config=binary_image_config,
             ),
         )
-    _update_index_image_build_state(request_id, prebuild_info)
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
     target_index_resolved = prebuild_info['target_index_resolved']
+    Opm.set_opm_version(target_index_resolved)
+
+    _update_index_image_build_state(request_id, prebuild_info)
     dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
