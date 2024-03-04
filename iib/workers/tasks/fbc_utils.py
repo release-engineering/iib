@@ -114,7 +114,5 @@ def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, str]:
     log.info("fbc_fragment contains package %s", operator_packages)
     if not operator_packages:
         raise IIBError("No operator packages in fbc_fragment %s", fbc_fragment)
-    if len(operator_packages) > 1:
-        raise IIBError("More than 1 package is present in fbc_fragment %s", fbc_fragment)
 
-    return fbc_fragment_path, operator_packages[0]
+    return fbc_fragment_path, operator_packages

@@ -798,57 +798,58 @@ def opm_registry_add_fbc_fragment(
     """
     set_request_state(request_id, 'in_progress', 'Extracting operator package from fbc_fragment')
     # fragment path will look like /tmp/iib-**/fbc-fragment
-    fragment_path, fragment_operator = extract_fbc_fragment(
+    fragment_path, fragment_operators = extract_fbc_fragment(
         temp_dir=temp_dir, fbc_fragment=fbc_fragment
-    )
-
-    is_operator_in_db, index_db_path = verify_operator_exists(
-        from_index=from_index,
-        base_dir=temp_dir,
-        operator_package=fragment_operator,
-        overwrite_from_index_token=overwrite_from_index_token,
     )
 
     # the dir where all the configs from from_index is stored
     # this will look like /tmp/iib-**/configs
     from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
 
-    log.info("The content of from_index configs located at %s", from_index_configs_dir)
-
-    if is_operator_in_db:
-        log.info('Removing %s from %s index.db ', fragment_operator, from_index)
-        _opm_registry_rm(
-            index_db_path=index_db_path, operators=[fragment_operator], base_dir=temp_dir
-        )
-        # migated_catalog_dir path will look like /tmp/iib-**/catalog
-        migated_catalog_dir, _ = opm_migrate(
-            index_db=index_db_path,
+    for fragment_operator in fragment_operators:
+        is_operator_in_db, index_db_path = verify_operator_exists(
+            from_index=from_index,
             base_dir=temp_dir,
-            generate_cache=False,
+            operator_package=fragment_operator,
+            overwrite_from_index_token=overwrite_from_index_token,
         )
-        log.info("Migated catalog after removing from db at %s", migated_catalog_dir)
 
-        # copy the content of migrated_catalog to from_index's config
-        log.info("Copying content of %s to %s", migated_catalog_dir, from_index_configs_dir)
-        for operator_package in os.listdir(migated_catalog_dir):
-            shutil.copytree(
-                os.path.join(migated_catalog_dir, operator_package),
-                os.path.join(from_index_configs_dir, operator_package),
-                dirs_exist_ok=True,
+        log.info("The content of from_index configs located at %s", from_index_configs_dir)
+
+        if is_operator_in_db:
+            log.info('Removing %s from %s index.db ', fragment_operator, from_index)
+            _opm_registry_rm(
+                index_db_path=index_db_path, operators=[fragment_operator], base_dir=temp_dir
             )
+            # migated_catalog_dir path will look like /tmp/iib-**/catalog
+            migated_catalog_dir, _ = opm_migrate(
+                index_db=index_db_path,
+                base_dir=temp_dir,
+                generate_cache=False,
+            )
+            log.info("Migated catalog after removing from db at %s", migated_catalog_dir)
 
-    # copy fragment_operator to from_index configs
-    set_request_state(request_id, 'in_progress', 'Adding fbc_fragment to from_index')
-    fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
-    fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
-    if os.path.exists(fragment_opr_dest_path):
-        shutil.rmtree(fragment_opr_dest_path)
-    log.info(
-        "Copying content of %s to %s",
-        fragment_opr_src_path,
-        fragment_opr_dest_path,
-    )
-    shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
+            # copy the content of migrated_catalog to from_index's config
+            log.info("Copying content of %s to %s", migated_catalog_dir, from_index_configs_dir)
+            for operator_package in os.listdir(migated_catalog_dir):
+                shutil.copytree(
+                    os.path.join(migated_catalog_dir, operator_package),
+                    os.path.join(from_index_configs_dir, operator_package),
+                    dirs_exist_ok=True,
+                )
+
+        # copy fragment_operator to from_index configs
+        set_request_state(request_id, 'in_progress', 'Adding fbc_fragment to from_index')
+        fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
+        fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
+        if os.path.exists(fragment_opr_dest_path):
+            shutil.rmtree(fragment_opr_dest_path)
+        log.info(
+            "Copying content of %s to %s",
+            fragment_opr_src_path,
+            fragment_opr_dest_path,
+        )
+        shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
 
     local_cache_path = os.path.join(temp_dir, 'cache')
     generate_cache_locally(
