@@ -58,7 +58,7 @@ def test_build_image(mock_run_cmd, mock_get_label, arch):
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image_incorrect_arch(mock_run_cmd, mock_get_label):
     mock_get_label.side_effect = ['x86_64', 's390x']
-    mock_run_cmd.retuen_value = None
+    mock_run_cmd.return_value = None
     build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
     # build_image retried once, hence buildah bud commands ran twice
     assert mock_run_cmd.call_count == 2
@@ -543,7 +543,9 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_add_request(
+    mock_sov,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -573,12 +575,13 @@ def test_handle_add_request(
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    from_index_resolved = 'from-index@sha256:bcdefg'
     mock_iifbc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': binary_image or 'some_image',
         'binary_image_resolved': 'binary-image@sha256:abcdef',
-        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'from_index_resolved': from_index_resolved,
         'ocp_version': 'v4.5',
         'distribution_scope': distribution_scope,
     }
@@ -679,6 +682,7 @@ def test_handle_add_request(
 
     mock_uiips.assert_called_once()
     mock_vii.assert_not_called()
+    mock_sov.assert_called_once_with(from_index_resolved)
     mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, ["extra_tag1", "extra_tag2"])
     assert mock_srs.call_count == 4
     if deprecate_bundles:
@@ -740,7 +744,9 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_add_request_check_index_label_behavior(
+    mock_sov,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -767,12 +773,13 @@ def test_handle_add_request_check_index_label_behavior(
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    from_index_resolved = 'from-index@sha256:bcdefg'
     mock_iifbc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': 'binary-image:latest',
         'binary_image_resolved': 'binary-image@sha256:abcdef',
-        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'from_index_resolved': from_index_resolved,
         'ocp_version': 'v4.5',
         'distribution_scope': 'stage',
     }
@@ -875,6 +882,7 @@ def test_handle_add_request_check_index_label_behavior(
             binary_image_config=binary_image_config,
         ),
     )
+    mock_sov.assert_called_once_with(from_index_resolved)
     mock_dep_b.assert_called_once_with(
         bundles=['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456'],
         base_dir=mock.ANY,
@@ -893,8 +901,9 @@ def test_handle_add_request_check_index_label_behavior(
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_add_request_gating_failure(
-    mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
+    mock_sov, mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
 ):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
@@ -922,12 +931,14 @@ def test_handle_add_request_gating_failure(
     mock_srs2.assert_called_once()
     mock_vl.assert_called_once()
     mock_gb.assert_called_once_with(['some-bundle@sha'], greenwave_config)
+    assert mock_sov.call_count == 0
 
 
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
-def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_add_request_bundle_resolution_failure(mock_sov, mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
     bundles = ['some-bundle:2.3-1']
@@ -951,6 +962,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
     assert mock_cleanup.call_count == 1
     mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
+    assert mock_sov.call_count == 0
 
 
 @pytest.mark.parametrize('binary_image', ('binary-image:latest', None))
@@ -967,7 +979,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_rm_request(
+    mock_sov,
     mock_iifbc,
     mock_alti,
     mock_uiips,
@@ -984,6 +998,7 @@ def test_handle_rm_request(
     binary_image,
 ):
     arches = {'amd64', 's390x'}
+    from_index_resolved = 'from-index@sha256:bcdefg'
     mock_iifbc.return_value = False
     mock_prfb.return_value = {
         'arches': arches,
@@ -1020,6 +1035,7 @@ def test_handle_rm_request(
     assert mock_pi.call_count == len(arches)
     mock_vii.assert_not_called()
     assert mock_srs.call_count == 2
+    mock_sov.assert_called_once_with(from_index_resolved)
     mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, None)
     mock_uiips.assert_called_once()
     assert mock_srs.call_args[0][1] == 'complete'
@@ -1046,7 +1062,9 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('os.rename')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_rm_request_fbc(
+    mock_sov,
     mock_or,
     mock_ogd,
     mock_gcl,
@@ -1070,11 +1088,12 @@ def test_handle_rm_request_fbc(
     mock_c,
 ):
     mock_iifbc.return_value = True
+    from_index_resolved = 'from-index@sha256:bcdefg'
     mock_prfb.return_value = {
         'arches': {'amd64', 's390x'},
         'binary_image': 'binary-image:latest',
         'binary_image_resolved': 'binary-image@sha256:abcdef',
-        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'from_index_resolved': from_index_resolved,
         'ocp_version': 'v4.6',
         'distribution_scope': 'PROD',
     }
@@ -1110,6 +1129,7 @@ def test_handle_rm_request_fbc(
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2
     assert mock_srs.call_count == 2
+    mock_sov.assert_called_once_with(from_index_resolved)
     mock_capml.assert_called_once_with(5, {'s390x', 'amd64'}, None)
     mock_uiips.assert_called_once()
     assert mock_srs.call_args[0][1] == 'complete'
@@ -1359,8 +1379,9 @@ def test_inspect_related_images_fail(mock_gil, mock_cffi, mock_fd, mock_gbd, moc
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.inspect_related_images')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_add_request_check_related_images_fail(
-    mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
+    mock_sov, mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
 ):
     bundles = ['some-bundle:2.3-1']
     error_msg = 'IIB cannot access the following related images [quay.io/related/image@sha256:1]'

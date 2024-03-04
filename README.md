@@ -435,6 +435,11 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_supported_archs` - the architectures supported by IIB. IIB can build index images for these
   architectures. The dictionary has mapping of arch aliases with formal names like
   `{"arm64": "aarch64"}`
+* `iib_default_opm` - the default opm version command to use. This defaults to
+    `opm`
+* `iib_ocp_opm_mapping` - the dictionary mapping of OCP version to OPM version
+indicating the OPM version to be used for the corresponding OCP version like
+`{"v4.15": "opm-v1.28.0"}`
 
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**

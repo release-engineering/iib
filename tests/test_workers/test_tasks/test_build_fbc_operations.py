@@ -17,7 +17,9 @@ from iib.workers.tasks.utils import RequestConfigFBCOperation
 @mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_fbc_operation_request(
+    mock_sov,
     mock_cleanup,
     mock_srs,
     mock_gri,
@@ -37,12 +39,13 @@ def test_handle_fbc_operation_request(
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
     fbc_fragment = 'fbc-fragment:latest'
     arches = {'amd64', 's390x'}
+    from_index_resolved = 'from-index@sha256:bcdefg'
 
     mock_prfb.return_value = {
         'arches': arches,
         'binary_image': binary_image,
         'binary_image_resolved': 'binary-image@sha256:abcdef',
-        'from_index_resolved': 'from-index@sha256:bcdefg',
+        'from_index_resolved': from_index_resolved,
         'ocp_version': 'v4.6',
         'distribution_scope': "prod",
     }
@@ -67,6 +70,7 @@ def test_handle_fbc_operation_request(
             fbc_fragment='fbc-fragment@sha256:qwerty',
         ),
     )
+    mock_sov.assert_called_once_with(from_index_resolved)
     mock_oraff.assert_called_once()
     mock_cpml.assert_called_once_with(request_id, {'s390x', 'amd64'}, None)
     assert mock_srs.call_count == 3

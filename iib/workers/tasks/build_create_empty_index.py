@@ -20,7 +20,7 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm
+from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm, Opm
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -95,6 +95,7 @@ def handle_create_empty_index_request(
     )
     from_index_resolved = prebuild_info['from_index_resolved']
     prebuild_info['labels'] = labels
+    Opm.set_opm_version(from_index_resolved)
 
     if not output_fbc and is_image_fbc(from_index_resolved):
         log.debug('%s is FBC index image', from_index_resolved)

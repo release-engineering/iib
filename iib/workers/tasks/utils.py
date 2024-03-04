@@ -14,6 +14,7 @@ import re
 import sqlite3
 import subprocess
 
+from pathlib import Path
 from tenacity import (
     before_sleep_log,
     retry,
@@ -393,48 +394,6 @@ class RequestConfigFBCOperation(RequestConfig):
         fbc_fragment: str
 
 
-def deprecate_bundles(
-    bundles: List[str],
-    base_dir: str,
-    binary_image: str,
-    from_index: str,
-    overwrite_target_index_token: Optional[str] = None,
-    container_tool: Optional[str] = None,
-) -> None:
-    """
-    Deprecate the specified bundles from the index image.
-
-    Only Dockerfile is created, no build is performed.
-
-    :param list bundles: pull specifications of bundles to deprecate.
-    :param str base_dir: base directory where operation files will be located.
-    :param str binary_image: binary image to be used by the new index image.
-    :param str from_index: index image, from which the bundles will be deprecated.
-    :param str overwrite_target_index_token: the token used for overwriting the input
-        ``from_index`` image. This is required to use ``overwrite_target_index``.
-        The format of the token must be in the format "user:password".
-    :param str container_tool: the container tool to be used to operate on the index image
-    """
-    cmd = [
-        'opm',
-        'index',
-        'deprecatetruncate',
-        '--generate',
-        '--binary-image',
-        binary_image,
-        '--from-index',
-        from_index,
-        '--bundles',
-        ','.join(bundles),
-        '--allow-package-removal',
-    ]
-    if container_tool:
-        cmd.append('--container-tool')
-        cmd.append(container_tool)
-    with set_registry_token(overwrite_target_index_token, from_index):
-        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
-
-
 def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List[str]) -> List[str]:
     """
     Get a list of to-be-deprecated bundles based on the data from the deprecation list.
@@ -799,7 +758,7 @@ def run_cmd(
         log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
         regex: str
         match: Optional[re.Match]
-        if cmd[0] == 'opm':
+        if Path(cmd[0]).stem.startswith('opm'):
             # Capture the error message right before the help display
             regex = r'^(?:Error: )(.+)$'
             match = _regex_reverse_search(regex, response)

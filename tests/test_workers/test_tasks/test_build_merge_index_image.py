@@ -46,7 +46,9 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('subprocess.run')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_merge_request(
+    mock_sov,
     mock_gwc,
     mock_iifbc,
     mock_run,
@@ -169,6 +171,7 @@ def test_handle_merge_request(
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
+    mock_sov.assert_called_once_with(target_index_resolved)
     mock_ors.assert_called_once()
     mock_run_cmd.assert_called_once()
     mock_run_cmd.assert_has_calls(
@@ -210,7 +213,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 def test_handle_merge_request_no_deprecate(
+    mock_sov,
     mock_iifbc,
     mock_add_label_to_index,
     mock_cleanup,
@@ -239,12 +244,13 @@ def test_handle_merge_request_no_deprecate(
     source_fbc,
     target_fbc,
 ):
+    target_index_resolved = 'target-index@sha256:resolved'
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
         'binary_image': 'binary-image:1.0',
         'target_ocp_version': '4.6',
         'source_from_index_resolved': 'source-index@sha256:resolved',
-        'target_index_resolved': 'target-index@sha256:resolved',
+        'target_index_resolved': target_index_resolved,
         'distribution_scope': 'stage',
     }
 
@@ -325,6 +331,7 @@ def test_handle_merge_request_no_deprecate(
     assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
+    mock_sov.assert_called_once_with(target_index_resolved)
     mock_uiips.assert_called_once()
 
     mock_osfi.assert_not_called()
@@ -728,7 +735,10 @@ def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
 @mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
-def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc, mock_srs, mock_prfb, mock_uiibs):
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_merge_request_raises(
+    mock_sov, mock_iifbc, mock_c, mock_gwc, mock_srs, mock_prfb, mock_uiibs
+):
     # set true for source_fbc; false for target_fbc
     mock_iifbc.side_effect = (True, False)
 
