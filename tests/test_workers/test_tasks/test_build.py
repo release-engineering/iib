@@ -58,7 +58,7 @@ def test_build_image(mock_run_cmd, mock_get_label, arch):
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image_incorrect_arch(mock_run_cmd, mock_get_label):
     mock_get_label.side_effect = ['x86_64', 's390x']
-    mock_run_cmd.retuen_value = None
+    mock_run_cmd.return_value = None
     build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
     # build_image retried once, hence buildah bud commands ran twice
     assert mock_run_cmd.call_count == 2
@@ -543,7 +543,9 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request(
+    mock_fiv,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -613,7 +615,6 @@ def test_handle_add_request(
     mock_ors.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
-
     build.handle_add_request(
         bundles,
         3,
@@ -740,7 +741,9 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_check_index_label_behavior(
+    mock_fiv,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -893,8 +896,9 @@ def test_handle_add_request_check_index_label_behavior(
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_gating_failure(
-    mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
+    mock_fiv, mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
 ):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
@@ -927,7 +931,8 @@ def test_handle_add_request_gating_failure(
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
-def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
+def test_handle_add_request_bundle_resolution_failure(mock_fiv, mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
     bundles = ['some-bundle:2.3-1']
@@ -967,7 +972,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_rm_request(
+    mock_fiv,
     mock_iifbc,
     mock_alti,
     mock_uiips,
@@ -1046,7 +1053,9 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('os.rename')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_rm_request_fbc(
+    mock_fiv,
     mock_or,
     mock_ogd,
     mock_gcl,
@@ -1359,8 +1368,9 @@ def test_inspect_related_images_fail(mock_gil, mock_cffi, mock_fd, mock_gbd, moc
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.inspect_related_images')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_check_related_images_fail(
-    mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
+    mock_fiv, mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
 ):
     bundles = ['some-bundle:2.3-1']
     error_msg = 'IIB cannot access the following related images [quay.io/related/image@sha256:1]'

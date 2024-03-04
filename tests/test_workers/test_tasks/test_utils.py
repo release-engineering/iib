@@ -699,31 +699,6 @@ def testget_bundles_from_deprecation_list(mock_grb):
     mock_grb.assert_called_once_with(deprecation_list)
 
 
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.set_registry_token')
-def testdeprecate_bundles(mock_srt, mock_run_cmd):
-    bundles = ['quay.io/bundle1:1.0', 'quay.io/bundle2:2.0']
-    from_index = 'quay.io/index-image:4.6'
-    binary_image = 'quay.io/binary-image:4.6'
-    cmd = [
-        'opm',
-        'index',
-        'deprecatetruncate',
-        '--generate',
-        '--binary-image',
-        binary_image,
-        '--from-index',
-        from_index,
-        '--bundles',
-        ','.join(bundles),
-        '--allow-package-removal',
-    ]
-    utils.deprecate_bundles(bundles, 'some_dir', binary_image, from_index, '4.6')
-    mock_run_cmd.assert_called_once_with(
-        cmd, {'cwd': 'some_dir'}, exc_msg='Failed to deprecate the bundles'
-    )
-
-
 def test_chmod_recursiverly(tmpdir):
     # Create a directory structure like this:
     # spam-dir/

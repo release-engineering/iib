@@ -16,7 +16,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.opm_operations import opm_registry_add_fbc_fragment
+from iib.workers.tasks.opm_operations import opm_registry_add_fbc_fragment, set_opm
 from iib.workers.tasks.utils import (
     get_resolved_image,
     prepare_request_for_build,
@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 @instrument_tracing(
     span_name="workers.tasks.build.handle_fbc_operation_request", attributes=get_binary_versions()
 )
+@set_opm
 def handle_fbc_operation_request(
     request_id: int,
     fbc_fragment: str,

@@ -32,6 +32,7 @@ from iib.workers.tasks.opm_operations import (
     opm_registry_rm_fbc,
     deprecate_bundles_fbc,
     generate_cache_locally,
+    set_opm,
     opm_index_add,
     opm_index_rm,
     deprecate_bundles,
@@ -699,6 +700,7 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
 @app.task
 @request_logger
 @instrument_tracing(span_name="workers.tasks.handle_add_request", attributes=get_binary_versions())
+@set_opm
 def handle_add_request(
     bundles: List[str],
     request_id: int,
@@ -758,6 +760,7 @@ def handle_add_request(
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
+
     # Resolve bundles to their digests
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
 
@@ -988,6 +991,7 @@ def handle_add_request(
 @app.task
 @request_logger
 @instrument_tracing(span_name="workers.tasks.handle_rm_request", attributes=get_binary_versions())
+@set_opm
 def handle_rm_request(
     operators: List[str],
     request_id: int,

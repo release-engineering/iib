@@ -20,7 +20,7 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm
+from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm, set_opm
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -64,6 +64,7 @@ def _get_present_operators(from_index: str, base_dir: str) -> List[str]:
 @instrument_tracing(
     span_name="workers.tasks.handle_create_empty_index_request", attributes=get_binary_versions()
 )
+@set_opm
 def handle_create_empty_index_request(
     from_index: str,
     request_id: int,

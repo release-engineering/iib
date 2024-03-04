@@ -204,6 +204,7 @@ def test_opm_generate_dockerfile(mock_icid, mock_run_cmd, tmpdir, dockerfile):
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
+@mock.patch.object(opm_operations, 'opm_path', "opm-v1.26.8")
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_db_file):
     index_db_file = os.path.join(tmpdir, 'database/index.db') if set_index_db_file else None
@@ -219,7 +220,7 @@ def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_d
         )
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
+        ['opm-v1.26.8', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
         {'cwd': tmpdir},
         exc_msg='Failed to generate Dockerfile for file-based catalog',
     )
@@ -764,7 +765,14 @@ def test_verify_operator_exists(
 @mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_index_add(
-    mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool, graph_update_mode
+    mock_run_cmd,
+    mock_srt,
+    from_index,
+    bundles,
+    overwrite_csv,
+    container_tool,
+    graph_update_mode,
+    tmpdir,
 ):
     opm_operations.opm_index_add(
         '/tmp/somedir',

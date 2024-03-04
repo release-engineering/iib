@@ -16,6 +16,7 @@ from iib.workers.tasks.opm_operations import (
     deprecate_bundles_fbc,
     opm_index_add,
     deprecate_bundles,
+    set_opm,
 )
 from packaging.version import Version
 
@@ -196,6 +197,7 @@ def _add_bundles_missing_in_source(
 @instrument_tracing(
     span_name="workers.tasks.build.handle_merge_request", attributes=get_binary_versions()
 )
+@set_opm
 def handle_merge_request(
     source_from_index: str,
     deprecation_list: List[str],
