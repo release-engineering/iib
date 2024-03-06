@@ -251,8 +251,17 @@ def test_opm_generate_dockerfile_exist(mock_run_cmd, tmpdir, dockerfile, set_ind
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copyfile')
+@mock.patch('iib.workers.tasks.opm_operations.os.remove')
 def test_opm_registry_add(
-    mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool
+    mock_os_remove,
+    mock_shutil_copyfile,
+    mock_run_cmd,
+    mock_srt,
+    from_index,
+    bundles,
+    overwrite_csv,
+    container_tool,
 ):
     opm_operations._opm_registry_add(
         base_dir='/tmp/somedir',

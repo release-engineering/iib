@@ -574,7 +574,18 @@ def _opm_registry_add(
         log.info('Using force to add bundle(s) to index')
         cmd.extend(['--overwrite-latest'])
 
-    run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
+    # after commit 643fc9499222107f52b7ba3f9f3969fa36812940 index.db backup was added
+    # due to the opm bug https://issues.redhat.com/browse/OCPBUGS-30214
+    index_db_backup = index_db + ".backup"
+    shutil.copyfile(index_db, index_db_backup)
+
+    try:
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
+    except Exception as e:
+        shutil.copyfile(index_db_backup, index_db)
+        raise e
+    finally:
+        os.remove(index_db_backup)
 
 
 @retry(
