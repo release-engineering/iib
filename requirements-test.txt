@@ -365,7 +365,7 @@ deprecated==1.2.14 \
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
-dogpile-cache==1.3.0 \
+dogpile-cache==1.3.2 \
     --hash=sha256:0a387f1932c071ee8fd971d2ff51f8aba1106c559439a51b8c74a207f40e215d \
     --hash=sha256:c0d33baeff2b823c12e4aa8a662ce2beaf0297f8f2aca1fc2cb178e8bc4b476d
     # via -r requirements.txt
@@ -1251,3 +1251,6 @@ zipp==3.17.0 \
 # pinned when the requirements file includes hashes and the requirement is not
 # satisfied by a package already installed. Consider using the --allow-unsafe flag.
 # setuptools
+dogpile.cache==1.3.2 \
+    --hash=sha256:4f71dc0333ad351c9c6f704f5ba2a37bf51c6eed0437d1adf56e075959afe63b \
+    --hash=sha256:c59250e23ddb4c03259c315c3b03d18b0658ec4f30ee665b39b91faf6401ef41
