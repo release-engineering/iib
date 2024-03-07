@@ -29,7 +29,7 @@ jobs:
 
       - name: Push iib-api to quay.io
         id: push-iib-api
-        uses: redhat-actions/push-to-registry@v2.1.1
+        uses: redhat-actions/push-to-registry@v2.7.1
         with:
           image: ${{ steps.build-iib-api.outputs.image }}
           tags: ${{ steps.build-iib-api.outputs.tags }}
