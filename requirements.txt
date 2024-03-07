@@ -506,9 +506,9 @@ krb5==0.5.1 \
     --hash=sha256:f65fbbcf6de0fecee56a05370b6f65230c121a0cadad8e6a56f5a852bdeecaa6 \
     --hash=sha256:fb69fe96be7197f007b5b20172346728349d0b03a39b3343e8793fabb3d28626
     # via pyspnego
-mako==1.3.0 \
-    --hash=sha256:57d4e997349f1a92035aa25c17ace371a4213f2ca42f99bee9a602500cfd54d9 \
-    --hash=sha256:e3a9d388fd00e87043edbe8792f45880ac0114e9c4adc69f6e9bfb2c55e3b11b
+Mako==1.3.2 \
+    --hash=sha256:2a0c8ad7f6274271b3bb7467dd37cf9cc6dab4bc19cb69a4ef10669402de698e \
+    --hash=sha256:32a99d70754dfce237019d17ffe4a282d2d3351b9c476e90d8a60e63f133b80c
     # via alembic
 markupsafe==2.1.4 \
     --hash=sha256:0042d6a9880b38e1dd9ff83146cc3c9c18a059b9360ceae207805567aacccc69 \
