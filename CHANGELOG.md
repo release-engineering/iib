@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+## 8.6.0
+* Fixing logging in tracing.py by @lipoja in https://github.com/release-engineering/iib/pull/628
+* Update dependency cryptography to v42.0.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/630
+* Adding attributes to span by @lipoja in https://github.com/release-engineering/iib/pull/631
+* Update actions/checkout action to v4 by @renovate in https://github.com/release-engineering/iib/pull/626
+* Update dependency botocore to v1.34.55 by @renovate in https://github.com/release-engineering/iib/pull/638
+* Update dependency boto3 to v1.34.55 by @renovate in https://github.com/release-engineering/iib/pull/636
+* Update dependency coverage to v7.4.3 by @renovate in https://github.com/release-engineering/iib/pull/639
+* Update postgres Docker tag to v14.11 by @renovate in https://github.com/release-engineering/iib/pull/619
+* Update redhat-actions/push-to-registry action to v2.7.1 by @renovate in https://github.com/release-engineering/iib/pull/623
+* Update dependency botocore to v1.34.57 by @renovate in https://github.com/release-engineering/iib/pull/641
+* Update dependency boto3 to v1.34.57 by @renovate in https://github.com/release-engineering/iib/pull/640
+* Update dependency cryptography to v42.0.5 by @renovate in https://github.com/release-engineering/iib/pull/642
+* Update dependency flask to v3.0.2 by @renovate in https://github.com/release-engineering/iib/pull/644
+* Bump version of requirements by @lipoja in https://github.com/release-engineering/iib/pull/647
+
 ## 8.5.3
 * Update dependency botocore to v1.34.29 by @renovate in https://github.com/release-engineering/iib/pull/615
 * Update dependency boto3 to v1.34.29 by @renovate in https://github.com/release-engineering/iib/pull/614
