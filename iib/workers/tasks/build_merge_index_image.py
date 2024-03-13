@@ -440,6 +440,18 @@ def is_bundle_version_valid(
     v4.7   | included  | NOT included |   included   |  included   |  included
     -------------------------------------------------------------------------------
     v4.8   | included  | NOT included | NOT included |  included   |  included
+
+
+           |  "=v4.5|=v4.6"  |   "=v4.5|>=v4.7"   |
+    -----------------------------------------------
+    v4.5   |     included    |      included      |
+    -----------------------------------------------
+    v4.6   |     included    |    NOT included    |
+    -----------------------------------------------
+    v4.7   |   NOT included  |      included      |
+    -----------------------------------------------
+    v4.8   |    NOT included |      included      |
+
     """
     try:
         ocp_version = Version(valid_ocp_version.replace('v', ''))
@@ -456,8 +468,23 @@ def is_bundle_version_valid(
         # MYPY error: Item "None" of "Optional[str]" has no attribute "replace"
         bundle_version = bundle_version_label.replace('v', '')  # type: ignore
         log.debug(f'Bundle version {bundle_version}, Index image version {valid_ocp_version}')
+        if '|' in bundle_version_label:
+            versions = bundle_version_label.split('|')
+            if not all(ver.startswith("=") or ver.startswith(">=") for ver in versions):
+                log.warning(
+                    'Bundle version in a pipe separated filter must be prefixed by '
+                    'either "=" or ">="'
+                )
+                return False
+            for version in versions:
+                if version.startswith('>='):  # type: ignore
+                    if ocp_version >= Version(version.strip('>=')):
+                        return True
+                elif version.startswith('='):  # type: ignore
+                    if Version(version.strip('=')) == ocp_version:
+                        return True
         # MYPY error: Item "None" of "Optional[str]" has no attribute "startswith"
-        if bundle_version_label.startswith('='):  # type: ignore
+        elif bundle_version_label.startswith('='):  # type: ignore
             if Version(bundle_version.strip('=')) == ocp_version:
                 return True
         # MYPY error: Unsupported right operand type for in ("Optional[str]")
