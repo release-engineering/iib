@@ -39,7 +39,7 @@ def test_get_no_present_operators(mock_grpcurl, tmpdir):
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
-@mock.patch('iib.workers.tasks.build_create_empty_index._opm_index_rm')
+@mock.patch('iib.workers.tasks.build_create_empty_index.opm_index_rm')
 @mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
 @mock.patch('iib.workers.tasks.build_create_empty_index._push_image')
