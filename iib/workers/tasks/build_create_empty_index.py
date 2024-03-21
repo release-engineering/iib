@@ -14,14 +14,13 @@ from iib.workers.tasks.build import (
     _build_image,
     _cleanup,
     _create_and_push_manifest_list,
-    _opm_index_rm,
     _push_image,
     _update_index_image_build_state,
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_create_empty_fbc
+from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
@@ -124,7 +123,7 @@ def handle_create_empty_index_request(
             )
         else:
             set_request_state(request_id, 'in_progress', 'Removing operators from index image')
-            _opm_index_rm(
+            opm_index_rm(
                 temp_dir,
                 operators,
                 prebuild_info['binary_image'],

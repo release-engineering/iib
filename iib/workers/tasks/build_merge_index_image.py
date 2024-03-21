@@ -14,6 +14,8 @@ from iib.workers.tasks.opm_operations import (
     opm_migrate,
     opm_generate_dockerfile,
     deprecate_bundles_fbc,
+    opm_index_add,
+    deprecate_bundles,
 )
 from packaging.version import Version
 
@@ -27,7 +29,6 @@ from iib.workers.tasks.build import (
     _get_external_arch_pull_spec,
     get_image_label,
     _get_present_bundles,
-    _opm_index_add,
     _push_image,
     _update_index_image_build_state,
     _update_index_image_pull_spec,
@@ -37,7 +38,6 @@ from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
-    deprecate_bundles,
     get_bundles_from_deprecation_list,
     request_logger,
     set_registry_token,
@@ -165,7 +165,7 @@ def _add_bundles_missing_in_source(
                 container_tool='podman',
             )
         else:
-            _opm_index_add(
+            opm_index_add(
                 base_dir=base_dir,
                 bundles=missing_bundle_paths,
                 binary_image=binary_image,
