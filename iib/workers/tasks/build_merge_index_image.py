@@ -494,7 +494,7 @@ def is_bundle_version_valid(
                 return True
         # MYPY error: Unsupported right operand type for in ("Optional[str]")
         elif "," in bundle_version_label:  # type: ignore
-            versions = [Version(version) for version in bundle_version.split(",")]
+            versions = sorted([Version(version) for version in bundle_version.split(",")])
             if versions[0] <= ocp_version:
                 return True
         elif Version(bundle_version) <= ocp_version:
