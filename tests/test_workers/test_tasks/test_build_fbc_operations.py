@@ -17,7 +17,9 @@ from iib.workers.tasks.utils import RequestConfigFBCOperation
 @mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_fbc_operation_request(
+    mock_fiv,
     mock_cleanup,
     mock_srs,
     mock_gri,

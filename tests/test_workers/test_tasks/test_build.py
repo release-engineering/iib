@@ -58,7 +58,7 @@ def test_build_image(mock_run_cmd, mock_get_label, arch):
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_build_image_incorrect_arch(mock_run_cmd, mock_get_label):
     mock_get_label.side_effect = ['x86_64', 's390x']
-    mock_run_cmd.retuen_value = None
+    mock_run_cmd.return_value = None
     build._build_image('/some/dir', 'some.Dockerfile', 3, 's390x')
     # build_image retried once, hence buildah bud commands ran twice
     assert mock_run_cmd.call_count == 2
@@ -336,85 +336,6 @@ def test_get_local_pull_spec(request_id, arch):
     assert re.match(f'.+:{request_id}-{arch}', rv)
 
 
-@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
-@pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
-@pytest.mark.parametrize('overwrite_csv', (True, False))
-@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
-@pytest.mark.parametrize('graph_update_mode', (None, 'semver'))
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_add(
-    mock_run_cmd, mock_srt, from_index, bundles, overwrite_csv, container_tool, graph_update_mode
-):
-    build._opm_index_add(
-        '/tmp/somedir',
-        bundles,
-        'binary-image:latest',
-        from_index,
-        graph_update_mode,
-        'user:pass',
-        overwrite_csv,
-        container_tool=container_tool,
-    )
-
-    mock_run_cmd.assert_called_once()
-    opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'add']
-    if bundles:
-        assert ','.join(bundles) in opm_args
-    else:
-        assert '""' in opm_args
-    if from_index:
-        assert '--from-index' in opm_args
-        assert from_index in opm_args
-    else:
-        assert '--from-index' not in opm_args
-    if overwrite_csv:
-        assert '--overwrite-latest' in opm_args
-    else:
-        assert '--overwrite-latest' not in opm_args
-    if container_tool:
-        assert '--container-tool' in opm_args
-        assert container_tool in opm_args
-    else:
-        assert '--container-tool' not in opm_args
-    if graph_update_mode:
-        assert '--mode' in opm_args
-        assert graph_update_mode in opm_args
-    else:
-        assert '--mode' not in opm_args
-    assert "--enable-alpha" in opm_args
-
-    mock_srt.assert_called_once_with('user:pass', from_index, append=True)
-
-
-@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
-@mock.patch('iib.workers.tasks.build.set_registry_token')
-@mock.patch('iib.workers.tasks.build.run_cmd')
-def test_opm_index_rm(mock_run_cmd, mock_srt, container_tool):
-    operators = ['operator_1', 'operator_2']
-    build._opm_index_rm(
-        '/tmp/somedir',
-        operators,
-        'binary-image:latest',
-        'some_index:latest',
-        'user:pass',
-        container_tool=container_tool,
-    )
-
-    mock_run_cmd.assert_called_once()
-    opm_args = mock_run_cmd.call_args[0][0]
-    assert opm_args[0:3] == ['opm', 'index', 'rm']
-    assert ','.join(operators) in opm_args
-    assert 'some_index:latest' in opm_args
-    if container_tool:
-        assert '--container-tool' in opm_args
-        assert container_tool in opm_args
-    else:
-        assert '--container-tool' not in opm_args
-    mock_srt.assert_called_once_with('user:pass', 'some_index:latest', append=True)
-
-
 @pytest.mark.parametrize(
     'output_pull_spec, from_index, resolved_from_index,'
     'overwrite_from_index_token, oci_export_expected',
@@ -608,7 +529,7 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build._opm_index_add')
+@mock.patch('iib.workers.tasks.build.opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
@@ -622,7 +543,9 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request(
+    mock_fiv,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -692,7 +615,6 @@ def test_handle_add_request(
     mock_ors.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
-
     build.handle_add_request(
         bundles,
         3,
@@ -806,7 +728,7 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build._opm_index_add')
+@mock.patch('iib.workers.tasks.build.opm_index_add')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
@@ -819,7 +741,9 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_check_index_label_behavior(
+    mock_fiv,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -972,8 +896,9 @@ def test_handle_add_request_check_index_label_behavior(
 @mock.patch('iib.workers.tasks.build.gate_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_gating_failure(
-    mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
+    mock_fiv, mock_grb, mock_vl, mock_gb, mock_srs, mock_srs2, mock_cleanup
 ):
     error_msg = 'Gating failure!'
     mock_gb.side_effect = IIBError(error_msg)
@@ -1006,7 +931,8 @@ def test_handle_add_request_gating_failure(
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
-def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_cleanup):
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
+def test_handle_add_request_bundle_resolution_failure(mock_fiv, mock_grb, mock_srs, mock_cleanup):
     error_msg = 'Bundle Resolution failure!'
     mock_grb.side_effect = IIBError(error_msg)
     bundles = ['some-bundle:2.3-1']
@@ -1036,7 +962,7 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
-@mock.patch('iib.workers.tasks.build._opm_index_rm')
+@mock.patch('iib.workers.tasks.build.opm_index_rm')
 @mock.patch('iib.workers.tasks.build._build_image')
 @mock.patch('iib.workers.tasks.build._push_image')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
@@ -1046,7 +972,9 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
 @mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._add_label_to_index')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_rm_request(
+    mock_fiv,
     mock_iifbc,
     mock_alti,
     mock_uiips,
@@ -1125,7 +1053,9 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('os.rename')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_rm_request_fbc(
+    mock_fiv,
     mock_or,
     mock_ogd,
     mock_gcl,
@@ -1438,8 +1368,9 @@ def test_inspect_related_images_fail(mock_gil, mock_cffi, mock_fd, mock_gbd, moc
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build.verify_labels')
 @mock.patch('iib.workers.tasks.build.inspect_related_images')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_add_request_check_related_images_fail(
-    mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
+    mock_fiv, mock_iri, mock_vl, mock_grb, mock_srs, mock_cleanup
 ):
     bundles = ['some-bundle:2.3-1']
     error_msg = 'IIB cannot access the following related images [quay.io/related/image@sha256:1]'

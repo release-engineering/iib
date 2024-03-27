@@ -435,7 +435,9 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_supported_archs` - the architectures supported by IIB. IIB can build index images for these
   architectures. The dictionary has mapping of arch aliases with formal names like
   `{"arm64": "aarch64"}`
-
+* `iib_ocp_opm_mapping` - the mapping for which opm version should be used for
+    a particular ocp version like
+    `{"v4.15": "opm-v1.28.0"}`
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
 must be set along with `iib_aws_s3_bucket_name` config variable:
@@ -506,6 +508,7 @@ Greenwave to check if your bundle image builds have passed the tests in the Gree
 have defined. The IIB request submitted to that queue will succeed only if the policy is satisfied.
 
 # Documentation
+
 This package has documentaiton on [Read the Docs](https://iib.readthedocs.io)
 
 ## Build the Docs

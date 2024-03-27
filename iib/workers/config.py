@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
+import shutil
 import logging
 import types
 from typing import Any, Dict, List, Optional, Type, Union
@@ -218,6 +219,19 @@ class DevelopmentConfig(Config):
         str
     ] = '/var/lib/requests/recursive_related_bundles'
     iib_dogpile_backend: str = 'dogpile.cache.memcached'
+    iib_ocp_opm_mapping: dict = {
+        "v4.6": "opm-v1.26.4",
+        "v4.7": "opm-v1.26.4",
+        "v4.8": "opm-v1.26.4",
+        "v4.9": "opm-v1.26.4",
+        "v4.10": "opm-v1.26.4",
+        "v4.11": "opm-v1.26.4",
+        "v4.12": "opm-v1.26.4",
+        "v4.13": "opm-v1.26.4",
+        "v4.14": "opm-v1.26.4",
+        "v4.15": "opm-v1.28.0",
+        "default": "opm",
+    }
 
 
 class TestingConfig(DevelopmentConfig):
@@ -292,6 +306,7 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
         if any(not index for index in conf['iib_no_ocp_label_allow_list']):
             raise ConfigError('Empty string is not allowed in iib_no_ocp_label_allow_list')
 
+    _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
 
     if conf.get('iib_aws_s3_bucket_name'):
@@ -346,6 +361,22 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
                 '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
                 'variables must be set to valid strings when "IIB_OTEL_TRACING" is set to True.'
             )
+
+
+def _validate_multiple_opm_mapping(iib_ocp_opm_mapping: Dict[str, str]) -> None:
+    """
+    Validate iib_ocp_opm_mapping config variable.
+
+    :param dict iib_ocp_opm_mapping: the value of iib_ocp_opm_mapping variable
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
+    """
+    if iib_ocp_opm_mapping is not None:
+        if not isinstance(iib_ocp_opm_mapping, dict):
+            raise ConfigError('iib_ocp_opm_mapping must be a dictionary')
+        opms_defined = set(iib_ocp_opm_mapping.values())
+        for opm_version in opms_defined:
+            if shutil.which(opm_version) is None:
+                raise ConfigError(f'{opm_version} is not installed')
 
 
 def _validate_iib_org_customizations(

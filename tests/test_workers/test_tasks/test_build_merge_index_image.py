@@ -46,7 +46,9 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('subprocess.run')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_merge_request(
+    mock_fiv,
     mock_gwc,
     mock_iifbc,
     mock_run,
@@ -210,7 +212,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_merge_request_no_deprecate(
+    mock_fiv,
     mock_iifbc,
     mock_add_label_to_index,
     mock_cleanup,
@@ -338,7 +342,7 @@ def test_handle_merge_request_no_deprecate(
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
-@mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source(
     mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc, mock_gwc
@@ -552,7 +556,7 @@ def test_add_bundles_missing_in_source(
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
-@mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source_error_tag_specified(
     mock_srs,
@@ -586,7 +590,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
-@mock.patch('iib.workers.tasks.build_merge_index_image._opm_index_add')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source_none_missing(
     mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc
@@ -728,7 +732,10 @@ def test_is_bundle_version_valid_invalid_index_ocp_version(version_label):
 @mock.patch('iib.workers.config.get_worker_config')
 @mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
-def test_handle_merge_request_raises(mock_iifbc, mock_c, mock_gwc, mock_srs, mock_prfb, mock_uiibs):
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
+def test_handle_merge_request_raises(
+    mock_fiv, mock_iifbc, mock_c, mock_gwc, mock_srs, mock_prfb, mock_uiibs
+):
     # set true for source_fbc; false for target_fbc
     mock_iifbc.side_effect = (True, False)
 

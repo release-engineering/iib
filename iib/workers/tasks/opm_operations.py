@@ -1,10 +1,12 @@
+import inspect
+import functools
 import logging
 import os
 import random
 import shutil
 import subprocess
 import time
-from typing import List, Optional, Tuple, Generator, Union
+from typing import List, Optional, Tuple, Generator, Union, Callable
 
 from tenacity import (
     before_sleep_log,
@@ -23,7 +25,9 @@ from iib.workers.tasks.fbc_utils import (
     extract_fbc_fragment,
 )
 
+
 log = logging.getLogger(__name__)
+opm_path = 'opm'
 
 
 def _gen_port_for_grpc() -> Generator[int, None, None]:
@@ -89,7 +93,7 @@ def opm_serve(catalog_dir: str) -> Tuple[int, subprocess.Popen]:
 
     for port in _gen_port_for_grpc():
         try:
-            cmd = ['opm', 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
+            cmd = [opm_path, 'serve', catalog_dir, '-p', str(port), '-t', '/dev/null']
             cwd = os.path.abspath(os.path.join(catalog_dir, os.path.pardir))
             result = (
                 port,
@@ -117,7 +121,7 @@ def opm_registry_serve(db_path: str) -> Tuple[int, subprocess.Popen]:
 
     for port in _gen_port_for_grpc():
         try:
-            cmd = ['opm', 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
+            cmd = [opm_path, 'registry', 'serve', '-p', str(port), '-d', db_path, '-t', '/dev/null']
             cwd = os.path.dirname(db_path)
             result = (
                 port,
@@ -281,7 +285,7 @@ def opm_registry_deprecatetruncate(base_dir: str, index_db: str, bundles: List[s
     )
 
     cmd = [
-        'opm',
+        opm_path,
         'registry',
         'deprecatetruncate',
         '--database',
@@ -352,7 +356,7 @@ def opm_migrate(
     if os.path.exists(fbc_dir_path):
         shutil.rmtree(fbc_dir_path)
 
-    cmd = ['opm', 'migrate', index_db, fbc_dir_path]
+    cmd = [opm_path, 'migrate', index_db, fbc_dir_path]
 
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to migrate index.db to file-based catalog')
     log.info("Migration to file-based catalog was completed.")
@@ -403,7 +407,7 @@ def opm_generate_dockerfile(
         return dockerfile_path
 
     cmd = [
-        'opm',
+        opm_path,
         'generate',
         'dockerfile',
         os.path.abspath(fbc_dir),
@@ -491,7 +495,7 @@ def generate_cache_locally(base_dir: str, fbc_dir: str, local_cache_path: str) -
     from iib.workers.tasks.utils import run_cmd
 
     cmd = [
-        'opm',
+        opm_path,
         'serve',
         os.path.abspath(fbc_dir),
         f'--cache-dir={local_cache_path}',
@@ -548,7 +552,7 @@ def _opm_registry_add(
     bundle_str = ','.join(bundles) or '""'
 
     cmd = [
-        'opm',
+        opm_path,
         'registry',
         'add',
         '--database',
@@ -664,7 +668,7 @@ def _opm_registry_rm(index_db_path: str, operators: List[str], base_dir: str) ->
     from iib.workers.tasks.utils import run_cmd
 
     cmd = [
-        'opm',
+        opm_path,
         'registry',
         'rm',
         '--database',
@@ -918,3 +922,259 @@ def verify_operator_exists(
             is_package_in_index = True
             log.info("operator package %s found in index_db %s", operator_package, index_db_path)
     return is_package_in_index, index_db_path
+
+
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
+def opm_index_add(
+    base_dir: str,
+    bundles: List[str],
+    binary_image: str,
+    from_index: Optional[str] = None,
+    graph_update_mode: Optional[str] = None,
+    overwrite_from_index_token: Optional[str] = None,
+    overwrite_csv: bool = False,
+    container_tool: Optional[str] = None,
+) -> None:
+    """
+    Add the input bundles to an operator index.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+
+    :param str base_dir: the base directory to generate the database and index.Dockerfile in.
+    :param list bundles: a list of strings representing the pull specifications of the bundles to
+        add to the index image being built.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from. This should point to a digest or stable tag.
+    :param str from_index: the pull specification of the container image containing the index that
+        the index image build will be based from.
+    :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
+        in the index.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
+    :param bool overwrite_csv: a boolean determining if a bundle will be replaced if the CSV
+        already exists.
+    :param str container_tool: the container tool to be used to operate on the index image
+    :raises IIBError: if the ``opm index add`` command fails.
+    """
+    # The bundles are not resolved since these are stable tags, and references
+    # to a bundle image using a digest fails when using the opm command.
+
+    from iib.workers.tasks.utils import run_cmd, set_registry_token
+
+    bundle_str = ','.join(bundles) or '""'
+    cmd = [
+        opm_path,
+        'index',
+        'add',
+        # This enables substitutes-for functionality for rebuilds. See
+        # https://github.com/operator-framework/enhancements/blob/master/enhancements/substitutes-for.md
+        '--enable-alpha',
+        '--generate',
+        '--bundles',
+        bundle_str,
+        '--binary-image',
+        binary_image,
+    ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
+
+    if graph_update_mode:
+        log.info('Using %s mode to update the channel graph in the index', graph_update_mode)
+        cmd.extend(['--mode', graph_update_mode])
+
+    log.info('Generating the database file with the following bundle(s): %s', ', '.join(bundles))
+    if from_index:
+        log.info('Using the existing database from %s', from_index)
+        # from_index is not resolved because podman does not support digest references
+        # https://github.com/containers/libpod/issues/5234 is filed for it
+        cmd.extend(['--from-index', from_index])
+
+    if overwrite_csv:
+        log.info('Using force to add bundle(s) to index')
+        cmd.extend(['--overwrite-latest'])
+
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
+
+
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(2),
+)
+def opm_index_rm(
+    base_dir: str,
+    operators: List[str],
+    binary_image: str,
+    from_index: str,
+    overwrite_from_index_token: Optional[str] = None,
+    container_tool: Optional[str] = None,
+) -> None:
+    """
+    Remove the input operators from the operator index.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+
+    :param str base_dir: the base directory to generate the database and index.Dockerfile in.
+    :param list operators: a list of strings representing the names of the operators to
+        remove from the index image.
+    :param str binary_image: the pull specification of the container image where the opm binary
+        gets copied from.
+    :param str from_index: the pull specification of the container image containing the index that
+        the index image build will be based from.
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required to use ``overwrite_from_index``.
+        The format of the token must be in the format "user:password".
+    :param str container_tool: the container tool to be used to operate on the index image
+    :raises IIBError: if the ``opm index rm`` command fails.
+    """
+    from iib.workers.tasks.utils import run_cmd, set_registry_token
+
+    cmd = [
+        opm_path,
+        'index',
+        'rm',
+        '--generate',
+        '--binary-image',
+        binary_image,
+        '--from-index',
+        from_index,
+        '--operators',
+        ','.join(operators),
+    ]
+
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
+
+    log.info(
+        'Generating the database file from an existing database %s and excluding'
+        ' the following operator(s): %s',
+        from_index,
+        ', '.join(operators),
+    )
+
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
+
+
+def deprecate_bundles(
+    bundles: List[str],
+    base_dir: str,
+    binary_image: str,
+    from_index: str,
+    overwrite_target_index_token: Optional[str] = None,
+    container_tool: Optional[str] = None,
+) -> None:
+    """
+    Deprecate the specified bundles from the index image.
+
+    Only Dockerfile is created, no build is performed.
+
+    :param list bundles: pull specifications of bundles to deprecate.
+    :param str base_dir: base directory where operation files will be located.
+    :param str binary_image: binary image to be used by the new index image.
+    :param str from_index: index image, from which the bundles will be deprecated.
+    :param str overwrite_target_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required to use ``overwrite_target_index``.
+        The format of the token must be in the format "user:password".
+    :param str container_tool: the container tool to be used to operate on the index image
+    """
+    from iib.workers.tasks.utils import run_cmd, set_registry_token
+
+    cmd = [
+        opm_path,
+        'index',
+        'deprecatetruncate',
+        '--generate',
+        '--binary-image',
+        binary_image,
+        '--from-index',
+        from_index,
+        '--bundles',
+        ','.join(bundles),
+        '--allow-package-removal',
+    ]
+    if container_tool:
+        cmd.append('--container-tool')
+        cmd.append(container_tool)
+    with set_registry_token(overwrite_target_index_token, from_index):
+        run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
+
+
+def set_opm(func: Callable) -> Callable:
+    """
+    Set opm version for each IIB operation.
+
+    :param function func: the function to be decorated.
+    :return: the decorated function
+    :rtype: function
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from iib.workers.tasks.utils import _get_function_arg_value
+
+        if 'from_index' in inspect.getfullargspec(func).args:
+            from_index = _get_function_arg_value('from_index', func, args, kwargs)
+        # if target_index is present instead of from_index
+        if 'target_index' in inspect.getfullargspec(func).args:
+            from_index = _get_function_arg_value('target_index', func, args, kwargs)
+        try:
+            set_opm_verison(from_index)
+            func(*args, **kwargs)
+        finally:
+            global opm_path
+            opm_path = 'opm'
+
+    return wrapper
+
+
+def set_opm_verison(from_index: Optional[str] = None):
+    """
+    Set the opm version to be used for the entire IIB operation.
+
+    opm version is based on from_index/source_from_index.
+
+    :param str from_index: from_index_image for the request
+    """
+    global opm_path
+    opm_path = 'opm'
+    log.info("Determining the OPM version to use")
+    worker_config = get_worker_config()
+    opm_paths_config = worker_config.get("iib_ocp_opm_mapping")
+    if opm_paths_config is None or from_index is None:
+        log.warning(
+            "Either iib_ocp_opm_mapping config or from_index is not set, using the default opm"
+        )
+        return
+    index_version = _find_index_version(from_index)
+    opm_path = opm_paths_config.get(index_version, opm_paths_config['default'])
+    log.info("opm_path set to %s", opm_path)
+
+
+def _find_index_version(index_image: str) -> str:
+    """
+    Find the OCP version of the given index image.
+
+    :param str index_image: index_image pull spec
+    :return: version of index image
+    :rtype: str
+
+    """
+    from iib.workers.tasks.utils import get_image_label
+
+    index_image_version = index_image.split(":")[1]
+    if index_image_version.startswith("v4."):
+        return index_image_version
+    else:
+        index_version = get_image_label(index_image, 'com.redhat.index.delivery.version')
+        return index_version

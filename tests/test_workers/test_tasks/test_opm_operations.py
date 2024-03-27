@@ -204,6 +204,7 @@ def test_opm_generate_dockerfile(mock_icid, mock_run_cmd, tmpdir, dockerfile):
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
+@mock.patch.object(opm_operations, 'opm_path', "opm-v1.26.8")
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_db_file):
     index_db_file = os.path.join(tmpdir, 'database/index.db') if set_index_db_file else None
@@ -219,7 +220,7 @@ def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_d
         )
 
     mock_run_cmd.assert_called_once_with(
-        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
+        ['opm-v1.26.8', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
         {'cwd': tmpdir},
         exc_msg='Failed to generate Dockerfile for file-based catalog',
     )
@@ -754,3 +755,89 @@ def test_verify_operator_exists(
     )
     mock_ors.assert_has_calls([mock.call(db_path=index_db_path)])
     assert package_exists == opr_exists
+
+
+@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
+@pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
+@pytest.mark.parametrize('overwrite_csv', (True, False))
+@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
+@pytest.mark.parametrize('graph_update_mode', (None, 'semver'))
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_opm_index_add(
+    mock_run_cmd,
+    mock_srt,
+    from_index,
+    bundles,
+    overwrite_csv,
+    container_tool,
+    graph_update_mode,
+    tmpdir,
+):
+    opm_operations.opm_index_add(
+        '/tmp/somedir',
+        bundles,
+        'binary-image:latest',
+        from_index,
+        graph_update_mode,
+        'user:pass',
+        overwrite_csv,
+        container_tool=container_tool,
+    )
+
+    mock_run_cmd.assert_called_once()
+    opm_args = mock_run_cmd.call_args[0][0]
+    assert opm_args[0:3] == ['opm', 'index', 'add']
+    if bundles:
+        assert ','.join(bundles) in opm_args
+    else:
+        assert '""' in opm_args
+    if from_index:
+        assert '--from-index' in opm_args
+        assert from_index in opm_args
+    else:
+        assert '--from-index' not in opm_args
+    if overwrite_csv:
+        assert '--overwrite-latest' in opm_args
+    else:
+        assert '--overwrite-latest' not in opm_args
+    if container_tool:
+        assert '--container-tool' in opm_args
+        assert container_tool in opm_args
+    else:
+        assert '--container-tool' not in opm_args
+    if graph_update_mode:
+        assert '--mode' in opm_args
+        assert graph_update_mode in opm_args
+    else:
+        assert '--mode' not in opm_args
+    assert "--enable-alpha" in opm_args
+
+    mock_srt.assert_called_once_with('user:pass', from_index, append=True)
+
+
+@pytest.mark.parametrize('container_tool', (None, 'podwoman'))
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_opm_index_rm(mock_run_cmd, mock_srt, container_tool):
+    operators = ['operator_1', 'operator_2']
+    opm_operations.opm_index_rm(
+        '/tmp/somedir',
+        operators,
+        'binary-image:latest',
+        'some_index:latest',
+        'user:pass',
+        container_tool=container_tool,
+    )
+
+    mock_run_cmd.assert_called_once()
+    opm_args = mock_run_cmd.call_args[0][0]
+    assert opm_args[0:3] == ['opm', 'index', 'rm']
+    assert ','.join(operators) in opm_args
+    assert 'some_index:latest' in opm_args
+    if container_tool:
+        assert '--container-tool' in opm_args
+        assert container_tool in opm_args
+    else:
+        assert '--container-tool' not in opm_args
+    mock_srt.assert_called_once_with('user:pass', 'some_index:latest', append=True)

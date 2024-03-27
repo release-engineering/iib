@@ -39,14 +39,16 @@ def test_get_no_present_operators(mock_grpcurl, tmpdir):
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
-@mock.patch('iib.workers.tasks.build_create_empty_index._opm_index_rm')
+@mock.patch('iib.workers.tasks.build_create_empty_index.opm_index_rm')
 @mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
 @mock.patch('iib.workers.tasks.build_create_empty_index._push_image')
 @mock.patch('iib.workers.tasks.build_create_empty_index._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_create_empty_index.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_create_empty_index_request(
+    mock_fiv,
     mock_iifbc,
     mock_uiips,
     mock_capml,
@@ -121,7 +123,8 @@ def test_handle_create_empty_index_request(
 @mock.patch('iib.workers.tasks.build_create_empty_index._cleanup')
 @mock.patch('iib.workers.tasks.build_create_empty_index.is_image_fbc')
 @mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
-def test_handle_create_empty_index_request_raises(mock_prfb, mock_iifbc, mock_c):
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
+def test_handle_create_empty_index_request_raises(mock_fiv, mock_prfb, mock_iifbc, mock_c):
     # Ensure that IIB raises error when output_fbc paramater is false
     # but from_index provided is FBC
     arches = {'amd64', 's390x'}
@@ -162,7 +165,9 @@ def test_handle_create_empty_index_request_raises(mock_prfb, mock_iifbc, mock_c)
 @mock.patch('iib.workers.tasks.build_create_empty_index._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_create_empty_index.opm_create_empty_fbc')
+@mock.patch('iib.workers.tasks.opm_operations._find_index_version')
 def test_handle_create_empty_index_request_fbc(
+    mock_fiv,
     mock_ocef,
     mock_uiips,
     mock_capml,
