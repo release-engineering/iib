@@ -3,12 +3,13 @@ import copy
 import logging
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from operator_manifest.operator import OperatorManifest
 import ruamel.yaml
 
 from iib.common.common_utils import get_binary_versions
+from iib.common.pydantic_models import RecursiveRelatedBundlesPydanticModel
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
@@ -55,10 +56,8 @@ log = logging.getLogger(__name__)
     attributes=get_binary_versions(),
 )
 def handle_recursive_related_bundles_request(
-    parent_bundle_image: str,
-    organization: str,
+    payload: RecursiveRelatedBundlesPydanticModel,
     request_id: int,
-    registry_auths: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Coordinate the work needed to find recursive related bundles of the operator bundle image.
@@ -75,17 +74,17 @@ def handle_recursive_related_bundles_request(
 
     set_request_state(request_id, 'in_progress', 'Resolving parent_bundle_image')
 
-    with set_registry_auths(registry_auths):
-        parent_bundle_image_resolved = get_resolved_image(parent_bundle_image)
+    with set_registry_auths(payload.registry_auths):
+        parent_bundle_image_resolved = get_resolved_image(payload.parent_bundle_image)
 
-        payload: UpdateRequestPayload = {
+        update_payload: UpdateRequestPayload = {
             'parent_bundle_image_resolved': parent_bundle_image_resolved,
             'state': 'in_progress',
             'state_reason': (
-                f'Finding recursive related bundles for the bundle: {parent_bundle_image}'
+                f'Finding recursive related bundles for the bundle: {payload.parent_bundle_image}'
             ),
         }
-        update_request(request_id, payload)
+        update_request(request_id, update_payload)
 
         recursive_related_bundles = [parent_bundle_image_resolved]
         current_level_related_bundles = [parent_bundle_image_resolved]
@@ -97,7 +96,7 @@ def handle_recursive_related_bundles_request(
             current_level_related_bundles = []
             for bundle in temp_current_level_related_bundles:
                 children_related_bundles = process_parent_bundle_image(
-                    bundle, request_id, organization
+                    bundle, request_id, payload.organization
                 )
                 current_level_related_bundles.extend(children_related_bundles)
 
@@ -109,11 +108,15 @@ def handle_recursive_related_bundles_request(
             if not current_level_related_bundles:
                 traversal_completed = True
 
-    payload = {
+    update_payload = {
         'state': 'in_progress',
         'state_reason': 'Writing recursive related bundles to a file',
     }
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
     # Reverse the list while writing because we did a top to bottom level traversal of a tree.
     # The return value should be a bottom to top level traversal.
     write_related_bundles_file(
@@ -123,12 +126,16 @@ def handle_recursive_related_bundles_request(
         'recursive_related_bundles',
     )
 
-    payload = {
+    update_payload = {
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
     _cleanup()
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
 
 
 def process_parent_bundle_image(

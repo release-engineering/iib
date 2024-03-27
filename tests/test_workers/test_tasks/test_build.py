@@ -12,6 +12,7 @@ from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.tasks import build
 from iib.workers.tasks.utils import RequestConfigAddRm
 from iib.workers.config import get_worker_config
+from iib.common.pydantic_models import AddPydanticModel, RmPydanticModel
 from operator_manifest.operator import ImageName
 
 worker_config = get_worker_config()
@@ -622,7 +623,9 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 @mock.patch('iib.workers.tasks.build._get_present_bundles')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.common.pydantic_models.binary_image_check')
 def test_handle_add_request(
+    mock_binary_image_check,
     mock_iifbc,
     mock_srt,
     mock_gpb,
@@ -692,23 +695,23 @@ def test_handle_add_request(
     mock_ors.return_value = (port, my_mock)
     mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
         "bundlePath": "bundle1"\n}'
-
-    build.handle_add_request(
-        bundles,
-        3,
-        binary_image,
-        'from-index:latest',
-        ['s390x'],
-        cnr_token,
-        organization,
-        force_backport,
-        False,
-        None,
-        None,
-        greenwave_config,
-        binary_image_config=binary_image_config,
+    add_pydantic_model = AddPydanticModel.model_construct(
+        bundles=bundles,
+        binary_image=binary_image,
+        from_index='from_index:latest',
+        cnr_token=cnr_token,
+        organization=organization,
+        force_backport=force_backport,
+        overwrite_from_index=False,
+        overwrite_from_index_token=None,
         deprecation_list=deprecation_list,
         build_tags=["extra_tag1", "extra_tag2"],
+    )
+    build.handle_add_request(
+        payload=add_pydantic_model,
+        request_id=3,
+        greenwave_config=greenwave_config,
+        binary_image_config=binary_image_config,
     )
 
     mock_ors.assert_called_once()
@@ -778,21 +781,24 @@ def test_handle_add_request(
 def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
     mock_iifbc.return_value = True
     with pytest.raises(IIBError):
-        build.handle_add_request(
+        add_pydantic_model = AddPydanticModel.model_construct(
             bundles=['some-bundle:2.3-1', 'some-deprecation-bundle:1.1-1'],
-            request_id=3,
             binary_image='binary-image:latest',
-            from_index='from-index:latest',
             add_arches=['s390x'],
+            from_index='from_index:latest',
             cnr_token='token',
             organization='org',
             force_backport=True,
             overwrite_from_index=False,
             overwrite_from_index_token=None,
             distribution_scope=None,
+            deprecation_list=[],
+        )
+        build.handle_add_request(
+            payload=add_pydantic_model,
+            request_id=3,
             greenwave_config={'some_key': 'other_value'},
             binary_image_config={'prod': {'v4.5': 'some_image'}},
-            deprecation_list=[],
         )
 
 
@@ -897,21 +903,24 @@ def test_handle_add_request_check_index_label_behavior(
     ]
     mock_sqlite.execute.return_value = 200
 
-    build.handle_add_request(
-        bundles,
-        3,
-        'binary-image:latest',
-        'from-index:latest',
-        ['s390x'],
-        cnr_token,
-        organization,
-        True,
-        False,
-        None,
-        None,
-        greenwave_config,
-        binary_image_config=binary_image_config,
+    add_pydantic_model = AddPydanticModel.model_construct(
+        bundles=bundles,
+        binary_image='binary-image:latest',
+        add_arches=['s390x'],
+        from_index='from_index:latest',
+        cnr_token=cnr_token,
+        organization=organization,
+        force_backport=True,
+        overwrite_from_index=False,
+        overwrite_from_index_token=None,
+        distribution_scope=None,
         deprecation_list=deprecation_list,
+    )
+    build.handle_add_request(
+        payload=add_pydantic_model,
+        request_id=3,
+        greenwave_config=greenwave_config,
+        binary_image_config=binary_image_config,
     )
 
     mock_ors.assert_called_once()
@@ -983,19 +992,21 @@ def test_handle_add_request_gating_failure(
     organization = 'org'
     greenwave_config = {'some_key': 'other_value'}
     with pytest.raises(IIBError, match=error_msg):
+        add_pydantic_model = AddPydanticModel.model_construct(
+            bundles=bundles,
+            binary_image='binary-image:latest',
+            add_arches=['s390x'],
+            from_index='from_index:latest',
+            cnr_token=cnr_token,
+            organization=organization,
+            overwrite_from_index=False,
+            overwrite_from_index_token=None,
+            distribution_scope=None,
+        )
         build.handle_add_request(
-            bundles,
-            'binary-image:latest',
-            3,
-            'from-index:latest',
-            ['s390x'],
-            cnr_token,
-            organization,
-            None,
-            False,
-            None,
-            None,
-            greenwave_config,
+            payload=add_pydantic_model,
+            request_id=3,
+            greenwave_config=greenwave_config,
         )
     assert mock_cleanup.call_count == 1
     mock_srs2.assert_called_once()
@@ -1014,17 +1025,20 @@ def test_handle_add_request_bundle_resolution_failure(mock_grb, mock_srs, mock_c
     organization = 'org'
     greenwave_config = {'some_key': 'other_value'}
     with pytest.raises(IIBError, match=error_msg):
+        add_pydantic_model = AddPydanticModel.model_construct(
+            bundles=bundles,
+            binary_image='binary-image:latest',
+            add_arches=['s390x'],
+            from_index='from_index:latest',
+            cnr_token=cnr_token,
+            organization=organization,
+            force_backport=False,
+            overwrite_from_index=False,
+            overwrite_from_index_token=None,
+        )
         build.handle_add_request(
-            bundles,
-            'binary-image:latest',
-            3,
-            'from-index:latest',
-            ['s390x'],
-            cnr_token,
-            organization,
-            False,
-            False,
-            None,
+            payload=add_pydantic_model,
+            request_id=3,
             greenwave_config=greenwave_config,
         )
     assert mock_cleanup.call_count == 1
@@ -1073,11 +1087,14 @@ def test_handle_rm_request(
         'distribution_scope': 'PROD',
     }
     binary_image_config = {'prod': {'v4.6': 'some_image'}}
+    rm_pydantic_model = RmPydanticModel.model_construct(
+        operators=['some_operator'],
+        from_index='from-index:latest',
+        binary_image=binary_image,
+    )
     build.handle_rm_request(
-        ['some-operator'],
-        3,
-        'from-index:latest',
-        binary_image,
+        payload=rm_pydantic_model,
+        request_id=3,
         binary_image_config=binary_image_config,
     )
 
@@ -1162,11 +1179,14 @@ def test_handle_rm_request_fbc(
     mock_om.return_value = "/tmp/xyz/catalog"
     mock_orrf.return_value = "/tmp/fbc_dir", "/tmp/cache_dir"
     mock_gcd.return_value = "/some/path"
-    build.handle_rm_request(
-        operators=['some-operator'],
-        request_id=5,
+    rm_pydantic_model = RmPydanticModel.model_construct(
+        operators=['some_operator'],
         from_index='from-index:latest',
         binary_image='binary-image:latest',
+    )
+    build.handle_rm_request(
+        payload=rm_pydantic_model,
+        request_id=5,
         binary_image_config={'prod': {'v4.6': 'some_image'}},
     )
     mock_prfb.assert_called_once_with(
@@ -1446,9 +1466,8 @@ def test_handle_add_request_check_related_images_fail(
     mock_grb.return_value = ['some-bundle@sha256:123']
     mock_iri.side_effect = IIBError(error_msg)
     with pytest.raises(IIBError, match=re.escape(error_msg)):
-        build.handle_add_request(
+        add_pydantic_model = AddPydanticModel.model_construct(
             bundles=bundles,
-            request_id=3,
             binary_image='binary-image:latest',
             from_index='from-index:latest',
             add_arches=['s390x'],
@@ -1458,12 +1477,16 @@ def test_handle_add_request_check_related_images_fail(
             overwrite_from_index=False,
             overwrite_from_index_token=None,
             distribution_scope=None,
-            greenwave_config=None,
-            binary_image_config={'prod': {'v4.5': 'some_image'}},
             deprecation_list=[],
             build_tags=None,
             graph_update_mode=None,
             check_related_images=True,
+        )
+        build.handle_add_request(
+            payload=add_pydantic_model,
+            request_id=3,
+            greenwave_config=None,
+            binary_image_config={'prod': {'v4.5': 'some_image'}},
         )
     assert mock_cleanup.call_count == 1
     mock_srs.assert_called_once()

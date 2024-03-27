@@ -5,6 +5,7 @@ import json
 import re
 from typing import Dict, List, Optional
 
+from iib.common.pydantic_models import CreateEmptyIndexPydanticModel
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
@@ -66,11 +67,8 @@ def _get_present_operators(from_index: str, base_dir: str) -> List[str]:
     span_name="workers.tasks.handle_create_empty_index_request", attributes=get_binary_versions()
 )
 def handle_create_empty_index_request(
-    from_index: str,
+    payload: CreateEmptyIndexPydanticModel,
     request_id: int,
-    output_fbc: bool = False,
-    binary_image: Optional[str] = None,
-    labels: Optional[Dict[str, str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> None:
     """Coordinate the the work needed to create the index image with labels.
@@ -89,15 +87,15 @@ def handle_create_empty_index_request(
     prebuild_info: PrebuildInfo = prepare_request_for_build(
         request_id,
         RequestConfigCreateIndexImage(
-            _binary_image=binary_image,
-            from_index=from_index,
+            _binary_image=payload.binary_image,
+            from_index=payload.from_index,
             binary_image_config=binary_image_config,
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
-    prebuild_info['labels'] = labels
+    prebuild_info['labels'] = payload.labels
 
-    if not output_fbc and is_image_fbc(from_index_resolved):
+    if not payload.output_fbc and is_image_fbc(from_index_resolved):
         log.debug('%s is FBC index image', from_index_resolved)
         err_msg = 'Cannot create SQLite index image from File-Based Catalog index image'
         log.error(err_msg)
@@ -112,13 +110,13 @@ def handle_create_empty_index_request(
 
         # if output_fbc parameter is true, create an empty FBC index image
         # else create empty SQLite index image
-        if output_fbc:
-            log.debug('Creating empty FBC index image from %s', from_index)
+        if payload.output_fbc:
+            log.debug('Creating empty FBC index image from %s', payload.from_index)
             opm_create_empty_fbc(
                 request_id=request_id,
                 temp_dir=temp_dir,
                 from_index_resolved=from_index_resolved,
-                from_index=from_index,
+                from_index=payload.from_index,
                 binary_image=prebuild_info['binary_image'],
                 operators=operators,
             )
@@ -141,8 +139,8 @@ def handle_create_empty_index_request(
             'com.redhat.index.delivery.distribution_scope': prebuild_info['distribution_scope'],
         }
 
-        if labels:
-            iib_labels.update(labels)
+        if payload.labels:
+            iib_labels.update(payload.labels)
         for index_label, value in iib_labels.items():
             _add_label_to_index(index_label, value, temp_dir, 'index.Dockerfile')
 
@@ -159,7 +157,7 @@ def handle_create_empty_index_request(
         output_pull_spec=output_pull_spec,
         request_id=request_id,
         arches=arches,
-        from_index=from_index,
+        from_index=payload.from_index,
         resolved_prebuild_from_index=from_index_resolved,
     )
     _cleanup()

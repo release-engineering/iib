@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import copy
 import logging
 import os
 from datetime import datetime
@@ -12,7 +11,7 @@ from sqlalchemy.orm import aliased, with_polymorphic
 from sqlalchemy.sql import text
 from sqlalchemy import or_
 from werkzeug.exceptions import Forbidden, Gone, NotFound
-from typing import Any, cast, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError, ValidationError
@@ -25,6 +24,7 @@ from iib.web.models import (
     Operator,
     Request,
     RequestAdd,
+    RequestCreateEmptyIndex,
     RequestFbcOperations,
     RequestMergeIndexImage,
     RequestRecursiveRelatedBundles,
@@ -32,12 +32,22 @@ from iib.web.models import (
     RequestRm,
     RequestState,
     RequestStateMapping,
-    get_request_query_options,
     RequestTypeMapping,
-    RequestCreateEmptyIndex,
     User,
+    get_request_query_options,
 )
 from iib.web.s3_utils import get_object_from_s3_bucket
+from iib.common.pydantic_models import (
+    AddPydanticModel,
+    RmPydanticModel,
+    RegenerateBundlePydanticModel,
+    RegenerateBundleBatchPydanticModel,
+    AddRmBatchPydanticModel,
+    CreateEmptyIndexPydanticModel,
+    RecursiveRelatedBundlesPydanticModel,
+    FbcOperationsPydanticModel,
+    MergeIndexImagePydanticModel,
+)
 from botocore.response import StreamingBody
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
@@ -52,113 +62,8 @@ from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_r
 from iib.workers.tasks.build_merge_index_image import handle_merge_request
 from iib.workers.tasks.build_create_empty_index import handle_create_empty_index_request
 from iib.workers.tasks.general import failed_request_callback
-from iib.web.iib_static_types import (
-    AddRequestPayload,
-    AddRmBatchPayload,
-    CreateEmptyIndexPayload,
-    FbcOperationRequestPayload,
-    MergeIndexImagesPayload,
-    PayloadTypesUnion,
-    RecursiveRelatedBundlesRequestPayload,
-    RegenerateBundleBatchPayload,
-    RegenerateBundlePayload,
-    RmRequestPayload,
-)
 
 api_v1 = flask.Blueprint('api_v1', __name__)
-
-
-def _get_rm_args(
-    payload: RmRequestPayload,
-    request: Request,
-    overwrite_from_index: bool,
-) -> List[Union[str, List[str], Dict[str, str], bool, None]]:
-    """
-    Generate arguments for remove request.
-
-    :param RmRequestPayload payload: Payload from the remove request
-    :param Request request: request saved in the database
-    :param bool overwrite_from_index: determines if the overwrite should be forced
-    :return: List with remove arguments
-    :rtype: list
-    """
-    return [
-        payload['operators'],
-        request.id,
-        payload['from_index'],
-        payload.get('binary_image'),
-        payload.get('add_arches'),
-        overwrite_from_index,
-        payload.get('overwrite_from_index_token'),
-        request.distribution_scope,
-        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
-        payload.get('build_tags', []),
-    ]
-
-
-def _get_add_args(
-    payload: AddRequestPayload,
-    request: Request,
-    overwrite_from_index: bool,
-    celery_queue: Optional[str],
-) -> List[Any]:
-    """
-    Generate arguments for add request.
-
-    :param AddRequestPayload payload: Payload from the add request
-    :param Request request: request saved in the database
-    :param bool overwrite_from_index: determines if the overwrite should be forced
-    :param str celery_queue: name of celery queue
-    :return: List with add arguments
-    :rtype: list
-    """
-    return [
-        payload.get('bundles', []),
-        request.id,
-        payload.get('binary_image'),
-        payload.get('from_index'),
-        payload.get('add_arches'),
-        payload.get('cnr_token'),
-        payload.get('organization'),
-        payload.get('force_backport'),
-        overwrite_from_index,
-        payload.get('overwrite_from_index_token'),
-        request.distribution_scope,
-        flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
-        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
-        payload.get('deprecation_list', []),
-        payload.get('build_tags', []),
-        payload.get('graph_update_mode'),
-        payload.get('check_related_images', False),
-    ]
-
-
-def _get_safe_args(
-    args: List[Any],
-    payload: PayloadTypesUnion,
-) -> List[Union[str, List[str], bool, Dict[str, str]]]:
-    """
-    Generate arguments that are safe to print to stdout or log.
-
-    :param list args: arguments for each api, that are not safe
-    :param PayloadTypesUnion payload: Payload from the IIB request
-    :return: List with safe to print arguments
-    :rtype: list
-    """
-    safe_args = copy.copy(args)
-
-    if payload.get('cnr_token'):
-        safe_args[safe_args.index(payload['cnr_token'])] = '*****'  # type: ignore
-    if payload.get('overwrite_from_index_token'):
-        safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'  # type: ignore
-    if payload.get('overwrite_target_index_token'):
-        safe_args[
-            safe_args.index(payload['overwrite_target_index_token'])  # type: ignore
-        ] = '*****'
-    if payload.get('registry_auths'):
-        safe_args[safe_args.index(payload['registry_auths'])] = '*****'  # type: ignore
-
-    return safe_args
 
 
 def get_artifact_file_from_s3_bucket(
@@ -190,35 +95,6 @@ def get_artifact_file_from_s3_bucket(
     if expired:
         raise Gone(f'The data for the build request {request_id} no longer exist')
     raise NotFound()
-
-
-def _get_unique_bundles(bundles: List[str]) -> List[str]:
-    """
-    Return list with unique bundles.
-
-    :param list bundles: bundles given in payload from original request
-    :return: list of unique bundles preserving order (python 3.6+)
-    :rtype: list
-    """
-    if not bundles:
-        return bundles
-
-    # `dict` is preserving order of inserted keys since Python 3.6.
-    # Keys in dictionary are behaving as a set() therefore can not have same key twice.
-    # This will create dictionary where keys are taken from `bundles` using `dict.fromkeys()`
-    # After that we have dictionary with unique keys with same order as it is in `bundles`.
-    # Last step is to convert the keys from this dictionary to list using `list()`
-    unique_bundles = list(dict.fromkeys(bundles).keys())
-
-    if len(unique_bundles) != len(bundles):
-        duplicate_bundles = copy.copy(bundles)
-        for bundle in unique_bundles:
-            duplicate_bundles.remove(bundle)
-
-        flask.current_app.logger.info(
-            f'Removed duplicate bundles from request: {duplicate_bundles}'
-        )
-    return unique_bundles
 
 
 @api_v1.route('/builds/<int:request_id>')
@@ -583,34 +459,38 @@ def add_bundles() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: AddRequestPayload = cast(AddRequestPayload, flask.request.get_json())
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = AddPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    # Only run `_get_unique_bundles` if it is a list. If it's not, `from_json`
-    # will raise an error to the user.
-    if payload.get('bundles') and isinstance(payload['bundles'], list):
-        payload['bundles'] = _get_unique_bundles(payload['bundles'])
-
-    request = RequestAdd.from_json(payload)
+    request = RequestAdd.from_json_replacement(
+        payload=request_payload,
+    )
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_from_index = payload.get('overwrite_from_index', False)
     from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
     celery_queue = _get_user_queue(
-        serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+        serial=request_payload.overwrite_from_index, from_index_pull_spec=from_index_pull_spec
     )
-    args = _get_add_args(payload, request, overwrite_from_index, celery_queue)
-    safe_args = _get_safe_args(args, payload)
+    args = [
+        request_payload,
+        request.id,
+        flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+    ]
     error_callback = failed_request_callback.s(request.id)
 
     try:
         handle_add_request.apply_async(
             args=args,
             link_error=error_callback,
-            argsrepr=repr(safe_args),
             queue=celery_queue,
             headers={'traceparent': flask.request.headers.get('traceparent')},
         )
@@ -816,29 +696,35 @@ def rm_operators() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RmRequestPayload = cast(RmRequestPayload, flask.request.get_json())
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = RmPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    request = RequestRm.from_json(payload)
+    request = RequestRm.from_json_replacement(
+        payload=request_payload,
+    )
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_from_index = payload.get('overwrite_from_index', False)
-
-    args = _get_rm_args(payload, request, overwrite_from_index)
-    safe_args = _get_safe_args(args, payload)
-
+    args = [
+        request_payload,
+        request.id,
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+    ]
     error_callback = failed_request_callback.s(request.id)
     from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
     try:
         handle_rm_request.apply_async(
             args=args,
             link_error=error_callback,
-            argsrepr=repr(safe_args),
             queue=_get_user_queue(
-                serial=overwrite_from_index,
+                serial=request_payload.overwrite_from_index,
                 from_index_pull_spec=from_index_pull_spec,
             ),
         )
@@ -859,30 +745,33 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RegenerateBundlePayload = cast(RegenerateBundlePayload, flask.request.get_json())
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = RegenerateBundlePydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    request = RequestRegenerateBundle.from_json(payload)
+    request = RequestRegenerateBundle.from_json_replacement(
+        payload=request_payload,
+    )
+
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     args = [
-        payload['from_bundle_image'],
-        payload.get('organization'),
+        request_payload,
         request.id,
-        payload.get('registry_auths'),
-        payload.get('bundle_replacements', dict()),
     ]
-    safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_regenerate_bundle_request.apply_async(
             args=args,
             link_error=error_callback,
-            argsrepr=repr(safe_args),
             queue=_get_user_queue(),
         )
     except kombu.exceptions.OperationalError:
@@ -902,27 +791,26 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RegenerateBundleBatchPayload = cast(
-        RegenerateBundleBatchPayload, flask.request.get_json()
-    )
-    Batch.validate_batch_request_params(payload)
+    try:
+        request_payload_batch = RegenerateBundleBatchPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    batch = Batch(annotations=payload.get('annotations'))
+    batch = Batch(annotations=request_payload_batch.annotations)
     db.session.add(batch)
 
     requests = []
     # Iterate through all the build requests and verify that the requests are valid before
     # committing them and scheduling the tasks
-    for build_request in payload['build_requests']:
-        try:
-            request = RequestRegenerateBundle.from_json(build_request, batch)
-        except ValidationError as e:
-            # Rollback the transaction if any of the build requests are invalid
-            db.session.rollback()
-            raise ValidationError(
-                f'{str(e).rstrip(".")}. This occurred on the build request in '
-                f'index {payload["build_requests"].index(build_request)}.'
-            )
+    for request_payload in request_payload_batch.build_requests:
+        request = RequestRegenerateBundle.from_json_replacement(
+            payload=request_payload,
+            batch=batch,
+        )
         db.session.add(request)
         requests.append(request)
 
@@ -933,22 +821,17 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
     processed_request_ids = []
-    build_and_requests = zip(payload['build_requests'], requests)
+    build_and_requests = zip(request_payload.build_requests, requests)
     try:
-        for build_request, request in build_and_requests:
+        for request_payload, request in build_and_requests:
             args = [
-                build_request['from_bundle_image'],
-                build_request.get('organization'),
+                request_payload,
                 request.id,
-                build_request.get('registry_auths'),
-                build_request.get('bundle_replacements', dict()),
             ]
-            safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
             handle_regenerate_bundle_request.apply_async(
                 args=args,
                 link_error=error_callback,
-                argsrepr=repr(safe_args),
                 queue=_get_user_queue(),
             )
 
@@ -978,34 +861,33 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: AddRmBatchPayload = cast(AddRmBatchPayload, flask.request.get_json())
-    Batch.validate_batch_request_params(payload)
+    try:
+        request_payload_batch = AddRmBatchPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    batch = Batch(annotations=payload.get('annotations'))
+    batch = Batch(annotations=request_payload_batch.annotations)
     db.session.add(batch)
 
-    requests: List[Union[RequestAdd, RequestRm]] = []
+    requests: List[Union[AddPydanticModel, RmPydanticModel]] = []
     # Iterate through all the build requests and verify that the requests are valid before
     # committing them and scheduling the tasks
-    for build_request in payload['build_requests']:
-        try:
-            if build_request.get('operators'):
-                # Check for the validity of a RM request
-                # cast Union[AddRequestPayload, RmRequestPayload] based on presence of 'operators'
-                request = RequestRm.from_json(cast(RmRequestPayload, build_request), batch)
-            elif build_request.get('bundles'):
-                # cast Union[AddRequestPayload, RmRequestPayload] based on presence of 'bundles'
-                build_request_uniq = cast(AddRequestPayload, copy.deepcopy(build_request))
-                build_request_uniq['bundles'] = _get_unique_bundles(build_request_uniq['bundles'])
-                # Check for the validity of an Add request
-                request = RequestAdd.from_json(build_request_uniq, batch)
-            else:
-                raise ValidationError('Build request is not a valid Add/Rm request.')
-        except ValidationError as e:
-            raise ValidationError(
-                f'{str(e).rstrip(".")}. This occurred on the build request in '
-                f'index {payload["build_requests"].index(build_request)}.'
+    for request_payload in request_payload_batch.build_requests:
+        if isinstance(request_payload, AddPydanticModel):
+            request = RequestAdd.from_json_replacement(
+                payload=request_payload,
+                batch=batch,
             )
+        else:
+            request = RequestRm.from_json_replacement(
+                payload=request_payload,
+                batch=batch,
+            )
+
         db.session.add(request)
         requests.append(request)
 
@@ -1016,46 +898,36 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
     # This list will be used for the log message below and avoids the need of having to iterate
     # through the list of requests another time
     processed_request_ids = []
-    for build_request, request in zip(payload['build_requests'], requests):
+    for request_payload, request in zip(request_payload_batch.build_requests, requests):
         request_jsons.append(request.to_json())
 
-        overwrite_from_index = build_request.get('overwrite_from_index', False)
         from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
         celery_queue = _get_user_queue(
-            serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+            serial=request_payload.overwrite_from_index, from_index_pull_spec=from_index_pull_spec
         )
-        if isinstance(request, RequestAdd):
-            args: List[Any] = _get_add_args(
-                # cast Union[AddRequestPayload, RmRequestPayload] based on request variable
-                cast(AddRequestPayload, build_request),
-                request,
-                overwrite_from_index,
-                celery_queue,
-            )
-        elif isinstance(request, RequestRm):
-            args = _get_rm_args(
-                # cast Union[AddRequestPayload, RmRequestPayload] based on request variable
-                cast(RmRequestPayload, build_request),
-                request,
-                overwrite_from_index,
-            )
-
-        safe_args = _get_safe_args(args, build_request)
-
         error_callback = failed_request_callback.s(request.id)
         try:
             if isinstance(request, RequestAdd):
+                args = [
+                    request_payload,
+                    request.id,
+                    flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
+                    flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+                ]
                 handle_add_request.apply_async(
                     args=args,
                     link_error=error_callback,
-                    argsrepr=repr(safe_args),
                     queue=celery_queue,
                 )
-            else:
+            elif isinstance(request, RequestRm):
+                args = [
+                    request_payload,
+                    request.id,
+                    flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+                ]
                 handle_rm_request.apply_async(
                     args=args,
                     link_error=error_callback,
-                    argsrepr=repr(safe_args),
                     queue=celery_queue,
                 )
         except kombu.exceptions.OperationalError:
@@ -1082,37 +954,33 @@ def merge_index_image() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: MergeIndexImagesPayload = cast(MergeIndexImagesPayload, flask.request.get_json())
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
-    request = RequestMergeIndexImage.from_json(payload)
+    try:
+        request_payload = MergeIndexImagePydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
+
+    request = RequestMergeIndexImage.from_json_replacement(
+        payload=request_payload,
+    )
+
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_target_index = payload.get('overwrite_target_index', False)
-    celery_queue = _get_user_queue(serial=overwrite_target_index)
+    celery_queue = _get_user_queue(serial=request_payload.overwrite_target_index)
     args = [
-        payload['source_from_index'],
-        payload.get('deprecation_list', []),
+        request_payload,
         request.id,
-        payload.get('binary_image'),
-        payload.get('target_index'),
-        overwrite_target_index,
-        payload.get('overwrite_target_index_token'),
-        request.distribution_scope,
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
-        payload.get('build_tags', []),
-        payload.get('graph_update_mode'),
-        payload.get('ignore_bundle_ocp_version'),
     ]
-    safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
     try:
-        handle_merge_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
-        )
+        handle_merge_request.apply_async(args=args, link_error=error_callback, queue=celery_queue)
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
 
@@ -1132,29 +1000,33 @@ def create_empty_index() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: CreateEmptyIndexPayload = cast(CreateEmptyIndexPayload, flask.request.get_json())
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = CreateEmptyIndexPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    request = RequestCreateEmptyIndex.from_json(payload)
+    request = RequestCreateEmptyIndex.from_json_replacement(
+        payload=request_payload,
+    )
+
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     args = [
-        payload['from_index'],
+        request_payload,
         request.id,
-        payload.get('output_fbc'),
-        payload.get('binary_image'),
-        payload.get('labels'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
-    safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
 
     try:
         handle_create_empty_index_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
+            args=args, link_error=error_callback, queue=_get_user_queue()
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)
@@ -1175,31 +1047,33 @@ def recursive_related_bundles() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: RecursiveRelatedBundlesRequestPayload = cast(
-        RecursiveRelatedBundlesRequestPayload, flask.request.get_json()
-    )
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = RecursiveRelatedBundlesPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    request = RequestRecursiveRelatedBundles.from_json(payload)
+    request = RequestRecursiveRelatedBundles.from_json_replacement(
+        payload=request_payload,
+    )
+
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
     args = [
-        payload['parent_bundle_image'],
-        payload.get('organization'),
+        request_payload,
         request.id,
-        payload.get('registry_auths'),
     ]
-    safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_recursive_related_bundles_request.apply_async(
             args=args,
             link_error=error_callback,
-            argsrepr=repr(safe_args),
             queue=_get_user_queue(),
         )
     except kombu.exceptions.OperationalError:
@@ -1281,38 +1155,37 @@ def fbc_operations() -> Tuple[flask.Response, int]:
     :rtype: flask.Response
     :raise ValidationError: if required parameters are not supplied
     """
-    payload: FbcOperationRequestPayload = flask.request.get_json()
-    if not isinstance(payload, dict):
-        raise ValidationError('The input data must be a JSON object')
+    try:
+        request_payload = FbcOperationsPydanticModel.model_validate(
+            flask.request.get_json(),
+            strict=True,
+        )
+    except ValidationError as e:
+        # If the JSON data doesn't match the Pydantic model, return a 400 Bad Request response
+        return flask.jsonify({'Error parsing data': str(e)}), 400
 
-    request = RequestFbcOperations.from_json(payload)
+    request = RequestFbcOperations.from_json_replacement(
+        payload=request_payload,
+    )
+
     db.session.add(request)
     db.session.commit()
     messaging.send_message_for_state_change(request, new_batch_msg=True)
 
-    overwrite_from_index = payload.get('overwrite_from_index', False)
     from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
     celery_queue = _get_user_queue(
-        serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+        serial=request_payload.overwrite_from_index, from_index_pull_spec=from_index_pull_spec
     )
 
     args = [
-        request.id,
-        payload['fbc_fragment'],
-        payload['from_index'],
-        payload.get('binary_image'),
-        payload.get('distribution_scope'),
-        payload.get('overwrite_from_index'),
-        payload.get('overwrite_from_index_token'),
-        payload.get('build_tags'),
-        payload.get('add_arches'),
+        request_payload,
+        request_payload,
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
     ]
-    safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
     try:
         handle_fbc_operation_request.apply_async(
-            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+            args=args, link_error=error_callback, queue=celery_queue
         )
     except kombu.exceptions.OperationalError:
         handle_broker_error(request)

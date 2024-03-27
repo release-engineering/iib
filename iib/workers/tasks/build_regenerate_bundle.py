@@ -10,6 +10,7 @@ from operator_manifest.operator import ImageName, OperatorManifest, OperatorCSV
 import ruamel.yaml
 
 from iib.common.common_utils import get_binary_versions
+from iib.common.pydantic_models import RegenerateBundlePydanticModel
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.s3_utils import upload_file_to_s3_bucket
@@ -58,11 +59,8 @@ log = logging.getLogger(__name__)
     attributes=get_binary_versions(),
 )
 def handle_regenerate_bundle_request(
-    from_bundle_image: str,
-    organization: str,
+    payload: RegenerateBundlePydanticModel,
     request_id: int,
-    registry_auths: Optional[Dict[str, Any]] = None,
-    bundle_replacements: Optional[Dict[str, str]] = {},
 ) -> None:
     """
     Coordinate the work needed to regenerate the operator bundle image.
@@ -80,8 +78,8 @@ def handle_regenerate_bundle_request(
 
     set_request_state(request_id, 'in_progress', 'Resolving from_bundle_image')
 
-    with set_registry_auths(registry_auths):
-        from_bundle_image_resolved = get_resolved_image(from_bundle_image)
+    with set_registry_auths(payload.registry_auths):
+        from_bundle_image_resolved = get_resolved_image(payload.from_bundle_image)
 
         arches: Set[str] = get_image_arches(from_bundle_image_resolved)
         if not arches:
@@ -97,13 +95,13 @@ def handle_regenerate_bundle_request(
         arches_str = ', '.join(sorted(arches))
         log.debug('Set to regenerate the bundle image for the following arches: %s', arches_str)
 
-        payload: UpdateRequestPayload = {
+        update_payload: UpdateRequestPayload = {
             'from_bundle_image_resolved': from_bundle_image_resolved,
             'state': 'in_progress',
             'state_reason': f'Regenerating the bundle image for the following arches: {arches_str}',
         }
         exc_msg = 'Failed setting the resolved "from_bundle_image" on the request'
-        update_request(request_id, payload, exc_msg=exc_msg)
+        update_request(request_id, update_payload, exc_msg=exc_msg)
 
         # Pull the from_bundle_image to ensure steps later on don't fail due to registry timeouts
         podman_pull(from_bundle_image_resolved)
@@ -117,9 +115,9 @@ def handle_regenerate_bundle_request(
                 manifests_path,
                 metadata_path,
                 request_id,
-                organization=organization,
+                organization=payload.organization,
                 pinned_by_iib=pinned_by_iib,
-                bundle_replacements=bundle_replacements,
+                bundle_replacements=payload.bundle_replacements,
             )
 
             with open(os.path.join(temp_dir, 'Dockerfile'), 'w') as dockerfile:
@@ -154,14 +152,18 @@ def handle_regenerate_bundle_request(
             output_pull_spec,
         )
 
-    payload = {
+    update_payload = {
         'arches': list(arches),
         'bundle_image': output_pull_spec,
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
     _cleanup()
-    update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
+    update_request(
+        request_id,
+        update_payload,
+        exc_msg='Failed setting the bundle image on the request',
+    )
 
 
 def _apply_package_name_suffix(

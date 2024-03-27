@@ -17,6 +17,7 @@ from iib.workers.tasks.opm_operations import (
 )
 from packaging.version import Version
 
+from iib.common.pydantic_models import MergeIndexImagePydanticModel
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
@@ -197,18 +198,9 @@ def _add_bundles_missing_in_source(
     span_name="workers.tasks.build.handle_merge_request", attributes=get_binary_versions()
 )
 def handle_merge_request(
-    source_from_index: str,
-    deprecation_list: List[str],
+    payload: MergeIndexImagePydanticModel,
     request_id: int,
-    binary_image: Optional[str] = None,
-    target_index: Optional[str] = None,
-    overwrite_target_index: bool = False,
-    overwrite_target_index_token: Optional[str] = None,
-    distribution_scope: Optional[str] = None,
     binary_image_config: Optional[str] = None,
-    build_tags: Optional[List[str]] = None,
-    graph_update_mode: Optional[str] = None,
-    ignore_bundle_ocp_version: Optional[bool] = False,
 ) -> None:
     """
     Coordinate the work needed to merge old (N) index image with new (N+1) index image.
@@ -237,15 +229,19 @@ def handle_merge_request(
     :raises IIBError: if the index image merge fails.
     """
     _cleanup()
-    with set_registry_token(overwrite_target_index_token, target_index, append=True):
+    with set_registry_token(
+        payload.overwrite_target_index_token,
+        payload.target_index,
+        append=True,
+    ):
         prebuild_info = prepare_request_for_build(
             request_id,
             RequestConfigMerge(
-                _binary_image=binary_image,
-                overwrite_target_index_token=overwrite_target_index_token,
-                source_from_index=source_from_index,
-                target_index=target_index,
-                distribution_scope=distribution_scope,
+                _binary_image=payload.binary_image,
+                overwrite_target_index_token=payload.overwrite_target_index_token,
+                source_from_index=payload.source_from_index,
+                target_index=payload.target_index,
+                distribution_scope=payload.distribution_scope,
                 binary_image_config=binary_image_config,
             ),
         )
@@ -255,7 +251,11 @@ def handle_merge_request(
     dockerfile_name = 'index.Dockerfile'
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        with set_registry_token(overwrite_target_index_token, target_index, append=True):
+        with set_registry_token(
+            payload.overwrite_target_index_token,
+            payload.target_index,
+            append=True,
+        ):
             source_fbc = is_image_fbc(source_from_index_resolved)
             target_fbc = is_image_fbc(target_index_resolved)
 
@@ -275,16 +275,20 @@ def handle_merge_request(
         set_request_state(request_id, 'in_progress', 'Getting bundles present in the index images')
         log.info('Getting bundles present in the source index image')
 
-        with set_registry_token(overwrite_target_index_token, target_index, append=True):
+        with set_registry_token(
+            payload.overwrite_target_index_token,
+            payload.target_index,
+            append=True,
+        ):
             source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
                 source_from_index_resolved, temp_dir
             )
 
         target_index_bundles: List[BundleImage] = []
-        if target_index:
+        if payload.target_index:
             log.info('Getting bundles present in the target index image')
             with set_registry_token(
-                overwrite_target_index_token, target_index_resolved, append=True
+                payload.overwrite_target_index_token, target_index_resolved, append=True
             ):
                 target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
 
@@ -300,11 +304,11 @@ def handle_merge_request(
             request_id=request_id,
             arch=arch,
             ocp_version=prebuild_info['target_ocp_version'],
-            graph_update_mode=graph_update_mode,
-            target_index=target_index,
-            overwrite_target_index_token=overwrite_target_index_token,
+            graph_update_mode=payload.graph_update_mode,
+            target_index=payload.target_index,
+            overwrite_target_index_token=payload.overwrite_target_index_token,
             distribution_scope=prebuild_info['distribution_scope'],
-            ignore_bundle_ocp_version=ignore_bundle_ocp_version,
+            ignore_bundle_ocp_version=payload.ignore_bundle_ocp_version,
         )
 
         missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
@@ -314,7 +318,7 @@ def handle_merge_request(
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
         deprecation_bundles = get_bundles_from_deprecation_list(
-            intermediate_bundles, deprecation_list
+            intermediate_bundles, payload.deprecation_list
         )
         # We do not need to pass the invalid_version_bundles through the
         # get_bundles_from_deprecation_list function because we already know
@@ -351,7 +355,7 @@ def handle_merge_request(
                     base_dir=temp_dir,
                     binary_image=prebuild_info['binary_image'],
                     from_index=intermediate_image_name,
-                    overwrite_target_index_token=overwrite_target_index_token,
+                    overwrite_target_index_token=payload.overwrite_target_index_token,
                 )
 
         if target_fbc:
@@ -401,15 +405,15 @@ def handle_merge_request(
         )
 
     output_pull_spec = _create_and_push_manifest_list(
-        request_id, prebuild_info['arches'], build_tags
+        request_id, prebuild_info['arches'], payload.build_tags
     )
     _update_index_image_pull_spec(
         output_pull_spec,
         request_id,
         prebuild_info['arches'],
-        target_index,
-        overwrite_target_index,
-        overwrite_target_index_token,
+        payload.target_index,
+        payload.overwrite_target_index,
+        payload.overwrite_target_index_token,
         target_index_resolved,
     )
     _cleanup()

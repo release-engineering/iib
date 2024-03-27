@@ -3,6 +3,7 @@ from unittest import mock
 
 from iib.workers.tasks import build_fbc_operations
 from iib.workers.tasks.utils import RequestConfigFBCOperation
+from iib.common.pydantic_models import FbcOperationsPydanticModel
 
 
 @mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_pull_spec')
@@ -48,11 +49,15 @@ def test_handle_fbc_operation_request(
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
 
-    build_fbc_operations.handle_fbc_operation_request(
-        request_id=request_id,
-        fbc_fragment=fbc_fragment,
+    fbc_operations_pydantic_model = FbcOperationsPydanticModel.model_construct(
         from_index=from_index,
         binary_image=binary_image,
+        fbc_fragment=fbc_fragment,
+
+    )
+    build_fbc_operations.handle_fbc_operation_request(
+        payload=fbc_operations_pydantic_model,
+        request_id=request_id,
         binary_image_config=binary_image_config,
     )
     mock_prfb.assert_called_once_with(
