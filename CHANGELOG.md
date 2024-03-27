@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 8.6.0
+* Fixing logging in tracing.py by @lipoja in https://github.com/release-engineering/iib/pull/628
+* Update dependency cryptography to v42.0.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/630
+* Adding attributes to span by @lipoja in https://github.com/release-engineering/iib/pull/631
+* Update actions/checkout action to v4 by @renovate in https://github.com/release-engineering/iib/pull/626
+* Update dependency botocore to v1.34.55 by @renovate in https://github.com/release-engineering/iib/pull/638
+* Update dependency boto3 to v1.34.55 by @renovate in https://github.com/release-engineering/iib/pull/636
+* Update dependency coverage to v7.4.3 by @renovate in https://github.com/release-engineering/iib/pull/639
+* Update postgres Docker tag to v14.11 by @renovate in https://github.com/release-engineering/iib/pull/619
+* Update redhat-actions/push-to-registry action to v2.7.1 by @renovate in https://github.com/release-engineering/iib/pull/623
+* Update dependency botocore to v1.34.57 by @renovate in https://github.com/release-engineering/iib/pull/641
+* Update dependency boto3 to v1.34.57 by @renovate in https://github.com/release-engineering/iib/pull/640
+* Update dependency cryptography to v42.0.5 by @renovate in https://github.com/release-engineering/iib/pull/642
+* Update dependency flask to v3.0.2 by @renovate in https://github.com/release-engineering/iib/pull/644
+* Bump version of requirements by @lipoja in https://github.com/release-engineering/iib/pull/647
+* Backup index.db to prevent opm bug consequence by @xDaile in https://github.com/release-engineering/iib/pull/635
+
+## 8.5.3
+* Update dependency botocore to v1.34.29 by @renovate in https://github.com/release-engineering/iib/pull/615
+* Update dependency boto3 to v1.34.29 by @renovate in https://github.com/release-engineering/iib/pull/614
+* Fixing Python3.8 compatibility by @lipoja in https://github.com/release-engineering/iib/pull/624
+
+## 8.5.2
+* Adding result_backend config by @lipoja in https://github.com/release-engineering/iib/pull/610
+* Update dependency jinja2 to v3.1.3 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/609
+* Update dependency backoff to v1.11.1 by @renovate in https://github.com/release-engineering/iib/pull/608
+* Update dependency alembic to v1.13.1 by @renovate in https://github.com/release-engineering/iib/pull/606
+* Update dependency amqp to v5.2.0 by @renovate in https://github.com/release-engineering/iib/pull/607
+* Update dependency MarkupSafe to v2.1.4 by @renovate in https://github.com/release-engineering/iib/pull/612
+* Update dependency wcwidth to v0.2.13 by @renovate in https://github.com/release-engineering/iib/pull/613
+* Batch update of requirements, Changed version of Python for GitHub Actions. by @lipoja in https://github.com/release-engineering/iib/pull/617
+
 ## 8.5.1
 * Check if source_from_index is in iib_no_ocp_label_allow_list by @lipoja in https://github.com/release-engineering/iib/pull/599
 * Use container-tool podman for _opm_index_add commands by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/600

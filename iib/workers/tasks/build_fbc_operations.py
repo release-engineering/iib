@@ -3,7 +3,9 @@ import logging
 import tempfile
 from typing import Dict, Optional
 
+from iib.common.common_utils import get_binary_versions
 from iib.common.pydantic_models import FbcOperationsPydanticModel
+from iib.common.tracing import instrument_tracing
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _add_label_to_index,
@@ -31,6 +33,9 @@ log = logging.getLogger(__name__)
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.build.handle_fbc_operation_request", attributes=get_binary_versions()
+)
 def handle_fbc_operation_request(
     payload: FbcOperationsPydanticModel,
     request_id: int,

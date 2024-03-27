@@ -6,8 +6,10 @@ import re
 from typing import Dict, List, Optional
 
 from iib.common.pydantic_models import CreateEmptyIndexPydanticModel
+from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
+from iib.common.common_utils import get_binary_versions
 from iib.workers.tasks.build import (
     _add_label_to_index,
     _build_image,
@@ -61,6 +63,9 @@ def _get_present_operators(from_index: str, base_dir: str) -> List[str]:
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.handle_create_empty_index_request", attributes=get_binary_versions()
+)
 def handle_create_empty_index_request(
     payload: CreateEmptyIndexPydanticModel,
     request_id: int,

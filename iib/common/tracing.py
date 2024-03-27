@@ -13,7 +13,9 @@ Usage:
 """
 import os
 import functools
+import getpass
 import logging
+import socket
 from copy import deepcopy
 from typing import Any, Dict
 
@@ -81,31 +83,30 @@ class TracingWrapper:
 
 
 def instrument_tracing(
-    func=None,
     span_name: str = '',
     attributes: Dict = {},
 ):
     """
     Instrument tracing for a function.
 
-    :param func: The function to be decorated.
     :param span_name: The name of the span to be created.
     :param attributes: The attributes to be added to the span.
     :return: The decorated function or class.
     """
-    log.info('Instrumenting span for %s', span_name)
-    tracer = trace.get_tracer(__name__)
-    context = None
-    if trace.get_current_span():
-        context = trace.get_current_span().get_span_context()
-    else:
-        context = propagator.extract(carrier={})
 
     def decorator_instrument_tracing(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             if not os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
                 return func(*args, **kwargs)
+
+            log.info('Instrumenting span for %s', span_name)
+            tracer = trace.get_tracer(__name__)
+            if trace.get_current_span():
+                context = trace.get_current_span().get_span_context()
+            else:
+                context = propagator.extract(carrier={})
+
             log.debug('Context inside %s: %s', span_name, context)
             if kwargs.get('traceparent'):
                 log.debug('traceparent is %s' % str(kwargs.get('traceparent')))
@@ -115,6 +116,11 @@ def instrument_tracing(
             with tracer.start_as_current_span(
                 span_name or func.__name__, kind=SpanKind.SERVER
             ) as span:
+                for attr in attributes:
+                    span.set_attribute(attr, attributes[attr])
+                span.set_attribute('host', socket.getfqdn())
+                span.set_attribute('user', getpass.getuser())
+
                 if func.__name__:  # If the function has a name
                     log.debug('function_name %s', func.__name__)
                     span.set_attribute('function_name', func.__name__)

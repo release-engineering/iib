@@ -631,7 +631,7 @@ def test_add_bundles_missing_in_source_none_missing(
             'csvName': 'bundle2-2.0',
         },
     ]
-    mock_gil.side_effect = ['v=4.5', 'v4.7,v4.6', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
+    mock_gil.side_effect = ['v=4.5', 'v4.8,v4.7', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
     mock_iifbc.return_value = False
     missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
@@ -681,6 +681,17 @@ def test_add_bundles_missing_in_source_none_missing(
     (
         ('=v4.5', 'v4.6', False, False),
         ('v4.5-v4.7', 'v4.6', False, True),
+        ('=v4.9|=v4.10|>=v4.12', 'v4.8', False, False),
+        ('=v4.9|=v4.10|>=v4.12', 'v4.9', False, True),
+        ('=v4.9|=v4.10|>=v4.12', 'v4.10', False, True),
+        ('=v4.9|=v4.10|>=v4.12', 'v4.11', False, False),
+        ('=v4.9|=v4.10|>=v4.12', 'v4.12', False, True),
+        ('=v4.9|=v4.10|>=v4.13', 'v4.13', False, True),
+        ('=v4.5|=v4.6', 'v4.6', False, True),
+        ('=v4.5|v4.10', 'v4.12', False, False),
+        ('v4.5|>=v4.10', 'v4.12', False, False),
+        ('>=v4.10', 'v4.6', False, False),
+        ('>=v4.10', 'v4.10', False, False),
         ('v4.5-v4.7', 'v4.8', False, False),
         ('v4.6', 'v4.6', False, True),
         ('v=4.6', 'v4.6', False, False),

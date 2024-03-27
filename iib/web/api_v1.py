@@ -13,6 +13,7 @@ from sqlalchemy import or_
 from werkzeug.exceptions import Forbidden, Gone, NotFound
 from typing import List, Optional, Tuple, Union
 
+from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError, ValidationError
 from iib.web import db, messaging
 from iib.web.errors import handle_broker_error, handle_broker_batch_error
@@ -97,6 +98,7 @@ def get_artifact_file_from_s3_bucket(
 
 
 @api_v1.route('/builds/<int:request_id>')
+@instrument_tracing(span_name="web.api_v1.get_build")
 def get_build(request_id: int) -> flask.Response:
     """
     Retrieve the build request.
@@ -112,6 +114,7 @@ def get_build(request_id: int) -> flask.Response:
 
 
 @api_v1.route('/builds/<int:request_id>/logs')
+@instrument_tracing(span_name="web.api_v1.get_build_logs")
 def get_build_logs(request_id: int) -> flask.Response:
     """
     Retrieve the logs for the build request.
@@ -165,6 +168,7 @@ def get_build_logs(request_id: int) -> flask.Response:
 
 
 @api_v1.route('/builds/<int:request_id>/related_bundles')
+@instrument_tracing(span_name="web.api_v1.get_related_bundles")
 def get_related_bundles(request_id: int) -> flask.Response:
     """
     Retrieve the related bundle images from the bundle CSV for a regenerate-bundle request.
@@ -231,6 +235,7 @@ def get_related_bundles(request_id: int) -> flask.Response:
 
 
 @api_v1.route('/builds')
+@instrument_tracing(span_name="web.api_v1.get_builds")
 def get_builds() -> flask.Response:
     """
     Retrieve the paginated build requests.
@@ -372,6 +377,7 @@ def get_builds() -> flask.Response:
 
 
 @api_v1.route('/healthcheck')
+@instrument_tracing(span_name="web.api_v1.get_healthcheck")
 def get_healthcheck() -> flask.Response:
     """
     Respond to a health check.
@@ -443,6 +449,7 @@ def _get_user_queue(
 
 @api_v1.route('/builds/add', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.add_bundles")
 def add_bundles() -> Tuple[flask.Response, int]:
     """
     Submit a request to add operator bundles to an index image.
@@ -496,6 +503,7 @@ def add_bundles() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/<int:request_id>', methods=['PATCH'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.patch_request")
 def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     """
     Modify the given request.
@@ -680,6 +688,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/rm', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.rm_operators")
 def rm_operators() -> Tuple[flask.Response, int]:
     """
     Submit a request to remove operators from an index image.
@@ -728,6 +737,7 @@ def rm_operators() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/regenerate-bundle', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.regenerate_bundle")
 def regenerate_bundle() -> Tuple[flask.Response, int]:
     """
     Submit a request to regenerate an operator bundle image.
@@ -773,6 +783,7 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/regenerate-bundle-batch', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.regenerate_bundle_batch")
 def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
     """
     Submit a batch of requests to regenerate operator bundle images.
@@ -840,6 +851,7 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/add-rm-batch', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.add_rm_batch")
 def add_rm_batch() -> Tuple[flask.Response, int]:
     """
     Submit a batch of requests to add or remove operators from an index image.
@@ -934,6 +946,7 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/merge-index-image', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.merge_index_image")
 def merge_index_image() -> Tuple[flask.Response, int]:
     """
     Submit a request to merge two index images.
@@ -977,6 +990,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/create-empty-index', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.create_empty_index")
 def create_empty_index() -> Tuple[flask.Response, int]:
     """
     Submit a request to create an index image without bundles.
@@ -1023,6 +1037,7 @@ def create_empty_index() -> Tuple[flask.Response, int]:
 
 @api_v1.route('/builds/recursive-related-bundles', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.recursive_related_bundles")
 def recursive_related_bundles() -> Tuple[flask.Response, int]:
     """
     Submit a request to get nested related bundles of an operator bundle image.
@@ -1069,6 +1084,7 @@ def recursive_related_bundles() -> Tuple[flask.Response, int]:
 
 
 @api_v1.route('/builds/<int:request_id>/nested-bundles')
+@instrument_tracing(span_name="web.api_v1.get_nested_bundles")
 def get_nested_bundles(request_id: int) -> flask.Response:
     """
     Retrieve the nested bundle images for a recursive-related-bundle request.
@@ -1131,6 +1147,7 @@ def get_nested_bundles(request_id: int) -> flask.Response:
 
 @api_v1.route('/builds/fbc-operations', methods=['POST'])
 @login_required
+@instrument_tracing(span_name="web.api_v1.fbc_operations")
 def fbc_operations() -> Tuple[flask.Response, int]:
     """
     Submit a request to run supported fbc operation on an FBC index image.

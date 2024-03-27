@@ -8,7 +8,9 @@ from typing import List, Optional
 from operator_manifest.operator import OperatorManifest
 import ruamel.yaml
 
+from iib.common.common_utils import get_binary_versions
 from iib.common.pydantic_models import RecursiveRelatedBundlesPydanticModel
+from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.tasks.build import (
@@ -49,6 +51,10 @@ log = logging.getLogger(__name__)
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.build.handle_recursive_related_bundles_request",
+    attributes=get_binary_versions(),
+)
 def handle_recursive_related_bundles_request(
     payload: RecursiveRelatedBundlesPydanticModel,
     request_id: int,

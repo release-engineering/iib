@@ -6,6 +6,8 @@ import stat
 import tempfile
 from typing import List, Optional, Tuple
 
+from iib.common.common_utils import get_binary_versions
+from iib.common.tracing import instrument_tracing
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
@@ -192,6 +194,9 @@ def _add_bundles_missing_in_source(
 
 @app.task
 @request_logger
+@instrument_tracing(
+    span_name="workers.tasks.build.handle_merge_request", attributes=get_binary_versions()
+)
 def handle_merge_request(
     payload: MergeIndexImagePydanticModel,
     request_id: int,
@@ -439,6 +444,18 @@ def is_bundle_version_valid(
     v4.7   | included  | NOT included |   included   |  included   |  included
     -------------------------------------------------------------------------------
     v4.8   | included  | NOT included | NOT included |  included   |  included
+
+
+           |  "=v4.5|=v4.6"  |   "=v4.5|>=v4.7"   |
+    -----------------------------------------------
+    v4.5   |     included    |      included      |
+    -----------------------------------------------
+    v4.6   |     included    |    NOT included    |
+    -----------------------------------------------
+    v4.7   |   NOT included  |      included      |
+    -----------------------------------------------
+    v4.8   |    NOT included |      included      |
+
     """
     try:
         ocp_version = Version(valid_ocp_version.replace('v', ''))
@@ -455,8 +472,23 @@ def is_bundle_version_valid(
         # MYPY error: Item "None" of "Optional[str]" has no attribute "replace"
         bundle_version = bundle_version_label.replace('v', '')  # type: ignore
         log.debug(f'Bundle version {bundle_version}, Index image version {valid_ocp_version}')
+        if '|' in bundle_version_label:
+            versions = bundle_version_label.split('|')
+            if not all(ver.startswith("=") or ver.startswith(">=") for ver in versions):
+                log.warning(
+                    'Bundle version in a pipe separated filter must be prefixed by '
+                    'either "=" or ">="'
+                )
+                return False
+            for version in versions:
+                if version.startswith('>='):  # type: ignore
+                    if ocp_version >= Version(version.strip('>=')):
+                        return True
+                elif version.startswith('='):  # type: ignore
+                    if Version(version.strip('=')) == ocp_version:
+                        return True
         # MYPY error: Item "None" of "Optional[str]" has no attribute "startswith"
-        if bundle_version_label.startswith('='):  # type: ignore
+        elif bundle_version_label.startswith('='):  # type: ignore
             if Version(bundle_version.strip('=')) == ocp_version:
                 return True
         # MYPY error: Unsupported right operand type for in ("Optional[str]")
@@ -466,7 +498,7 @@ def is_bundle_version_valid(
                 return True
         # MYPY error: Unsupported right operand type for in ("Optional[str]")
         elif "," in bundle_version_label:  # type: ignore
-            versions = [Version(version) for version in bundle_version.split(",")]
+            versions = sorted([Version(version) for version in bundle_version.split(",")])
             if versions[0] <= ocp_version:
                 return True
         elif Version(bundle_version) <= ocp_version:
