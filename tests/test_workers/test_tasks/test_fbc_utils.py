@@ -1,13 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 import os
 import tempfile
 from unittest import mock
 
 import pytest
+import ruamel.yaml
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.fbc_utils import is_image_fbc, merge_catalogs_dirs, extract_fbc_fragment
+from iib.workers.tasks.fbc_utils import (
+    is_image_fbc,
+    merge_catalogs_dirs,
+    enforce_json_config_dir,
+    extract_fbc_fragment,
+)
+
+
+yaml = ruamel.yaml.YAML()
 
 
 @pytest.mark.parametrize(
@@ -92,7 +102,8 @@ def test_is_image_fbc(mock_si, skopeo_output, is_fbc):
     assert is_image_fbc(image) is is_fbc
 
 
-def test_merge_catalogs_dirs(tmpdir):
+@mock.patch("iib.workers.tasks.fbc_utils.enforce_json_config_dir")
+def test_merge_catalogs_dirs(mock_enforce_json, tmpdir):
     source_dir = os.path.join(tmpdir, 'src')
     destination_dir = os.path.join(tmpdir, 'dst')
     os.makedirs(destination_dir, exist_ok=True)
@@ -104,6 +115,12 @@ def test_merge_catalogs_dirs(tmpdir):
         tempfile.NamedTemporaryFile(dir=operator_dir, delete=False)
 
     merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
+    mock_enforce_json.assert_has_calls(
+        [
+            mock.call(source_dir),
+            mock.call(destination_dir),
+        ]
+    )
 
     for r, d, f in os.walk(source_dir):
 
@@ -139,6 +156,23 @@ def test_merge_catalogs_dirs_raise(mock_isdir, mock_cpt, tmpdir):
         merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
 
     mock_cpt.not_called()
+
+
+def test_enforce_json_config_dir(tmpdir):
+    file_prefix = "test_file"
+    data = {"foo": "bar"}
+    test_file = os.path.join(tmpdir, f"{file_prefix}.yaml")
+    expected_file = os.path.join(tmpdir, f"{file_prefix}.json")
+    with open(test_file, 'w') as w:
+        yaml.dump(data, w)
+
+    enforce_json_config_dir(tmpdir)
+
+    assert os.path.isfile(expected_file)
+    assert not os.path.isfile(test_file)
+
+    with open(expected_file, 'r') as f:
+        assert json.load(f) == data
 
 
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2'], []])

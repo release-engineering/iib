@@ -3,13 +3,18 @@
 import os
 import logging
 import shutil
+import json
+from pathlib import Path
 
 from typing import Tuple, List
+import ruamel.yaml
+
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 from iib.common.tracing import instrument_tracing
 
 log = logging.getLogger(__name__)
+yaml = ruamel.yaml.YAML()
 
 
 def is_image_fbc(image: str) -> bool:
@@ -86,6 +91,7 @@ def merge_catalogs_dirs(src_config: str, dest_config: str):
             msg = f"config directory does not exist: {conf_dir}"
             log.error(msg)
             raise IIBError(msg)
+        enforce_json_config_dir(conf_dir)
 
     log.info("Merging config folders: %s to %s", src_config, dest_config)
     shutil.copytree(src_config, dest_config, dirs_exist_ok=True)
@@ -116,3 +122,24 @@ def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, List[st
         raise IIBError("No operator packages in fbc_fragment %s", fbc_fragment)
 
     return fbc_fragment_path, operator_packages
+
+
+def enforce_json_config_dir(config_dir: str) -> None:
+    """
+    Ensure the files from config dir are in JSON format.
+
+    It will walk recursively and convert any YAML files to the JSON format.
+
+    :param str config_dir: The config dir to walk recursively converting any YAML to JSON.
+    """
+    log.info("Enforcing JSON content on config_dir: %s", config_dir)
+    for dirpath, _, filenames in os.walk(config_dir):
+        for file in filenames:
+            in_file = os.path.join(dirpath, file)
+            if in_file.lower().endswith(".yaml"):
+                out_file = os.path.join(dirpath, f"{Path(in_file).stem}.json")
+                log.debug(f"Converting {in_file} to {out_file}.")
+                with open(in_file, 'r') as yaml_in, open(out_file, 'w') as json_out:
+                    data = yaml.load(yaml_in)
+                    json.dump(data, json_out)
+                os.remove(in_file)
