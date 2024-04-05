@@ -152,6 +152,7 @@ def test_serve_cmd_at_port_delayed_initialize(
     assert mock_run_cmd.call_count == 7
 
 
+@mock.patch('iib.workers.tasks.opm_operations.opm_validate')
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
@@ -160,6 +161,7 @@ def test_opm_migrate(
     mock_run_cmd,
     mock_gcl,
     moch_srmtree,
+    mock_opmvalidate,
     tmpdir,
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
@@ -175,6 +177,7 @@ def test_opm_migrate(
         exc_msg='Failed to migrate index.db to file-based catalog',
     )
 
+    mock_opmvalidate.assert_called_once_with(fbc_dir)
     mock_gcl.assert_called_once_with(tmpdir, fbc_dir, mock.ANY)
 
 

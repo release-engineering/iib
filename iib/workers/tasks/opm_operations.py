@@ -366,6 +366,7 @@ def opm_migrate(
 
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to migrate index.db to file-based catalog')
     log.info("Migration to file-based catalog was completed.")
+    opm_validate(fbc_dir_path)
 
     if generate_cache:
         # Remove outdated cache before generating new one
@@ -1116,6 +1117,20 @@ def deprecate_bundles(
         cmd.append(container_tool)
     with set_registry_token(overwrite_target_index_token, from_index):
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to deprecate the bundles')
+
+
+def opm_validate(config_dir: str) -> None:
+    """
+    Validate the declarative config files in a given directory.
+
+    :param str config_dir: directory containing the declarative config files.
+    :raises IIBError: if the validation fails
+    """
+    from iib.workers.tasks.utils import run_cmd
+
+    log.info("Validating files under %s", config_dir)
+    cmd = [Opm.opm_version, 'validate', config_dir]
+    run_cmd(cmd, exc_msg=f'Failed to validate the content from config_dir {config_dir}')
 
 
 class Opm:
