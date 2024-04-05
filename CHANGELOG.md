@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.0
+* Adding support for new ocp_version_ranges by @lipoja in https://github.com/release-engineering/iib/pull/653
+* Fix comma bundle version validation by @xDaile in https://github.com/release-engineering/iib/pull/654
+* Update python Docker tag to v3.12.2 by @renovate in https://github.com/release-engineering/iib/pull/620
+* Use multiple OPM versions in IIB by @chandwanitulsi in https://github.com/release-engineering/iib/pull/637
+* Update actions/setup-python action to v5 by @renovate in https://github.com/release-engineering/iib/pull/648
+* Update dependency importlib-resources to v6.4.0 by @renovate in https://github.com/release-engineering/iib/pull/645
+* Update dependency botocore to v1.34.79 by @renovate in https://github.com/release-engineering/iib/pull/658
+
 
 ## 8.6.0
 * Fixing logging in tracing.py by @lipoja in https://github.com/release-engineering/iib/pull/628
