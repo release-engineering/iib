@@ -816,10 +816,11 @@ def validate_graph_mode(graph_update_mode: Optional[str], index_image: Optional[
             )
         allowed_from_indexes: List[str] = current_app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST']
         if index_image not in allowed_from_indexes:
-            raise Forbidden(
-                '"graph_update_mode" can only be used on the'
-                f' following index image: {allowed_from_indexes}'
-            )
+            if index_image is None or index_image.split(":")[0] not in allowed_from_indexes:
+                raise Forbidden(
+                    '"graph_update_mode" can only be used on the'
+                    f' following index image: {allowed_from_indexes}'
+                )
 
 
 class RequestIndexImageMixin:
