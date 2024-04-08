@@ -4,7 +4,7 @@ import os
 import logging
 import shutil
 
-from typing import Tuple
+from typing import Tuple, List
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 from iib.common.tracing import instrument_tracing
@@ -91,13 +91,13 @@ def merge_catalogs_dirs(src_config: str, dest_config: str):
     shutil.copytree(src_config, dest_config, dirs_exist_ok=True)
 
 
-def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, str]:
+def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, List[str]]:
     """
-    Extract operator package from the fbc_fragment image.
+    Extract operator packages from the fbc_fragment image.
 
     :param str temp_dir: base temp directory for IIB request.
     :param str fbc_fragment: pull specification of fbc_fragment in the IIB request.
-    :return: fbc_fragment path, fbc_operator_package.
+    :return: fbc_fragment path, fbc_operator_packages.
     :rtype: tuple
     """
     from iib.workers.tasks.build import _copy_files_from_image
@@ -111,10 +111,8 @@ def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, str]:
 
     log.info("fbc_fragment extracted at %s", fbc_fragment_path)
     operator_packages = os.listdir(fbc_fragment_path)
-    log.info("fbc_fragment contains package %s", operator_packages)
+    log.info("fbc_fragment contains packages %s", operator_packages)
     if not operator_packages:
         raise IIBError("No operator packages in fbc_fragment %s", fbc_fragment)
-    if len(operator_packages) > 1:
-        raise IIBError("More than 1 package is present in fbc_fragment %s", fbc_fragment)
 
-    return fbc_fragment_path, operator_packages[0]
+    return fbc_fragment_path, operator_packages
