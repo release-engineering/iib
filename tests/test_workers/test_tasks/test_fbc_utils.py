@@ -144,15 +144,14 @@ def test_merge_catalogs_dirs_raise(mock_isdir, mock_cpt, tmpdir):
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2'], []])
 @mock.patch('os.listdir')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
-def test_extract_fbc_fragment_one_operator(mock_cffi, mock_osldr, ldr_output, tmpdir):
+def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
     test_fbc_fragment = "example.com/test/fbc_fragment:latest"
     mock_osldr.return_value = ldr_output
     fbc_fragment_path = os.path.join(tmpdir, get_worker_config()['temp_fbc_fragment_path'])
 
-    if len(ldr_output) != 1:
+    if not ldr_output:
         with pytest.raises(IIBError):
             extract_fbc_fragment(tmpdir, test_fbc_fragment)
-
     else:
         extract_fbc_fragment(tmpdir, test_fbc_fragment)
     mock_cffi.assert_has_calls([mock.call(test_fbc_fragment, '/configs', fbc_fragment_path)])

@@ -648,7 +648,8 @@ def test_verify_cache_insertion_edit_dockerfile_failed():
 
 
 @pytest.mark.parametrize(
-    'is_operator_exists, index_db_path', [(True, "index_path"), (False, "index_path")]
+    'operators_exists, index_db_path',
+    [(['test-operator'], "index_path"), ([], "index_path")],
 )
 @mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
@@ -658,7 +659,7 @@ def test_verify_cache_insertion_edit_dockerfile_failed():
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
-@mock.patch('iib.workers.tasks.opm_operations.verify_operator_exists')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
 @mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
 @mock.patch('iib.workers.tasks.opm_operations.set_request_state')
 def test_opm_registry_add_fbc_fragment(
@@ -673,16 +674,16 @@ def test_opm_registry_add_fbc_fragment(
     mock_rmt,
     mock_gcc,
     mock_ogd,
-    is_operator_exists,
+    operators_exists,
     index_db_path,
     tmpdir,
 ):
     from_index = "example.com/test/index"
     binary_image = "example.com/ose/binary"
     fbc_fragment = "example.com/test/fragment"
-    fbc_fragment_operator = "test-operator"
-    mock_eff.return_value = (os.path.join(tmpdir, "fbc_fragment"), fbc_fragment_operator)
-    mock_voe.return_value = is_operator_exists, index_db_path
+    fbc_fragment_operators = ["test-operator"]
+    mock_eff.return_value = (os.path.join(tmpdir, "fbc_fragment"), fbc_fragment_operators)
+    mock_voe.return_value = operators_exists, index_db_path
     mock_gcr.return_value = os.path.join(tmpdir, "configs")
     mock_om.return_value = os.path.join(tmpdir, "catalog"), None
     mock_ldr.return_value = [
@@ -695,13 +696,13 @@ def test_opm_registry_add_fbc_fragment(
     mock_voe.assert_called_with(
         from_index=from_index,
         base_dir=tmpdir,
-        operator_package=fbc_fragment_operator,
+        operator_packages=fbc_fragment_operators,
         overwrite_from_index_token=None,
     )
     mock_gcr.assert_called_with(from_index=from_index, base_dir=tmpdir)
-    if is_operator_exists:
+    if operators_exists:
         mock_orr.assert_called_with(
-            index_db_path=index_db_path, operators=[fbc_fragment_operator], base_dir=tmpdir
+            index_db_path=index_db_path, operators=fbc_fragment_operators, base_dir=tmpdir
         )
         mock_om.assert_called_with(index_db=index_db_path, base_dir=tmpdir, generate_cache=False)
         mock_cpt.assert_has_calls(
@@ -721,8 +722,8 @@ def test_opm_registry_add_fbc_fragment(
     mock_cpt.assert_has_calls(
         [
             mock.call(
-                os.path.join(tmpdir, "fbc_fragment", fbc_fragment_operator),
-                os.path.join(tmpdir, "configs", fbc_fragment_operator),
+                os.path.join(tmpdir, "fbc_fragment", fbc_fragment_operators[0]),
+                os.path.join(tmpdir, "configs", fbc_fragment_operators[0]),
             )
         ]
     )
@@ -736,12 +737,12 @@ def test_opm_registry_add_fbc_fragment(
         (
             '{"packageName": "test-operator", "version": "v1.0", "bundlePath":"bundle1"\n}'
             '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
-            True,
+            ["test-operator"],
         ),
         (
             '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
             '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
-            False,
+            [],
         ),
     ],
 )
@@ -757,7 +758,7 @@ def test_verify_operator_exists(
     mock_ors.return_value = 500, mock.MagicMock()
     mock_rc.return_value = bundles_in_db
     index_db_path = os.path.join(tmpdir, get_worker_config()['temp_index_db_path'])
-    package_exists, index_db_path = opm_operations.verify_operator_exists(
+    package_exists, index_db_path = opm_operations.verify_operators_exists(
         from_index, tmpdir, 'test-operator', None
     )
     mock_ors.assert_has_calls([mock.call(db_path=index_db_path)])

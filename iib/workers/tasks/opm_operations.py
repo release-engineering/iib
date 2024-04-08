@@ -819,57 +819,56 @@ def opm_registry_add_fbc_fragment(
     """
     set_request_state(request_id, 'in_progress', 'Extracting operator package from fbc_fragment')
     # fragment path will look like /tmp/iib-**/fbc-fragment
-    fragment_path, fragment_operator = extract_fbc_fragment(
+    fragment_path, fragment_operators = extract_fbc_fragment(
         temp_dir=temp_dir, fbc_fragment=fbc_fragment
     )
 
-    is_operator_in_db, index_db_path = verify_operator_exists(
+    # the dir where all the configs from from_index are stored
+    # this will look like /tmp/iib-**/configs
+    from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
+    log.info("The content of from_index configs located at %s", from_index_configs_dir)
+
+    operators_in_db, index_db_path = verify_operators_exists(
         from_index=from_index,
         base_dir=temp_dir,
-        operator_package=fragment_operator,
+        operator_packages=fragment_operators,
         overwrite_from_index_token=overwrite_from_index_token,
     )
 
-    # the dir where all the configs from from_index is stored
-    # this will look like /tmp/iib-**/configs
-    from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
+    if operators_in_db:
+        log.info('Removing %s from %s index.db ', operators_in_db, from_index)
+        _opm_registry_rm(index_db_path=index_db_path, operators=operators_in_db, base_dir=temp_dir)
 
-    log.info("The content of from_index configs located at %s", from_index_configs_dir)
-
-    if is_operator_in_db:
-        log.info('Removing %s from %s index.db ', fragment_operator, from_index)
-        _opm_registry_rm(
-            index_db_path=index_db_path, operators=[fragment_operator], base_dir=temp_dir
-        )
-        # migated_catalog_dir path will look like /tmp/iib-**/catalog
-        migated_catalog_dir, _ = opm_migrate(
+        # migrated_catalog_dir path will look like /tmp/iib-**/catalog
+        migrated_catalog_dir, _ = opm_migrate(
             index_db=index_db_path,
             base_dir=temp_dir,
             generate_cache=False,
         )
-        log.info("Migated catalog after removing from db at %s", migated_catalog_dir)
+        log.info("Migrated catalog after removing from db at %s", migrated_catalog_dir)
 
         # copy the content of migrated_catalog to from_index's config
-        log.info("Copying content of %s to %s", migated_catalog_dir, from_index_configs_dir)
-        for operator_package in os.listdir(migated_catalog_dir):
+        log.info("Copying content of %s to %s", migrated_catalog_dir, from_index_configs_dir)
+        for operator_package in os.listdir(migrated_catalog_dir):
             shutil.copytree(
-                os.path.join(migated_catalog_dir, operator_package),
+                os.path.join(migrated_catalog_dir, operator_package),
                 os.path.join(from_index_configs_dir, operator_package),
                 dirs_exist_ok=True,
             )
 
-    # copy fragment_operator to from_index configs
-    set_request_state(request_id, 'in_progress', 'Adding fbc_fragment to from_index')
-    fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
-    fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
-    if os.path.exists(fragment_opr_dest_path):
-        shutil.rmtree(fragment_opr_dest_path)
-    log.info(
-        "Copying content of %s to %s",
-        fragment_opr_src_path,
-        fragment_opr_dest_path,
-    )
-    shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
+    for fragment_operator in fragment_operators:
+        # copy fragment_operator to from_index configs
+        set_request_state(request_id, 'in_progress', 'Adding fbc_fragment to from_index')
+        fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
+        fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
+        if os.path.exists(fragment_opr_dest_path):
+            shutil.rmtree(fragment_opr_dest_path)
+        log.info(
+            "Copying content of %s to %s",
+            fragment_opr_src_path,
+            fragment_opr_dest_path,
+        )
+        shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
 
     local_cache_path = os.path.join(temp_dir, 'cache')
     generate_cache_locally(
@@ -886,32 +885,32 @@ def opm_registry_add_fbc_fragment(
     )
 
 
-def verify_operator_exists(
+def verify_operators_exists(
     from_index: str,
     base_dir: str,
-    operator_package: str,
+    operator_packages: List[str],
     overwrite_from_index_token: Optional[str],
 ):
     """
-    Check if operator exists in index image.
+    Check if operators exists in index image.
 
     :param str from_index: index in which operator existence is checked
     :param str base_dir: base temp directory for IIB request
-    :param str operator_package: operator_package to check
+    :param list(str) operator_packages: operator_package to check
     :param str overwrite_from_index_token: token used to access the image
-    :return: is_package_in_index, index_db_path
-    :rtype: (str, str)
+    :return: packages_in_index, index_db_path
+    :rtype: (list, str)
     """
     from iib.workers.tasks.build import terminate_process, get_bundle_json
     from iib.workers.tasks.iib_static_types import BundleImage
     from iib.workers.tasks.utils import run_cmd
     from iib.workers.tasks.utils import set_registry_token
 
-    is_package_in_index = False
+    packages_in_index: List[str] = []
 
-    log.info("Verifying if operator package %s exists in index %s", operator_package, from_index)
+    log.info("Verifying if operator packages %s exists in index %s", operator_packages, from_index)
 
-    # check if operater package exists in hidden index.db
+    # check if operator packages exists in hidden index.db
     with set_registry_token(overwrite_from_index_token, from_index, append=True):
         index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
 
@@ -924,10 +923,13 @@ def verify_operator_exists(
     present_bundles: List[BundleImage] = get_bundle_json(bundles)
 
     for bundle in present_bundles:
-        if bundle['packageName'] == operator_package:
-            is_package_in_index = True
-            log.info("operator package %s found in index_db %s", operator_package, index_db_path)
-    return is_package_in_index, index_db_path
+        if bundle['packageName'] in operator_packages:
+            packages_in_index.append(bundle['packageName'])
+
+    if packages_in_index:
+        log.info("operator packages found in index_db %s:  %s", index_db_path, packages_in_index)
+
+    return packages_in_index, index_db_path
 
 
 @retry(
