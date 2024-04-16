@@ -93,11 +93,11 @@ def merge_catalogs_dirs(src_config: str, dest_config: str):
             msg = f"config directory does not exist: {conf_dir}"
             log.error(msg)
             raise IIBError(msg)
-        enforce_json_config_dir(conf_dir)
-        opm_validate(conf_dir)
 
     log.info("Merging config folders: %s to %s", src_config, dest_config)
     shutil.copytree(src_config, dest_config, dirs_exist_ok=True)
+    enforce_json_config_dir(conf_dir)
+    opm_validate(conf_dir)
 
 
 def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, List[str]]:

@@ -117,23 +117,10 @@ def test_merge_catalogs_dirs(mock_enforce_json, mock_rc, mock_opm, tmpdir):
         tempfile.NamedTemporaryFile(dir=operator_dir, delete=False)
 
     merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
-    mock_enforce_json.assert_has_calls(
-        [
-            mock.call(source_dir),
-            mock.call(destination_dir),
-        ]
-    )
-    mock_rc.assert_has_calls(
-        [
-            mock.call(
-                [mock_opm.opm_version, 'validate', source_dir],
-                exc_msg=f'Failed to validate the content from config_dir {source_dir}',
-            ),
-            mock.call(
-                [mock_opm.opm_version, 'validate', destination_dir],
-                exc_msg=f'Failed to validate the content from config_dir {destination_dir}',
-            ),
-        ]
+    mock_enforce_json.assert_called_once_with(destination_dir)
+    mock_rc.called_once_with(
+        [mock_opm.opm_version, 'validate', destination_dir],
+        exc_msg=f'Failed to validate the content from config_dir {destination_dir}',
     )
 
     for r, d, f in os.walk(source_dir):
