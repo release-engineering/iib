@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.1
+* Update dependency botocore to v1.34.81 by @renovate in https://github.com/release-engineering/iib/pull/662
+* Update dependency idna to v3.7 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/666
+* Update dependency botocore to v1.34.85 by @renovate in https://github.com/release-engineering/iib/pull/667
+* Update dependency boto3 to v1.34.85 by @renovate in https://github.com/release-engineering/iib/pull/657
+* Adding support of multiple operators in one fragment by @lipoja in https://github.com/release-engineering/iib/pull/660
+* Fix bug with FBC YAML Operators by @JAVGan in https://github.com/release-engineering/iib/pull/655
+* Update dependency werkzeug to v3.0.3 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/671
+* Update dependency jinja2 to v3.1.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/670
+
 ## 8.7.0
 * Adding support for new ocp_version_ranges by @lipoja in https://github.com/release-engineering/iib/pull/653
 * Fix comma bundle version validation by @xDaile in https://github.com/release-engineering/iib/pull/654
