@@ -28,6 +28,8 @@ ADD https://github.com/operator-framework/operator-registry/releases/download/v1
 RUN chmod +x /usr/bin/opm-v1.26.4
 ADD https://github.com/operator-framework/operator-registry/releases/download/v1.28.0/linux-amd64-opm /usr/bin/opm-v1.28.0
 RUN chmod +x /usr/bin/opm-v1.28.0
+ADD https://github.com/operator-framework/operator-registry/releases/download/v1.40.0/linux-amd64-opm /usr/bin/opm-v1.40.0
+RUN chmod +x /usr/bin/opm-v1.40.0
 # Create a link for default opm
 RUN ln -s /usr/bin/opm-v1.28.0 /usr/bin/opm
 RUN chmod +x /usr/bin/opm
