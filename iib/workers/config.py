@@ -235,7 +235,7 @@ class DevelopmentConfig(Config):
         "v4.13": "opm-v1.26.4",
         "v4.14": "opm-v1.26.4",
         "v4.15": "opm-v1.28.0",
-        "v4.16": "opm-v1.28.0",
+        "v4.16": "opm-v1.40.0",
     }
 
 
