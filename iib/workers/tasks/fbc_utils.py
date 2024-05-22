@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # This file contains functions that are common for File-Based Catalog image type
+import contextlib
 import os
 import logging
 import shutil
@@ -142,7 +143,12 @@ def enforce_json_config_dir(config_dir: str) -> None:
             if in_file.lower().endswith(".yaml"):
                 out_file = os.path.join(dirpath, f"{Path(in_file).stem}.json")
                 log.debug(f"Converting {in_file} to {out_file}.")
-                with open(in_file, 'r') as yaml_in, open(out_file, 'w') as json_out:
-                    data = yaml.load(yaml_in)
-                    json.dump(data, json_out)
+                # Make sure the output file doesn't exist before opening in append mode
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(out_file)
+                # The input file may contain multiple chunks, we must append them accordingly
+                with open(in_file, 'r') as yaml_in, open(out_file, 'a') as json_out:
+                    data = yaml.load_all(yaml_in)
+                    for chunk in data:
+                        json.dump(chunk, json_out)
                 os.remove(in_file)

@@ -2,6 +2,7 @@
 import json
 import os
 import tempfile
+from textwrap import dedent
 from unittest import mock
 
 import pytest
@@ -174,6 +175,30 @@ def test_enforce_json_config_dir(tmpdir):
 
     with open(expected_file, 'r') as f:
         assert json.load(f) == data
+
+
+def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
+    multiple_chunks_yaml = """\
+    ---
+    foo: bar
+    bar: foo
+    ---
+    another: data
+    ---
+    one_more: chunk
+    """
+
+    expected_result = """{"foo": "bar", "bar": "foo"}{"another": "data"}{"one_more": "chunk"}"""
+
+    input = os.path.join(tmpdir, f"test_file.yaml")
+    output = os.path.join(tmpdir, f"test_file.json")
+    with open(input, 'w') as w:
+        w.write(dedent(multiple_chunks_yaml))
+
+    enforce_json_config_dir(tmpdir)
+
+    with open(output, 'r') as f:
+        assert f.read() == expected_result
 
 
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2'], []])
