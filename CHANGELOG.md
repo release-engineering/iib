@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.2
+* Fix bug on `fbc_utils.enforce_json_config_dir` by @JAVGan in https://github.com/release-engineering/iib/pull/675
+* Update dependency cryptography to v42.0.7 by @renovate in https://github.com/release-engineering/iib/pull/674
+* Update dependency flask to v3.0.3 by @renovate in https://github.com/release-engineering/iib/pull/663
+* Use BlockingConnection class from proton.utils by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/676
+
 ## 8.7.1
 * Update dependency botocore to v1.34.81 by @renovate in https://github.com/release-engineering/iib/pull/662
 * Update dependency idna to v3.7 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/666
