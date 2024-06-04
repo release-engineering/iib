@@ -126,7 +126,6 @@ cffi==1.16.0 \
     # via
     #   -r requirements.txt
     #   cryptography
-    #   python-qpid-proton
 charset-normalizer==3.3.2 \
     --hash=sha256:06435b539f889b1f6f4ac1758871aae42dc3a8c0e24ac9e60c2384973ad73027 \
     --hash=sha256:06a81e93cd441c56a9b65d8e1d043daeb97a3d0856d177d5c90ba85acb3db087 \
@@ -365,7 +364,7 @@ exceptiongroup==1.2.0 \
     --hash=sha256:4bfd3996ac73b41e9b9628b04e079f193850720ea5945fc96a08633c66912f14 \
     --hash=sha256:91f5c769735f051a4290d52edd0858999b57e5876e9f85937691bd4c9fa3ed68
     # via pytest
-Flask==3.0.3 \
+flask==3.0.3 \
     --hash=sha256:34e815dfaa43340d1d15a5c3a02b8476004037eb4840b34910c6e21679d288f3 \
     --hash=sha256:ceb27b0af3823ea2737928a4d99d125a06175b8512c445cbd9a9ce200ef76842
     # via
@@ -572,7 +571,7 @@ itsdangerous==2.1.2 \
     # via
     #   -r requirements.txt
     #   flask
-Jinja2==3.1.4 \
+jinja2==3.1.4 \
     --hash=sha256:4a3aee7acbbe7303aede8e9648d13b8bf88a429282aa6122a993f0ac800cb369 \
     --hash=sha256:bc5dd2abb727a5319567b7a813e6a2e7318c39f4f487cfe6c89c6f9c7d25197d
     # via
@@ -952,10 +951,8 @@ python-memcached==1.62 \
     --hash=sha256:0285470599b7f593fbf3bec084daa1f483221e68c1db2cf1d846a9f7c2655103 \
     --hash=sha256:1bdd8d2393ff53e80cd5e9442d750e658e0b35c3eebb3211af137303e3b729d1
     # via -r requirements.txt
-python-qpid-proton==0.39.0 \
-    --hash=sha256:362055ae6ab4c7f1437247c602757f30328d55c0a6986d5b68ca9798de9fce02 \
-    --hash=sha256:d052e85ffbc817d4db973fae230d8a80732d444e0abbac55360ad4beb181cb43 \
-    --hash=sha256:f69da296ffa9e3b22f88a53fe9e27c4f4844e088a9f041061bd4f75f74f2a0af
+python-qpid-proton==0.38.0 \
+    --hash=sha256:e39c6a19ceac0e721b7e2b29543b241c43378caf666b2911271611e88cabee4b
     # via -r requirements.txt
 requests==2.31.0 \
     --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f \
@@ -1148,7 +1145,7 @@ wcwidth==0.2.13 \
     # via
     #   -r requirements.txt
     #   prompt-toolkit
-Werkzeug==3.0.3 \
+werkzeug==3.0.3 \
     --hash=sha256:097e5bfda9f0aba8da6b8545146def481d06aa7d3266e7448e2cccf67dd8bd18 \
     --hash=sha256:fc9645dc43e03e4d630d23143a04a7f947a9a3b5727cd535fdfe155a17cc48c8
     # via
