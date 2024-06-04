@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.3
+* Downgrade of qpid-proton by @lipoja in https://github.com/release-engineering/iib/pull/683
+
 ## 8.7.2
 * Fix bug on `fbc_utils.enforce_json_config_dir` by @JAVGan in https://github.com/release-engineering/iib/pull/675
 * Update dependency cryptography to v42.0.7 by @renovate in https://github.com/release-engineering/iib/pull/674
