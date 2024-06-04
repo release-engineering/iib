@@ -20,7 +20,7 @@ setup(
         'operator-manifest',
         'psycopg2-binary',
         'python-memcached ',
-        'python-qpid-proton',
+        'python-qpid-proton==0.38.0',
         'requests',
         'requests-kerberos',
         'ruamel.yaml',
