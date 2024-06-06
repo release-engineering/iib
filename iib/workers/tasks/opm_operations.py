@@ -4,7 +4,7 @@ import random
 import shutil
 import subprocess
 import time
-from typing import List, Optional, Tuple, Generator, Union
+from typing import List, Optional, Tuple, Generator, Union, Set
 
 from tenacity import (
     before_sleep_log,
@@ -900,14 +900,14 @@ def verify_operators_exists(
     :param list(str) operator_packages: operator_package to check
     :param str overwrite_from_index_token: token used to access the image
     :return: packages_in_index, index_db_path
-    :rtype: (list, str)
+    :rtype: (set, str)
     """
     from iib.workers.tasks.build import terminate_process, get_bundle_json
     from iib.workers.tasks.iib_static_types import BundleImage
     from iib.workers.tasks.utils import run_cmd
     from iib.workers.tasks.utils import set_registry_token
 
-    packages_in_index: List[str] = []
+    packages_in_index: Set[str] = set()
 
     log.info("Verifying if operator packages %s exists in index %s", operator_packages, from_index)
 
@@ -925,7 +925,7 @@ def verify_operators_exists(
 
     for bundle in present_bundles:
         if bundle['packageName'] in operator_packages:
-            packages_in_index.append(bundle['packageName'])
+            packages_in_index.add(bundle['packageName'])
 
     if packages_in_index:
         log.info("operator packages found in index_db %s:  %s", index_db_path, packages_in_index)
