@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 8.7.4
+* verify_operators_exists returns only unique packages by @lipoja in https://github.com/release-engineering/iib/pull/685
+
 ## 8.7.3
 * Downgrade of qpid-proton by @lipoja in https://github.com/release-engineering/iib/pull/683
 
