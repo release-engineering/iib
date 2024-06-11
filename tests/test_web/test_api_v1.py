@@ -956,10 +956,10 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     rv_json = rv.json
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    # Ninth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-9] is True
-    # Eighth to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-8] == token
+    # Tenth to last element in args is the overwrite_from_index parameter
+    assert mock_har.apply_async.call_args[1]['args'][-10] is True
+    # Ninth to last element in args is the overwrite_from_index_token parameter
+    assert mock_har.apply_async.call_args[1]['args'][-9] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']

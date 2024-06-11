@@ -238,6 +238,7 @@ The custom configuration options for the REST API are listed below:
 * `SQLALCHEMY_DATABASE_URI` - the database URI of the database the REST API connects to. See the
   [Flask-SQLAlchemy configuration](https://flask-sqlalchemy.palletsprojects.com/en/2.x/config/#configuration-keys)
   documentation.
+* `IIB_RELATED_IMAGE_REGISTRY_REPLACEMENT` - the mapping `dict(<str>: dict(<str>: <str>))` to specify if the registry of the related image needs to be changed to inspect the related images. The mapping denotes the username and the registries that need to be replaced to inspect the related images.
 
 The custom configuration options for AMQP 1.0 messaging are listed below:
 

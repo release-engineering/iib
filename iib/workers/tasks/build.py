@@ -661,7 +661,9 @@ def _verify_index_image(
         )
 
 
-def inspect_related_images(bundles: List[str], request_id) -> None:
+def inspect_related_images(
+    bundles: List[str], request_id: int, replace_registry_config: Optional[Dict[str, str]] = None
+) -> None:
     """
     Verify if related_images and other dependancy images in the bundle can be inspected.
 
@@ -687,6 +689,15 @@ def inspect_related_images(bundles: List[str], request_id) -> None:
             bundle_metadata = get_bundle_metadata(operator_manifest, False)
             for related_image in bundle_metadata['found_pullspecs']:
                 related_image_pull_spec = related_image.to_str()
+                related_image_regsitry = related_image_pull_spec.split('/')[0]
+                if replace_registry_config and replace_registry_config.get(related_image_regsitry):
+                    log.debug(
+                        f'Replacing the registry of {related_image_pull_spec} '
+                        f'with {replace_registry_config.get(related_image_regsitry)}'
+                    )
+                    related_image_pull_spec = related_image_pull_spec.replace(
+                        related_image_regsitry, replace_registry_config.get(related_image_regsitry)
+                    )
                 try:
                     skopeo_inspect(f'docker://{related_image_pull_spec}', '--raw')
                 except IIBError as e:
@@ -718,6 +729,7 @@ def handle_add_request(
     build_tags: Optional[List[str]] = None,
     graph_update_mode: Optional[str] = None,
     check_related_images: bool = False,
+    username: Optional[str] = None,
     traceparent: Optional[str] = None,
 ) -> None:
     """
@@ -766,7 +778,11 @@ def handle_add_request(
         resolved_bundles = get_resolved_bundles(bundles)
         verify_labels(resolved_bundles)
         if check_related_images:
-            inspect_related_images(resolved_bundles, request_id)
+            inspect_related_images(
+                resolved_bundles,
+                request_id,
+                worker_config.iib_related_image_registry_replacement.get(username),
+            )
 
     # Check if Gating passes for all the bundles
     if greenwave_config:
