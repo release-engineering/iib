@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='iib',
-    version='8.7.0',
+    version='8.7.4',
     long_description=__doc__,
     packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
@@ -20,7 +20,7 @@ setup(
         'operator-manifest',
         'psycopg2-binary',
         'python-memcached ',
-        'python-qpid-proton',
+        'python-qpid-proton==0.38.0',
         'requests',
         'requests-kerberos',
         'ruamel.yaml',

@@ -2,15 +2,14 @@
 from collections import namedtuple
 import json
 import os
-import time
-from typing import Any, Callable, cast, Dict, List, Optional, Union
+from typing import Any, cast, Dict, List, Optional, Union
 import uuid
 
 from flask import current_app
 import proton
 import proton.reactor
 import proton.utils
-from proton._endpoints import Connection
+from proton.utils import BlockingConnection
 
 from iib.web.iib_static_types import (
     BaseClassRequestResponse,
@@ -19,120 +18,6 @@ from iib.web.iib_static_types import (
 from iib.web.models import Batch, Request, RequestStateMapping
 
 __all__ = ['Envelope', 'json_to_envelope', 'send_messages', 'send_message_for_state_change']
-
-
-class BlockingConnection(proton.utils.BlockingConnection):  # pragma: no cover
-    """
-    Add support for multiple connection URLs in the ``BlockingConnection`` class.
-
-    The class from ``proton.utils`` can be used directly when the following PR is released:
-    https://github.com/apache/qpid-proton/pull/243
-    """
-
-    def __init__(
-        self,
-        url: Optional[str] = None,
-        timeout: Optional[int] = None,
-        container: Optional[proton.reactor.Container] = None,
-        ssl_domain: Optional[proton.SSLDomain] = None,
-        heartbeat: Optional[int] = None,
-        urls: Optional[List[str]] = None,
-        **kwargs,
-    ) -> None:
-        self.disconnected = False
-        self.timeout = timeout or 60
-        self.container = container or proton.reactor.Container()
-        self.container.timeout = self.timeout
-        self.container.start()
-        self.conn: Connection = None
-        self.closing = False
-        # If multiple URLs are provided, allow a reconnect to occur if the
-        # connection to one of the previous URLs fails.
-        reconnect = None if urls else False
-        failed = True
-        try:
-            self.conn = self.container.connect(
-                url=url,
-                handler=self,
-                ssl_domain=ssl_domain,
-                reconnect=reconnect,
-                heartbeat=heartbeat,
-                urls=urls,
-                **kwargs,
-            )
-            self.wait(
-                lambda: not (self.conn.state & proton.Endpoint.REMOTE_UNINIT),
-                msg='Opening connection',
-            )
-            failed = False
-        finally:
-            if failed and self.conn:
-                self.close()
-
-    def wait(
-        self,
-        condition: Callable[[], bool],
-        timeout: Optional[Union[int, bool]] = False,
-        msg: Optional[str] = None,
-    ) -> None:
-        """
-        Process events until ``condition()`` returns ``True``.
-
-        :param condition: Condition which determines when the wait will end.
-        :type condition: Function which returns ``bool``
-        :param timeout: Timeout in seconds. If ``False``, the value of ``timeout`` used in the
-            constructor of this object will be used. If ``None``, there is no timeout. Any other
-            value is treated as a timeout in seconds.
-        :type timeout: ``None``, ``False``, ``float``
-        :param msg: Context message for :class:`proton.Timeout` exception
-        :type msg: ``str``
-        """
-        if timeout is False:
-            timeout = self.timeout
-        if timeout is None:
-            while not condition() and not self.disconnected:
-                self.container.process()
-        else:
-            container_timeout = self.container.timeout
-            self.container.timeout = timeout
-            try:
-                deadline = time.time() + timeout
-                first_url = self.conn._overrides.address.values[0]
-                while not condition() and not self.disconnected:
-                    self.container.process()
-                    if deadline < time.time():
-                        txt = "Connection %s timed out" % self.url
-                        if msg:
-                            txt += ": " + msg
-                        raise proton.Timeout(txt)
-
-                    # If multiple URLs are provided and a disconnect occurs,
-                    # self.conn.url is set to the next URL. In this case,
-                    # set self.disconnected to False so the next URL is tried.
-                    # If self.conn.url is set to the first URL after a
-                    # disconnect, that means all URLs have been attempted and
-                    # the loop will exit.
-                    if self.disconnected and self.conn.url != first_url:
-                        self.disconnected = False
-            finally:
-                self.container.timeout = container_timeout
-        if self.disconnected or self._is_closed():
-            self.container.stop()
-            self.conn.handler = None  # break cyclical reference
-        if self.disconnected and not self._is_closed():
-            raise proton.ConnectionException(
-                "Connection %s disconnected: %s" % (self.url, self.disconnected)
-            )
-
-    @property
-    def url(self) -> Optional[str]:
-        """
-        Get the current URL of the connection.
-
-        :return: the connection URL or ``None``
-        :rtype: str or None
-        """
-        return self.conn and self.conn.connected_address
 
 
 Envelope = namedtuple('Envelope', 'address message')
