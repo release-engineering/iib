@@ -247,7 +247,7 @@ def test_handle_create_empty_index_request_fbc(
     'from_index, index_version, opm_version',
     [
         ('index-image:410', 'v4.10', 'opm-v1.26.4'),
-        ('index-image:415', 'v4.15', 'opm-v1.28.0'),
+        ('index-image:415', 'v4.15', 'opm-v1.26.4'),
     ],
 )
 @mock.patch('iib.workers.tasks.build_create_empty_index._cleanup')
