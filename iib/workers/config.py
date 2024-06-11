@@ -71,6 +71,7 @@ class Config(object):
         "ppc64le": "ppc64le",
     }
     iib_default_opm: str = 'opm'
+    iib_related_image_registry_replacement: Optional[Dict[str, Dict[str, str]]] = {}
     include: List[str] = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
@@ -306,6 +307,11 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
     if conf.get('iib_no_ocp_label_allow_list'):
         if any(not index for index in conf['iib_no_ocp_label_allow_list']):
             raise ConfigError('Empty string is not allowed in iib_no_ocp_label_allow_list')
+
+    if conf.get('iib_related_image_registry_replacement') and not isinstance(
+        conf['iib_related_image_registry_replacement'], dict
+    ):
+        raise ConfigError('iib_related_image_registry_replacement must be a dictionary')
 
     _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])

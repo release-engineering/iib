@@ -80,6 +80,21 @@ def test_validate_celery_config_iib_required_labels_not_dict():
         validate_celery_config(conf)
 
 
+def test_validate_celery_config_iib_replace_registry_not_dict():
+    conf = {
+        'iib_api_url': 'http://localhost:8080/api/v1/',
+        'iib_registry': 'registry',
+        'iib_related_image_registry_replacement': 123,
+        'iib_default_opm': 'opm',
+        'iib_ocp_opm_mapping': {},
+        'iib_required_labels': {},
+    }
+    with pytest.raises(
+        ConfigError, match='iib_related_image_registry_replacement must be a dictionary'
+    ):
+        validate_celery_config(conf)
+
+
 @pytest.mark.parametrize(
     'config, error',
     (

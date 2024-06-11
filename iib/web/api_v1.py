@@ -605,6 +605,8 @@ def add_bundles() -> Tuple[flask.Response, int]:
     args = _get_add_args(payload, request, overwrite_from_index, celery_queue)
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
+    if current_user.is_authenticated:
+        args.append(current_user.username)
 
     try:
         handle_add_request.apply_async(
