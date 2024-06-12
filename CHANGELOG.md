@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+## 8.7.5
+* Fix buildah retry mechanism by @xDaile in https://github.com/release-engineering/iib/pull/681
+* Allow non tagged index image in IIB_GRAPH_MODE_INDEX_ALLOW_LIST by @xDaile in https://github.com/release-engineering/iib/pull/661
+* Add atomic port locking mechanism by @xDaile in https://github.com/release-engineering/iib/pull/669
+* Update dependency click-didyoumean to v0.3.1 by @renovate in https://github.com/release-engineering/iib/pull/659
+* Update dependency flask-migrate to v4.0.7 by @renovate in https://github.com/release-engineering/iib/pull/664
+* Update dependency botocore to v1.34.123 by @renovate in https://github.com/release-engineering/iib/pull/679
+* Add OPM v1.40.0 to dev env by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/673
+* Update dependency sqlalchemy to v2.0.30 by @renovate in https://github.com/release-engineering/iib/pull/665
+
 ## 8.7.4
 * verify_operators_exists returns only unique packages by @lipoja in https://github.com/release-engineering/iib/pull/685
 
