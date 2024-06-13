@@ -24,7 +24,7 @@ def mock_config():
         mock_config = mock.MagicMock()
         mock_config.iib_opm_port_ranges = {
             'opm_port': (5001, 5003),
-            'pprof_port': (6001, 6003),
+            'opm_pprof_port': (6001, 6003),
         }
         mock_config.iib_opm_pprof_lock_required_min_version = "0.9.0"
         mock_config.iib_grpc_init_wait_time = 1
@@ -57,10 +57,11 @@ def test_PortFileLock_repr(mock_tempdir):
     assert str(pfl) == "PortFileLock(port: 5000, purpose: test_purpose, locked: False)"
 
 
-@mock.patch('os.open')
+@mock.patch('os.close')
+@mock.patch('os.open', return_value="42")
 @mock.patch('socket.socket')
 @mock.patch('tempfile.gettempdir', return_value='/tmp')
-def test_lock_acquire_success(mock_tempdir, mock_socket, mock_open):
+def test_lock_acquire_success(mock_tempdir, mock_socket, mock_open, mock_close):
     """Test succesfull lock acquisition."""
     pfl = PortFileLock("test_purpose", 5000)
     pfl.lock_acquire()
@@ -68,8 +69,10 @@ def test_lock_acquire_success(mock_tempdir, mock_socket, mock_open):
     mock_socket.return_value.bind.assert_called_once_with(("localhost", 5000))
     mock_open.assert_called_once_with(
         '/tmp/iib_test_purpose_5000.lock',
-        os.O_CREAT | os.O_EXCL | os.O_RDWR,
+        os.O_CREAT | os.O_EXCL,
     )
+    # 42 is mocked FD from mock_open
+    mock_close.assert_called_once_with('42')
     assert pfl.locked
 
 
@@ -89,15 +92,16 @@ def test_lock_acquire_port_already_iib_locked(mock_tempdir, mock_socket, mock_op
     mock_socket.return_value.bind.assert_called_once_with(("localhost", 5000))
     mock_open.assert_called_once_with(
         '/tmp/iib_test_purpose_5000.lock',
-        os.O_CREAT | os.O_EXCL | os.O_RDWR,
+        os.O_CREAT | os.O_EXCL,
     )
     assert pfl.locked is False
 
 
+@mock.patch('os.close')
 @mock.patch('os.open')
 @mock.patch('socket.socket')
 @mock.patch('tempfile.gettempdir', return_value='/tmp')
-def test_lock_acquire_port_in_use(mock_tempdir, mock_socket, mock_open):
+def test_lock_acquire_port_in_use(mock_tempdir, mock_socket, mock_open, mock_close):
     """Test unsuccesfull lock, due to other service using this port."""
     mock_socket.return_value.bind.side_effect = socket.error
     pfl = PortFileLock("test_purpose", 5000)
@@ -109,10 +113,11 @@ def test_lock_acquire_port_in_use(mock_tempdir, mock_socket, mock_open):
 
 
 @mock.patch('os.remove')
+@mock.patch('os.close')
 @mock.patch('os.open')
 @mock.patch('socket.socket')
 @mock.patch('tempfile.gettempdir', return_value='/tmp')
-def test_unlock(mock_tempdir, mock_socket, mock_open, mock_remove):
+def test_unlock(mock_tempdir, mock_socket, mock_open, mock_close, mock_remove):
     """Test PortFileLock unlock method."""
     pfl = PortFileLock("test_purpose", 5000)
 
@@ -165,14 +170,22 @@ def test_port_file_locks_generator_no_ports_available():
 @pytest.mark.parametrize(
     'expected_ports, expected_purposes, opm_version',
     [
-        ([[5001, 6001], [5002, 6002]], ['opm_port', 'pprof_port'], '0.9.0'),
+        ([[5001, 6001], [5002, 6002]], ['opm_port', 'opm_pprof_port'], '0.9.0'),
         ([[5001], [5002]], ['opm_port'], '0.8.0'),
     ],
 )
-def test_get_opm_port_stacks(opm_version, expected_purposes, expected_ports, mock_config):
+@mock.patch('iib.workers.tasks.opm_operations.Opm.get_opm_version_number')
+def test_get_opm_port_stacks(
+    mock_opm_gov,
+    opm_version,
+    expected_purposes,
+    expected_ports,
+    mock_config,
+):
     """Test get_opm_port_stacks() is working correctly considering OPM opm_version attribute."""
-    Opm.opm_version = opm_version
-    ports, purposes = get_opm_port_stacks()
+    mock_opm_gov.return_value = opm_version
+
+    ports, purposes = get_opm_port_stacks(['opm_port', 'opm_pprof_port'])
     assert sorted(ports) == expected_ports
     assert purposes == expected_purposes
 
@@ -181,7 +194,7 @@ def test_get_opm_port_stacks(opm_version, expected_purposes, expected_ports, moc
     'iib.workers.tasks.opm_operations.get_opm_port_stacks',
     return_value=(
         [[5001, 6001], [5002, 6002]],
-        ['opm_port', 'pprof_port'],
+        ['opm_port', 'opm_pprof_port'],
     ),
 )
 @mock.patch('iib.workers.tasks.opm_operations.PortFileLock.lock_acquire')
@@ -189,11 +202,11 @@ def test_get_opm_port_stacks(opm_version, expected_purposes, expected_ports, moc
 def test_create_port_filelocks_success(mock_pfl_u, mock_pfl_la, mock_gops):
     """Test the create_port_filelocks decorator when port locks are successfully acquired."""
 
-    @create_port_filelocks
-    def test_func(argument, opm_port, pprof_port=None):
+    @create_port_filelocks(port_purposes=['opm_port', 'opm_pprof_port'])
+    def test_func(argument, opm_port, opm_pprof_port=None):
         assert argument == 'test'
         assert opm_port == 5001
-        assert pprof_port == 6001
+        assert opm_pprof_port == 6001
 
     test_func(argument="test")
 
@@ -205,7 +218,7 @@ def test_create_port_filelocks_success(mock_pfl_u, mock_pfl_la, mock_gops):
     'iib.workers.tasks.opm_operations.get_opm_port_stacks',
     return_value=(
         [[5001, 6001], [5002, 6002], [5003, 6003]],
-        ['opm_port', 'pprof_port'],
+        ['opm_port', 'opm_pprof_port'],
     ),
 )
 @mock.patch(
@@ -216,11 +229,11 @@ def test_create_port_filelocks_success(mock_pfl_u, mock_pfl_la, mock_gops):
 def test_create_port_filelocks_retry(mock_pfl_u, mock_pfl_la, mock_gmock_gops):
     """Test the create_port_filelocks decorator retries when a port is already in use."""
 
-    @create_port_filelocks
-    def test_func(argument, opm_port, pprof_port=None):
+    @create_port_filelocks(port_purposes=['opm_port', 'opm_pprof_port'])
+    def test_func(argument, opm_port, opm_pprof_port=None):
         assert argument == 'test'
         assert opm_port == 5003
-        assert pprof_port == 6003
+        assert opm_pprof_port == 6003
 
     test_func(argument="test")
 
@@ -232,7 +245,7 @@ def test_create_port_filelocks_retry(mock_pfl_u, mock_pfl_la, mock_gmock_gops):
     'iib.workers.tasks.opm_operations.get_opm_port_stacks',
     return_value=(
         [[5001, 6001]],
-        ['opm_port', 'pprof_port'],
+        ['opm_port', 'opm_pprof_port'],
     ),
 )
 @mock.patch(
@@ -244,11 +257,11 @@ def test_create_port_filelocks_failure(mock_pfl_u, mock_pfl_la, mock_gops):
     """Test the create_port_filelocks decorator when whole port stack is already in use."""
     test_argument = "test"
 
-    @create_port_filelocks
-    def test_func(argument, opm_port, pprof_port=None):
+    @create_port_filelocks(port_purposes=['opm_port', 'opm_pprof_port'])
+    def test_func(argument, opm_port, opm_pprof_port=None):
         assert argument == test_argument
         assert opm_port == 5001
-        assert pprof_port == 6001
+        assert opm_pprof_port == 6001
 
     with pytest.raises(IIBError, match="No free port has been found after 1 attempts."):
         test_func(argument=test_argument)
@@ -262,7 +275,7 @@ def test_create_port_filelocks_failure(mock_pfl_u, mock_pfl_la, mock_gops):
     'iib.workers.tasks.opm_operations.get_opm_port_stacks',
     return_value=(
         [[5001, 6001], [5002, 6002]],
-        ['opm_port', 'pprof_port'],
+        ['opm_port', 'opm_pprof_port'],
     ),
 )
 @mock.patch('iib.workers.tasks.opm_operations.PortFileLock.lock_acquire')
@@ -307,7 +320,7 @@ def test_opm_serve_from_index(
     """
     mock_gops.return_value = (
         [[5001, 6001], [5002, 6002], [5003, 6003]],
-        ['opm_port', 'pprof_port'],
+        ['opm_port', 'opm_pprof_port'],
     )
     my_mock = mock.MagicMock()
     mock_ifbc.return_value = is_fbc
@@ -768,7 +781,23 @@ def test_deprecate_bundles_fbc(
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.opm_operations.os.path.isdir', return_value=True)
-def test_generate_cache_locally(mock_isdir, mock_cmd, tmpdir):
+@mock.patch(
+    'iib.workers.tasks.opm_operations.get_opm_port_stacks',
+    return_value=(
+        [[6001], [6002]],
+        ['opm_pprof_port'],
+    ),
+)
+@mock.patch('iib.workers.tasks.opm_operations.PortFileLock.lock_acquire')
+@mock.patch('iib.workers.tasks.opm_operations.PortFileLock.unlock')
+def test_generate_cache_locally(
+    mock_pfl_u,
+    mock_pfl_la,
+    mock_gops,
+    mock_isdir,
+    mock_cmd,
+    tmpdir,
+):
     fbc_dir = os.path.join(tmpdir, 'catalogs')
     local_cache_path = os.path.join(tmpdir, 'cache')
     cmd = [
@@ -783,13 +812,29 @@ def test_generate_cache_locally(mock_isdir, mock_cmd, tmpdir):
 
     opm_operations.generate_cache_locally(tmpdir, fbc_dir, local_cache_path)
 
+    cmd.extend(['--pprof-addr', '127.0.0.1:6001'])
+
     mock_cmd.assert_called_once_with(
-        cmd, {'cwd': tmpdir}, exc_msg='Failed to generate cache for file-based catalog'
+        cmd,
+        {'cwd': tmpdir},
+        exc_msg='Failed to generate cache for file-based catalog',
     )
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_generate_cache_locally_failed(mock_cmd, tmpdir):
+@mock.patch(
+    'iib.workers.tasks.opm_operations.get_opm_port_stacks',
+    return_value=([None], []),
+)
+@mock.patch('iib.workers.tasks.opm_operations.PortFileLock.lock_acquire')
+@mock.patch('iib.workers.tasks.opm_operations.PortFileLock.unlock')
+def test_generate_cache_locally_failed(
+    mock_pfl_u,
+    mock_pfl_la,
+    mock_gops,
+    mock_cmd,
+    tmpdir,
+):
     fbc_dir = os.path.join(tmpdir, 'catalogs')
     local_cache_path = os.path.join(tmpdir, 'cache')
     cmd = [
@@ -1100,3 +1145,21 @@ def test_set_opm_version_default(mock_gil, from_index, index_version):
     assert opm_operations.Opm.opm_version == get_worker_config().get('iib_default_opm')
     if from_index is None:
         assert mock_gil.call_count == 0
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_get_opm_version_number(mock_run_cmd):
+    """Test opm version command result parsing."""
+    mock_run_cmd.return_value = 'version.Version{OpmVersion:"v1.26.4", GoOs:"linux"}'
+    assert Opm.get_opm_version_number() == '1.26.4'
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_get_opm_version_number_fail(mock_run_cmd):
+    """Test opm version command result parsing."""
+    mock_run_cmd.return_value = 'OPM: command not found...'
+    with pytest.raises(
+        IIBError,
+        match='Opm version not found in the output of \"OPM version\" command',
+    ):
+        Opm.get_opm_version_number()
