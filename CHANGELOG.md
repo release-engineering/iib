@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+## 8.7.6
+* Fix bug introduced by e1393a2 commit by @xDaile in https://github.com/release-engineering/iib/pull/689
+
 ## 8.7.5
 * Fix buildah retry mechanism by @xDaile in https://github.com/release-engineering/iib/pull/681
 * Allow non tagged index image in IIB_GRAPH_MODE_INDEX_ALLOW_LIST by @xDaile in https://github.com/release-engineering/iib/pull/661
