@@ -14,7 +14,7 @@ from iib.workers.tasks.opm_operations import (
     PortFileLock,
     create_port_filelocks,
     get_opm_port_stacks,
-    port_file_locks_generator,
+    PortFileLockGenerator,
 )
 
 
@@ -135,36 +135,42 @@ def test_unlock(mock_tempdir, mock_socket, mock_open, mock_close, mock_remove):
 
 
 @mock.patch('iib.workers.tasks.opm_operations.PortFileLock', autospec=True)
-def test_port_file_locks_generator_success(mock_pfl):
+def test_PortFileLockGenerator_success(mock_pfl):
     """Test port_file_locks_generator()."""
     port_stacks = [[5000, 6000], [5001, 6001]]
     port_purposes = ['purpose1', 'purpose2']
 
-    generator = port_file_locks_generator(port_stacks, port_purposes)
+    port_file_locks_generator = PortFileLockGenerator(
+        port_stacks=port_stacks,
+        port_purposes=port_purposes,
+    )
 
     # First generation
-    locks = next(generator)
+    locks = port_file_locks_generator.get_new_locks()
     assert len(locks) == 2
     mock_pfl.assert_any_call(purpose='purpose1', port=5000)
     mock_pfl.assert_any_call(purpose='purpose2', port=6000)
 
     # Second generation
-    locks = next(generator)
+    locks = port_file_locks_generator.get_new_locks()
     assert len(locks) == 2
     mock_pfl.assert_any_call(purpose='purpose1', port=5001)
     mock_pfl.assert_any_call(purpose='purpose2', port=6001)
 
 
-def test_port_file_locks_generator_no_ports_available():
+def test_PortFileLockGenerator_no_ports_available():
     """Test port_file_locks_generator() exception."""
     port_stacks = []
     port_purposes = ['purpose1', 'purpose2']
 
-    generator = port_file_locks_generator(port_stacks, port_purposes)
+    port_file_locks_generator = PortFileLockGenerator(
+        port_stacks=port_stacks,
+        port_purposes=port_purposes,
+    )
 
     err_msg = 'No free port has been found after 0 attempts.'
     with pytest.raises(IIBError, match=err_msg):
-        next(generator)
+        port_file_locks_generator.get_new_locks()
 
 
 @pytest.mark.parametrize(
