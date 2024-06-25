@@ -1,4 +1,5 @@
 from functools import wraps
+from copy import deepcopy
 import logging
 import os
 import random
@@ -8,7 +9,7 @@ import socket
 import subprocess
 import tempfile
 import time
-from typing import Callable, Generator, List, Optional, Set, Tuple, Union
+from typing import Callable, List, Optional, Set, Tuple, Union
 from packaging.version import Version
 
 from tenacity import (
@@ -41,6 +42,7 @@ class PortFileLock:
         :param str purpose: Purpose of the lock
         :param int port: The port number to be locked
         """
+        log.debug("Initialize PortFileLock with purpose: %s, port: %s", purpose, str(port))
         self.purpose = purpose
         self.port = port
         self.locked = False
@@ -107,41 +109,48 @@ class PortFileLock:
             raise IIBError(err_msg)
 
 
-def port_file_locks_generator(
-    port_stacks: List[List[int]],
-    port_purposes: List[str],
-) -> Generator[List[PortFileLock], None, None]:
-    """
-    Generate PortFileLock from port_stacks and port_purposes.
+class PortFileLockGenerator:
+    """A class that serves as a generator of PortFileLocks objects."""
 
-    Each item in the port_stacks list represents set of ports, from which list of PortFileLocks
-    will be generated.
+    def __init__(
+        self,
+        port_stacks: List[List[int]],
+        port_purposes: List[str],
+    ):
+        """
+        Initialize the PortFileLockGenerator with port stacks and port purposes.
 
-    :param list(list(int)) port_stacks: list with list of port numbers for one generated item
-    :param list(str) port_purposes: Strings representing port purposes
-    :return: Generator which yields list of PortFileLocks objects
-    :rtype: Generator(list(PortFileLock))
-    :raises: IIBError when all ports were already taken
-    """
-    num_of_attempts = len(port_stacks)
+        :param list(list(int)) port_stacks: List of lists containing port numbers for each attempt
+        :param list(str) port_purposes: List of strings representing port purposes
+        """
+        logging.debug("Initialized PortFileLockGenerator with port purposes: %s", port_purposes)
+        self.port_stacks = port_stacks
+        self.port_purposes = port_purposes
+        self.num_of_attempts = len(port_stacks)
 
-    # create port_lock_here
-    while port_stacks:
-        port_numbers = port_stacks.pop(0)
-        new_locks = [
-            PortFileLock(
-                purpose=port_purpose,
-                port=port_numbers[port_position],
-            )
-            for port_position, port_purpose in enumerate(port_purposes)
-        ]
-        yield new_locks
+    def get_new_locks(self) -> List[PortFileLock]:
+        """
+        Get the next set of PortFileLocks.
 
-    # The port stack is empty - we tried out all ports from allowed range
-    # therefore we will raise and IIB error
-    err_msg = f'No free port has been found after {num_of_attempts} attempts.'
-    log.error(err_msg)
-    raise IIBError(err_msg)
+        :return: List of PortFileLock objects
+        :rtype: list(PortFileLock)
+        :raises: IIBError when all ports were already taken
+        """
+        log.debug("get_new_locks with port_purposes: %s", self.port_purposes)
+        if self.port_stacks:
+            port_numbers = self.port_stacks.pop(0)
+            new_locks = [
+                PortFileLock(
+                    purpose=port_purpose,
+                    port=port_numbers[port_position],
+                )
+                for port_position, port_purpose in enumerate(self.port_purposes)
+            ]
+            return new_locks
+        else:
+            err_msg = f'No free port has been found after {self.num_of_attempts} attempts.'
+            logging.error(err_msg)
+            raise IIBError(err_msg)
 
 
 def get_opm_port_stacks(port_purposes: List[str]) -> Tuple[List[List[int]], List[str]]:
@@ -170,11 +179,13 @@ def get_opm_port_stacks(port_purposes: List[str]) -> Tuple[List[List[int]], List
     :return: tuple with port stacks and their purposes
     :rtype: tuple(list(list(int)), list(str))
     """
+    log.debug("get_opm_port_stacks called with port_purposes: %s", str(port_purposes))
     conf = get_worker_config()
 
     opm_version = Opm.get_opm_version_number()
     if Version(opm_version) < Version(conf.iib_opm_pprof_lock_required_min_version):
         port_purposes.remove('opm_pprof_port')
+        log.debug("get_opm_port_stacks Port purposes after remove method %s", port_purposes)
 
     # get port_ranges we need for the give opm_version
     port_ranges = [range(*conf.iib_opm_port_ranges[port_purpose]) for port_purpose in port_purposes]
@@ -208,23 +219,44 @@ def create_port_filelocks(port_purposes: List[str]) -> Callable:
         @wraps(func)
         def inner(*args, **kwargs):
 
+            log.debug("Initialized create_port_filelocks with port_purposes: %s", port_purposes)
+
             # If we do not have any ports to lock
             if len(port_purposes) == 0:
                 return func(*args, **kwargs)
 
-            port_stacks, port_purposes_updated = get_opm_port_stacks(port_purposes)
+            # we need to ensure, that we do not overwrite values in @create_port_filelocks decorator
+            port_purposes_copy = deepcopy(port_purposes)
+
+            # based on OPM version we remove opm_pprof_port from port_purposes
+            port_stacks, port_purposes_updated = get_opm_port_stacks(port_purposes_copy)
+
+            log.debug(
+                "create_port_filelocks port_purposes after get_opm_port_stascks %s",
+                port_purposes_updated,
+            )
+
+            # If there are no left port_purposes after get_opm_port_stacks()
+            if len(port_purposes_updated) == 0:
+                return func(*args, **kwargs)
+
             # Attempt to acquire the lock for each port in the range (shuffled order)
             lock_success = False
 
+            log.debug(
+                "PortFileLockGenerator initialized with port_stacks: %s, port_purposes: %s",
+                port_stacks,
+                port_purposes_updated,
+            )
             # Initialize the generator
-            gen = port_file_locks_generator(
+            port_file_lock_generator = PortFileLockGenerator(
                 port_stacks=port_stacks,
                 port_purposes=port_purposes_updated,
             )
 
             # Use the function to retrieve values from the generator
             while not lock_success:
-                new_locks = next(gen)
+                new_locks = port_file_lock_generator.get_new_locks()
                 currently_active_locks = []
 
                 try:
