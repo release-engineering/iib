@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.7
+* Update dependency requests to v2.32.2 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/690
+* Update dependency urllib3 to v1.26.19 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/692
+* Fix OPM port locking mechanism bug by @xDaile in https://github.com/release-engineering/iib/pull/695
 
 ## 8.7.6
 * Fix bug introduced by e1393a2 commit by @xDaile in https://github.com/release-engineering/iib/pull/689
