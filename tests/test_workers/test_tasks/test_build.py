@@ -1340,6 +1340,86 @@ def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si,
     ]
 
 
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_inspect_related_images_stage_bundle(
+    mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir
+):
+    bundles = ['quay.stage.io/repo/bundleimage@sha256:123']
+    request_id = 5
+    mock_gil.return_value = '/manifests'
+    mock_fd.return_value = mock.ANY
+    replace_registry_config = {'quay.io': 'quay.stage.io'}
+
+    mock_gbd.side_effect = [
+        {
+            'found_pullspecs': set(
+                [
+                    ImageName.parse('quay.io/related/image@sha256:1'),
+                    ImageName.parse('quay.io/related/image@sha256:2'),
+                    ImageName.parse('quay.io/related/image@sha256:3'),
+                ]
+            )
+        },
+    ]
+    build.inspect_related_images(
+        bundles=bundles, request_id=request_id, replace_registry_config=replace_registry_config
+    )
+
+    assert mock_si.call_count == 3
+    mock_si.assert_any_call('docker://quay.stage.io/related/image@sha256:1', '--raw')
+    assert mock_gbd.call_count == 1
+    assert mock_gil.call_args_list == [
+        mock.call(
+            'quay.stage.io/repo/bundleimage@sha256:123',
+            'operators.operatorframework.io.bundle.manifests.v1',
+        )
+    ]
+
+
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_inspect_related_images_stage_bundle_without_registry_replacement(
+    mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir
+):
+    bundles = ['quay.stage.io/repo/bundleimage@sha256:123']
+    request_id = 5
+    mock_gil.return_value = '/manifests'
+    mock_fd.return_value = mock.ANY
+    replace_registry_config = {'quaytest.io': 'quaytest.stage.io'}
+
+    mock_gbd.side_effect = [
+        {
+            'found_pullspecs': set(
+                [
+                    ImageName.parse('quay.io/related/image@sha256:1'),
+                    ImageName.parse('quay.io/related/image@sha256:2'),
+                    ImageName.parse('quay.io/related/image@sha256:3'),
+                ]
+            )
+        },
+    ]
+    build.inspect_related_images(
+        bundles=bundles, request_id=request_id, replace_registry_config=replace_registry_config
+    )
+
+    assert mock_si.call_count == 3
+    mock_si.assert_any_call('docker://quay.io/related/image@sha256:1', '--raw')
+    assert mock_gbd.call_count == 1
+    assert mock_gil.call_args_list == [
+        mock.call(
+            'quay.stage.io/repo/bundleimage@sha256:123',
+            'operators.operatorframework.io.bundle.manifests.v1',
+        )
+    ]
+
+
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
@@ -1411,4 +1491,4 @@ def test_handle_add_request_check_related_images_fail(
     mock_srs.assert_called_once()
     mock_grb.assert_called_once_with(bundles)
     mock_vl.assert_called_once()
-    mock_iri.assert_called_once_with(['some-bundle@sha256:123'], 3)
+    mock_iri.assert_called_once_with(['some-bundle@sha256:123'], 3, None)
