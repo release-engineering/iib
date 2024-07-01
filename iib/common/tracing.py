@@ -136,7 +136,7 @@ def instrument_tracing(
                         span_result = {'response': response, 'http_code': code}
                     else:
                         # If the returned result is not of type dict, create one
-                        span_result = {'result': result or 'success'}
+                        span_result = {'result': str(result) or 'success'}
                 except Exception as exc:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(exc)
