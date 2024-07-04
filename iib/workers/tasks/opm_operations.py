@@ -184,8 +184,9 @@ def get_opm_port_stacks(port_purposes: List[str]) -> Tuple[List[List[int]], List
 
     opm_version = Opm.get_opm_version_number()
     if Version(opm_version) < Version(conf.iib_opm_pprof_lock_required_min_version):
-        port_purposes.remove('opm_pprof_port')
-        log.debug("get_opm_port_stacks Port purposes after remove method %s", port_purposes)
+        if 'opm_pprof_port' in port_purposes:
+            port_purposes.remove('opm_pprof_port')
+            log.debug("get_opm_port_stacks Port purposes after remove method %s", port_purposes)
 
     # get port_ranges we need for the give opm_version
     port_ranges = [range(*conf.iib_opm_port_ranges[port_purpose]) for port_purpose in port_purposes]
