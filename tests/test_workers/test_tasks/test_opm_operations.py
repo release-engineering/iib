@@ -280,8 +280,8 @@ def test_create_port_filelocks_failure(mock_pfl_u, mock_pfl_la, mock_gops):
 @mock.patch(
     'iib.workers.tasks.opm_operations.get_opm_port_stacks',
     return_value=(
-        [[5001, 6001], [5002, 6002]],
-        ['opm_port', 'opm_pprof_port'],
+        [[5001], [5002]],
+        ['opm_port'],
     ),
 )
 @mock.patch('iib.workers.tasks.opm_operations.PortFileLock.lock_acquire')
@@ -291,8 +291,8 @@ def test_opm_registry_serve(mock_pfl_u, mock_pfl_la, mock_gops, mock_scap):
     port, _ = opm_operations.opm_registry_serve(db_path='some_path.db')
     assert port == 5001
     assert mock_scap.call_count == 1
-    assert mock_pfl_la.call_count == 2
-    assert mock_pfl_u.call_count == 2
+    assert mock_pfl_la.call_count == 1
+    assert mock_pfl_u.call_count == 1
 
 
 @pytest.mark.parametrize('is_fbc', (True, False))
@@ -325,8 +325,8 @@ def test_opm_serve_from_index(
     Also test create_port_filelocks working correctly with opm_serve_from_index.
     """
     mock_gops.return_value = (
-        [[5001, 6001], [5002, 6002], [5003, 6003]],
-        ['opm_port', 'opm_pprof_port'],
+        [[5001], [5002], [5003]],
+        ['opm_port'],
     )
     my_mock = mock.MagicMock()
     mock_ifbc.return_value = is_fbc
