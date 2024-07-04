@@ -36,6 +36,8 @@ from iib.workers.tasks.opm_operations import (
     opm_index_rm,
     deprecate_bundles,
     Opm,
+    verify_operators_exists,
+    opm_generate_dockerfile,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -1065,35 +1067,46 @@ def handle_rm_request(
 
         if image_is_fbc:
             log.info("Processing File-Based Catalog image")
-            fbc_dir, _ = opm_registry_rm_fbc(
-                base_dir=temp_dir,
-                from_index=from_index_resolved,
-                operators=operators,
-                binary_image=prebuild_info['binary_image'],
-                overwrite_from_index_token=overwrite_from_index_token,
-                generate_cache=False,
-            )
 
-            # rename `catalog` directory because we need to use this name for
-            # final destination of catalog (defined in Dockerfile)
-            catalog_from_db = os.path.join(temp_dir, 'from_db')
-            os.rename(fbc_dir, catalog_from_db)
-
+            # remove operator from /configs
             os.makedirs(os.path.join(temp_dir, 'from_index'), exist_ok=True)
-            # get catalog with opted-in operators
+            # get catalog with opted-in and non-opted-in operators
+            # store it in /<temp_dir>/from_index/configs
             with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
-            # remove operators from from_index file-based catalog
+            # remove operators from /<temp_dir>/from_index/configs if exists
             for operator in operators:
                 operator_path = os.path.join(catalog_from_index, operator)
                 if os.path.exists(operator_path):
                     log.debug('Removing operator from from_index FBC %s', operator_path)
                     shutil.rmtree(operator_path)
-            # overwrite data in `catalog_from_index` by data from `catalog_from_db`
-            # this adds changes on not opted in operators to final
-            merge_catalogs_dirs(catalog_from_db, catalog_from_index)
+
+            # if operator is not opted in, remove from db
+            operators_in_db, index_db_path = verify_operators_exists(
+                from_index=from_index,
+                base_dir=temp_dir,
+                operator_packages=operators,
+                overwrite_from_index_token=overwrite_from_index_token,
+            )
+
+            if operators_in_db:
+                fbc_dir, _ = opm_registry_rm_fbc(
+                    base_dir=temp_dir,
+                    from_index=from_index_resolved,
+                    operators=operators,
+                    index_db_path=index_db_path,
+                )
+
+                # rename `catalog` directory because we need to use this name for
+                # final destination of catalog (defined in Dockerfile)
+                catalog_from_db = os.path.join(temp_dir, 'from_db')
+                os.rename(fbc_dir, catalog_from_db)
+
+                # overwrite data in `catalog_from_index` by data from `catalog_from_db`
+                # this adds changes on not opted in operators to final
+                merge_catalogs_dirs(catalog_from_db, catalog_from_index)
 
             fbc_dir_path = os.path.join(temp_dir, 'catalog')
             # We need to regenerate file-based catalog because we merged changes
@@ -1101,6 +1114,14 @@ def handle_rm_request(
                 shutil.rmtree(fbc_dir_path)
             # move migrated catalog to correct location expected in Dockerfile
             shutil.move(catalog_from_index, fbc_dir_path)
+
+            opm_generate_dockerfile(
+                fbc_dir=fbc_dir_path,
+                base_dir=temp_dir,
+                index_db=index_db_path,
+                binary_image=prebuild_info['binary_image'],
+                dockerfile_name='index.Dockerfile',
+            )
 
             # Remove outdated cache before generating new one
             local_cache_path = os.path.join(temp_dir, 'cache')

@@ -964,9 +964,7 @@ def opm_registry_rm_fbc(
     base_dir: str,
     from_index: str,
     operators: List[str],
-    binary_image: str,
-    overwrite_from_index_token: Optional[str] = None,
-    generate_cache: bool = True,
+    index_db_path: str,
 ) -> Tuple[str, Optional[str]]:
     """
     Remove operator/s from a File Based Catalog index image.
@@ -989,25 +987,11 @@ def opm_registry_rm_fbc(
     :return: Returns paths to directories for containing file-based catalog and it's cache
     :rtype: str, str|None
     """
-    from iib.workers.tasks.utils import set_registry_token
+    log.info('Removing %s from %s index.db ', operators, from_index)
+    _opm_registry_rm(index_db_path=index_db_path, operators=operators, base_dir=base_dir)
 
-    log.info('Removing %s from a FBC Image %s', operators, from_index)
-    log.info('Using the existing database from %s', from_index)
-
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
-        index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
-
-    _opm_registry_rm(index_db_path, operators, base_dir)
     fbc_dir, cache_dir = opm_migrate(
-        index_db=index_db_path, base_dir=base_dir, generate_cache=generate_cache
-    )
-
-    opm_generate_dockerfile(
-        fbc_dir=fbc_dir,
-        base_dir=base_dir,
-        index_db=index_db_path,
-        binary_image=binary_image,
-        dockerfile_name='index.Dockerfile',
+        index_db=index_db_path, base_dir=base_dir, generate_cache=False
     )
 
     return fbc_dir, cache_dir
