@@ -358,11 +358,10 @@ def opm_serve(
     return result
 
 
-@create_port_filelocks(port_purposes=["opm_port", "opm_pprof_port"])
+@create_port_filelocks(port_purposes=["opm_port"])
 def opm_registry_serve(
     opm_port: int,
     db_path: str,
-    opm_pprof_port: Optional[int] = None,
 ) -> Tuple[int, subprocess.Popen]:
     """
     Locally start OPM registry service, which can be communicated with using gRPC queries.
@@ -389,9 +388,6 @@ def opm_registry_serve(
         '-t',
         '/dev/null',
     ]
-    if opm_pprof_port:
-        # by default opm uses the 127.0.0.1:6060
-        cmd.extend(["--pprof-addr", f"127.0.0.1:{str(opm_pprof_port)}"])
 
     cwd = os.path.dirname(db_path)
     result = (
