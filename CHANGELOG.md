@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.8
+* Fix OTEL issues when dealing with unsupported objects by @JAVGan in https://github.com/release-engineering/iib/pull/698
+* Fix opm registry serve command by @chandwanitulsi in https://github.com/release-engineering/iib/pull/700
+* Fix bug in port locking by @xDaile in https://github.com/release-engineering/iib/pull/702
+
 ## 8.7.7
 * Update dependency requests to v2.32.2 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/690
 * Update dependency urllib3 to v1.26.19 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/692
