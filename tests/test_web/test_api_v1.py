@@ -560,12 +560,13 @@ def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
     mock_smfsc.assert_not_called()
 
 
-@pytest.mark.parametrize('from_index', (None, 'some-common-index'))
+@pytest.mark.parametrize('from_index', (None, 'some-random-index:v4.14', 'some-common-index:v4.15'))
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundles_graph_update_mode_not_allowed(
     mock_smfsc, app, client, auth_env, db, from_index
 ):
-    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['some-unique-index']
+    graph_update_mode_list = ['some-unique-index', 'some-common-index:v1.14']
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = graph_update_mode_list
     data = {
         'binary_image': 'binary:image',
         'bundles': ['some:thing'],
@@ -578,10 +579,33 @@ def test_add_bundles_graph_update_mode_not_allowed(
     assert rv.status_code == 403
     error_msg = (
         '"graph_update_mode" can only be used on the'
-        ' following index image: [\'some-unique-index\']'
+        f' following index image: {graph_update_mode_list}'
     )
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
+
+
+@pytest.mark.parametrize('from_index', ('some-common-index:v4.15', 'another-common-index:v4.15'))
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+@mock.patch('iib.web.api_v1.handle_add_request')
+def test_add_bundles_graph_update_mode_allowed(
+    mock_har, mock_smfsc, app, client, auth_env, db, from_index
+):
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = [
+        'some-common-index',
+        'another-common-index:v4.15',
+    ]
+    data = {
+        'binary_image': 'binary:image',
+        'bundles': ['some:thing'],
+        'from_index': from_index,
+        'graph_update_mode': 'semver',
+        'overwrite_from_index': True,
+        'overwrite_from_index_token': "somettoken",
+    }
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
+    assert rv.status_code == 201
+    mock_har.apply_async.assert_called_once()
 
 
 @mock.patch('iib.web.api_v1.db.session')
@@ -798,7 +822,8 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
         'graph_update_mode',
     ),
     (
-        (False, None, ['some:thing'], None, None, 'semver'),
+        (False, None, ['some:thing'], None, None, None),
+        (False, None, ['some:thing'], 'some:thing', None, 'semver'),
         (False, None, [], 'some:thing', 'Prod', 'semver-skippatch'),
         (True, 'username:password', ['some:thing'], 'some:thing', 'StagE', 'replaces'),
         (True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
@@ -829,7 +854,6 @@ def test_add_bundle_success(
         'overwrite_from_index': overwrite_from_index,
         'overwrite_from_index_token': overwrite_from_index_token,
         'from_index': from_index,
-        'graph_update_mode': graph_update_mode,
     }
 
     expected_distribution_scope = None
@@ -840,6 +864,9 @@ def test_add_bundle_success(
 
     if bundles:
         data['bundles'] = bundles
+
+    if graph_update_mode:
+        data['graph_update_mode'] = graph_update_mode
 
     response_json = {
         'arches': [],
@@ -1939,7 +1966,7 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
 def test_merge_index_image_success(
     mock_smfsc, mock_merge, app, db, auth_env, client, distribution_scope
 ):
-    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['target_index:image']
     data = {
         'deprecation_list': ['some@sha256:bundle'],
         'binary_image': 'binary:image',
@@ -2002,7 +2029,7 @@ def test_merge_index_image_success(
 def test_merge_index_image_overwrite_token_redacted(
     mock_smfsc, mock_merge, app, auth_env, client, db
 ):
-    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['target_index:image']
     token = 'username:password'
     data = {
         'deprecation_list': ['some@sha256:bundle'],
@@ -2060,7 +2087,7 @@ def test_merge_index_image_custom_user_queue(
     overwrite_from_index,
     expected_queue,
 ):
-    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = 'target_index:image'
+    app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['target_index:image']
     app.config['IIB_USER_TO_QUEUE'] = user_to_queue
     data = {
         'deprecation_list': ['some@sha256:bundle'],

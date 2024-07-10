@@ -11,6 +11,7 @@ Usage:
           pass
 
 """
+import json
 import os
 import functools
 import getpass
@@ -20,6 +21,7 @@ from copy import deepcopy
 from typing import Any, Dict
 
 
+from flask import Response
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
@@ -128,9 +130,13 @@ def instrument_tracing(
                     result = func(*args, **kwargs)
                     if isinstance(result, dict):
                         span_result = normalize_data_for_span(result)
+                    elif isinstance(result, tuple) and isinstance(result[0], Response):
+                        response = json.dumps(result[0].json)
+                        code = result[1]
+                        span_result = {'response': response, 'http_code': code}
                     else:
                         # If the returned result is not of type dict, create one
-                        span_result = {'result': result or 'success'}
+                        span_result = {'result': str(result) or 'success'}
                 except Exception as exc:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(exc)
