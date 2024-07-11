@@ -620,25 +620,13 @@ def test_opm_registry_rm_fbc(
     mock_ghid.return_value = index_db_file
     mock_om.return_value = (fbc_dir, None)
 
-    opm_operations.opm_registry_rm_fbc(
-        tmpdir, from_index, operators, 'some:image', overwrite_from_index_token='some_token'
-    )
+    opm_operations.opm_registry_rm_fbc(tmpdir, from_index, operators, index_db_file)
 
     mock_orr.assert_called_once_with(
-        index_db_file,
-        operators,
-        tmpdir,
+        index_db_path=index_db_file, operators=operators, base_dir=tmpdir
     )
 
-    mock_srt.assert_called_once_with('some_token', 'some_index:latest', append=True)
-    mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir, generate_cache=True)
-    mock_ogd.assert_called_once_with(
-        fbc_dir=fbc_dir,
-        base_dir=tmpdir,
-        index_db=index_db_file,
-        binary_image='some:image',
-        dockerfile_name='index.Dockerfile',
-    )
+    mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir, generate_cache=False)
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
