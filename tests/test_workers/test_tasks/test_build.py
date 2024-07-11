@@ -1041,6 +1041,10 @@ def test_handle_rm_request(
     assert mock_srs.call_args[0][1] == 'complete'
 
 
+@mock.patch('iib.workers.tasks.build.opm_validate')
+@mock.patch('iib.workers.tasks.build.get_bundle_json')
+@mock.patch('iib.workers.tasks.build.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
@@ -1060,10 +1064,12 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.get_catalog_dir')
 @mock.patch('iib.workers.tasks.build.merge_catalogs_dirs')
 @mock.patch('iib.workers.tasks.build.generate_cache_locally')
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.build.opm_generate_dockerfile')
 @mock.patch('os.rename')
 @mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.get_opm_version_number')
 def test_handle_rm_request_fbc(
+    mock_govn,
     mock_sov,
     mock_or,
     mock_ogd,
@@ -1086,7 +1092,13 @@ def test_handle_rm_request_fbc(
     mock_uiibs,
     mock_prfb,
     mock_c,
+    mock_scap,
+    mock_voe,
+    mock_gbj,
+    mock_opmvalidate,
 ):
+    mock_voe.return_value = ['some-operator'], '/tmp/xyz/database/index.db'
+    mock_govn.return_value = '0.9.0'
     mock_iifbc.return_value = True
     from_index_resolved = 'from-index@sha256:bcdefg'
     mock_prfb.return_value = {
@@ -1125,6 +1137,7 @@ def test_handle_rm_request_fbc(
     mock_gcl.assert_called_once()
     mock_mcd.assert_called_once_with(mock.ANY, '/some/path')
     mock_orrf.assert_called_once()
+    mock_opmvalidate.assert_called_once()
     assert mock_alti.call_count == 2
     assert mock_bi.call_count == 2
     assert mock_pi.call_count == 2

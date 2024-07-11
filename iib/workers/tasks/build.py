@@ -38,6 +38,7 @@ from iib.workers.tasks.opm_operations import (
     Opm,
     verify_operators_exists,
     opm_generate_dockerfile,
+    opm_validate,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -1114,6 +1115,9 @@ def handle_rm_request(
                 shutil.rmtree(fbc_dir_path)
             # move migrated catalog to correct location expected in Dockerfile
             shutil.move(catalog_from_index, fbc_dir_path)
+
+            # validate fbc config
+            opm_validate(fbc_dir_path)
 
             opm_generate_dockerfile(
                 fbc_dir=fbc_dir_path,
