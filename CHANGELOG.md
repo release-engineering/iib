@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.7.9
+* replace related images registry for stage bundles by @chandwanitulsi in https://github.com/release-engineering/iib/pull/693
+* Update dependency certifi to v2024.7.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/704
+* Update rm endpoint to remove fbc opted in operators by @chandwanitulsi in https://github.com/release-engineering/iib/pull/699
+
 ## 8.7.8
 * Fix OTEL issues when dealing with unsupported objects by @JAVGan in https://github.com/release-engineering/iib/pull/698
 * Fix opm registry serve command by @chandwanitulsi in https://github.com/release-engineering/iib/pull/700
