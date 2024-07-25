@@ -300,7 +300,7 @@ def test_get_builds_invalid_type(app, client, db):
         'error': (
             'wrong-type is not a valid build request type. Valid request_types are: '
             'generic, add, rm, regenerate-bundle, merge-index-image, '
-            'create-empty-index, recursive-related-bundles, fbc-operations'
+            'create-empty-index, recursive-related-bundles, fbc-operations, add-deprecations'
         )
     }
 
@@ -2853,3 +2853,49 @@ def test_fbc_operations(
         assert 'The "binary_image" value must be a non-empty string' == rv.json['error']
         mock_smfc.assert_not_called()
         mock_hfor.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'data, error_msg',
+    (
+        (
+            {'from_index': 'pull:spec', 'binary_image': 'binary:image'},
+            '"operator_package" should be a non-empty string',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'operator_package': 'my-package',
+            },
+            '"deprecation_schema" should be a non-empty string',
+        ),
+        (
+            {
+                'from_index': 'pull:spec',
+                'binary_image': 'binary:image',
+                'operator_package': 'my-package',
+                'deprecation_schema': '{invalid_yaml',
+            },
+            '"deprecation_schema" string should be valid YAML',
+        ),
+    ),
+)
+@mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
+def test_add_deprecations_invalid_params_format(mock_smfsc, db, auth_env, client, data, error_msg):
+    rv = client.post(f'/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
+    assert rv.status_code == 400
+    assert error_msg == rv.json['error']
+    mock_smfsc.assert_not_called()
+
+
+def test_add_deprecations_success(db, auth_env, client):
+    data = {
+        'from_index': 'pull:spec',
+        'binary_image': 'binary:image',
+        'operator_package': 'my-package',
+        'deprecation_schema': 'valid_yaml',
+    }
+    rv = client.post(f'/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
+    # TODO: Change this status code to 201 once the endpoint functionality is implemented
+    assert rv.status_code == 501

@@ -82,6 +82,7 @@ def test_get_state_names():
 def test_get_type_names():
     assert models.RequestTypeMapping.get_names() == [
         'add',
+        'add_deprecations',
         'create_empty_index',
         'fbc_operations',
         'generic',
