@@ -25,6 +25,7 @@ from iib.web.models import (
     Operator,
     Request,
     RequestAdd,
+    RequestAddDeprecations,
     RequestFbcOperations,
     RequestMergeIndexImage,
     RequestRecursiveRelatedBundles,
@@ -53,6 +54,7 @@ from iib.workers.tasks.build_merge_index_image import handle_merge_request
 from iib.workers.tasks.build_create_empty_index import handle_create_empty_index_request
 from iib.workers.tasks.general import failed_request_callback
 from iib.web.iib_static_types import (
+    AddDeprecationRequestPayload,
     AddRequestPayload,
     AddRmBatchPayload,
     CreateEmptyIndexPayload,
@@ -1321,3 +1323,27 @@ def fbc_operations() -> Tuple[flask.Response, int]:
 
     flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
     return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/add-deprecations', methods=['POST'])
+@login_required
+@instrument_tracing(span_name="web.api_v1.add_deprecations")
+def add_deprecations() -> Tuple[flask.Response, int]:
+    """
+    Submit a request to add operator deprecations to an index image.
+
+    :rtype: flask.Response
+    :raise ValidationError: if required parameters are not supplied
+    """
+    payload: AddDeprecationRequestPayload = cast(
+        AddDeprecationRequestPayload, flask.request.get_json()
+    )
+    if not isinstance(payload, dict):
+        raise ValidationError('The input data must be a JSON object')
+
+    request = RequestAddDeprecations.from_json(payload)
+    db.session.add(request)
+    db.session.commit()
+
+    flask.current_app.logger.debug('Successfully validated request %d', request.id)
+    return flask.jsonify({'msg': 'This API endpoint hasn not been implemented yet'}), 501

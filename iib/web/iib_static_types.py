@@ -40,6 +40,7 @@ class RelatedBundlesMetadata(TypedDict):
 # try inheritance from other payloads
 
 PayloadTags = Literal[
+    'AddDeprecationRequestPayload',
     'AddRequestPayload',
     'RmRequestPayload',
     'RegenerateBundlePayload',
@@ -63,12 +64,14 @@ PossiblePayloadParameters = Sequence[
         'cnr_token',
         'check_related_images',
         'deprecation_list',
+        'deprecation_schema',
         'distribution_scope',
         'force_backport',
         'from_bundle_image',
         'from_index',
         'graph_update_mode',
         'labels',
+        'operator_package',
         'operators',
         'organization',
         'output_fbc',
@@ -81,6 +84,17 @@ PossiblePayloadParameters = Sequence[
         'user',
     ]
 ]
+
+
+class AddDeprecationRequestPayload(TypedDict):
+    """Data structure of the request to /builds/add-deprecations API endpoint."""
+
+    binary_image: NotRequired[str]
+    deprecation_schema: str
+    from_index: str
+    operator_package: str
+    overwrite_from_index: NotRequired[bool]
+    overwrite_from_index_token: NotRequired[str]
 
 
 class AddRequestPayload(TypedDict):
@@ -226,6 +240,7 @@ class RequestPayload(TypedDict):
 
 
 PayloadTypesUnion = Union[
+    AddDeprecationRequestPayload,
     AddRequestPayload,
     CreateEmptyIndexPayload,
     FbcOperationRequestPayload,

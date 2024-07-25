@@ -10,6 +10,7 @@ from abc import abstractmethod
 from flask import current_app, url_for
 from flask_login import UserMixin, current_user
 from flask_sqlalchemy.model import DefaultMeta
+import ruamel.yaml
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import joinedload, load_only, Mapped, validates
@@ -21,6 +22,7 @@ from iib.web import db
 
 
 from iib.web.iib_static_types import (
+    AddDeprecationRequestPayload,
     AddRequestPayload,
     AddRequestResponse,
     AddRmBatchPayload,
@@ -43,6 +45,17 @@ from iib.web.iib_static_types import (
     FbcOperationRequestPayload,
     FbcOperationRequestResponse,
 )
+
+yaml = ruamel.yaml.YAML()
+# IMPORTANT: ruamel will introduce a line break if the yaml line is longer than yaml.width.
+# Unfortunately, this causes issues for JSON values nested within a YAML file, e.g.
+# metadata.annotations."alm-examples" in a CSV file.
+# The default value is 80. Set it to a more forgiving higher number to avoid issues
+yaml.width = 200
+# ruamel will also cause issues when normalizing a YAML object that contains
+# a nested JSON object when it does not preserve quotes. Thus, it produces
+# invalid YAML. Let's prevent this from happening at all.
+yaml.preserve_quotes = True
 
 
 class BaseEnum(Enum):
@@ -103,6 +116,7 @@ class RequestTypeMapping(BaseEnum):
     create_empty_index: int = 5
     recursive_related_bundles: int = 6
     fbc_operations: int = 7
+    add_deprecations: int = 8
 
     @classmethod
     def pretty(cls, num: int) -> str:
@@ -2199,4 +2213,160 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
         rv.add('fbc_fragment_resolved')
+        return rv
+
+
+class RequestAddDeprecationsOperator(db.Model):
+    """An association table between add-deprecations requests and the operator they contain."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_add_deprecations_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request_add_deprecations.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    operator_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('operator.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (db.UniqueConstraint('request_add_deprecations_id', 'operator_id'),)
+
+
+class RequestAddDeprecationsDeprecationSchema(db.Model):
+    """An association table between add-deprecations requests and the deprecation schema."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_add_deprecations_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request_add_deprecations.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    deprecation_schema_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('deprecation_schema.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (db.UniqueConstraint('request_add_deprecations_id', 'deprecation_schema_id'),)
+
+
+class DeprecationSchema(db.Model):
+    """A DeprecationSchema that has been handled by IIB."""
+
+    id: Mapped[int] = db.mapped_column(primary_key=True)
+    schema: Mapped[str] = db.mapped_column('schema', db.Text, index=True, unique=True)
+
+    def __repr__(self) -> str:
+        return '<Deprecation schema={0!r}>'.format(self.schema)
+
+    @classmethod
+    def get_or_create(cls, deprecation_schema: str) -> DeprecationSchema:
+        """
+        Get the deprecation schema from the database and create it if it doesn't exist.
+
+        :param str deprecation_schema: the deprecation schema for an operator
+        :return: a DeprecationSchema object based on the input name; the DeprecationSchema object
+            will be added to the database session, but not committed, if it was created
+        :rtype: DeprecationSchema
+        """
+        # cls.query triggers an auto-flush of the session by default. So if there are
+        # multiple requests with same parameters submitted to IIB, call to query pre-maturely
+        # flushes the contents of the session not allowing our handlers to resolve conflicts.
+        # https://docs.sqlalchemy.org/en/20/orm/session_api.html#sqlalchemy.orm.Session.params.autoflush
+        with db.session.no_autoflush:
+            schema = cls.query.filter_by(schema=deprecation_schema).first()
+        if not schema:
+            schema = DeprecationSchema(schema=deprecation_schema)
+            try:
+                # This is a SAVEPOINT so that the rest of the session is not rolled back when
+                # adding the image conflicts with an already existing row added by another request
+                # with similar pullspecs is submitted at the same time. When the context manager
+                # completes, the objects local to it are committed. If an error is raised, it
+                # rolls back objects local to it while keeping the parent session unaffected.
+                # https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#using-savepoint
+                with db.session.begin_nested():
+                    db.session.add(schema)
+            except sqlalchemy.exc.IntegrityError:
+                current_app.logger.info('Schema is already in database. "%s"', deprecation_schema)
+            schema = cls.query.filter_by(schema=deprecation_schema).first()
+
+        return schema
+
+
+class RequestAddDeprecations(Request, RequestIndexImageMixin):
+    """An "add-deprecations" index image build request."""
+
+    __tablename__ = 'request_add_deprecations'
+
+    id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request.id'), autoincrement=False, primary_key=True
+    )
+    operator_package: Mapped[Operator] = db.relationship(
+        'Operator', secondary=RequestAddDeprecationsOperator.__table__
+    )
+    deprecation_schema: Mapped[DeprecationSchema] = db.relationship(
+        'DeprecationSchema', secondary=RequestAddDeprecationsDeprecationSchema.__table__
+    )
+
+    __mapper_args__ = {
+        'polymorphic_identity': RequestTypeMapping.__members__['add_deprecations'].value
+    }
+
+    @classmethod
+    def from_json(  # type: ignore[override] # noqa: F821
+        cls,
+        kwargs: AddDeprecationRequestPayload,
+        batch: Optional[Batch] = None,
+    ) -> RequestAddDeprecations:
+        """
+        Handle JSON requests for the Add API endpoint.
+
+        :param dict kwargs: the JSON payload of the request.
+        :param Batch batch: the batch to specify with the request.
+        """
+        request_kwargs = deepcopy(kwargs)
+
+        _operator_package = request_kwargs.get('operator_package')
+        if not _operator_package or not isinstance(_operator_package, str):
+            raise ValidationError('"operator_package" should be a non-empty string')
+
+        _deprecation_schema = request_kwargs.get('deprecation_schema')
+        if not _deprecation_schema or not isinstance(_deprecation_schema, str):
+            raise ValidationError('"deprecation_schema" should be a non-empty string')
+        try:
+            yaml.load(_deprecation_schema)
+        except ruamel.yaml.YAMLError:
+            raise ValidationError('"deprecation_schema" string should be valid YAML')
+
+        # cast to more wider type, see _from_json method
+        cls._from_json(
+            cast(RequestPayload, request_kwargs),
+            additional_required_params=[
+                'deprecation_schema',
+                'from_index',
+                'operator_package',
+            ],
+            batch=batch,
+        )
+
+        request_kwargs['operator_package'] = Operator.get_or_create(name=_operator_package)
+        request_kwargs['deprecation_schema'] = DeprecationSchema.get_or_create(
+            deprecation_schema=_deprecation_schema
+        )
+
+        request = cls(**request_kwargs)
+        request.add_state('failed', 'The API endpoint has not been implemented yet')
+        return request
+
+    def get_mutable_keys(self) -> Set[str]:
+        """
+        Return the set of keys representing the attributes that can be modified.
+
+        :return: a set of key names
+        :rtype: set
+        """
+        rv = super().get_mutable_keys()
+        rv.update(self.get_index_image_mutable_keys())
         return rv
