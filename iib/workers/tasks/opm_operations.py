@@ -932,13 +932,17 @@ def opm_registry_add_fbc(
     )
 
 
-def _opm_registry_rm(index_db_path: str, operators: List[str], base_dir: str) -> None:
+def _opm_registry_rm(
+    index_db_path: str, operators: List[str], base_dir: str, permissive: bool = False
+) -> None:
     """
     Generate and run the opm command to remove operator package from index db provided.
 
     :param str index_db_path: path where the input index image is temporarily copied
     :param list operators: list of operator packages to be removed
     :param base_dir: the base directory to generate the database and index.Dockerfile in.
+    :param permissive: enables permissive mode for opm registry rm
+        WARNING: Do not enable permissive mode outside create-emtpy-index API.
     """
     from iib.workers.tasks.utils import run_cmd
 
@@ -951,6 +955,9 @@ def _opm_registry_rm(index_db_path: str, operators: List[str], base_dir: str) ->
         '--packages',
         ','.join(operators),
     ]
+    if permissive:
+        cmd.append('--permissive')
+
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to remove operators from the index image')
 
 
@@ -1034,7 +1041,16 @@ def opm_create_empty_fbc(
 
     # Remove all the operators from the index
     set_request_state(request_id, 'in_progress', 'Removing operators from index image')
-    _opm_registry_rm(index_db_path=index_db_path, operators=operators, base_dir=temp_dir)
+    try:
+        _opm_registry_rm(index_db_path=index_db_path, operators=operators, base_dir=temp_dir)
+    except IIBError as e:
+        if 'Error deleting packages from database' in str(e):
+            log.info('Enable permissive mode for opm registry rm', from_index)
+            _opm_registry_rm(
+                index_db_path=index_db_path, operators=operators, base_dir=temp_dir, permissive=True
+            )
+        else:
+            raise e
 
     # Migrate the index to FBC
     fbc_dir, _ = opm_migrate(index_db=index_db_path, base_dir=temp_dir)
