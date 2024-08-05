@@ -10,7 +10,6 @@ from abc import abstractmethod
 from flask import current_app, url_for
 from flask_login import UserMixin, current_user
 from flask_sqlalchemy.model import DefaultMeta
-import ruamel.yaml
 import sqlalchemy
 from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import joinedload, load_only, Mapped, validates
@@ -45,17 +44,6 @@ from iib.web.iib_static_types import (
     FbcOperationRequestPayload,
     FbcOperationRequestResponse,
 )
-
-yaml = ruamel.yaml.YAML()
-# IMPORTANT: ruamel will introduce a line break if the yaml line is longer than yaml.width.
-# Unfortunately, this causes issues for JSON values nested within a YAML file, e.g.
-# metadata.annotations."alm-examples" in a CSV file.
-# The default value is 80. Set it to a more forgiving higher number to avoid issues
-yaml.width = 200
-# ruamel will also cause issues when normalizing a YAML object that contains
-# a nested JSON object when it does not preserve quotes. Thus, it produces
-# invalid YAML. Let's prevent this from happening at all.
-yaml.preserve_quotes = True
 
 
 class BaseEnum(Enum):
@@ -2336,9 +2324,9 @@ class RequestAddDeprecations(Request, RequestIndexImageMixin):
         if not _deprecation_schema or not isinstance(_deprecation_schema, str):
             raise ValidationError('"deprecation_schema" should be a non-empty string')
         try:
-            yaml.load(_deprecation_schema)
-        except ruamel.yaml.YAMLError:
-            raise ValidationError('"deprecation_schema" string should be valid YAML')
+            json.loads(_deprecation_schema)
+        except ValueError:
+            raise ValidationError('"deprecation_schema" string should be valid JSON')
 
         # cast to more wider type, see _from_json method
         cls._from_json(
