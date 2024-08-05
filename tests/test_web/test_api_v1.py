@@ -2875,9 +2875,9 @@ def test_fbc_operations(
                 'from_index': 'pull:spec',
                 'binary_image': 'binary:image',
                 'operator_package': 'my-package',
-                'deprecation_schema': '{invalid_yaml',
+                'deprecation_schema': '{{{invalid_json',
             },
-            '"deprecation_schema" string should be valid YAML',
+            '"deprecation_schema" string should be valid JSON',
         ),
     ),
 )
@@ -2894,7 +2894,7 @@ def test_add_deprecations_success(db, auth_env, client):
         'from_index': 'pull:spec',
         'binary_image': 'binary:image',
         'operator_package': 'my-package',
-        'deprecation_schema': 'valid_yaml',
+        'deprecation_schema': '{"valid":"json"}',
     }
     rv = client.post(f'/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
     # TODO: Change this status code to 201 once the endpoint functionality is implemented
