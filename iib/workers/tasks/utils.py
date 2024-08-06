@@ -764,6 +764,11 @@ def run_cmd(
             match = _regex_reverse_search(regex, response)
             if match:
                 raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+            elif (
+                '"permissive mode disabled" error="error deleting packages from'
+                ' database: error removing operator package' in response.stderr
+            ):
+                raise IIBError("Error deleting packages from database")
         elif cmd[0] == 'buildah':
             # Check for HTTP 50X errors on buildah
             network_regexes = [
