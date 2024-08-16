@@ -394,6 +394,36 @@ class RequestConfigFBCOperation(RequestConfig):
         fbc_fragment: str
 
 
+class RequestConfigAddDeprecations(RequestConfig):
+    """
+    Request config for Add Deprecations operation.
+
+    :param str overwrite_from_index_token: the token used for overwriting the input
+        ``from_index`` image. This is required for
+        non-privileged users to use ``overwrite_from_index``.
+        The format of the token must be
+        in the format "user:password".
+    :param str from_index: the pull specification of the container image
+        containing the index that the index image build
+        will be based from.
+    :param str operator_package: the package for which deprecation information needs to be added
+    :param str deprecation_schema: the deprecation schema to add in index image
+    """
+
+    _attrs: List[str] = RequestConfig._attrs + [
+        "overwrite_from_index_token",
+        "from_index",
+        "operator_package",
+        "deprecation_schema",
+    ]
+    __slots__ = _attrs
+    if TYPE_CHECKING:
+        overwrite_from_index_token: str
+        from_index: str
+        operator_package: str
+        deprecation_schema: str
+
+
 def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List[str]) -> List[str]:
     """
     Get a list of to-be-deprecated bundles based on the data from the deprecation list.

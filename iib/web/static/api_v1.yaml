@@ -616,6 +616,79 @@ paths:
                   error:
                     type: string
                     example: You must be authenticated to perform this action
+  /builds/add-deprecations:
+    post:
+      description: >
+        Submit a request to add deprecation information to an index image
+      requestBody:
+        description: The request to add deprecation schema
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDeprecationsRequest'
+      security:
+        - Kerberos Authentication: []
+      responses:
+        '201':
+          description: The build request was initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddDeprecationsResponseVerbose'
+        '400':
+          description: The input is invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: '"operator_package" should be a non-empty string'
+        '401':
+          description: >
+            The user is not allowed to create a request with this input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: You must be authenticated to perform this action
+  '/builds/{id}/deprecation-schema':
+    get:
+      description: Return deprecation schema of the build request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the build request to retrieve the related bundles for
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The deprecation schema for the build request
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example:
+                  - '{"schema":"olm.deprecations","package":"test-operator"}'
+        '404':
+          description: >
+            The deprecation schema is not available for this request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: The requested resource was not found.
   /builds/merge-index-image:
     post:
       description: Submit a build request to merge index images
@@ -1601,6 +1674,109 @@ components:
             fbc_fragment_resolved:
               type: string
               example: "quay.io/iib/fbc-fragment@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e"
+    AddDeprecationsRequest:
+      type: object
+      properties:
+        binary_image:
+          type: string
+          description: >
+            The pull specification of the container image where the opm binary gets copied from.
+          example: 'quay.io/operator-framework/upstream-registry-builder:v1.26.3'
+        operator_package:
+          type: string
+          description: >
+            operator_package is required.
+          example: 'test-operator'
+        deprecation_schema:
+          type: string
+          description: >
+            Jsonified string of deprecation scheme to be added
+          example: '{"schema":"olm.deprecations","package":"test-operator"}'
+        from_index:
+          type: string
+          description: >
+            from_index is required.
+          example: 'quay.io/iib-stage/iib:4'
+        overwrite_from_index:
+          type: boolean
+          description: >
+            Overwrites the input from_index image with the built index image. This can only be
+            performed when overwrite_from_index_token is provided.
+          default: false
+        overwrite_from_index_token:
+          type: string
+          description: >
+            The token used for reading and overwriting the input from_index image. This is required
+            to use overwrite_from_index. The format of the token is in the format "user:password".
+          example: token
+        build_tags:
+          description: >
+              Extra tags applied to intermediate index image
+          type: array
+          items:
+            type: string
+          example: ["v4.5-10-08-2021"]
+      required:
+        - operator_package
+        - deprecation_schema
+        - from_index
+    AddDeprecationsResponse:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponse'
+        - type: object
+          properties:
+            binary_image:
+              type: string
+              example: 'quay.io/operator-framework/upstream-registry-builder:v1.5.9'
+            binary_image_resolved:
+              type: string
+              example: >-
+                quay.io/operator-framework/upstream-registry-builder@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            from_index:
+              type: string
+              example: 'quay.io/iib-stage/iib:4'
+            from_index_resolved:
+              type: string
+              example: >-
+                quay.io/iib-stage/iib@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e
+            index_image:
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            index_image_resolved:
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            internal_index_image_copy:
+              description: >
+                The pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib:5'
+            internal_index_image_copy_resolved:
+              description: >
+                The resolved pullspec of the internal copy of the index image built by IIB.
+                It will have the same value as index_image_resolved when overwrite_from_index
+                is not provided.
+              type: string
+              example: 'quay.io/iib-stage/iib@sha256:abcdef012356789'
+            build_tags:
+              description: >
+                Extra tags applied to intermediate index image
+              type: array
+              items:
+                type: string
+              example: ["v4.5-10-08-2021"]
+            request_type:
+              type: string
+              example: add-deprecations
+            operator_package:
+              type: string
+              description: operator_package of deprecation information.
+              example: 'test-operator'
+            deprecation_schema_url:
+              type: string
+              description: url to access deprecation schema
+              example: https://iib.domain.local/api/v1/get_deprecation_schema
     RequestUpdate:
       type: object
       properties:
@@ -1676,6 +1852,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/BaseResponseVerbose'
         - $ref: '#/components/schemas/FbcResponse'
+    AddDeprecationsResponseVerbose:
+      allOf:
+        - $ref: '#/components/schemas/BaseResponseVerbose'
+        - $ref: '#/components/schemas/AddDeprecationsResponse'
     StateHistory:
       type: object
       properties:
