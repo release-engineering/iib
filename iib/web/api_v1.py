@@ -8,6 +8,7 @@ import time
 import flask
 import kombu
 from flask_login import current_user, login_required
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import aliased, with_polymorphic
 from sqlalchemy.sql import text
 from sqlalchemy import or_
@@ -37,6 +38,8 @@ from iib.web.models import (
     RequestTypeMapping,
     RequestCreateEmptyIndex,
     User,
+    RequestAddDeprecationsDeprecationSchema,
+    DeprecationSchema,
 )
 from iib.web.s3_utils import get_object_from_s3_bucket
 from botocore.response import StreamingBody
@@ -45,6 +48,7 @@ from iib.workers.tasks.build import (
     handle_add_request,
     handle_rm_request,
 )
+from iib.workers.tasks.build_add_deprecations import handle_add_deprecations_request
 from iib.workers.tasks.build_fbc_operations import handle_fbc_operation_request
 from iib.workers.tasks.build_recursive_related_bundles import (
     handle_recursive_related_bundles_request,
@@ -1345,5 +1349,66 @@ def add_deprecations() -> Tuple[flask.Response, int]:
     db.session.add(request)
     db.session.commit()
 
-    flask.current_app.logger.debug('Successfully validated request %d', request.id)
-    return flask.jsonify({'msg': 'This API endpoint hasn not been implemented yet'}), 501
+    messaging.send_message_for_state_change(request, new_batch_msg=True)
+
+    overwrite_from_index = payload.get('overwrite_from_index', False)
+    from_index_pull_spec = request.from_index.pull_specification
+    celery_queue = _get_user_queue(
+        serial=overwrite_from_index, from_index_pull_spec=from_index_pull_spec
+    )
+
+    args = [
+        payload['deprecation_schema'],
+        payload['from_index'],
+        payload['operator_package'],
+        request.id,
+        payload.get('overwrite_from_index'),
+        payload.get('binary_image'),
+        payload.get('build_tags'),
+        flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+        payload.get('overwrite_from_index_token'),
+    ]
+    safe_args = _get_safe_args(args, payload)
+    error_callback = failed_request_callback.s(request.id)
+    try:
+        handle_add_deprecations_request.apply_async(
+            args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
+        )
+    except kombu.exceptions.OperationalError:
+        handle_broker_error(request)
+
+    flask.current_app.logger.debug('Successfully scheduled request %d', request.id)
+    return flask.jsonify(request.to_json()), 201
+
+
+@api_v1.route('/builds/<int:request_id>/deprecation-schema')
+@instrument_tracing(span_name="web.api_v1.get_deprecation_schema")
+def get_deprecation_schema(request_id: int) -> flask.Response:
+    """
+    Retrieve the deprecation-schema for add-deprecations request.
+
+    :param int request_id: the request ID that was passed in through the URL.
+    :rtype: flask.Response
+    :raise NotFound: if the request is not found or there are no deprecation_schema for the request
+    :raise ValidationError: if the request is of invalid type or is not completed yet
+    """
+    request = Request.query.get_or_404(request_id)
+    if request.type != RequestTypeMapping.add_deprecations.value:
+        raise ValidationError(
+            f'The request {request_id} is of type {request.type_name}. '
+            'This endpoint is only valid for requests of type add-deprecations.'
+        )
+
+    try:
+        deprecation_schema_for_request = (
+            DeprecationSchema.query.join(RequestAddDeprecationsDeprecationSchema)
+            .filter(
+                RequestAddDeprecationsDeprecationSchema.request_add_deprecations_id == request_id
+            )
+            .first()
+        )
+    except SQLAlchemyError as e:
+        flask.current_app.logger.exception(f'Retreiving deprecation-schema failed with {e}')
+        raise IIBError(f'Retrieving deprecation-schema for request {request_id} failed')
+
+    return flask.Response(deprecation_schema_for_request.schema, mimetype='application/json')
