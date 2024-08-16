@@ -90,6 +90,7 @@ class AddDeprecationRequestPayload(TypedDict):
     """Data structure of the request to /builds/add-deprecations API endpoint."""
 
     binary_image: NotRequired[str]
+    build_tags: NotRequired[List[str]]
     deprecation_schema: str
     from_index: str
     operator_package: str
@@ -445,6 +446,13 @@ class FbcOperationRequestResponse(BaseClassRequestResponse):
 
     fbc_fragment: str
     fbc_fragment_resolved: Optional[str]
+
+
+class AddDeprecationsRequestResponse(BaseClassRequestResponse):
+    """Datastructure of the response to request from /builds/add-deprecations API point."""
+
+    operator_package: str
+    deprecation_schema_url: str
 
 
 #  End of the RequestResponses Part
