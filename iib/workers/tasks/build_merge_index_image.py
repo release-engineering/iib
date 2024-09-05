@@ -12,7 +12,7 @@ from iib.workers.config import get_worker_config
 from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
     opm_migrate,
-    opm_generate_dockerfile,
+    create_dockerfile,
     deprecate_bundles_fbc,
     opm_index_add,
     deprecate_bundles,
@@ -368,7 +368,7 @@ def handle_merge_request(
                 if os.path.isfile(dockerfile_path):
                     log.info('Removing previously generated dockerfile.')
                     os.remove(dockerfile_path)
-                opm_generate_dockerfile(
+                create_dockerfile(
                     fbc_dir=fbc_dir,
                     base_dir=temp_dir,
                     index_db=index_db_file,

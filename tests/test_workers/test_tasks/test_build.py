@@ -1064,7 +1064,7 @@ def test_handle_rm_request(
 @mock.patch('iib.workers.tasks.build.get_catalog_dir')
 @mock.patch('iib.workers.tasks.build.merge_catalogs_dirs')
 @mock.patch('iib.workers.tasks.build.generate_cache_locally')
-@mock.patch('iib.workers.tasks.build.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.build.create_dockerfile')
 @mock.patch('os.rename')
 @mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
 @mock.patch('iib.workers.tasks.opm_operations.Opm.get_opm_version_number')
