@@ -416,64 +416,45 @@ def test_opm_migrate(
 
 
 @pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.opm_operations.insert_cache_into_dockerfile')
-def test_opm_generate_dockerfile(mock_icid, mock_run_cmd, tmpdir, dockerfile):
+def test_create_dockerfile(tmpdir, dockerfile):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
 
-    def create_dockerfile(*args, **kwargs):
-        with open(os.path.join(tmpdir, 'catalogs.Dockerfile'), 'a'):
-            pass
-
-    mock_run_cmd.side_effect = create_dockerfile
-
-    opm_operations.opm_generate_dockerfile(
+    opm_operations.create_dockerfile(
         fbc_dir, tmpdir, index_db_file, "some:image", dockerfile_name=dockerfile
     )
 
     df_name = dockerfile if dockerfile else f"{os.path.basename(fbc_dir)}.Dockerfile"
-
-    mock_run_cmd.assert_called_once_with(
-        ['opm', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
-        {'cwd': tmpdir},
-        exc_msg='Failed to generate Dockerfile for file-based catalog',
-    )
-
     df_path = os.path.join(tmpdir, df_name)
     with open(df_path, 'r') as f:
-        assert any(line.find('/var/lib/iib/_hidden/do.not.edit.db') != -1 for line in f.readlines())
+        dockerfile = f.read()
 
-    mock_icid.assert_called_once_with(df_path)
+    expected_dockerfile = textwrap.dedent(
+        '''\
+        FROM some:image
 
+        # Configure the entrypoint and command
+        ENTRYPOINT ["/bin/opm"]
+        CMD ["serve", "/configs", "--cache-dir=/tmp/cache"]
 
-@pytest.mark.parametrize("set_index_db_file", (False, True))
-@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_opm_generate_dockerfile_no_dockerfile(mock_run_cmd, tmpdir, set_index_db_file):
-    index_db_file = os.path.join(tmpdir, 'database/index.db') if set_index_db_file else None
-    fbc_dir = os.path.join(tmpdir, 'catalogs')
-    df_path = os.path.join(tmpdir, f"{os.path.basename(fbc_dir)}.Dockerfile")
+        # Copy declarative config root and cache into image
+        ADD catalog /configs
+        COPY --chown=1001:0 cache /tmp/cache
 
-    with pytest.raises(IIBError, match=f"Cannot find generated Dockerfile at {df_path}"):
-        opm_operations.opm_generate_dockerfile(
-            fbc_dir,
-            tmpdir,
-            index_db_file,
-            "some:image",
-        )
+        # Set DC-specific label for the location of the DC root directory
+        # in the image
+        LABEL operators.operatorframework.io.index.configs.v1=/configs
 
-    mock_run_cmd.assert_called_once_with(
-        ['opm-v1.26.8', 'generate', 'dockerfile', fbc_dir, '--binary-image', 'some:image'],
-        {'cwd': tmpdir},
-        exc_msg='Failed to generate Dockerfile for file-based catalog',
+        ADD database/index.db /var/lib/iib/_hidden/do.not.edit.db
+        '''
     )
+    assert dockerfile == expected_dockerfile
 
 
 @pytest.mark.parametrize("set_index_db_file", (False, True))
 @pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-def test_opm_generate_dockerfile_exist(mock_run_cmd, tmpdir, dockerfile, set_index_db_file):
+def test_create_dockerfile_exist(mock_run_cmd, tmpdir, dockerfile, set_index_db_file):
     index_db_file = os.path.join(tmpdir, 'database/index.db') if set_index_db_file else None
     fbc_dir = os.path.join(tmpdir, 'catalogs')
     df_name = f"{os.path.basename(fbc_dir)}.Dockerfile" if not dockerfile else dockerfile
@@ -483,7 +464,7 @@ def test_opm_generate_dockerfile_exist(mock_run_cmd, tmpdir, dockerfile, set_ind
     with open(df_path, 'a'):
         pass
 
-    opm_operations.opm_generate_dockerfile(
+    opm_operations.create_dockerfile(
         fbc_dir, tmpdir, index_db_file, "some:image", dockerfile_name=dockerfile
     )
 
@@ -541,7 +522,7 @@ def test_opm_registry_add(
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @pytest.mark.parametrize('graph_update_mode', (None, 'semver-skippatch'))
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
 @mock.patch('iib.workers.tasks.build._get_index_database')
@@ -600,7 +581,7 @@ def test_opm_registry_add_fbc(
 
 
 @pytest.mark.parametrize('operators', (['abc-operator', 'xyz-operator'], []))
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
@@ -647,7 +628,7 @@ def test_opm_registry_rm(mock_run_cmd):
 @pytest.mark.parametrize(
     'from_index, is_fbc', [('some-fbc-index:latest', True), ('some-sqlite-index:latest', False)]
 )
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
@@ -735,7 +716,7 @@ def test_opm_registry_deprecatetruncate(mock_run_cmd, bundles):
 
 @pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations.opm_registry_deprecatetruncate')
 @mock.patch('iib.workers.tasks.opm_operations._get_or_create_temp_index_db_file')
@@ -848,67 +829,11 @@ def test_generate_cache_locally_failed(
         )
 
 
-def test_insert_cache_into_dockerfile(tmpdir):
-    local_cache_dir = tmpdir.mkdir('cache')
-    generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
-
-    dockerfile_template = textwrap.dedent(
-        """\
-        ADD /configs
-        RUN something-else
-        {run_command}
-        COPY . .
-        """
-    )
-
-    generated_dockerfile.write(
-        dockerfile_template.format(
-            run_command=(
-                'RUN ["/bin/opm", "serve", "/configs", "--cache-dir=/tmp/cache", "--cache-only"]'
-            )
-        )
-    )
-
-    opm_operations.insert_cache_into_dockerfile(generated_dockerfile)
-
-    assert generated_dockerfile.read_text('utf-8') == dockerfile_template.format(
-        run_command='COPY --chown=1001:0 cache /tmp/cache'
-    )
-
-
-def test_insert_cache_into_dockerfile_no_matching_line(tmpdir):
-    local_cache_dir = tmpdir.mkdir('cache')
-    generated_dockerfile = local_cache_dir.join('catalog.Dockerfile')
-
-    dockerfile_template = textwrap.dedent(
-        """\
-        ADD /configs
-        RUN something-else
-        COPY . .
-        """
-    )
-
-    generated_dockerfile.write(dockerfile_template)
-    with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
-        opm_operations.insert_cache_into_dockerfile(generated_dockerfile)
-
-
-def test_verify_cache_insertion_edit_dockerfile():
-    input_list = ['ADD /configs', 'COPY . .' 'COPY --chown=1001:0 cache /tmp/cache']
-    opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
-
-
-def test_verify_cache_insertion_edit_dockerfile_failed():
-    input_list = ['ADD /configs', 'COPY . .' 'RUN something']
-    with pytest.raises(IIBError, match='Dockerfile edit to insert locally built cache failed.'):
-        opm_operations.verify_cache_insertion_edit_dockerfile(input_list)
-
-
 @pytest.mark.parametrize(
     'operators_exists, index_db_path',
     [(['test-operator'], "index_path"), ([], "index_path")],
 )
-@mock.patch('iib.workers.tasks.opm_operations.opm_generate_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')

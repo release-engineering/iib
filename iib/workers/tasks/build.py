@@ -37,7 +37,7 @@ from iib.workers.tasks.opm_operations import (
     deprecate_bundles,
     Opm,
     verify_operators_exists,
-    opm_generate_dockerfile,
+    create_dockerfile,
     opm_validate,
 )
 from iib.workers.tasks.utils import (
@@ -1119,7 +1119,7 @@ def handle_rm_request(
             # validate fbc config
             opm_validate(fbc_dir_path)
 
-            opm_generate_dockerfile(
+            create_dockerfile(
                 fbc_dir=fbc_dir_path,
                 base_dir=temp_dir,
                 index_db=index_db_path,
