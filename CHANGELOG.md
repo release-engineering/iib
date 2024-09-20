@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.8.0
+* Update dependency zipp to v3.19.1 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/705
+* Update rabbitmq Docker tag to v3.13 by @renovate in https://github.com/release-engineering/iib/pull/622
+* Update dependency SQLAlchemy to v2.0.31 by @renovate in https://github.com/release-engineering/iib/pull/696
+* Add add-deprecations API endpoint by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/707
+* Release s3 resources in a timely manner by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/680
+* Check deprecation_schema for valid JSON by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/712
+* create-emty-index - remove FBC opted in operators. by @lipoja in https://github.com/release-engineering/iib/pull/711
+* Update dependency cryptography to v43 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/714
+* Remove OPM usage for Dockerfile creation by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/716
+* Update dependency SQLAlchemy to v2.0.35 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/715
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/718
+* Update dependency werkzeug to v3.0.4 by @renovate in https://github.com/release-engineering/iib/pull/719
+
 ## 8.7.9
 * replace related images registry for stage bundles by @chandwanitulsi in https://github.com/release-engineering/iib/pull/693
 * Update dependency certifi to v2024.7.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/704
