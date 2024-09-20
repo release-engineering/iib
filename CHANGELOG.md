@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 8.8.0
+* Update dependency werkzeug to v3.0.4 renovate[bot]
+* Update requirements Jan Lipovský 
+* Update dependency SQLAlchemy to v2.0.35 red-hat-konflux[bot]
+* Remove OPM usage for Dockerfile creation Yashvardhan Nanavati
+* Update dependency cryptography to v43 [SECURITY] renovate[bot]
+* Remove fbc opted in operators. Jan Lipovský
+* Check deprecation_schema for valid JSON Yashvardhan Nanavati
+* Release s3 resources in a timely manner Yashvardhan Nanavati
+* Add add-deprecations API endpoint Yashvardhan Nanavati
+* Update dependency SQLAlchemy to v2.0.31 renovate[bot]
+* Update rabbitmq Docker tag to v3.13 renovate[bot]
+* Update dependency zipp to v3.19.1 [SECURITY] renovate[bot]
+
 ## 8.7.9
 * replace related images registry for stage bundles by @chandwanitulsi in https://github.com/release-engineering/iib/pull/693
 * Update dependency certifi to v2024.7.4 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/704
