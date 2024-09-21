@@ -27,7 +27,7 @@ def get_object_from_s3_bucket(
     try:
         s3_client = boto3.client('s3')
         response = s3_client.get_object(Bucket=bucket_name, Key=file_name)
-        return response['Body'].read()
+        return response['Body']
     except Exception as error:
         log.exception('Unable to fetch object %s from bucket %s: %s', file_name, bucket_name, error)
         return None
