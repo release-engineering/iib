@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 8.8.1
+* Fix fetching s3 bucket data by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/727
+
 ## 8.8.0
 * Update dependency zipp to v3.19.1 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/705
 * Update rabbitmq Docker tag to v3.13 by @renovate in https://github.com/release-engineering/iib/pull/622
