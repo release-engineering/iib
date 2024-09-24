@@ -438,7 +438,7 @@ def test_create_dockerfile(tmpdir, dockerfile):
         CMD ["serve", "/configs", "--cache-dir=/tmp/cache"]
 
         # Copy declarative config root and cache into image
-        ADD catalog /configs
+        ADD catalogs /configs
         COPY --chown=1001:0 cache /tmp/cache
 
         # Set DC-specific label for the location of the DC root directory
