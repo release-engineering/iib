@@ -683,7 +683,7 @@ def create_dockerfile(
                     CMD ["serve", "/configs", "--cache-dir=/tmp/cache"]
 
                     # Copy declarative config root and cache into image
-                    ADD catalog /configs
+                    ADD {os.path.basename(fbc_dir)} /configs
                     COPY --chown=1001:0 cache /tmp/cache
 
                     # Set DC-specific label for the location of the DC root directory
