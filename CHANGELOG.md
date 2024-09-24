@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+# 8.8.2
+* Fixing generate dockerfile by @lipoja in https://github.com/release-engineering/iib/pull/729
+
 ## 8.8.1
 * Fix fetching s3 bucket data by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/727
 
