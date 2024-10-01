@@ -1096,7 +1096,31 @@ def test_handle_rm_request_fbc(
     mock_voe,
     mock_gbj,
     mock_opmvalidate,
+    tmpdir,
 ):
+    configs_dir = tmpdir.mkdir('configs')
+    deprecations_dir = configs_dir.mkdir(worker_config['operator_deprecations_dir'])
+    operator_deprecation_dir = deprecations_dir.mkdir('some-operator')
+    deprecation_template = textwrap.dedent(
+        """\
+        {
+        "schema": "olm.deprecations",
+        "package": "some-operator",
+        "entries": [
+            {
+            "reference": {
+                "name": "my-operator.v1.57.7",
+                "schema": "olm.bundle"
+            },
+            "message": "my-operator.v1.57.7 is deprecated.\n"
+            }
+        ]
+        }
+        """
+    )
+    deprecation_file = operator_deprecation_dir.join('some-operator.json')
+    deprecation_file.write(deprecation_template)
+
     mock_voe.return_value = ['some-operator'], '/tmp/xyz/database/index.db'
     mock_govn.return_value = '0.9.0'
     mock_iifbc.return_value = True
@@ -1113,7 +1137,11 @@ def test_handle_rm_request_fbc(
     mock_ogd.return_value = "/tmp/xyz/index.Dockerfile"
     mock_om.return_value = "/tmp/xyz/catalog"
     mock_orrf.return_value = "/tmp/fbc_dir", "/tmp/cache_dir"
-    mock_gcd.return_value = "/some/path"
+    mock_gcd.return_value = configs_dir
+
+    # Assert deprecations file was created as expected
+    assert os.path.exists(deprecation_file)
+
     build.handle_rm_request(
         operators=['some-operator'],
         request_id=5,
@@ -1135,7 +1163,7 @@ def test_handle_rm_request_fbc(
     assert mock_or.call_count == 2
     mock_gcd.assert_called_once()
     mock_gcl.assert_called_once()
-    mock_mcd.assert_called_once_with(mock.ANY, '/some/path')
+    mock_mcd.assert_called_once_with(mock.ANY, configs_dir)
     mock_orrf.assert_called_once()
     mock_opmvalidate.assert_called_once()
     assert mock_alti.call_count == 2
@@ -1146,6 +1174,11 @@ def test_handle_rm_request_fbc(
     mock_capml.assert_called_once_with(5, {'s390x', 'amd64'}, None)
     mock_uiips.assert_called_once()
     assert mock_srs.call_args[0][1] == 'complete'
+
+    # Assert deprecations were removed correctly
+    assert not os.path.exists(deprecation_file)
+    assert not operator_deprecation_dir.check()
+    assert deprecations_dir.check(dir=True)
 
 
 @mock.patch('iib.workers.tasks.build.set_registry_token')

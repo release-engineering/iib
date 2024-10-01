@@ -1077,12 +1077,23 @@ def handle_rm_request(
                 catalog_from_index = get_catalog_dir(
                     from_index=from_index_resolved, base_dir=os.path.join(temp_dir, 'from_index')
                 )
-            # remove operators from /<temp_dir>/from_index/configs if exists
+            # remove operators and operator deprecations from /<temp_dir>/from_index/configs
+            # if they exist
             for operator in operators:
                 operator_path = os.path.join(catalog_from_index, operator)
+                operator_deprecations_path = os.path.join(
+                    catalog_from_index, worker_config['operator_deprecations_dir'], operator
+                )
                 if os.path.exists(operator_path):
                     log.debug('Removing operator from from_index FBC %s', operator_path)
                     shutil.rmtree(operator_path)
+                if os.path.exists(operator_deprecations_path):
+                    log.debug(
+                        'Removing operator deprecation for package %s from from_index FBC %s',
+                        operator,
+                        operator_deprecations_path,
+                    )
+                    shutil.rmtree(operator_deprecations_path)
 
             # if operator is not opted in, remove from db
             operators_in_db, index_db_path = verify_operators_exists(
