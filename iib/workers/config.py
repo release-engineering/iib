@@ -90,6 +90,9 @@ class Config(object):
     # path where catalog resides in fbc_fragment
     # might need to be changed, currently based on test fbc-fragment
     fbc_fragment_catalog_path: str = '/configs'
+    # path where operator deprecations will be stored
+    # it's a sub-directory of fbc_fragment_catalog_path
+    operator_deprecations_dir: str = '_operator-deprecations-content'
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
     task_acks_late: bool = True
