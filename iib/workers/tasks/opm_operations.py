@@ -1068,6 +1068,9 @@ def opm_registry_add_fbc_fragment(
     )
 
     if operators_in_db:
+        remove_operator_deprecations(
+            from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
+        )
         log.info('Removing %s from %s index.db ', operators_in_db, from_index)
         _opm_registry_rm(index_db_path=index_db_path, operators=operators_in_db, base_dir=temp_dir)
 
@@ -1115,6 +1118,28 @@ def opm_registry_add_fbc_fragment(
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
     )
+
+
+def remove_operator_deprecations(from_index_configs_dir: str, operators: List[str]) -> None:
+    """
+    Remove operator deprecations, if present.
+
+    :param str from_index_configs_dir: path to the configs directory of from_index
+    :param list(str) operators: list of operators for which deprecations will be removed
+    """
+    worker_config = get_worker_config()
+    for operator in operators:
+        log.info('Checking if operator deprecations for %s exists', operator)
+        operator_deprecations_path = os.path.join(
+            from_index_configs_dir, worker_config['operator_deprecations_dir'], operator
+        )
+        if os.path.exists(operator_deprecations_path):
+            log.info(
+                'Removing operator deprecation for package %s from from_index FBC %s',
+                operator,
+                operator_deprecations_path,
+            )
+            shutil.rmtree(operator_deprecations_path)
 
 
 def verify_operators_exists(
