@@ -835,7 +835,6 @@ def test_generate_cache_locally_failed(
 )
 @mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
-@mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
 @mock.patch('iib.workers.tasks.opm_operations.os.listdir')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
@@ -853,27 +852,59 @@ def test_opm_registry_add_fbc_fragment(
     mock_om,
     mock_ldr,
     mock_cpt,
-    mock_rmt,
     mock_gcc,
     mock_ogd,
     operators_exists,
     index_db_path,
     tmpdir,
 ):
+    configs_dir = tmpdir.mkdir('configs')
     from_index = "example.com/test/index"
     binary_image = "example.com/ose/binary"
     fbc_fragment = "example.com/test/fragment"
     fbc_fragment_operators = ["test-operator"]
     mock_eff.return_value = (os.path.join(tmpdir, "fbc_fragment"), fbc_fragment_operators)
     mock_voe.return_value = operators_exists, index_db_path
-    mock_gcr.return_value = os.path.join(tmpdir, "configs")
+    mock_gcr.return_value = configs_dir
     mock_om.return_value = os.path.join(tmpdir, "catalog"), None
     mock_ldr.return_value = [
         "package1",
     ]
+
+    deprecations_dir = configs_dir.mkdir(get_worker_config()['operator_deprecations_dir'])
+    operator_deprecation_dir = deprecations_dir.mkdir('test-operator')
+    deprecation_template = textwrap.dedent(
+        """\
+        {{
+        "schema": "olm.deprecations",
+        "package": "{package_name}",
+        "entries": [
+            {{
+            "reference": {{
+                "name": "my-operator.v1.57.7",
+                "schema": "olm.bundle"
+            }},
+            "message": "my-operator.v1.57.7 is deprecated.\n"
+            }}
+        ]
+        }}
+        """
+    )
+    if operators_exists:
+        deprecation_file = operator_deprecation_dir.join('test-operator.json')
+        deprecation_file.write(deprecation_template.format(package_name='test-operator'))
+    else:
+        # Make sure deprecations for other operators are not removed
+        deprecation_file = operator_deprecation_dir.join('other-operator.json')
+        deprecation_file.write(deprecation_template.format(package_name='other-operator'))
+
+    # Assert deprecations file was created as expected
+    assert os.path.exists(deprecation_file)
+
     opm_operations.opm_registry_add_fbc_fragment(
         10, tmpdir, from_index, binary_image, fbc_fragment, None
     )
+
     mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment)
     mock_voe.assert_called_with(
         from_index=from_index,
@@ -897,9 +928,17 @@ def test_opm_registry_add_fbc_fragment(
             ]
         )
         assert mock_cpt.call_count == 2
+        # Assert deprecations were removed correctly
+        assert not os.path.exists(deprecation_file)
+        assert not operator_deprecation_dir.check()
+        assert deprecations_dir.check(dir=True)
     else:
         assert mock_cpt.call_count == 1
         assert mock_orr.call_count == 0
+        # Assert deprecations are still present
+        assert os.path.exists(deprecation_file)
+        assert operator_deprecation_dir.check()
+        assert deprecations_dir.check(dir=True)
     mock_srs.call_count == 2
     mock_cpt.assert_has_calls(
         [

@@ -36,6 +36,7 @@ from iib.workers.tasks.opm_operations import (
     opm_index_rm,
     deprecate_bundles,
     Opm,
+    remove_operator_deprecations,
     verify_operators_exists,
     create_dockerfile,
     opm_validate,
@@ -1081,19 +1082,13 @@ def handle_rm_request(
             # if they exist
             for operator in operators:
                 operator_path = os.path.join(catalog_from_index, operator)
-                operator_deprecations_path = os.path.join(
-                    catalog_from_index, worker_config['operator_deprecations_dir'], operator
-                )
                 if os.path.exists(operator_path):
                     log.debug('Removing operator from from_index FBC %s', operator_path)
                     shutil.rmtree(operator_path)
-                if os.path.exists(operator_deprecations_path):
-                    log.debug(
-                        'Removing operator deprecation for package %s from from_index FBC %s',
-                        operator,
-                        operator_deprecations_path,
-                    )
-                    shutil.rmtree(operator_deprecations_path)
+
+            remove_operator_deprecations(
+                from_index_configs_dir=catalog_from_index, operators=operators
+            )
 
             # if operator is not opted in, remove from db
             operators_in_db, index_db_path = verify_operators_exists(
