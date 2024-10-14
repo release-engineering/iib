@@ -238,7 +238,6 @@ The custom configuration options for the REST API are listed below:
 * `SQLALCHEMY_DATABASE_URI` - the database URI of the database the REST API connects to. See the
   [Flask-SQLAlchemy configuration](https://flask-sqlalchemy.palletsprojects.com/en/2.x/config/#configuration-keys)
   documentation.
-* `IIB_RELATED_IMAGE_REGISTRY_REPLACEMENT` - the mapping `dict(<str>: dict(<str>: <str>))` to specify if the registry of the related image needs to be changed to inspect the related images. The mapping denotes the username and the registries that need to be replaced to inspect the related images.
 
 The custom configuration options for AMQP 1.0 messaging are listed below:
 
@@ -412,6 +411,7 @@ The custom configuration options for the Celery workers are listed below:
     }
   ```
 
+* `iib_related_image_registry_replacement` - the mapping `dict(<str>: dict(<str>: <str>))` to specify if the registry of the related image needs to be changed to inspect the related images. The mapping denotes the username and the registries that need to be replaced to inspect the related images.
 * `iib_request_related_bundles_dir` - the directory to write the request specific related bundles
   file. If `None`, per request related bundles files are not created. This defaults to `None`.
 * `iib_request_logs_dir` - the directory to write the request specific log files. If `None`, per
