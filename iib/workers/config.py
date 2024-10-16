@@ -83,6 +83,7 @@ class Config(object):
         'iib.workers.tasks.build_regenerate_bundle',
         'iib.workers.tasks.build_create_empty_index',
         'iib.workers.tasks.build_fbc_operations',
+        'iib.workers.tasks.build_add_deprecations',
         'iib.workers.tasks.general',
     ]
     # Path to hidden location of SQLite database
@@ -90,8 +91,7 @@ class Config(object):
     # path where catalog resides in fbc_fragment
     # might need to be changed, currently based on test fbc-fragment
     fbc_fragment_catalog_path: str = '/configs'
-    # path where operator deprecations will be stored
-    # it's a sub-directory of fbc_fragment_catalog_path
+    # sub-directory under fbc_fragment_catalog_path where operator deprecations will be stored
     operator_deprecations_dir: str = '_operator-deprecations-content'
     # The task messages will be acknowledged after the task has been executed,
     # instead of just before
