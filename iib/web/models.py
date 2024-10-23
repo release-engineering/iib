@@ -43,6 +43,7 @@ from iib.web.iib_static_types import (
     RmRequestPayload,
     FbcOperationRequestPayload,
     FbcOperationRequestResponse,
+    AddDeprecationsRequestResponse,
 )
 
 
@@ -2344,8 +2345,13 @@ class RequestAddDeprecations(Request, RequestIndexImageMixin):
             deprecation_schema=_deprecation_schema
         )
 
+        build_tags = request_kwargs.pop('build_tags', [])
         request = cls(**request_kwargs)
-        request.add_state('failed', 'The API endpoint has not been implemented yet')
+
+        for bt in build_tags:
+            request.add_build_tag(bt)
+
+        request.add_state('in_progress', 'The request was initiated')
         return request
 
     def get_mutable_keys(self) -> Set[str]:
@@ -2357,4 +2363,29 @@ class RequestAddDeprecations(Request, RequestIndexImageMixin):
         """
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
+        return rv
+
+    def to_json(self, verbose: Optional[bool] = True) -> AddDeprecationsRequestResponse:
+        """
+        Provide the JSON representation of a "add-deprecations" build request.
+
+        :param bool verbose: determines if the JSON output should be verbose
+        :return: a dictionary representing the JSON of the build request
+        :rtype: dict
+        """
+        # cast to result type, super-type returns Union
+        rv = cast(AddDeprecationsRequestResponse, super().to_json(verbose=verbose))
+        rv.update(self.get_common_index_image_json())  # type: ignore
+        rv['operator_package'] = self.operator_package.name
+        rv['deprecation_schema_url'] = url_for(
+            '.get_deprecation_schema', request_id=self.id, _external=True
+        )
+
+        rv.pop('bundles')
+        rv.pop('bundle_mapping')
+        rv.pop('deprecation_list')
+        rv.pop('distribution_scope')
+        rv.pop('organization')
+        rv.pop('removed_operators')
+
         return rv

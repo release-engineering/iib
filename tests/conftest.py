@@ -239,6 +239,48 @@ def minimal_request_recursive_related_bundles(db):
     return request
 
 
+@pytest.fixture()
+def minimal_request_add_deprecations(db):
+    """
+    Create and return an instance of the RequestAddDeprecations class.
+
+    The request instance will have the minimal set of required attributes set,
+    and it'll be committed to the database.
+
+    :param flask_sqlalchemy.SQLAlchemy db: the connection to the database
+    :return: the newly created request object
+    :rtype: RequestAddDeprecations
+    """
+    binary_image = models.Image(pull_specification='quay.io/add_deprecations/binary-image:latest')
+    db.session.add(binary_image)
+    from_index_image = models.Image(
+        pull_specification='quay.io/add_deprecations/index-image:latest'
+    )
+    db.session.add(from_index_image)
+    batch = models.Batch()
+    db.session.add(batch)
+    operator = models.Operator(name='operator')
+    db.session.add(operator)
+    deprecation_schema_json = (
+        '{"schema":"olm.deprecations","package":"test-operator",'
+        '"entries":[{"reference":{"name":"test-operator.v1.57.7","schema":"olm.bundle"},'
+        '"message":"test-operator.v1.57.7 is deprecated. Uninstall and install'
+        ' test-operator.v1.65.6 for support"}]}'
+    )
+    deprecation_schema = models.DeprecationSchema(schema=deprecation_schema_json)
+    db.session.add(deprecation_schema)
+    request = models.RequestAddDeprecations(
+        batch=batch,
+        binary_image=binary_image,
+        from_index=from_index_image,
+        operator_package=operator,
+        deprecation_schema=deprecation_schema,
+    )
+    db.session.add(request)
+    db.session.commit()
+    return request, deprecation_schema_json
+
+
 @pytest.fixture(scope='session', autouse=True)
 def patch_retry():
     with mock.patch.object(tenacity.nap.time, "sleep"):
