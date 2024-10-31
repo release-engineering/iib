@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 
 
+## 8.9.0
+* Remove Operator deprecations during rm request, if present by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/731
+* Move the config to worker section by @chandwanitulsi in https://github.com/release-engineering/iib/pull/733
+* add-deprecation worker implementation by @chandwanitulsi in https://github.com/release-engineering/iib/pull/713
+* Remove deprecation data in fbc-operations, if present by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/732
+* Update dependency werkzeug to v3.0.6 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/734
+
 # 8.8.2
 * Fixing generate dockerfile by @lipoja in https://github.com/release-engineering/iib/pull/729
 
