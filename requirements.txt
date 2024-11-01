@@ -491,9 +491,9 @@ jmespath==1.0.1 \
     # via
     #   boto3
     #   botocore
-kombu==5.4.1 \
-    --hash=sha256:1c05178826dab811f8cab5b0a154d42a7a33d8bcdde9fa3d7b4582e43c3c03db \
-    --hash=sha256:621d365f234e4c089596f3a2510f1ade07026efc28caca426161d8f458786cab
+kombu==5.4.2 \
+    --hash=sha256:14212f5ccf022fc0a70453bb025a1dcc32782a588c49ea866884047d66e14763 \
+    --hash=sha256:eef572dd2fd9fc614b37580e3caeafdd5af46c1eff31e7fba89138cdb406f2cf
     # via celery
 krb5==0.6.0 \
     --hash=sha256:0c89220495a1134dfe2d3566e31d7a44276ffdb20cda6f21257b311d41dae003 \
