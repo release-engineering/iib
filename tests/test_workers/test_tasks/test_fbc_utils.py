@@ -119,7 +119,7 @@ def test_merge_catalogs_dirs(mock_enforce_json, mock_rc, mock_opm, tmpdir):
 
     merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
     mock_enforce_json.assert_called_once_with(destination_dir)
-    mock_rc.called_once_with(
+    mock_rc.assert_called_once_with(
         [mock_opm.opm_version, 'validate', destination_dir],
         exc_msg=f'Failed to validate the content from config_dir {destination_dir}',
     )
@@ -157,7 +157,7 @@ def test_merge_catalogs_dirs_raise(mock_isdir, mock_cpt, tmpdir):
     with pytest.raises(IIBError, match=f"config directory does not exist: {source_dir}"):
         merge_catalogs_dirs(src_config=source_dir, dest_config=destination_dir)
 
-    mock_cpt.not_called()
+    mock_cpt.assert_not_called()
 
 
 def test_enforce_json_config_dir(tmpdir):

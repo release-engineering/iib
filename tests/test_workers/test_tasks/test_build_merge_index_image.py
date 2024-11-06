@@ -25,7 +25,6 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image.create_dockerfile')
 @mock.patch('iib.workers.tasks.build._get_index_database')
 @mock.patch('iib.workers.tasks.build_merge_index_image.opm_migrate')
-@mock.patch('iib.workers.tasks.build_merge_index_image.opm_registry_add_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
@@ -66,7 +65,6 @@ def test_handle_merge_request(
     mock_dep_b_fbc,
     mock_bi,
     mock_pi,
-    mock_oraf,
     mock_om,
     mock_gid,
     mock_ogd,
@@ -135,8 +133,8 @@ def test_handle_merge_request(
         binary_image_config=binary_image_config,
     )
 
-    mock_om.called_once()
-    mock_oraf.called_once()
+    if target_fbc:
+        mock_om.assert_called_once()
 
     assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
@@ -193,7 +191,6 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image.create_dockerfile')
 @mock.patch('iib.workers.tasks.build._get_index_database')
 @mock.patch('iib.workers.tasks.build_merge_index_image.opm_migrate')
-@mock.patch('iib.workers.tasks.build_merge_index_image.opm_registry_add_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -232,7 +229,6 @@ def test_handle_merge_request_no_deprecate(
     mock_bi,
     mock_pi,
     mock_capml,
-    mock_oraf,
     mock_om,
     mock_gid,
     mock_ogd,
@@ -282,8 +278,8 @@ def test_handle_merge_request_no_deprecate(
         distribution_scope='stage',
     )
 
-    mock_om.called_once()
-    mock_oraf.called_once()
+    if target_fbc:
+        mock_om.assert_called_once()
 
     assert mock_cleanup.call_count == 2
     mock_prfb.assert_called_once_with(
