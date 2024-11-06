@@ -1,6 +1,6 @@
 {
   "constraints": {
-    "python": "==3.9"
+    "python": "==3.12"
   },
   "enabled": true,
   "enabledManagers": ["docker-compose", "dockerfile", "github-actions", "pip_requirements", "pyenv"],

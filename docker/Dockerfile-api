@@ -14,14 +14,14 @@ RUN dnf -y install \
     libpq-devel \
     mod_auth_gssapi \
     mod_ssl \
-    python38-mod_wsgi \
+    python3.12-mod_wsgi \
     openssl-devel \
-    python38-devel \
-    python38-pip \
-    python38-wheel \
+    python3.12-devel \
+    python3.12-pip \
+    python3.12-wheel \
     && dnf update -y \
     && dnf clean all
-RUN update-alternatives --set python3 $(which python3.8)
+RUN update-alternatives --set python3 $(which python3.12)
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
 
