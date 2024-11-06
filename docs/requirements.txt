@@ -23,6 +23,7 @@ python-qpid-proton
 recommonmark
 requests
 ruamel.yaml
+setuptools
 sphinx==6.2.1
 sphinx_rtd_theme
 tenacity

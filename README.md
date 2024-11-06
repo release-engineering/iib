@@ -58,7 +58,7 @@ The testing environment is managed by [tox](https://tox.readthedocs.io/en/latest
 If you'd like to run a specific unit test, you can do the following:
 
 ```bash
-tox -e py38 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
+tox -e py312 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 ```
 
 ## Development Environment
