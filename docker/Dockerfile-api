@@ -19,9 +19,11 @@ RUN dnf -y install \
     python3.12-devel \
     python3.12-pip \
     python3.12-wheel \
+    python3.12-setuptools \
     && dnf update -y \
     && dnf clean all
 RUN update-alternatives --set python3 $(which python3.12)
+
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
 
