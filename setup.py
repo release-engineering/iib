@@ -47,5 +47,5 @@ setup(
     ],
     entry_points={'console_scripts': ['iib=iib.web.manage:cli']},
     license="GPLv3+",
-    python_requires='>=3.8',
+    python_requires='>=3.12',
 )
