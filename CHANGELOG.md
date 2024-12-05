@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.0.0
+
+* Drop support of Python 3.8 by @lipoja in https://github.com/release-engineering/iib/pull/736
+* Fix Python3.12 dev_env by @xDaile in https://github.com/release-engineering/iib/pull/738
 
 ## 8.9.0
 * Remove Operator deprecations during rm request, if present by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/731
