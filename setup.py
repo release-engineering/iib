@@ -17,7 +17,7 @@ setup(
         'flask-migrate',
         'flask-sqlalchemy',
         'importlib-resources',
-        'operator-manifest',
+        'operator-manifest==0.0.5',
         'psycopg2-binary',
         'python-memcached ',
         'python-qpid-proton==0.38.0',
