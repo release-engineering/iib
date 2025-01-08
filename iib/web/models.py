@@ -64,9 +64,9 @@ class BaseEnum(Enum):
 class RequestStateMapping(BaseEnum):
     """An Enum that represents the request states."""
 
-    in_progress: int = 1
-    complete: int = 2
-    failed: int = 3
+    in_progress = 1
+    complete = 2
+    failed = 3
 
     @staticmethod
     def get_final_states() -> List[str]:
@@ -97,15 +97,15 @@ class RequestStateMapping(BaseEnum):
 class RequestTypeMapping(BaseEnum):
     """An Enum that represents the request types."""
 
-    generic: int = 0
-    add: int = 1
-    rm: int = 2
-    regenerate_bundle: int = 3
-    merge_index_image: int = 4
-    create_empty_index: int = 5
-    recursive_related_bundles: int = 6
-    fbc_operations: int = 7
-    add_deprecations: int = 8
+    generic = 0
+    add = 1
+    rm = 2
+    regenerate_bundle = 3
+    merge_index_image = 4
+    create_empty_index = 5
+    recursive_related_bundles = 6
+    fbc_operations = 7
+    add_deprecations = 8
 
     @classmethod
     def pretty(cls, num: int) -> str:
