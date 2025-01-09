@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.0.1
+
+* Bump IIB's dependencies
+
 ## 9.0.0
 
 * Drop support of Python 3.8 by @lipoja in https://github.com/release-engineering/iib/pull/736
