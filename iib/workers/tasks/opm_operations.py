@@ -1,3 +1,4 @@
+import json
 from functools import wraps
 from copy import deepcopy
 import logging
@@ -29,6 +30,7 @@ from iib.workers.tasks.fbc_utils import (
     get_hidden_index_database,
     extract_fbc_fragment,
 )
+from iib.workers.tasks.iib_static_types import BundleImage
 
 log = logging.getLogger(__name__)
 
@@ -485,6 +487,134 @@ def _serve_cmd_at_port(
         terminate_process(rpc_proc)
 
     raise IIBError(f'Index registry has not been initialized after {max_tries} tries')
+
+
+def get_operator_package_list(
+    input_image_or_path: str,
+    base_dir: str,
+) -> List[str]:
+    """
+    Get list of olm.package names from input data.
+
+    :param str input_image_or_path: input data for opm render
+        Example: catalog-image | catalog-directory | bundle-image | bundle-directory | sqlite-file
+    :param str base_dir: temp directory where opm will be executed.
+    :return: list of package names present in input data.
+    :rtype: [str]
+    """
+    olm_packages = opm_render(input_image_or_path, base_dir)
+
+    package_names = [
+        olm_package['name']
+        for olm_package in olm_packages
+        if olm_package['schema'] == 'olm.package'
+    ]
+
+    return package_names
+
+
+def _get_olm_bundle_version(olm_bundle: dict) -> str:
+    """
+    Find and return version of OLM bundle.
+
+    :param BundleImage olm_bundle: olm bundle dictionary
+    :return: OLM bundle version
+    :rtype: str
+    """
+    for property in olm_bundle['properties']:
+        if property['type'] == "olm.package":
+            return property['value']['version']
+
+    error_msg = "No olm package version found for OLM bundle."
+    log.warning(error_msg)
+    raise IIBError(error_msg)
+
+
+def _get_input_data_path(input_image_or_path: str, base_dir: str) -> str:
+    """
+    Retrieve correct path to data which will be used when calling opm render.
+
+    If input_data is FBC index image we extract configs folder and return path to it.
+    If input_data is not FBC we extract hidden database and return path to it.
+
+    :param str input_image_or_path: input data - index image, directory path
+    :param str base_dir: temp directory where data are located.
+
+    :return: path to input for opm render
+    :rtype: str
+    """
+    if os.path.exists(input_image_or_path):
+        return input_image_or_path
+
+    if not is_image_fbc(input_image_or_path):
+        from iib.workers.tasks.build import _get_index_database
+
+        log.info('Extracting SQLite DB from image %s', input_image_or_path)
+        return _get_index_database(input_image_or_path, base_dir)
+    else:
+        log.info('Extracting FBC from image %s', input_image_or_path)
+        return get_catalog_dir(input_image_or_path, base_dir)
+
+
+def get_list_bundles(
+    input_data: str,
+    base_dir: str,
+) -> List[BundleImage]:
+    """
+    Run OPM render to get list of bundles present in input data.
+
+    :param str input_data: input data for opm render
+        Example: catalog-image | catalog-directory | bundle-image | bundle-directory | sqlite-file
+    :param str base_dir: temp directory where opm will be executed.
+    :return: list of bundle images parsed from input data
+    :rtype: list(dict)
+    """
+    log.info("Get list of bundles from %s", input_data)
+
+    opm_data = opm_render(input_data, base_dir)
+
+    # convert opm data to list of BundleImage
+    olm_bundles: List[BundleImage] = [
+        BundleImage(
+            bundlePath=olm_bundle['image'],
+            csvName=olm_bundle['name'],
+            packageName=olm_bundle['package'],
+            version=_get_olm_bundle_version(olm_bundle),
+        )
+        for olm_bundle in opm_data
+        if olm_bundle['schema'] == 'olm.bundle'
+    ]
+
+    return olm_bundles
+
+
+def opm_render(
+    input_data: str,
+    base_dir: str,
+):
+    """
+    Run OPM render and extract data as valid JSON.
+
+    :param str input_data: input data for opm render
+        Example: catalog-image | catalog-directory | bundle-image | bundle-directory | sqlite-file
+    :param str base_dir: temp directory where opm will be executed.
+    :return: list of parsed data from input
+    :rtype: list(dict)
+    """
+    from iib.workers.tasks.utils import run_cmd
+
+    input_data_path = _get_input_data_path(input_data, base_dir)
+    cmd = [Opm.opm_version, 'render', input_data_path]
+    opm_render_output = run_cmd(
+        cmd, {'cwd': base_dir}, exc_msg=f'Failed to run opm render with input: {input_data}'
+    )
+
+    if not opm_render_output:
+        log.info("There are no data in %s", input_data)
+        return []
+
+    log.debug("Parsing data from opm render")
+    return [json.loads(package) for package in re.split(r'(?<=})\n(?={)', opm_render_output)]
 
 
 def _get_or_create_temp_index_db_file(
@@ -1171,9 +1301,7 @@ def verify_operators_exists(
     :return: packages_in_index, index_db_path
     :rtype: (set, str)
     """
-    from iib.workers.tasks.build import terminate_process, get_bundle_json
     from iib.workers.tasks.iib_static_types import BundleImage
-    from iib.workers.tasks.utils import run_cmd
     from iib.workers.tasks.utils import set_registry_token
 
     packages_in_index: Set[str] = set()
@@ -1181,16 +1309,14 @@ def verify_operators_exists(
     log.info("Verifying if operator packages %s exists in index %s", operator_packages, from_index)
 
     # check if operator packages exists in hidden index.db
+    # we are not checking /config dir since it contains FBC opted-in operators and to remove those
+    # fbc-operations endpoint should be used
     with set_registry_token(overwrite_from_index_token, from_index, append=True):
         index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
 
-    port, rpc_proc = opm_registry_serve(db_path=index_db_path)
-    bundles = run_cmd(
-        ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-        exc_msg='Failed to get bundle data from index image',
+    present_bundles: List[BundleImage] = get_list_bundles(
+        input_data=index_db_path, base_dir=base_dir
     )
-    terminate_process(rpc_proc)
-    present_bundles: List[BundleImage] = get_bundle_json(bundles)
 
     for bundle in present_bundles:
         if bundle['packageName'] in operator_packages:
