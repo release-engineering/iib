@@ -9,37 +9,13 @@ from iib.workers.tasks.utils import RequestConfigCreateIndexImage
 from tests.test_workers.test_tasks.test_opm_operations import ensure_opm_default  # noqa: F401
 
 
-@mock.patch('iib.workers.tasks.build_create_empty_index.grpcurl_get_db_data')
-def test_get_present_operators(mock_grpcurl, tmpdir):
-
-    mock_grpcurl.side_effect = ['{\n"name": "package1"\n}\n{\n"name": "package2"\n}\n']
-    operators = build_create_empty_index._get_present_operators(
-        'quay.io/index-image:4.5', tmpdir.join("index.db")
-    )
-
-    mock_grpcurl.assert_called_once()
-    assert operators == ['package1', 'package2']
-
-
-@mock.patch('iib.workers.tasks.build_create_empty_index.grpcurl_get_db_data')
-def test_get_no_present_operators(mock_grpcurl, tmpdir):
-
-    mock_grpcurl.return_value = None
-    operators = build_create_empty_index._get_present_operators(
-        'quay.io/index-image:4.5', tmpdir.join("index.db")
-    )
-
-    assert mock_grpcurl.call_count == 1
-    assert operators == []
-
-
 @pytest.mark.parametrize('binary_image', ('binary-image:latest', None))
 @pytest.mark.parametrize('from_index', ('index-image:latest', 'index-image:latest'))
 @mock.patch('iib.workers.tasks.build_create_empty_index._cleanup')
 @mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
-@mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
+@mock.patch('iib.workers.tasks.build_create_empty_index.get_operator_package_list')
 @mock.patch('iib.workers.tasks.build_create_empty_index.opm_index_rm')
 @mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
@@ -57,7 +33,7 @@ def test_handle_create_empty_index_request(
     mock_bi,
     mock_alti,
     mock_oir,
-    mock_gpo,
+    mock_glp,
     mock_srs,
     mock_uiibs,
     mock_prfb,
@@ -79,7 +55,7 @@ def test_handle_create_empty_index_request(
         'distribution_scope': 'prod',
     }
 
-    mock_gpo.return_value = ["operator1", "operator2"]
+    mock_glp.return_value = ["operator1", "operator2"]
 
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
@@ -160,7 +136,7 @@ def test_handle_create_empty_index_request_raises(mock_fiv, mock_prfb, mock_iifb
 @mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
-@mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
+@mock.patch('iib.workers.tasks.build_create_empty_index.get_operator_package_list')
 @mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
 @mock.patch('iib.workers.tasks.build_create_empty_index._push_image')
@@ -176,7 +152,7 @@ def test_handle_create_empty_index_request_fbc(
     mock_pi,
     mock_bi,
     mock_alti,
-    mock_gpo,
+    mock_glp,
     mock_srs,
     mock_uiibs,
     mock_prfb,
@@ -196,7 +172,7 @@ def test_handle_create_empty_index_request_fbc(
         'distribution_scope': 'prod',
     }
 
-    mock_gpo.return_value = ["operator1", "operator2"]
+    mock_glp.return_value = ["operator1", "operator2"]
 
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec
@@ -224,7 +200,7 @@ def test_handle_create_empty_index_request_fbc(
     mock_ocef.call_args_list[0][1]['from_index'] = from_index
     mock_ocef.call_args_list[0][1]['from_index_resolved'] = from_index_resolved
     mock_ocef.call_args_list[0][1]['binary_image'] = binary_image
-    mock_ocef.call_args_list[0][1]['operators'] = mock_gpo.return_value
+    mock_ocef.call_args_list[0][1]['operators'] = mock_glp.return_value
 
     mock_uiibs.asser_called_once()
     assert mock_srs.call_count == 4
@@ -254,7 +230,7 @@ def test_handle_create_empty_index_request_fbc(
 @mock.patch('iib.workers.tasks.build_create_empty_index.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_create_empty_index._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_create_empty_index.set_request_state')
-@mock.patch('iib.workers.tasks.build_create_empty_index._get_present_operators')
+@mock.patch('iib.workers.tasks.build_create_empty_index.get_operator_package_list')
 @mock.patch('iib.workers.tasks.build_create_empty_index._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_create_empty_index._build_image')
 @mock.patch('iib.workers.tasks.build_create_empty_index._push_image')
@@ -274,7 +250,7 @@ def test_handle_create_empty_index_request_opm_ver(
     mock_pi,
     mock_bi,
     mock_alti,
-    mock_gpo,
+    mock_glp,
     mock_srs,
     mock_uiibs,
     mock_prfb,
@@ -297,7 +273,7 @@ def test_handle_create_empty_index_request_opm_ver(
         'distribution_scope': 'prod',
     }
 
-    mock_gpo.return_value = ["operator1", "operator2"]
+    mock_glp.return_value = ["operator1", "operator2"]
 
     output_pull_spec = 'quay.io/namespace/some-image:3'
     mock_capml.return_value = output_pull_spec

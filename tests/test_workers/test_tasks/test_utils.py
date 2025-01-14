@@ -1254,56 +1254,11 @@ def test_get_binary_image_config_no_config_val():
         rc.binary_image(index_info, "prod")
 
 
-@pytest.mark.parametrize(
-    'endpoint',
-    (
-        "api.Registry/ListPackages",
-        "api.Registry/ListBundles",
-    ),
-)
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_serve_from_index')
-@mock.patch('iib.workers.tasks.build._get_index_database')
-def test_grpcurl_get_db_data_success(mock_gid, mock_osfi, mock_run_cmd, tmpdir, endpoint):
-    mock_gid.return_value = tmpdir.join('index.db')
-    mock_popen = mock.MagicMock()
-    mock_osfi.return_value = 50051, mock_popen
-    mock_run_cmd.side_effect = ['{\n"name": "package1"\n}\n{\n"name": "package2"\n}\n']
-    utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
-
-
-@pytest.mark.parametrize(
-    'endpoint, err_msg',
-    (
-        (
-            "api.Registry/GetPackages",
-            "The endpoint 'api.Registry/GetPackages' is not allowed to be used",
-        ),
-        ("something", "The endpoint 'something' is not allowed to be used"),
-    ),
-)
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_serve_from_index')
-def test_grpcurl_get_db_data_wrong_endpoint(mock_osfi, mock_run_cmd, tmpdir, endpoint, err_msg):
-    mock_popen = mock.MagicMock()
-    mock_osfi.return_value = 50051, mock_popen
-
-    with pytest.raises(IIBError, match=err_msg):
-        utils.grpcurl_get_db_data('quay.io/index-image:4.5', str(tmpdir), endpoint)
-
-    mock_osfi.assert_called_once()
-    mock_run_cmd.assert_not_called()
-
-
-@mock.patch('iib.workers.tasks.utils.opm_registry_serve')
 @mock.patch('iib.workers.tasks.utils.get_bundle_json')
-@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
 @mock.patch('iib.workers.tasks.utils._add_property_to_index')
-def test_add_max_ocp_version_property_empty_index(mock_apti, mock_cmd, mock_gbj, mock_ors, tmpdir):
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_ors.return_value = (port, my_mock)
-    mock_cmd.return_value = None
+def test_add_max_ocp_version_property_empty_index(mock_apti, mock_glb, mock_gbj, tmpdir):
+    mock_glb.return_value = []
 
     utils.add_max_ocp_version_property([], tmpdir)
 

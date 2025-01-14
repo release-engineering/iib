@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import json
 import os
 import stat
 from unittest import mock
@@ -18,8 +19,8 @@ from iib.workers.tasks.utils import RequestConfigMerge
         (None, None, None),
     ),
 )
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_registry_serve')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.create_dockerfile')
@@ -70,8 +71,8 @@ def test_handle_merge_request(
     mock_ogd,
     mock_vii,
     mock_uiips,
-    mock_ors,
     mock_run_cmd,
+    mock_gidp,
     target_index,
     target_index_resolved,
     binary_image,
@@ -118,11 +119,18 @@ def test_handle_merge_request(
     mock_dep_b.side_effect = side_effect
     mock_dep_b_fbc.side_effect = side_effect
 
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_ors.return_value = (port, my_mock)
-    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
-        "bundlePath": "bundle1"\n}'
+    mock_gidp.return_value = '/tmp'
+    mock_run_cmd.return_value = json.dumps(
+        {
+            "schema": "olm.bundle",
+            "image": "bundle1",
+            "name": "name1",
+            "package": "package1",
+            "version": "v1.0",
+            "properties": [{"type": "olm.package", "value": {"version": "0.1.0"}}],
+        }
+    )
+
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
         ['some-bundle:1.0'],
@@ -170,22 +178,13 @@ def test_handle_merge_request(
     mock_uiips.assert_called_once()
 
     mock_sov.assert_called_once_with(target_index_resolved)
-    mock_ors.assert_called_once()
     mock_run_cmd.assert_called_once()
-    mock_run_cmd.assert_has_calls(
-        [
-            mock.call(
-                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-                exc_msg=mock.ANY,
-            ),
-        ]
-    )
 
 
 @pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
 @pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_serve_from_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.create_dockerfile')
@@ -234,8 +233,8 @@ def test_handle_merge_request_no_deprecate(
     mock_ogd,
     mock_vii,
     mock_uiips,
-    mock_osfi,
     mock_run_cmd,
+    mock_gidp,
     invalid_bundles,
     source_fbc,
     target_fbc,
@@ -263,11 +262,16 @@ def test_handle_merge_request_no_deprecate(
     mock_gid.return_value = 'database/index.db'
     mock_om.return_value = 'catalog', 'cache'
 
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_osfi.return_value = (port, my_mock)
-    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
-        "bundlePath": "bundle1"\n}'
+    mock_run_cmd.return_value = json.dumps(
+        {
+            "schema": "olm.bundle",
+            "image": "bundle1",
+            "name": "name1",
+            "package": "package1",
+            "version": "v1.0",
+            "properties": [{"type": "olm.package", "value": {"version": "0.1.0"}}],
+        }
+    )
 
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
@@ -329,8 +333,6 @@ def test_handle_merge_request_no_deprecate(
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
     mock_sov.assert_called_once_with(target_index_resolved)
     mock_uiips.assert_called_once()
-
-    mock_osfi.assert_not_called()
     mock_run_cmd.assert_not_called()
 
 
