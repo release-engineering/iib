@@ -37,7 +37,7 @@ from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.config import get_worker_config
 from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state
-from iib.workers.tasks.opm_operations import opm_registry_serve, opm_serve_from_index
+from iib.workers.tasks.opm_operations import get_list_bundles
 from iib.workers.tasks.iib_static_types import (
     IndexImageInfo,
     AllIndexImagesInfo,
@@ -96,26 +96,20 @@ def add_max_ocp_version_property(resolved_bundles: List[str], temp_dir: str) -> 
     # Get the CSV name and version (not just the bundle path)
     temp_index_db_path = get_worker_config()['temp_index_db_path']
     db_path = os.path.join(temp_dir, temp_index_db_path)
-    port, rpc_proc = opm_registry_serve(db_path=db_path)
-
-    raw_bundles = run_cmd(
-        ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-        exc_msg='Failed to get bundle data from index image',
-    )
-    terminate_process(rpc_proc)
+    bundles = get_list_bundles(input_data=db_path, base_dir=temp_dir)
 
     # This branch is hit when `bundles` attribute is empty and the index image is empty.
     # Ideally the code should not reach here if the bundles attribute is empty but adding
     # this here as a failsafe if it's called from some other place. Also, if the bundles
     # attribute is not empty, the index image cannot be empty here because we add the
     # bundle to the index before adding the maxOpenShiftVersion property
-    if not raw_bundles:
+    if not bundles:
         log.info('No bundles found in the index image')
         return
 
     # Filter index image bundles to get pull spec for bundles in the request
     updated_bundles: List[BundleImage] = list(
-        filter(lambda b: b['bundlePath'] in resolved_bundles, get_bundle_json(raw_bundles))
+        filter(lambda b: b['bundlePath'] in resolved_bundles, bundles)
     )
 
     for bundle in updated_bundles:
@@ -1234,28 +1228,6 @@ def prepare_request_for_build(
         'target_index_resolved': index_info['target_index']['resolved_from_index'],  # type: ignore
         'target_ocp_version': index_info['target_index']['ocp_version'],
     }
-
-
-def grpcurl_get_db_data(from_index: str, base_dir: str, endpoint: str) -> str:
-    """Get a str  with operators already present in the index image.
-
-    :param str from_index: index image to inspect.
-    :param str base_dir: base directory to create temporary files in.
-    :return: str result of the grpc query
-    :rtype: str
-    :raises IIBError: if any of the commands fail.
-    """
-    port, rpc_proc = opm_serve_from_index(base_dir, from_index=from_index)
-
-    if endpoint not in ["api.Registry/ListPackages", "api.Registry/ListBundles"]:
-        raise IIBError(f"The endpoint '{endpoint}' is not allowed to be used")
-
-    result = run_cmd(
-        ['grpcurl', '-plaintext', f'localhost:{port}', endpoint],
-        exc_msg=f'Failed to get {endpoint} data from index image',
-    )
-    terminate_process(rpc_proc)
-    return result
 
 
 def get_bundle_metadata(

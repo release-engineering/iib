@@ -1,9 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import tempfile
-import json
-import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
@@ -20,43 +18,22 @@ from iib.workers.tasks.build import (
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
-from iib.workers.tasks.opm_operations import opm_create_empty_fbc, opm_index_rm, Opm
+from iib.workers.tasks.opm_operations import (
+    opm_create_empty_fbc,
+    opm_index_rm,
+    Opm,
+    get_operator_package_list,
+)
 from iib.workers.tasks.utils import (
     request_logger,
     prepare_request_for_build,
     RequestConfigCreateIndexImage,
-    grpcurl_get_db_data,
 )
 from iib.workers.tasks.iib_static_types import PrebuildInfo
 
 __all__ = ['handle_create_empty_index_request']
 
 log = logging.getLogger(__name__)
-
-
-def _get_present_operators(from_index: str, base_dir: str) -> List[str]:
-    """Get a list of operators already present in the index image.
-
-    :param str from_index: index image to inspect.
-    :param str base_dir: base directory to create temporary files in.
-    :return: list of unique present operators as provided by the grpc query
-    :rtype: list
-    :raises IIBError: if any of the commands fail.
-    """
-    operators = grpcurl_get_db_data(from_index, base_dir, "api.Registry/ListPackages")
-
-    # If no data is returned there are not operators present
-    if not operators:
-        return []
-
-    # Transform returned data to parsable json
-    present_operators = []
-    new_operators = [json.loads(operator) for operator in re.split(r'(?<=})\n(?={)', operators)]
-
-    for operator in new_operators:
-        present_operators.append(operator['name'])
-
-    return present_operators
 
 
 @app.task
@@ -108,7 +85,7 @@ def handle_create_empty_index_request(
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         set_request_state(request_id, 'in_progress', 'Checking operators present in index image')
 
-        operators = _get_present_operators(from_index_resolved, temp_dir)
+        operators = get_operator_package_list(from_index_resolved, temp_dir)
 
         # if output_fbc parameter is true, create an empty FBC index image
         # else create empty SQLite index image

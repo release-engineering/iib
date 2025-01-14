@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import copy
+import json
 import os
 import re
 import stat
@@ -10,6 +11,7 @@ import pytest
 
 from iib.exceptions import ExternalServiceError, IIBError
 from iib.workers.tasks import build
+from iib.workers.tasks.iib_static_types import BundleImage
 from iib.workers.tasks.utils import RequestConfigAddRm
 from iib.workers.config import get_worker_config
 from operator_manifest.operator import ImageName
@@ -521,8 +523,7 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
-@mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_registry_serve')
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -566,8 +567,7 @@ def test_handle_add_request(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
-    mock_ors,
-    mock_run_cmd,
+    mock_glb,
     force_backport,
     binary_image,
     distribution_scope,
@@ -611,11 +611,11 @@ def test_handle_add_request(
 
     mock_dep_b.side_effect = side_effect
 
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_ors.return_value = (port, my_mock)
-    mock_run_cmd.return_value = '{"packageName": "package1", "version": "v1.0", \
-        "bundlePath": "bundle1"\n}'
+    mock_glb.return_value = [
+        {"packageName": "test-operator", "version": "v1.0", "bundlePath": "bundle1"},
+        {"packageName": "test-operator", "version": "v1.2", "bundlePath": "bundle1"},
+        {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
+    ]
 
     build.handle_add_request(
         bundles,
@@ -635,16 +635,7 @@ def test_handle_add_request(
         build_tags=["extra_tag1", "extra_tag2"],
     )
 
-    mock_ors.assert_called_once()
-    mock_run_cmd.assert_called_once()
-    mock_run_cmd.assert_has_calls(
-        [
-            mock.call(
-                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-                exc_msg=mock.ANY,
-            ),
-        ]
-    )
+    mock_glb.assert_called_once()
 
     assert mock_cleanup.call_count == 2
     mock_vl.assert_called_once()
@@ -697,10 +688,11 @@ def test_handle_add_request(
         mock_dep_b.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build.update_request')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.is_image_fbc')
-def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
+def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c, mock_ur):
     mock_iifbc.return_value = True
     with pytest.raises(IIBError):
         build.handle_add_request(
@@ -724,7 +716,7 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c):
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.utils.sqlite3.connect')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.utils.opm_registry_serve')
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
 @mock.patch('iib.workers.tasks.build._cleanup')
@@ -766,7 +758,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_cleanup,
     mock_ugrb,
     mock_dep_b,
-    mock_ors,
+    mock_glb,
     mock_run_cmd,
     mock_sqlite,
     mock_gwc,
@@ -815,13 +807,17 @@ def test_handle_add_request_check_index_label_behavior(
 
     mock_dep_b.side_effect = deprecate_bundles_mock
 
-    port = 0
-    my_mock = mock.MagicMock()
-    mock_ors.return_value = (port, my_mock)
     mock_run_cmd.side_effect = [
-        '{"packageName": "package1", "version": "v1.0", "csvName": "random-csv", \
-        "bundlePath": "some-bundle@sha256:123"\n}',
         '{"passed":false, "outputs": [{"message": "olm.maxOpenShiftVersion not present"}]}',
+    ]
+
+    mock_glb.return_value = [
+        {
+            "packageName": "package1",
+            "version": "v1.0",
+            "csvName": "random-csv",
+            "bundlePath": "some-bundle@sha256:123",
+        }
     ]
     mock_sqlite.execute.return_value = 200
 
@@ -842,15 +838,11 @@ def test_handle_add_request_check_index_label_behavior(
         deprecation_list=deprecation_list,
     )
 
-    mock_ors.assert_called_once()
-    assert mock_run_cmd.call_count == 2
+    mock_glb.assert_called_once()
+    mock_run_cmd.assert_called_once()
 
     mock_run_cmd.assert_has_calls(
         [
-            mock.call(
-                ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-                exc_msg=mock.ANY,
-            ),
             mock.call(
                 [
                     'operator-sdk',
@@ -1042,9 +1034,7 @@ def test_handle_rm_request(
 
 
 @mock.patch('iib.workers.tasks.build.opm_validate')
-@mock.patch('iib.workers.tasks.build.get_bundle_json')
 @mock.patch('iib.workers.tasks.build.verify_operators_exists')
-@mock.patch('iib.workers.tasks.opm_operations._serve_cmd_at_port')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build._update_index_image_build_state')
@@ -1092,9 +1082,7 @@ def test_handle_rm_request_fbc(
     mock_uiibs,
     mock_prfb,
     mock_c,
-    mock_scap,
     mock_voe,
-    mock_gbj,
     mock_opmvalidate,
     tmpdir,
 ):
@@ -1303,39 +1291,67 @@ def test_get_missing_bundles_match_hash():
     )
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.opm_serve_from_index')
-def test_get_present_bundles(moc_osfi, mock_run_cmd, tmpdir):
-    rpc_mock = mock.MagicMock()
-    moc_osfi.return_value = (50051, rpc_mock)
-
-    mock_run_cmd.return_value = (
-        '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
-        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
-        '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}'
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_get_present_bundles(mock_run_cmd, mock_gidp, tmpdir):
+    mock_gidp.return_value = '/tmp'
+    mock_run_cmd.return_value = '\n'.join(
+        json.dumps(a)
+        for a in [
+            {
+                "schema": "olm.bundle",
+                "image": "bundle1",
+                "name": "name1",
+                "package": "package1",
+                "version": "v1.0",
+                "properties": [{"type": "olm.package", "value": {"version": "0.1.0"}}],
+            },
+            {
+                "schema": "olm.bundle",
+                "image": "bundle2",
+                "name": "name2",
+                "package": "package2",
+                "version": "v2.0",
+                "properties": [{"type": "olm.package", "value": {"version": "0.2.2"}}],
+            },
+            {
+                "schema": "olm.bundle",
+                "image": "bundle2",
+                "name": "name2",
+                "package": "package2",
+                "version": "v2.0",
+                "properties": [{"type": "olm.package", "value": {"version": "0.2.2"}}],
+            },
+        ]
     )
-
     bundles, bundles_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
     assert bundles == [
-        {'packageName': 'package1', 'version': 'v1.0', 'bundlePath': 'bundle1'},
-        {'packageName': 'package2', 'version': 'v2.0', 'bundlePath': 'bundle2'},
+        BundleImage(
+            bundlePath='bundle1',
+            csvName='name1',
+            packageName='package1',
+            version='0.1.0',
+        ),
+        BundleImage(
+            bundlePath='bundle2',
+            csvName='name2',
+            packageName='package2',
+            version='0.2.2',
+        ),
     ]
     assert bundles_pull_spec == ['bundle1', 'bundle2']
     mock_run_cmd.assert_called_once()
 
 
-@mock.patch('iib.workers.tasks.build.run_cmd')
-@mock.patch('iib.workers.tasks.build.opm_serve_from_index')
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_get_no_present_bundles(
-    moc_osfi,
     mock_run_cmd,
+    mock_gidp,
     tmpdir,
 ):
-
-    rpc_mock = mock.MagicMock()
-    moc_osfi.return_value = (50051, rpc_mock)
-
     mock_run_cmd.return_value = ''
+    mock_gidp.return_value = '/tmp'
 
     bundle, bundle_pull_spec = build._get_present_bundles('quay.io/index-image:4.5', str(tmpdir))
     assert bundle == []

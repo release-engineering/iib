@@ -26,7 +26,6 @@ from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, merge_catalogs_dirs
 from iib.workers.tasks.opm_operations import (
-    opm_serve_from_index,
     opm_registry_add_fbc,
     opm_migrate,
     opm_registry_rm_fbc,
@@ -40,12 +39,12 @@ from iib.workers.tasks.opm_operations import (
     verify_operators_exists,
     create_dockerfile,
     opm_validate,
+    get_list_bundles,
 )
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
     get_bundles_from_deprecation_list,
-    get_bundle_json,
     get_resolved_bundles,
     get_resolved_image,
     podman_pull,
@@ -58,7 +57,6 @@ from iib.workers.tasks.utils import (
     get_image_label,
     verify_labels,
     prepare_request_for_build,
-    terminate_process,
     get_bundle_metadata,
 )
 from iib.workers.tasks.iib_static_types import (
@@ -392,22 +390,14 @@ def _get_present_bundles(from_index: str, base_dir: str) -> Tuple[List[BundleIma
     :rtype: list, list
     :raises IIBError: if any of the commands fail.
     """
-    port, rpc_proc = opm_serve_from_index(base_dir, from_index=from_index)
-
-    bundles = run_cmd(
-        ['grpcurl', '-plaintext', f'localhost:{port}', 'api.Registry/ListBundles'],
-        exc_msg='Failed to get bundle data from index image',
-    )
-    terminate_process(rpc_proc)
-
-    # If no data is returned there are not bundles present
-    if not bundles:
-        return [], []
-
-    # Transform returned data to parsable json
+    # Get list of bundles
     unique_present_bundles: List[BundleImage] = []
     unique_present_bundles_pull_spec: List[str] = []
-    present_bundles: List[BundleImage] = get_bundle_json(bundles)
+    present_bundles: List[BundleImage] = get_list_bundles(from_index, base_dir)
+
+    # If no data is returned there are no bundles present
+    if not present_bundles:
+        return [], []
 
     for bundle in present_bundles:
         bundle_path = bundle['bundlePath']
