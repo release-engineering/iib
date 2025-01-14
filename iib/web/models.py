@@ -251,7 +251,11 @@ class Image(db.Model):
         :rtype: Image
         :raise ValidationError: if pull_specification for the image is invalid
         """
-        if '@' not in pull_specification and ':' not in pull_specification:
+        if (
+            '@' not in pull_specification
+            and ':' not in pull_specification
+            and pull_specification != "scratch"
+        ):
             raise ValidationError(
                 f'Image {pull_specification} should have a tag or a digest specified.'
             )
