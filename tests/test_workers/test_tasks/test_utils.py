@@ -1007,6 +1007,186 @@ def test_prepare_request_for_build_merge_index_img(mock_gia, mock_gri, mock_giii
     }
 
 
+@pytest.mark.parametrize(
+    'from_index, from_index_arches, bundles, binary_image,'
+    'expected_bundle_mapping, distribution_scope, resolved_distribution_scope, binary_image_config',
+    (
+        (
+            'some-index:latest',
+            {'amd64'},
+            None,
+            'scratch',
+            {},
+            None,
+            'prod',
+            {'prod': {'v4.6': 'scratch'}},
+        ),
+        (None, set(), None, 'scratch', {}, None, 'prod', {'prod': {'v4.5': 'scratch'}}),
+        (
+            'some-index:latest',
+            {'amd64'},
+            None,
+            '',
+            {},
+            None,
+            'prod',
+            {'prod': {'v4.6': 'scratch'}},
+        ),
+        (
+            None,
+            set(),
+            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            None,
+            {
+                'some-bundle': ['quay.io/some-bundle:v1'],
+                'some-bundle2': ['quay.io/some-bundle2:v1'],
+            },
+            None,
+            'prod',
+            {'prod': {'v4.5': 'scratch'}},
+        ),
+        (
+            'some-index:latest',
+            set(),
+            ['quay.io/some-bundle:v1', 'quay.io/some-bundle2:v1'],
+            '',
+            {
+                'some-bundle': ['quay.io/some-bundle:v1'],
+                'some-bundle2': ['quay.io/some-bundle2:v1'],
+            },
+            None,
+            'prod',
+            {'prod': {'v4.6': 'scratch'}},
+        ),
+    ),
+)
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_image_arches')
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+@mock.patch('iib.workers.tasks.build.update_request')
+def test_prepare_request_for_build_binaryless(
+    mock_ur,
+    mock_gil,
+    mock_gia,
+    mock_gri,
+    mock_srs,
+    mock_srs2,
+    from_index,
+    from_index_arches,
+    bundles,
+    binary_image,
+    expected_bundle_mapping,
+    distribution_scope,
+    resolved_distribution_scope,
+    binary_image_config,
+) -> None:
+    binary_image_resolved = "scratch"
+    from_index_resolved = None
+    expected_payload_keys = {'binary_image_resolved', 'state', 'state_reason'}
+    gil_side_effect = []
+    ocp_version = 'v4.5'
+    if expected_bundle_mapping:
+        expected_payload_keys.add('bundle_mapping')
+    if from_index:
+        from_index_name = from_index.split(':', 1)[0]
+        from_index_resolved = f'{from_index_name}@sha256:bcdefg'
+        index_resolved = f'{from_index_name}@sha256:abcdef1234'
+        mock_gri.side_effect = [from_index_resolved, binary_image_resolved, index_resolved]
+        mock_gia.return_value = from_index_arches
+        expected_payload_keys.add('from_index_resolved')
+        gil_side_effect = ['v4.6', resolved_distribution_scope]
+        ocp_version = 'v4.6'
+    else:
+        index_resolved = f'index-image@sha256:abcdef1234'
+        mock_gri.side_effect = [binary_image_resolved, index_resolved]
+        mock_gia.return_value = from_index_arches
+        gil_side_effect = []
+
+    if bundles:
+        bundle_side_effects = [bundle.rsplit('/', 1)[1].split(':', 1)[0] for bundle in bundles]
+        gil_side_effect.extend(bundle_side_effects)
+
+    mock_gil.side_effect = gil_side_effect
+
+    rv = utils.prepare_request_for_build(
+        1,
+        utils.RequestConfigAddRm(
+            _binary_image=binary_image,
+            from_index=from_index,
+            overwrite_from_index_token=None,
+            add_arches=["amd64"],
+            bundles=bundles,
+            distribution_scope="prod",
+            binary_image_config=binary_image_config,
+        ),
+    )
+
+    assert rv == {
+        'arches': {'amd64'},
+        'binary_image': "scratch",
+        'binary_image_resolved': "scratch",
+        'bundle_mapping': expected_bundle_mapping,
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': ocp_version,
+        # want to verify that the output is always lower cased.
+        'distribution_scope': resolved_distribution_scope.lower(),
+        'source_from_index_resolved': None,
+        'source_ocp_version': 'v4.5',
+        'target_index_resolved': None,
+        'target_ocp_version': 'v4.6',
+    }
+
+
+@pytest.mark.parametrize(
+    'from_index, binary_image, binary_image_config,error',
+    (
+        (
+            'some-index:latest',
+            'binary-image:latest',
+            {'prod': {'v4.5': 'scratch'}},
+            'The index image must be built as a binaryless for v4.5',
+        ),
+        (
+            'some-index:latest',
+            'scratch',
+            {'prod': {'v4.5': 'binary-image:latest'}},
+            'The index image should not be binaryless for v4.5',
+        ),
+    ),
+)
+@mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_index_image_info')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_image_arches')
+def test_prepare_request_for_build_binaryless_invalid_conditions(
+    mock_gia, mock_gri, mock_giii, mock_srs, from_index, binary_image, binary_image_config, error
+) -> None:
+    mock_giii.return_value = {
+        'resolved_from_index': None,
+        'ocp_version': 'v4.5',
+        'arches': set(),
+        'resolved_distribution_scope': 'prod',
+    }
+    mock_gri.return_value = 'scratch'
+    mock_gia.return_value = {'amd64'}
+
+    with pytest.raises(IIBError, match=error):
+        utils.prepare_request_for_build(
+            1,
+            utils.RequestConfigAddRm(
+                _binary_image=binary_image,
+                from_index=from_index,
+                overwrite_from_index_token=None,
+                add_arches="amd64",
+                bundles=['foo', 'bar'],
+                distribution_scope="prod",
+                binary_image_config=binary_image_config,
+            ),
+        )
+
+
 @mock.patch('iib.workers.tasks.utils.set_request_state')
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.utils.get_image_arches')
@@ -1062,8 +1242,16 @@ def test_validate_distribution_scope(
 
 
 def test_get_binary_image_config_no_config_val():
+    index_info = {
+        'resolved_from_index': 'some_other_image@sha256',
+        'ocp_version': 'v4.5',
+        'arches': {'amd64'},
+        'resolved_distribution_scope': 'prod',
+    }
+    b_img_cfg = {'prod': {'v4.6': 'binary_image'}}
+    rc = utils.RequestConfig(distribution_scope="prod", binary_image_config=b_img_cfg)
     with pytest.raises(IIBError, match='IIB does not have a configured binary_image.+'):
-        utils.get_binary_image_from_config('prod', 'v4.5', {'prod': {'v4.6': 'binary_image'}})
+        rc.binary_image(index_info, "prod")
 
 
 @pytest.mark.parametrize(
