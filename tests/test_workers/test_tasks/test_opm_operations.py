@@ -9,12 +9,17 @@ from unittest import mock
 from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.config import get_worker_config
 from iib.workers.tasks import opm_operations
+from iib.workers.tasks.iib_static_types import BundleImage
 from iib.workers.tasks.opm_operations import (
     Opm,
     PortFileLock,
     create_port_filelocks,
     get_opm_port_stacks,
     PortFileLockGenerator,
+    _get_input_data_path,
+    _get_olm_bundle_version,
+    get_list_bundles,
+    get_operator_package_list,
 )
 
 
@@ -998,39 +1003,42 @@ def test_opm_registry_add_fbc_fragment(
     'bundles_in_db, opr_exists',
     [
         (
-            '{"packageName": "test-operator", "version": "v1.0", "bundlePath":"bundle1"\n}'
-            '\n{"packageName": "test-operator", "version": "v1.2", "bundlePath":"bundle1"\n}'
-            '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
+            [
+                {"packageName": "test-operator", "version": "v1.0", "bundlePath": "bundle1"},
+                {"packageName": "test-operator", "version": "v1.2", "bundlePath": "bundle1"},
+                {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
+            ],
             {"test-operator"},
         ),
         (
-            '{"packageName": "test-operator", "version": "v1.0", "bundlePath":"bundle1"\n}'
-            '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
+            [
+                {"packageName": "test-operator", "version": "v1.0", "bundlePath": "bundle1"},
+                {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
+            ],
             {"test-operator"},
         ),
         (
-            '{"packageName": "package1", "version": "v1.0", "bundlePath":"bundle1"\n}'
-            '\n{\n"packageName": "package2", "version": "v2.0", "bundlePath":"bundle2"}',
+            [
+                {"packageName": "package1", "version": "v1.0", "bundlePath": "bundle1"},
+                {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
+            ],
             set(),
         ),
     ],
 )
-@mock.patch('iib.workers.tasks.utils.terminate_process')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch('iib.workers.tasks.opm_operations.opm_registry_serve')
+@mock.patch('iib.workers.tasks.opm_operations.get_list_bundles')
 @mock.patch('iib.workers.tasks.build._copy_files_from_image')
 @mock.patch('iib.workers.tasks.utils.set_registry_token')
 def test_verify_operator_exists(
-    mock_srt, mock_cffi, mock_ors, mock_rc, mock_tp, bundles_in_db, opr_exists, tmpdir
+    mock_srt, mock_cffi, mock_glb, mock_rc, bundles_in_db, opr_exists, tmpdir
 ):
     from_index = "example.com/test/index"
-    mock_ors.return_value = 500, mock.MagicMock()
-    mock_rc.return_value = bundles_in_db
-    index_db_path = os.path.join(tmpdir, get_worker_config()['temp_index_db_path'])
+    mock_glb.return_value = bundles_in_db
     package_exists, index_db_path = opm_operations.verify_operators_exists(
-        from_index, tmpdir, 'test-operator', None
+        from_index, tmpdir, ['test-operator'], None
     )
-    mock_ors.assert_has_calls([mock.call(db_path=index_db_path)])
+    mock_glb.assert_has_calls([mock.call(input_data=index_db_path, base_dir=tmpdir)])
     assert package_exists == opr_exists
 
 
@@ -1163,3 +1171,249 @@ def test_get_opm_version_number_fail(mock_run_cmd):
         match='Opm version not found in the output of \"OPM version\" command',
     ):
         Opm.get_opm_version_number()
+
+
+@pytest.mark.parametrize(
+    'input, is_input_dir, is_fbc',
+    [
+        ('/tmp/somedir', True, False),
+        (
+            'registry.example.com/example-rhel9:v4.17',
+            False,
+            False,
+        ),
+        (
+            'registry.example.com/example-rhel9:v4.17',
+            False,
+            True,
+        ),
+    ],
+)
+@mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
+def test__get_input_data_path(mock_iif, mock_gid, mock_gcd, input, is_input_dir, is_fbc, tmpdir):
+    mock_iif.return_value = is_fbc
+
+    _get_input_data_path(input_image_or_path=input, base_dir=tmpdir)
+
+    if is_input_dir:
+        mock_iif.assert_called_once_with(input)
+    else:
+        mock_iif.assert_called_once_with(input)
+        if is_fbc:
+            mock_gcd.assert_called_once_with(input, tmpdir)
+        else:
+            mock_gid.assert_called_once_with(input, tmpdir)
+
+
+@pytest.mark.parametrize(
+    "bundle, version",
+    [
+        (
+            {
+                "csvName": "example.v2.0.8",
+                "packageName": "example_operator",
+                "channelName": "1.0",
+                "bundlePath": "registry.example.com/example_operator@sha256:SHA-LONG_H3X_NUMBER",
+                "providedApis": [
+                    {
+                        "group": "example_operator.io",
+                        "version": "v1",
+                        "kind": "ServiceMeshControlPlane",
+                    },
+                    {
+                        "group": "example_operator.io",
+                        "version": "v2",
+                        "kind": "ServiceMeshControlPlane",
+                    },
+                    {"group": "example_operator.io", "version": "v1", "kind": "ServiceMeshMember"},
+                    {
+                        "group": "example_operator.io",
+                        "version": "v1",
+                        "kind": "ServiceMeshMemberRoll",
+                    },
+                ],
+                "version": "2.0.8-0",
+                "skipRange": ">=1.0.2 <2.0.8-0",
+                "properties": [
+                    {
+                        "type": "olm.package",
+                        "value": {'packageName': 'example_operator', 'version': '2.0.8-0'},
+                    },
+                ],
+                "replaces": "example_operator.v2.0.7.1",
+            },
+            "2.0.8-0",
+        )
+    ],
+)
+def test__get_olm_package_version(bundle, version):
+    ver = _get_olm_bundle_version(olm_bundle=bundle)
+    assert ver == version
+
+
+def test__get_olm_package_version_raise():
+    bundle = {
+        "csvName": "incorrect_budnle_data",
+        "properties": [
+            {
+                "type": "olm.not_package",
+            },
+        ],
+    }
+    with pytest.raises(IIBError, match="No olm package version found for OLM bundle."):
+        _get_olm_bundle_version(olm_bundle=bundle)
+
+
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
+def test_get_list_bundles(mock_run_cmd, mock_gidp, tmpdir):
+    input_image = 'registry.example.com/example_operator:tag'
+    input_data_path = '/tmp/path'
+    mock_gidp.return_value = input
+    mock_gidp.return_value = input_data_path
+
+    opm_render_output = """
+    {
+    "schema": "olm.package",
+    "name": "example-operator",
+    "defaultChannel": "stable"
+}
+{
+    "schema": "olm.channel",
+    "name": "stable",
+    "package": "example-operator",
+    "entries": [
+        {
+            "name": "example-operator.v0.1.0"
+        }
+    ]
+}
+{
+    "schema": "olm.bundle",
+    "name": "example-operator.v0.1.0",
+    "package": "example-operator",
+    "image": "quay.io/joelanford/example-operator-bundle:0.1.0",
+    "properties": [
+        {
+            "type": "olm.package",
+            "value": {
+                "packageName": "example-operator",
+                "version": "0.1.0"
+            }
+        }
+    ],
+    "relatedImages": [
+        {
+            "name": "",
+            "image": "quay.io/joelanford/example-operator:0.1.0"
+        }
+    ]
+}
+{
+    "schema": "olm.bundle",
+    "name": "example-operator.v0.2.0",
+    "package": "example-operator",
+    "image": "quay.io/joelanford/example-operator-bundle:0.2.0",
+    "properties": [
+        {
+            "type": "olm.package",
+            "value": {
+                "packageName": "example-operator",
+                "version": "0.2.0"
+            }
+        }
+    ],
+    "relatedImages": [
+        {
+            "name": "",
+            "image": "quay.io/joelanford/example-operator:0.2.0"
+        }
+    ]
+}
+    """
+
+    mock_run_cmd.return_value = opm_render_output
+
+    bundles = get_list_bundles(input_data=input_image, base_dir=tmpdir)
+
+    assert bundles == [
+        BundleImage(
+            bundlePath='quay.io/joelanford/example-operator-bundle:0.1.0',
+            csvName='example-operator.v0.1.0',
+            packageName='example-operator',
+            version='0.1.0',
+        ),
+        BundleImage(
+            bundlePath='quay.io/joelanford/example-operator-bundle:0.2.0',
+            csvName='example-operator.v0.2.0',
+            packageName='example-operator',
+            version='0.2.0',
+        ),
+    ]
+    mock_run_cmd.assert_called_once_with(
+        ['opm-v1.26.8', 'render', input_data_path],
+        {'cwd': tmpdir},
+        exc_msg=f'Failed to run opm render with input: {input_image}',
+    )
+
+
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
+def test_get_operator_package_list(mock_run_cmd, mock_gidp, tmpdir):
+    input_image = 'registry.example.com/example_operator:tag'
+    input_data_path = '/tmp/path'
+    mock_gidp.return_value = input
+    mock_gidp.return_value = input_data_path
+
+    opm_render_output = """
+    {
+    "schema": "olm.package",
+    "name": "example-operator",
+    "defaultChannel": "stable"
+}
+{
+    "schema": "olm.channel",
+    "name": "stable",
+    "package": "example-operator",
+    "entries": [
+        {
+            "name": "example-operator.v0.1.0"
+        }
+    ]
+}
+{
+    "schema": "olm.bundle",
+    "name": "example-operator.v0.1.0",
+    "package": "example-operator",
+    "image": "quay.io/joelanford/example-operator-bundle:0.1.0",
+    "properties": [
+        {
+            "type": "olm.package",
+            "value": {
+                "packageName": "example-operator",
+                "version": "0.1.0"
+            }
+        }
+    ],
+    "relatedImages": [
+        {
+            "name": "",
+            "image": "quay.io/joelanford/example-operator:0.1.0"
+        }
+    ]
+}
+    """
+
+    mock_run_cmd.return_value = opm_render_output
+    packages = get_operator_package_list(input_image_or_path=input_image, base_dir=tmpdir)
+
+    assert packages == ['example-operator']
+    mock_run_cmd.assert_called_once_with(
+        ['opm-v1.26.8', 'render', input_data_path],
+        {'cwd': tmpdir},
+        exc_msg=f'Failed to run opm render with input: {input_image}',
+    )
