@@ -252,6 +252,14 @@ def handle_merge_request(
         )
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
     target_index_resolved = prebuild_info['target_index_resolved']
+    # FIXME: To be removed when the binaryless image build support is implemented
+    is_binaryless = prebuild_info['binary_image'] == "scratch"
+    if is_binaryless:
+        _cleanup()
+        log.warning("IIB is not yet able to process binaryless images.")
+        set_request_state(request_id, 'failed', 'IIB is not yet able to process binaryless images')
+        return
+
     Opm.set_opm_version(target_index_resolved)
 
     _update_index_image_build_state(request_id, prebuild_info)

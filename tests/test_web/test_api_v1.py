@@ -814,6 +814,7 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
 
 @pytest.mark.parametrize(
     (
+        'binary_image',
         'overwrite_from_index',
         'overwrite_from_index_token',
         'bundles',
@@ -822,11 +823,11 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
         'graph_update_mode',
     ),
     (
-        (False, None, ['some:thing'], None, None, None),
-        (False, None, ['some:thing'], 'some:thing', None, 'semver'),
-        (False, None, [], 'some:thing', 'Prod', 'semver-skippatch'),
-        (True, 'username:password', ['some:thing'], 'some:thing', 'StagE', 'replaces'),
-        (True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
+        ('binary:image', False, None, ['some:thing'], None, None, None),
+        ('binary:image', False, None, ['some:thing'], 'some:thing', None, 'semver'),
+        ('binary:image', False, None, [], 'some:thing', 'Prod', 'semver-skippatch'),
+        ('scratch', True, 'username:password', ['some:thing'], 'some:thing', 'StagE', 'replaces'),
+        ('scratch', True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_add_request')
@@ -844,10 +845,11 @@ def test_add_bundle_success(
     from_index,
     distribution_scope,
     graph_update_mode,
+    binary_image,
 ):
     app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = [from_index]
     data = {
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'add_arches': ['s390x'],
         'organization': 'org',
         'cnr_token': 'token',
@@ -872,7 +874,7 @@ def test_add_bundle_success(
         'arches': [],
         'batch': 1,
         'batch_annotations': None,
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'binary_image_resolved': None,
         'build_tags': [],
         'bundle_mapping': {},
@@ -1414,12 +1416,13 @@ def test_patch_request_regenerate_bundle_success(
     mock_smfsc.assert_called_once_with(mock.ANY)
 
 
+@pytest.mark.parametrize("binary_image", ('binary:image', 'scratch'))
 @mock.patch('iib.web.api_v1.handle_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
+def test_remove_operator_success(mock_smfsc, mock_rm, binary_image, db, auth_env, client):
     data = {
         'operators': ['some:thing'],
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'from_index': 'index:image',
     }
 
@@ -1427,7 +1430,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, db, auth_env, client):
         'arches': [],
         'batch': 1,
         'batch_annotations': None,
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'binary_image_resolved': None,
         'bundle_mapping': {},
         'distribution_scope': None,
@@ -1960,16 +1963,17 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
     assert rv.json == {'error': error_msg}
 
 
+@pytest.mark.parametrize("binary_image", ('binary:image', 'scratch'))
 @pytest.mark.parametrize('distribution_scope', (None, 'stage'))
 @mock.patch('iib.web.api_v1.handle_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_success(
-    mock_smfsc, mock_merge, app, db, auth_env, client, distribution_scope
+    mock_smfsc, mock_merge, binary_image, app, db, auth_env, client, distribution_scope
 ):
     app.config['IIB_GRAPH_MODE_INDEX_ALLOW_LIST'] = ['target_index:image']
     data = {
         'deprecation_list': ['some@sha256:bundle'],
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'source_from_index': 'source_index:image',
         'target_index': 'target_index:image',
         'build_tags': [],
@@ -1983,7 +1987,7 @@ def test_merge_index_image_success(
         'arches': [],
         'batch': 1,
         'batch_annotations': None,
-        'binary_image': 'binary:image',
+        'binary_image': binary_image,
         'binary_image_resolved': None,
         'build_tags': [],
         'deprecation_list': ['some@sha256:bundle'],
@@ -2199,7 +2203,9 @@ def test_merge_index_image_fail_on_invalid_params(
     (
         ('some:thing', 'from:variable', None),
         ('some:thing', 'binary:image', {'version': 'v4.6'}),
+        ('some:thing', 'scratch', {'version': 'v4.6'}),
         ('some:thing', 'binary:image', None),
+        ('some:thing', 'scratch', None),
     ),
 )
 @mock.patch('iib.web.api_v1.handle_create_empty_index_request.apply_async')

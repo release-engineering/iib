@@ -137,8 +137,8 @@ def add_max_ocp_version_property(resolved_bundles: List[str], temp_dir: str) -> 
 def get_binary_image_from_config(
     ocp_version: str,
     distribution_scope: str,
-    binary_image_config: Dict[str, Dict[str, str]] = {},
-) -> str:
+    binary_image_config: Dict[str, Dict[str, str]],
+) -> Optional[str]:
     """
     Determine the binary image to be used to build the index image.
 
@@ -146,18 +146,11 @@ def get_binary_image_from_config(
     :param str distribution_scope: the distribution_scope label value of the index image.
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
-    :return: pull specification of the binary_image to be used for this build.
+    :return: pull specification of the binary_image to be used for this build when found.
     :rtype: str
-    :raises IIBError: when the config value for the ocp_version and distribution_scope is missing.
     """
+    binary_image_config = binary_image_config or {}
     binary_image = binary_image_config.get(distribution_scope, {}).get(ocp_version, None)
-    if not binary_image:
-        raise IIBError(
-            'IIB does not have a configured binary_image for'
-            f' distribution_scope : {distribution_scope} and ocp_version: {ocp_version}.'
-            ' Please specify a binary_image value in the request.'
-        )
-
     return binary_image
 
 
@@ -270,11 +263,22 @@ class RequestConfig:
 
     def binary_image(self, index_info: IndexImageInfo, distribution_scope: str) -> str:
         """Get binary image based on self configuration, index image info and distribution scope."""
+        ocp_version = index_info['ocp_version']
+        config_binary_image = get_binary_image_from_config(
+            ocp_version, distribution_scope, self.binary_image_config
+        )
         if not self._binary_image:
-            binary_image_ocp_version = index_info['ocp_version']
-            return get_binary_image_from_config(
-                binary_image_ocp_version, distribution_scope, self.binary_image_config
-            )
+            if not config_binary_image:
+                raise IIBError(
+                    'IIB does not have a configured binary_image for'
+                    f' distribution_scope : {distribution_scope} and ocp_version: {ocp_version}.'
+                    ' Please specify a binary_image value in the request.'
+                )
+            return config_binary_image
+        if self._binary_image == "scratch" and config_binary_image != "scratch":
+            raise IIBError(f"The index image should not be binaryless for {ocp_version}.")
+        elif self._binary_image != "scratch" and config_binary_image == "scratch":
+            raise IIBError(f"The index image must be built as a binaryless for {ocp_version}.")
         return self._binary_image
 
 
@@ -1192,9 +1196,12 @@ def prepare_request_for_build(
     )
 
     binary_image = build_request_config.binary_image(request_index, distribution_scope)
-
-    binary_image_resolved = get_resolved_image(binary_image)
-    binary_image_arches = get_image_arches(binary_image_resolved)
+    if binary_image == "scratch":  # binaryless image mode
+        binary_image_resolved = binary_image
+        binary_image_arches = arches
+    else:
+        binary_image_resolved = get_resolved_image(binary_image)
+        binary_image_arches = get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):
         raise IIBError(
