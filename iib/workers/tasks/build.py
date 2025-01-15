@@ -1216,7 +1216,7 @@ def _copy_files_from_image(image: str, src_path: str, dest_path: str) -> None:
     # podman.
     container_command = 'unused'
     container_id = run_cmd(
-        ['podman', 'create', image, container_command],
+        ['podman', 'create', '--entrypoint', '""', image, container_command],
         exc_msg=f'Failed to create a container for {image}',
     ).strip()
     try:

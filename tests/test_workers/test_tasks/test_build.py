@@ -1217,7 +1217,9 @@ def test_copy_files_from_image(mock_podman_pull, mock_run_cmd, fail_rm):
 
     mock_run_cmd.assert_has_calls(
         [
-            mock.call(['podman', 'create', image, 'unused'], exc_msg=mock.ANY),
+            mock.call(
+                ['podman', 'create', '--entrypoint', '""', image, 'unused'], exc_msg=mock.ANY
+            ),
             mock.call(['podman', 'cp', f'{container_id}:{src_path}', dest_path], exc_msg=mock.ANY),
             mock.call(['podman', 'rm', container_id], exc_msg=mock.ANY),
         ]
