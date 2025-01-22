@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.1.0
+
+* Converting timestamp object to string
+* Force empty entrypoint to podman craete
+* Allow "binary_image" to receive "scratch"
+* Bump IIB's dependencies
+
 ## 9.0.1
 
 * Bump IIB's dependencies
