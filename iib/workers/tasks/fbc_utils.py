@@ -5,6 +5,7 @@ import os
 import logging
 import shutil
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Tuple, List
 
@@ -128,6 +129,19 @@ def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, List[st
     return fbc_fragment_path, operator_packages
 
 
+def _serialize_datetime(obj: datetime) -> str:
+    """
+    Serialize datetime objects.
+
+    :param obj: datetime object to serialize
+    :return: JSON serializable object as string.
+    :rtype: str
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} is not serializable.")
+
+
 def enforce_json_config_dir(config_dir: str) -> None:
     """
     Ensure the files from config dir are in JSON format.
@@ -150,5 +164,5 @@ def enforce_json_config_dir(config_dir: str) -> None:
                 with open(in_file, 'r') as yaml_in, open(out_file, 'a') as json_out:
                     data = yaml.load_all(yaml_in)
                     for chunk in data:
-                        json.dump(chunk, json_out)
+                        json.dump(chunk, json_out, default=_serialize_datetime)
                 os.remove(in_file)
