@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import datetime
 import json
 import os
 import tempfile
@@ -15,6 +16,7 @@ from iib.workers.tasks.fbc_utils import (
     merge_catalogs_dirs,
     enforce_json_config_dir,
     extract_fbc_fragment,
+    _serialize_datetime,
 )
 
 
@@ -186,9 +188,13 @@ def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
     another: data
     ---
     one_more: chunk
+    createdAt: 2025-01-21T07:15:29
     """
 
-    expected_result = """{"foo": "bar", "bar": "foo"}{"another": "data"}{"one_more": "chunk"}"""
+    expected_result = (
+        '{"foo": "bar", "bar": "foo"}{"another": "data"}'
+        '{"one_more": "chunk", "createdAt": "2025-01-21T07:15:29"}'
+    )
 
     input = os.path.join(tmpdir, f"test_file.yaml")
     output = os.path.join(tmpdir, f"test_file.json")
@@ -216,3 +222,14 @@ def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
         extract_fbc_fragment(tmpdir, test_fbc_fragment)
     mock_cffi.assert_has_calls([mock.call(test_fbc_fragment, '/configs', fbc_fragment_path)])
     mock_osldr.assert_has_calls([mock.call(fbc_fragment_path)])
+
+
+def test__serialize_datetime():
+    assert (
+        _serialize_datetime(datetime.datetime.fromisoformat("2025-01-22")) == "2025-01-22T00:00:00"
+    )
+
+
+def test__serialize_datetime_raise():
+    with pytest.raises(TypeError, match=f"Type <class 'int'> is not serializable."):
+        _serialize_datetime(2025)
