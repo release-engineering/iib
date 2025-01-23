@@ -428,7 +428,7 @@ def test_opm_migrate(
 
 
 @pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
-def test_create_dockerfile(tmpdir, dockerfile):
+def test_create_dockerfile_binary(tmpdir, dockerfile):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
 
@@ -458,6 +458,36 @@ def test_create_dockerfile(tmpdir, dockerfile):
         LABEL operators.operatorframework.io.index.configs.v1=/configs
 
         ADD database/index.db /var/lib/iib/_hidden/do.not.edit.db
+        '''
+    )
+    assert dockerfile == expected_dockerfile
+
+
+@pytest.mark.parametrize("dockerfile", (None, 'index.Dockerfile'))
+def test_create_dockerfile_binaryless(tmpdir, dockerfile):
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+
+    opm_operations.create_dockerfile(
+        fbc_dir, tmpdir, index_db_file, "scratch", dockerfile_name=dockerfile
+    )
+
+    df_name = dockerfile if dockerfile else f"{os.path.basename(fbc_dir)}.Dockerfile"
+    df_path = os.path.join(tmpdir, df_name)
+    with open(df_path, 'r') as f:
+        dockerfile = f.read()
+
+    expected_dockerfile = textwrap.dedent(
+        '''\
+        FROM scratch
+
+        # Copy declarative config root and cache into image
+        ADD catalogs /configs
+        COPY --chown=1001:0 cache /tmp/cache
+
+        # Set DC-specific label for the location of the DC root directory
+        # in the image
+        LABEL operators.operatorframework.io.index.configs.v1=/configs
         '''
     )
     assert dockerfile == expected_dockerfile

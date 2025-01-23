@@ -81,14 +81,6 @@ def handle_fbc_operation_request(
 
     from_index_resolved = prebuild_info['from_index_resolved']
     binary_image_resolved = prebuild_info['binary_image_resolved']
-    # FIXME: To be removed when the binaryless image build support is implemented
-    is_binaryless = prebuild_info['binary_image'] == "scratch"
-    if is_binaryless:
-        _cleanup()
-        log.warning("IIB is not yet able to process binaryless images.")
-        set_request_state(request_id, 'failed', 'IIB is not yet able to process binaryless images')
-        return
-
     Opm.set_opm_version(from_index_resolved)
 
     prebuild_info['fbc_fragment_resolved'] = resolved_fbc_fragment

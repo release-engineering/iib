@@ -808,14 +808,6 @@ def handle_add_request(
     )
     from_index_resolved = prebuild_info['from_index_resolved']
 
-    # FIXME: To be removed when the binaryless image build support is implemented
-    is_binaryless = prebuild_info['binary_image'] == "scratch"
-    if is_binaryless:
-        _cleanup()
-        log.warning("IIB is not yet able to process binaryless images.")
-        set_request_state(request_id, 'failed', 'IIB is not yet able to process binaryless images')
-        return
-
     Opm.set_opm_version(from_index_resolved)
     with set_registry_token(overwrite_from_index_token, from_index_resolved):
         is_fbc = is_image_fbc(from_index_resolved) if from_index else False
@@ -1070,14 +1062,6 @@ def handle_rm_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     from_index_resolved = prebuild_info['from_index_resolved']
-    # FIXME: To be removed when the binaryless image build support is implemented
-    is_binaryless = prebuild_info['binary_image'] == "scratch"
-    if is_binaryless:
-        _cleanup()
-        log.warning("IIB is not yet able to process binaryless images.")
-        set_request_state(request_id, 'failed', 'IIB is not yet able to process binaryless images')
-        return
-
     Opm.set_opm_version(from_index_resolved)
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
