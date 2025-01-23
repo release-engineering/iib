@@ -95,13 +95,6 @@ def handle_create_empty_index_request(
     )
     from_index_resolved = prebuild_info['from_index_resolved']
     prebuild_info['labels'] = labels
-    # FIXME: To be removed when the binaryless image build support is implemented
-    is_binaryless = prebuild_info['binary_image'] == "scratch"
-    if is_binaryless:
-        _cleanup()
-        log.warning("IIB is not yet able to process binaryless images.")
-        set_request_state(request_id, 'failed', 'IIB is not yet able to process binaryless images')
-        return
     Opm.set_opm_version(from_index_resolved)
 
     if not output_fbc and is_image_fbc(from_index_resolved):
