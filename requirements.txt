@@ -259,9 +259,9 @@ decorator==5.1.1 \
     # via
     #   dogpile-cache
     #   gssapi
-deprecated==1.2.15 \
-    --hash=sha256:353bc4a8ac4bfc96800ddab349d89c25dec1079f65fd53acdcc1e0b975b21320 \
-    --hash=sha256:683e561a90de76239796e6b6feac66b99030d2dd3fcf61ef996330f14bbb9b0d
+Deprecated==1.2.16 \
+    --hash=sha256:4c8e429ada6573698ba723f9c4ea53006e990042a45db938e412f1f9d4b9ffd9 \
+    --hash=sha256:6ec624c168290715d56c6af7c1c1066ea5c732bd56427b1651db75ede923aa38
     # via
     #   opentelemetry-api
     #   opentelemetry-exporter-otlp-proto-grpc
