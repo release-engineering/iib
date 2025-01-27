@@ -122,6 +122,8 @@ class Config(object):
     # Enable send events to the broker. This is needed for celery promethues exporter
     worker_send_task_events: bool = True
     task_send_sent_event: bool = True
+    # The minimal version of OPM which requires setting the --migrate-level flag for migrate
+    iib_opm_new_migrate_version = "v1.46.0"
 
 
 class ProductionConfig(Config):

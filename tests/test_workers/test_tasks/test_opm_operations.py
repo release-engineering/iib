@@ -386,18 +386,30 @@ def test_serve_cmd_at_port_delayed_initialize(
     assert mock_run_cmd.call_count == 7
 
 
+@pytest.mark.parametrize(
+    "opm_version,migrate_args",
+    [
+        ("v1.26.8", []),
+        ("v1.47.2", ['--migrate-level', 'bundle-object-to-csv-metadata']),
+    ],
+)
 @mock.patch('iib.workers.tasks.opm_operations.opm_validate')
 @mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
 @mock.patch('iib.workers.tasks.opm_operations.generate_cache_locally')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
-@mock.patch.object(opm_operations.Opm, 'opm_version', 'opm-v1.26.8')
 def test_opm_migrate(
     mock_run_cmd,
     mock_gcl,
     moch_srmtree,
     mock_opmvalidate,
+    opm_version,
+    migrate_args,
+    monkeypatch,
     tmpdir,
 ):
+    monkeypatch.setattr(opm_operations.Opm, 'opm_version', f'opm-{opm_version}')
+    monkeypatch.setattr(opm_operations.Opm, 'get_opm_version_number', lambda: opm_version)
+
     index_db_file = os.path.join(tmpdir, 'database/index.db')
 
     opm_operations.opm_migrate(index_db_file, tmpdir)
@@ -406,7 +418,7 @@ def test_opm_migrate(
     fbc_dir = os.path.join(tmpdir, 'catalog')
 
     mock_run_cmd.assert_called_once_with(
-        ['opm-v1.26.8', 'migrate', index_db_file, fbc_dir],
+        [f'opm-{opm_version}', 'migrate', *migrate_args, index_db_file, fbc_dir],
         {'cwd': tmpdir},
         exc_msg='Failed to migrate index.db to file-based catalog',
     )

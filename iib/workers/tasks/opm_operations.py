@@ -621,7 +621,13 @@ def opm_migrate(
     if os.path.exists(fbc_dir_path):
         shutil.rmtree(fbc_dir_path)
 
-    cmd = [Opm.opm_version, 'migrate', index_db, fbc_dir_path]
+    migrate_args = []
+    opm_new_migrate_version = get_worker_config().get('iib_opm_new_migrate_version')
+    opm_version_number = Opm.get_opm_version_number()
+    if Version(opm_version_number) > Version(opm_new_migrate_version):
+        migrate_args = ['--migrate-level', 'bundle-object-to-csv-metadata']
+
+    cmd = [Opm.opm_version, 'migrate', *migrate_args, index_db, fbc_dir_path]
 
     run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to migrate index.db to file-based catalog')
     log.info("Migration to file-based catalog was completed.")
