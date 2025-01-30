@@ -267,7 +267,7 @@ Deprecated==1.2.18 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-semantic-conventions
-dogpile-cache==1.3.3 \
+dogpile-cache==1.3.4 \
     --hash=sha256:5e211c4902ebdf88c678d268e22454b41e68071632daa9402d8ee24e825ed8ca \
     --hash=sha256:f84b8ed0b0fb297d151055447fa8dcaf7bae566d4dbdefecdcc1f37662ab588b
     # via iib (setup.py)
@@ -1084,3 +1084,6 @@ zipp==3.21.0 \
     --hash=sha256:2c9958f6430a2040341a52eb608ed6dd93ef4392e02ffe219417c1b28b5dd1f4 \
     --hash=sha256:ac1bbe05fd2991f160ebce24ffbac5f6d11d83dc90891255885223d42b3cd931
     # via importlib-metadata
+dogpile.cache==1.3.4 \
+    --hash=sha256:4f0295575f5fdd3f7e13c84ba8e36656971d1869a2081b4737ec99ede378a8c0 \
+    --hash=sha256:a393412f93d24a8942fdf9248dc80678127d54c5e60a7be404027aa193cafe12
