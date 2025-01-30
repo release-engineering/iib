@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.1.1
+
+* Add "--migrate-level" for opm_migrate if opm>1.46 by @JAVGan in https://github.com/release-engineering/iib/pull/795
+* Update dependencies of IIB
+
 ## 9.1.0
 
 * Converting timestamp object to string
