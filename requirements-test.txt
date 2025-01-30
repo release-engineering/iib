@@ -28,13 +28,12 @@ blinker==1.9.0 \
     # via
     #   -r requirements.txt
     #   flask
-boto3==1.36.6 \
-    --hash=sha256:6d473f0f340d02b4e9ad5b8e68786a09728101a8b950231b89ebdaf72b6dca21 \
-    --hash=sha256:b36feae061dc0793cf311468956a0a9e99215ce38bc99a1a4e55a5b105f16297
+boto3==1.36.9 \
+    --hash=sha256:440d0b70990efb732f63b40fa16c663c86fee80347eb4bf3bcc08b593e8ac77f
     # via -r requirements.txt
-botocore==1.36.6 \
-    --hash=sha256:4864c53d638da191a34daf3ede3ff1371a3719d952cc0c6bd24ce2836a38dd77 \
-    --hash=sha256:f77bbbb03fb420e260174650fb5c0cc142ec20a96967734eed2b0ef24334ef34
+botocore==1.36.9 \
+    --hash=sha256:cb3baefdb8326fdfae0750015e5868330e18d3a088a31da658df2cc8cba7ac73 \
+    --hash=sha256:e31d206c7708300c541d0799df73b576bbe7d8bed011687d96323ed48763ffd2
     # via
     #   -r requirements.txt
     #   boto3
@@ -349,7 +348,7 @@ decorator==5.1.1 \
     #   -r requirements.txt
     #   dogpile-cache
     #   gssapi
-Deprecated==1.2.18 \
+deprecated==1.2.18 \
     --hash=sha256:422b6f6d859da6f2ef57857761bfb392480502a64c3028ca9bbe86085d72115d \
     --hash=sha256:bd5011788200372a32418f888e326a09ff80d0214bd961147cfed01b5c018eec
     # via
@@ -358,9 +357,9 @@ Deprecated==1.2.18 \
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-semantic-conventions
-dogpile-cache==1.3.3 \
-    --hash=sha256:5e211c4902ebdf88c678d268e22454b41e68071632daa9402d8ee24e825ed8ca \
-    --hash=sha256:f84b8ed0b0fb297d151055447fa8dcaf7bae566d4dbdefecdcc1f37662ab588b
+dogpile-cache==1.3.4 \
+    --hash=sha256:4f0295575f5fdd3f7e13c84ba8e36656971d1869a2081b4737ec99ede378a8c0 \
+    --hash=sha256:a393412f93d24a8942fdf9248dc80678127d54c5e60a7be404027aa193cafe12
     # via -r requirements.txt
 flask==3.1.0 \
     --hash=sha256:5f873c5184c897c8d9d1b05df1e3d01b14910ce69607a117bd3277098a5836ac \
@@ -374,7 +373,7 @@ flask-login==0.6.3 \
     --hash=sha256:5e23d14a607ef12806c699590b89d0f0e0d67baeec599d75947bf9c147330333 \
     --hash=sha256:849b25b82a436bf830a054e74214074af59097171562ab10bfa999e6b78aae5d
     # via -r requirements.txt
-Flask-Migrate==4.1.0 \
+flask-migrate==4.1.0 \
     --hash=sha256:1a336b06eb2c3ace005f5f2ded8641d534c18798d64061f6ff11f79e1434126d \
     --hash=sha256:24d8051af161782e0743af1b04a152d007bad9772b2bca67b7ec1e8ceeb3910d
     # via -r requirements.txt
@@ -963,10 +962,8 @@ python-memcached==1.62 \
     --hash=sha256:0285470599b7f593fbf3bec084daa1f483221e68c1db2cf1d846a9f7c2655103 \
     --hash=sha256:1bdd8d2393ff53e80cd5e9442d750e658e0b35c3eebb3211af137303e3b729d1
     # via -r requirements.txt
-python-qpid-proton==0.39.0 \
-    --hash=sha256:362055ae6ab4c7f1437247c602757f30328d55c0a6986d5b68ca9798de9fce02 \
-    --hash=sha256:d052e85ffbc817d4db973fae230d8a80732d444e0abbac55360ad4beb181cb43 \
-    --hash=sha256:f69da296ffa9e3b22f88a53fe9e27c4f4844e088a9f041061bd4f75f74f2a0af
+python-qpid-proton==0.38.0 \
+    --hash=sha256:e39c6a19ceac0e721b7e2b29543b241c43378caf666b2911271611e88cabee4b
     # via -r requirements.txt
 requests==2.32.3 \
     --hash=sha256:55365417734eb18255590a9ff9eb97e9e1da868d4ccd6402399eaf68af20a760 \
@@ -1047,7 +1044,7 @@ six==1.17.0 \
     # via
     #   -r requirements.txt
     #   python-dateutil
-SQLAlchemy==2.0.37 \
+sqlalchemy==2.0.37 \
     --hash=sha256:03f0528c53ca0b67094c4764523c1451ea15959bbf0a8a8a3096900014db0278 \
     --hash=sha256:12b0f1ec623cccf058cf21cb544f0e74656618165b083d78145cafde156ea7b6 \
     --hash=sha256:12b28d99a9c14eaf4055810df1001557176716de0167b91026e648e65229bffb \
