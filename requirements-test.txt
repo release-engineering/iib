@@ -31,9 +31,9 @@ blinker==1.9.0 \
 boto3==1.36.9 \
     --hash=sha256:440d0b70990efb732f63b40fa16c663c86fee80347eb4bf3bcc08b593e8ac77f
     # via -r requirements.txt
-botocore==1.36.9 \
-    --hash=sha256:cb3baefdb8326fdfae0750015e5868330e18d3a088a31da658df2cc8cba7ac73 \
-    --hash=sha256:e31d206c7708300c541d0799df73b576bbe7d8bed011687d96323ed48763ffd2
+botocore==1.36.10 \
+    --hash=sha256:45c8a6e01dc18d44a13ba688f1d60ad562db8154b08c46b412387ea040a741c2 \
+    --hash=sha256:d27bb73f0ea81395527a6298ac0a7ea5b2958094169f7cf7d48e3f4e4bc21b65
     # via
     #   -r requirements.txt
     #   boto3
