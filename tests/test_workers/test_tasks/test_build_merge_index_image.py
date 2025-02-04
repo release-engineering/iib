@@ -29,6 +29,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.filter_operators_present_in_db')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
@@ -63,6 +64,7 @@ def test_handle_merge_request(
     mock_gbfdl,
     mock_geaps,
     mock_dep_b,
+    mock_f_dep_b,
     mock_dep_b_fbc,
     mock_bi,
     mock_pi,
@@ -118,6 +120,7 @@ def test_handle_merge_request(
 
     mock_dep_b.side_effect = side_effect
     mock_dep_b_fbc.side_effect = side_effect
+    mock_f_dep_b.return_value = mock_dep_b
 
     mock_gidp.return_value = '/tmp'
     mock_run_cmd.return_value = json.dumps(
@@ -203,6 +206,7 @@ def test_handle_merge_request(
     return_value=[[{'bundlePath': 'some_bundle'}], []],
 )
 @mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
@@ -218,6 +222,7 @@ def test_handle_merge_request_no_deprecate(
     mock_prfb,
     mock_uiibs,
     mock_srs,
+    mock_get_bundles,
     mock_srs2,
     mock_gpb,
     mock_abmis,
@@ -261,7 +266,14 @@ def test_handle_merge_request_no_deprecate(
     mock_abmis.return_value = ([], invalid_bundles)
     mock_gid.return_value = 'database/index.db'
     mock_om.return_value = 'catalog', 'cache'
-
+    mock_get_bundles.return_value = [
+        {
+            'bundlePath': 'invalid_bundle:1.0',
+            'csvName': 'invalid_bundle:1.0',
+            'packageName': 'invalid_bundle',
+            'version': '1.0',
+        },
+    ]
     mock_run_cmd.return_value = json.dumps(
         {
             "schema": "olm.bundle",
@@ -309,6 +321,7 @@ def test_handle_merge_request_no_deprecate(
                 binary_image='binary-image:1.0',
                 from_index=mock.ANY,
             )
+            mock_get_bundles.assert_called_once()
             assert mock_bi.call_count == 2
             assert mock_pi.call_count == 2
         else:
