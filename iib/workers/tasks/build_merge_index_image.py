@@ -40,6 +40,7 @@ from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
+    filter_operators_present_in_db,
     get_bundles_from_deprecation_list,
     request_logger,
     set_registry_token,
@@ -336,6 +337,15 @@ def handle_merge_request(
         deprecation_bundles = deprecation_bundles + [
             bundle['bundlePath'] for bundle in invalid_version_bundles
         ]
+
+        index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
+
+        # Operator passed in deprecation list should be available in operator database,
+        # filter_operators_present_in_db removes operaors which are passed in
+        # deprecation list and does not exists in database.
+        deprecation_bundles = filter_operators_present_in_db(
+            deprecation_bundles, index_db_file, temp_dir
+        )
 
         if deprecation_bundles:
             intermediate_image_name = _get_external_arch_pull_spec(

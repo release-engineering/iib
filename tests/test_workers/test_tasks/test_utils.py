@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import os
+
 import stat
 import textwrap
 from unittest import mock
@@ -1288,3 +1289,61 @@ def test_add_max_ocp_version_property_empty_index(mock_apti, mock_glb, mock_gbj,
 
     mock_gbj.assert_not_called()
     mock_apti.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
+def filter_operators_present_in_db(mock_bundle_list):
+
+    mock_bundle_list.return_value = [
+        {
+            'bundlePath': 'op1@sha',
+            'csvName': 'op1.v0.1.489-1',
+            'packageName': 'op1',
+            'version': '0.1.489-1',
+        },
+        {
+            'bundlePath': 'op2@sha',
+            'csvName': 'op2.v0.1.501-1',
+            'packageName': 'op2',
+            'version': '0.1.501-1',
+        },
+    ]
+
+    deprecation_bundles = [
+        "op1@sha",
+    ]
+
+    operator_after_deprication = utils.filter_operators_present_in_db(
+        deprecation_bundles, "index/db/file", "temp_dir"
+    )
+
+    assert operator_after_deprication == ["op1@sha"]
+
+
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
+def test_no_matching_filter_operators_present_in_db(mock_bundle_list):
+
+    mock_bundle_list.return_value = [
+        {
+            'bundlePath': 'op1@sha',
+            'csvName': 'op1.v0.1.489-1',
+            'packageName': 'op1',
+            'version': '0.1.489-1',
+        },
+        {
+            'bundlePath': 'op2@sha',
+            'csvName': 'op2.v0.1.501-1',
+            'packageName': 'op2',
+            'version': '0.1.501-1',
+        },
+    ]
+
+    deprecation_bundles = [
+        "op3@sha",
+    ]
+
+    operator_after_deprication = utils.filter_operators_present_in_db(
+        deprecation_bundles, "index/db/file", "temp_dir"
+    )
+
+    assert operator_after_deprication == []
