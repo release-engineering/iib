@@ -726,9 +726,9 @@ opentelemetry-exporter-otlp-proto-grpc==1.29.0 \
     # via
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp
-opentelemetry-exporter-otlp-proto-http==1.29.0 \
-    --hash=sha256:b10d174e3189716f49d386d66361fbcf6f2b9ad81e05404acdee3f65c8214204 \
-    --hash=sha256:b228bdc0f0cfab82eeea834a7f0ffdd2a258b26aa33d89fb426c29e8e934d9d0
+opentelemetry-exporter-otlp-proto-http==1.30.0 \
+    --hash=sha256:9578e790e579931c5ffd50f1e6975cbdefb6a0a0a5dea127a6ae87df10e0a589 \
+    --hash=sha256:c3ae75d4181b1e34a60662a6814d0b94dd33b628bee5588a878bed92cee6abdc
     # via
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp
