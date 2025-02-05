@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.0
+
+* IIB uses opm render
+* Add support for building binaryless catalogs
+* Bump dependencies
+
 ## 9.1.1
 
 * Add "--migrate-level" for opm_migrate if opm>1.46 by @JAVGan in https://github.com/release-engineering/iib/pull/795
