@@ -383,6 +383,8 @@ def test_create_dockerfile_binaryless(tmpdir, dockerfile):
         # Set DC-specific label for the location of the DC root directory
         # in the image
         LABEL operators.operatorframework.io.index.configs.v1=/configs
+
+        ADD database/index.db /var/lib/iib/_hidden/do.not.edit.db
         '''
     )
     assert dockerfile == expected_dockerfile
