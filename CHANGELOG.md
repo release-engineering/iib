@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.1
+
+* Allow binaryless images to have the hidden DB
+* Bump dependencies
+
 ## 9.2.0
 
 * IIB uses opm render
