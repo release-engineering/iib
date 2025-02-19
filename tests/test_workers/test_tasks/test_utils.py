@@ -1116,7 +1116,7 @@ def test_prepare_request_for_build_binaryless(
             _binary_image=binary_image,
             from_index=from_index,
             overwrite_from_index_token=None,
-            add_arches=["amd64"],
+            add_arches=["s390x"],
             bundles=bundles,
             distribution_scope="prod",
             binary_image_config=binary_image_config,
