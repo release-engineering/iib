@@ -1124,7 +1124,7 @@ def test_prepare_request_for_build_binaryless(
     )
 
     assert rv == {
-        'arches': {'amd64'},
+        'arches': {'linux-amd64'},
         'binary_image': "scratch",
         'binary_image_resolved': "scratch",
         'bundle_mapping': expected_bundle_mapping,
