@@ -955,9 +955,9 @@ SQLAlchemy==2.0.38 \
     # via
     #   alembic
     #   flask-sqlalchemy
-stevedore==5.4.0 \
-    --hash=sha256:79e92235ecb828fe952b6b8b0c6c87863248631922c8e8e0fa5b17b232c4514d \
-    --hash=sha256:b0be3c4748b3ea7b854b265dcb4caa891015e442416422be16f8b31756107857
+stevedore==5.4.1 \
+    --hash=sha256:3135b5ae50fe12816ef291baff420acb727fcd356106e3e9cbfa9e5985cd6f4b \
+    --hash=sha256:d10a31c7b86cba16c1f6e8d15416955fc797052351a56af15e608ad20811fcfe
     # via dogpile-cache
 tenacity==9.0.0 \
     --hash=sha256:807f37ca97d62aa361264d497b0e31e92b8027044942bfa756160d908320d73b \
