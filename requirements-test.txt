@@ -347,9 +347,9 @@ cryptography==44.0.1 \
     #   -r requirements.txt
     #   pyspnego
     #   requests-kerberos
-decorator==5.1.1 \
-    --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
-    --hash=sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186
+decorator==5.2.0 \
+    --hash=sha256:1cf2ab68f8c1c7eae3895d82ab0daab41294cfbe6fbdebf50b44307299980762 \
+    --hash=sha256:f30a69c066f698c7c11fa1fa3425f684d3b4b01b494ee41e73c0a14f3de48427
     # via
     #   -r requirements.txt
     #   dogpile-cache
