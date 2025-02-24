@@ -17,6 +17,7 @@ from iib.workers.tasks.opm_operations import (
     deprecate_bundles_fbc,
     opm_index_add,
     deprecate_bundles,
+    verify_operators_exists,
     Opm,
 )
 from packaging.version import Version
@@ -40,7 +41,6 @@ from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
-    filter_operators_present_in_db,
     get_bundles_from_deprecation_list,
     request_logger,
     set_registry_token,
@@ -326,32 +326,43 @@ def handle_merge_request(
         if missing_bundle_paths:
             add_max_ocp_version_property(missing_bundle_paths, temp_dir)
         set_request_state(request_id, 'in_progress', 'Deprecating bundles in the deprecation list')
+
         log.info('Deprecating bundles in the deprecation list')
         intermediate_bundles = missing_bundle_paths + source_index_bundles_pull_spec
         deprecation_bundles = get_bundles_from_deprecation_list(
             intermediate_bundles, deprecation_list
         )
+
         # We do not need to pass the invalid_version_bundles through the
         # get_bundles_from_deprecation_list function because we already know
         # they are present in the newly created index.
-        deprecation_bundles = deprecation_bundles + [
-            bundle['bundlePath'] for bundle in invalid_version_bundles
+
+        invalid_version_bundles_names = [
+            bundle["packageName"] for bundle in invalid_version_bundles
         ]
 
-        index_db_file = os.path.join(temp_dir, get_worker_config()['temp_index_db_path'])
-
-        # Operator passed in deprecation list should be available in operator database,
-        # filter_operators_present_in_db removes operaors which are passed in
-        # deprecation list and does not exists in database.
-        deprecation_bundles = filter_operators_present_in_db(
-            deprecation_bundles, index_db_file, temp_dir
+        intermediate_image_name = _get_external_arch_pull_spec(
+            request_id, arch, include_transport=False
         )
-
-        if deprecation_bundles:
-            intermediate_image_name = _get_external_arch_pull_spec(
-                request_id, arch, include_transport=False
+        if invalid_version_bundles_names:
+            filtered_invalid_version_bundles_names, _ = verify_operators_exists(
+                from_index=intermediate_image_name,
+                base_dir=temp_dir,
+                operator_packages=invalid_version_bundles_names,
+                overwrite_from_index_token=None,
             )
 
+            # Operator passed in deprecation list should be available in operator database,
+            invalid_version_bundles = [
+                bundle
+                for bundle in invalid_version_bundles
+                if bundle["packageName"] in list(filtered_invalid_version_bundles_names)
+            ]
+            deprecation_bundles = deprecation_bundles + [
+                bundle['bundlePath'] for bundle in invalid_version_bundles
+            ]
+
+        if deprecation_bundles:
             # we can check if source index is FBC or not because intermediate_image
             # will be always the same type because it is built
             # from source index image in _add_bundles_missing_in_source()
