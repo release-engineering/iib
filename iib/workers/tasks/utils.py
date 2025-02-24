@@ -1265,29 +1265,3 @@ def get_bundle_metadata(
         for pullspec in operator_csv.get_pullspecs():
             bundle_metadata['found_pullspecs'].add(pullspec)
     return bundle_metadata
-
-
-def filter_operators_present_in_db(
-    deprecation_bundles: List[str],
-    index_db_file: str,
-    temp_dir: str,
-) -> List[str]:
-    """
-    Check if operator marked for deprecation is available, if not drop them.
-
-    :param List[str] deprecation_bundles: List of bundles to be depricated
-    :param str index_db_file: Path of operator database
-    :param str temp_dir: temp directory where opm will be executed
-
-    :return:rtype: list(str) A List of operator bundle to be deprecated
-    """
-    bundles_list = get_list_bundles(index_db_file, temp_dir)
-
-    deprecation_bundles = [
-        bundle["bundlePath"]
-        for bundle in bundles_list
-        if bundle["bundlePath"] in deprecation_bundles
-    ]
-
-    log.info("Deprecation bundle after filter is : %s", deprecation_bundles)
-    return deprecation_bundles
