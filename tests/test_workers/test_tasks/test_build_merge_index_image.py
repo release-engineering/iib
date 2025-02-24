@@ -29,7 +29,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
-@mock.patch('iib.workers.tasks.build_merge_index_image.filter_operators_present_in_db')
+@mock.patch('iib.workers.tasks.build_merge_index_image.verify_operators_exists')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
@@ -64,7 +64,7 @@ def test_handle_merge_request(
     mock_gbfdl,
     mock_geaps,
     mock_dep_b,
-    mock_f_dep_b,
+    mock_verify_operator_exits,
     mock_dep_b_fbc,
     mock_bi,
     mock_pi,
@@ -120,7 +120,7 @@ def test_handle_merge_request(
 
     mock_dep_b.side_effect = side_effect
     mock_dep_b_fbc.side_effect = side_effect
-    mock_f_dep_b.return_value = mock_dep_b
+    mock_verify_operator_exits.return_value = (mock_dep_b, "")
 
     mock_gidp.return_value = '/tmp'
     mock_run_cmd.return_value = json.dumps(
@@ -185,7 +185,9 @@ def test_handle_merge_request(
 
 
 @pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
-@pytest.mark.parametrize('invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0'}]))
+@pytest.mark.parametrize(
+    'invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}])
+)
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
@@ -206,7 +208,7 @@ def test_handle_merge_request(
     return_value=[[{'bundlePath': 'some_bundle'}], []],
 )
 @mock.patch('iib.workers.tasks.utils.set_request_state')
-@mock.patch('iib.workers.tasks.utils.get_list_bundles')
+@mock.patch('iib.workers.tasks.opm_operations.get_list_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
@@ -214,7 +216,9 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+@mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
 def test_handle_merge_request_no_deprecate(
+    mock_get_hidden_db,
     mock_sov,
     mock_iifbc,
     mock_add_label_to_index,
@@ -313,6 +317,7 @@ def test_handle_merge_request_no_deprecate(
     assert mock_gpb.call_count == 2
     mock_abmis.assert_called_once()
     mock_gbfdl.assert_called_once()
+    mock_geaps.assert_called_once()
     if invalid_bundles:
         if source_fbc:
             mock_dep_b_fbc.assert_called_once_with(
@@ -334,9 +339,7 @@ def test_handle_merge_request_no_deprecate(
             )
             assert mock_bi.call_count == 3
             assert mock_pi.call_count == 3
-        mock_geaps.assert_called_once()
     else:
-        mock_geaps.assert_not_called()
         mock_dep_b.assert_not_called()
         mock_dep_b_fbc.assert_not_called()
         assert mock_bi.call_count == 2
