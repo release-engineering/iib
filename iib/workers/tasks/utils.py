@@ -1165,12 +1165,6 @@ def prepare_request_for_build(
         build_request_config,
         [("from_index", "v4.5"), ("source_from_index", "v4.5"), ("target_index", "v4.6")],
     )
-    arches = gather_index_image_arches(build_request_config, index_info)
-    if not arches:
-        raise IIBError('No arches were provided to build the index image')
-
-    arches_str = ', '.join(sorted(arches))
-    log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     # Use the distribution_scope of the from_index as the resolved distribution scope for `Add`,
     # and 'Rm' requests, but use the distribution_scope of the target_index as the resolved
@@ -1191,9 +1185,11 @@ def prepare_request_for_build(
 
     binary_image = build_request_config.binary_image(request_index, distribution_scope)
     if binary_image == "scratch":  # binaryless image mode
+        arches = set(["amd64"])
         binary_image_resolved = binary_image
         binary_image_arches = arches
     else:
+        arches = gather_index_image_arches(build_request_config, index_info)
         binary_image_resolved = get_resolved_image(binary_image)
         binary_image_arches = get_image_arches(binary_image_resolved)
 
@@ -1203,6 +1199,9 @@ def prepare_request_for_build(
                 ', '.join(sorted(arches - binary_image_arches))
             )
         )
+
+    arches_str = ', '.join(sorted(arches))
+    log.debug('Set to build the index image for the following arches: %s', arches_str)
 
     bundle_mapping: Dict[str, Any] = {}
     for bundle in bundles:
