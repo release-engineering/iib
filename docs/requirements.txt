@@ -24,7 +24,7 @@ recommonmark
 requests
 ruamel.yaml
 setuptools
-sphinx==8.2.1
+sphinx==8.2.3
 sphinx_rtd_theme
 tenacity
 typing-extensions
