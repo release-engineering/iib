@@ -279,8 +279,11 @@ def handle_merge_request(
         log.info('Getting bundles present in the source index image')
 
         with set_registry_token(overwrite_target_index_token, target_index, append=True):
+            source_bundles_dir = os.path.join(temp_dir, 'source_bundles')
+            os.makedirs(source_bundles_dir, exist_ok=True)
+
             source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
-                source_from_index_resolved, temp_dir
+                source_from_index_resolved, source_bundles_dir
             )
 
         target_index_bundles: List[BundleImage] = []
@@ -289,7 +292,12 @@ def handle_merge_request(
             with set_registry_token(
                 overwrite_target_index_token, target_index_resolved, append=True
             ):
-                target_index_bundles, _ = _get_present_bundles(target_index_resolved, temp_dir)
+                target_bundles_dir = os.path.join(temp_dir, 'target_bundles')
+                os.makedirs(target_bundles_dir, exist_ok=True)
+
+                target_index_bundles, _ = _get_present_bundles(
+                    target_index_resolved, target_bundles_dir
+                )
 
         arches = list(prebuild_info['arches'])
         arch = sorted(arches)[0]
