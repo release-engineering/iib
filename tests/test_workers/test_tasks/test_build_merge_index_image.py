@@ -186,7 +186,15 @@ def test_handle_merge_request(
 
 @pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
 @pytest.mark.parametrize(
-    'invalid_bundles', ([], [{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}])
+    'invalid_bundles, filtered_invalid_version_bundles_names',
+    [
+        ([], {}),
+        (
+            [{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}],
+            {'invalid_bundle'},
+        ),
+        ([{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}], {}),
+    ],
 )
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
@@ -199,6 +207,7 @@ def test_handle_merge_request(
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.verify_operators_exists')
 @mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list')
@@ -208,7 +217,6 @@ def test_handle_merge_request(
     return_value=[[{'bundlePath': 'some_bundle'}], []],
 )
 @mock.patch('iib.workers.tasks.utils.set_request_state')
-@mock.patch('iib.workers.tasks.opm_operations.get_list_bundles')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
@@ -226,13 +234,13 @@ def test_handle_merge_request_no_deprecate(
     mock_prfb,
     mock_uiibs,
     mock_srs,
-    mock_get_bundles,
     mock_srs2,
     mock_gpb,
     mock_abmis,
     mock_gbfdl,
     mock_geaps,
     mock_dep_b,
+    mock_verify_operators_exists,
     mock_dep_b_fbc,
     mock_bi,
     mock_pi,
@@ -245,6 +253,7 @@ def test_handle_merge_request_no_deprecate(
     mock_run_cmd,
     mock_gidp,
     invalid_bundles,
+    filtered_invalid_version_bundles_names,
     source_fbc,
     target_fbc,
 ):
@@ -270,14 +279,6 @@ def test_handle_merge_request_no_deprecate(
     mock_abmis.return_value = ([], invalid_bundles)
     mock_gid.return_value = 'database/index.db'
     mock_om.return_value = 'catalog', 'cache'
-    mock_get_bundles.return_value = [
-        {
-            'bundlePath': 'invalid_bundle:1.0',
-            'csvName': 'invalid_bundle:1.0',
-            'packageName': 'invalid_bundle',
-            'version': '1.0',
-        },
-    ]
     mock_run_cmd.return_value = json.dumps(
         {
             "schema": "olm.bundle",
@@ -288,7 +289,7 @@ def test_handle_merge_request_no_deprecate(
             "properties": [{"type": "olm.package", "value": {"version": "0.1.0"}}],
         }
     )
-
+    mock_verify_operators_exists.return_value = (filtered_invalid_version_bundles_names, "db_path")
     build_merge_index_image.handle_merge_request(
         'source-from-index:1.0',
         ['some-bundle:1.0'],
@@ -319,26 +320,30 @@ def test_handle_merge_request_no_deprecate(
     mock_gbfdl.assert_called_once()
     mock_geaps.assert_called_once()
     if invalid_bundles:
-        if source_fbc:
-            mock_dep_b_fbc.assert_called_once_with(
-                bundles=['invalid_bundle:1.0'],
-                base_dir=mock.ANY,
-                binary_image='binary-image:1.0',
-                from_index=mock.ANY,
-            )
-            mock_get_bundles.assert_called_once()
-            assert mock_bi.call_count == 2
-            assert mock_pi.call_count == 2
+        if filtered_invalid_version_bundles_names:
+            mock_verify_operators_exists.assert_called_once()
+
+            if source_fbc:
+                mock_dep_b_fbc.assert_called_once_with(
+                    bundles=['invalid_bundle:1.0'],
+                    base_dir=mock.ANY,
+                    binary_image='binary-image:1.0',
+                    from_index=mock.ANY,
+                )
+                assert mock_bi.call_count == 2
+                assert mock_pi.call_count == 2
+            else:
+                mock_dep_b.assert_called_once_with(
+                    bundles=['invalid_bundle:1.0'],
+                    base_dir=mock.ANY,
+                    binary_image='binary-image:1.0',
+                    from_index=mock.ANY,
+                    overwrite_target_index_token=None,
+                )
+                assert mock_bi.call_count == 3
+                assert mock_pi.call_count == 3
         else:
-            mock_dep_b.assert_called_once_with(
-                bundles=['invalid_bundle:1.0'],
-                base_dir=mock.ANY,
-                binary_image='binary-image:1.0',
-                from_index=mock.ANY,
-                overwrite_target_index_token=None,
-            )
-            assert mock_bi.call_count == 3
-            assert mock_pi.call_count == 3
+            mock_dep_b_fbc.assert_not_called()
     else:
         mock_dep_b.assert_not_called()
         mock_dep_b_fbc.assert_not_called()
