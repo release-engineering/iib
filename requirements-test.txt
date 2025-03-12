@@ -28,9 +28,9 @@ blinker==1.9.0 \
     # via
     #   -r requirements.txt
     #   flask
-boto3==1.37.9 \
-    --hash=sha256:51b76da93d7c2a3dff6155ee4aa25455940e7ade08292d22aeeed08b9e0dbf0b \
-    --hash=sha256:cfff6e9cf4b987480fbbe85873f3e609aeea1906631c7148e5b7e3c778aebd40
+boto3==1.37.11 \
+    --hash=sha256:8eec08363ef5db05c2fbf58e89f0c0de6276cda2fdce01e76b3b5f423cd5c0f4 \
+    --hash=sha256:da6c22fc8a7e9bca5d7fc465a877ac3d45b6b086d776bd1a6c55bdde60523741
     # via -r requirements.txt
 botocore==1.37.11 \
     --hash=sha256:02505309b1235f9f15a6da79103ca224b3f3dc5f6a62f8630fbb2c6ed05e2da8 \
