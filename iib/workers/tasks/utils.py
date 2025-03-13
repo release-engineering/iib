@@ -798,9 +798,9 @@ def run_cmd(
             ):
                 raise IIBError("Error deleting packages from database")
         elif cmd[0] == 'buildah':
-            # Check for HTTP 50X errors on buildah
+            # Check for HTTP 403 or 50X errors on buildah
             network_regexes = [
-                r'.*([e,E]rror:? creating build container).*(:?(50[0-9]|125)\s.*$)',
+                r'.*([e,E]rror:? creating build container).*(:?(403|50[0-9]|125)\s?.*$)',
                 r'.*(read\/write on closed pipe.*$)',
             ]
             for regex in network_regexes:
