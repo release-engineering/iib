@@ -424,6 +424,15 @@ def test_podman_pull(mock_run_cmd):
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_podman_pull_wait_retry(mock_run_cmd):
+    image = 'some-image:latest'
+    mock_run_cmd.side_effect = [IIBError("Foo"), None]
+    utils.podman_pull(image)
+    assert hasattr(utils.podman_pull.retry, "wait")
+    assert mock_run_cmd.call_count == 2
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.utils.upload_file_to_s3_bucket')
 def test_request_logger(mock_ufts3b, mock_runcmd, tmpdir):
     # Setting the logging level via caplog.set_level is not sufficient. The flask
