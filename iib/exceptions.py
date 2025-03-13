@@ -22,4 +22,4 @@ class AddressAlreadyInUse(BaseException):
 
 
 class ExternalServiceError(BaseException):
-    """An external service error occurred with HTTP 50X."""
+    """An external service error occurred with HTTP 403 or HTTP 50X."""
