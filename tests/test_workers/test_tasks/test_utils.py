@@ -287,6 +287,21 @@ def test_run_cmd_failed_opm(mock_sub_run):
             ),
         ),
         (
+            r'Failed build the index image:.*Error: creating build container: 403*',  # noqa: E501
+            textwrap.dedent(
+                '''
+                2024-06-11 19:04:08,138 iib.workers.tasks.utils ForkPoolWorker-1 request-747062 ERROR utils.run_cmd The command "buildah bud --no-cache --format docker --override-arch s390x --arch s390x -t iib-build:747062-s390x -f /tmp/iib-747062-07egql8m/index.Dockerfile" failed with: Trying to pull registry.redhat.io/openshift4/ose-operator-registry-rhel9@sha256:aac890c29ef6edaa1d6638317092dc2d5d1a9fc5df46b6062ce8bcc0ea989c4c...
+                Getting image source signatures
+                Checking if image destination supports signatures
+                Copying blob sha256:f52cfa00cc82020101ac00f306023fe78eda99085d22340609a9d50150e6edcc
+                Copying blob sha256:91099ff70275e18e655c106c5d32457324ec2034d469034f6854ed87a606112b
+                Copying blob sha256:0345bfccf591ab7a2142b477d22724da32fe1b6603f21c55d0e506ae002b30f0
+                Copying blob sha256:027a9318e57ac4ed3664dd281f53fd1ec3973bc22932cc639267a1df1c93c773
+                Error: creating build container: copying system image from manifest list: reading blob sha256:f52cfa00cc82020101ac00f306023fe78eda99085d22340609a9d50150e6edcc: fetching blob: StatusCode: 403, ""
+                '''  # noqa: E501
+            ),
+        ),
+        (
             r'Failed build the index image:.*read/write on closed pipe',
             textwrap.dedent(
                 '''
