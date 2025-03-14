@@ -716,6 +716,7 @@ def skopeo_inspect(
     reraise=True,
     retry=retry_if_exception_type(IIBError),
     stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_chain(wait_exponential(multiplier=get_worker_config().iib_retry_multiplier)),
 )
 def podman_pull(*args) -> None:
     """
