@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.2
+
+* Skip building multi-arch binary-less image
+* Isolate temporary folders being used to fetch bundles form source and target index.
+* Delay retries on podman_pull
+* Add buildah retries on 403
+* Merge index image failing with FBC operator present
+* Update Dependencies
+
 ## 9.2.1
 
 * Allow binaryless images to have the hidden DB
