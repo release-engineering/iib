@@ -516,13 +516,20 @@ def deprecate_bundles_fbc(
     :param str binary_image: binary image to be used by the new index image.
     :param str from_index: index image, from which the bundles will be deprecated.
     """
+    conf = get_worker_config()
     index_db_file = _get_or_create_temp_index_db_file(base_dir=base_dir, from_index=from_index)
 
-    opm_registry_deprecatetruncate(
-        base_dir=base_dir,
-        index_db=index_db_file,
-        bundles=bundles,
-    )
+    # Break the bundles into chunks of at max iib_deprecate_bundles_limit bundles
+    for i in range(
+        0,
+        len(bundles),
+        conf.iib_deprecate_bundles_limit,
+    ):  # Determine position i in the bundles array
+        opm_registry_deprecatetruncate(
+            base_dir=base_dir,
+            index_db=index_db_file,
+            bundles=bundles[i : i + conf.iib_deprecate_bundles_limit],  # Pass a chunk starting at i
+        )
 
     fbc_dir, _ = opm_migrate(index_db_file, base_dir)
     # we should keep generating Dockerfile here

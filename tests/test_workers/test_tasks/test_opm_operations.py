@@ -35,6 +35,7 @@ def mock_config():
         mock_config.iib_grpc_init_wait_time = 1
         mock_config.iib_grpc_max_port_tries = 3
         mock_config.iib_grpc_max_tries = 3
+        mock_config.iib_deprecate_bundles_limit = 5
         mc.return_value = mock_config
         yield mc
 
@@ -653,8 +654,8 @@ def test_opm_registry_deprecatetruncate(mock_run_cmd, bundles):
     )
 
 
-@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @pytest.mark.parametrize('bundles', (['bundle:1.2', 'bundle:1.3'], []))
+@pytest.mark.parametrize('from_index', (None, 'some_index:latest'))
 @mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations.opm_registry_deprecatetruncate')
@@ -663,7 +664,7 @@ def test_deprecate_bundles_fbc(
     mock_gtidf,
     mock_ord,
     mock_om,
-    mock_ogd,
+    mock_cd,
     from_index,
     bundles,
     tmpdir,
@@ -680,17 +681,68 @@ def test_deprecate_bundles_fbc(
         binary_image="some:image",
         from_index=from_index,
     )
-
-    mock_ord.assert_called_once_with(base_dir=tmpdir, index_db=index_db_file, bundles=bundles)
+    if bundles:
+        mock_ord.assert_called_once_with(base_dir=tmpdir, index_db=index_db_file, bundles=bundles)
 
     mock_om.assert_called_once_with(index_db_file, tmpdir)
-    mock_ogd.assert_called_once_with(
+    mock_cd.assert_called_once_with(
         fbc_dir=fbc_dir,
         base_dir=tmpdir,
         index_db=index_db_file,
         binary_image="some:image",
         dockerfile_name='index.Dockerfile',
     )
+
+
+@pytest.mark.parametrize(
+    'bundles, expected_call_count',
+    [
+        ([], 0),
+        (['bundle:' + str(i + 1) + ".1" for i in range(1)], 1),
+        (['bundle:' + str(i + 1) + ".1" for i in range(5)], 1),
+        (['bundle:' + str(i + 1) + ".1" for i in range(6)], 2),
+    ],
+)
+@mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.opm_registry_deprecatetruncate')
+@mock.patch('iib.workers.tasks.opm_operations._get_or_create_temp_index_db_file')
+def test_deprecate_bundles_fbc_too_many_bundles(
+    mock_gtidf,
+    mock_ord,
+    mock_om,
+    mock_cd,
+    bundles,
+    expected_call_count,
+    tmpdir,
+    mock_config,
+):
+    from_index = 'some_index:latest'
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    iib_deprecate_bundles_limit = 5  # Setup as a mock for opm_operations get_config
+    fbc_dir = os.path.join(tmpdir, 'catalogs')
+    cache_dir = os.path.join(tmpdir, 'cache')
+    mock_gtidf.return_value = index_db_file
+    mock_om.return_value = (fbc_dir, cache_dir)
+
+    opm_operations.deprecate_bundles_fbc(
+        base_dir=tmpdir,
+        binary_image="some:image",
+        bundles=bundles,
+        from_index=from_index,
+    )
+
+    expected_calls = [
+        mock.call(
+            base_dir=tmpdir,
+            bundles=bundles[i : i + iib_deprecate_bundles_limit],
+            index_db=index_db_file,
+        )
+        for i in range(0, len(bundles), iib_deprecate_bundles_limit)
+    ]
+
+    mock_ord.assert_has_calls(expected_calls)
+    assert mock_ord.call_count == expected_call_count
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')

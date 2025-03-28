@@ -44,6 +44,7 @@ class Config(object):
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry: Optional[str] = None
     iib_log_level: str = 'INFO'
+    iib_deprecate_bundles_limit = 200
     iib_max_recursive_related_bundles = 15
     # list of index images to which we can add bundles without "com.redhat.openshift.versions" label
     iib_no_ocp_label_allow_list: List[str] = []
