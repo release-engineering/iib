@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.3
+
+* Fix memory leak in opm_render
+* Update Dependencies
+
 ## 9.2.2
 
 * Skip building multi-arch binary-less image
