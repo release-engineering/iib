@@ -420,7 +420,8 @@ def opm_render(
         return []
 
     log.debug("Parsing data from opm render")
-    return [json.loads(package) for package in re.split(r'(?<=})\n(?={)', opm_render_output)]
+    for package in re.split(r'(?<=})\n(?={)', opm_render_output):
+        yield json.loads(package)
 
 
 def _get_or_create_temp_index_db_file(
