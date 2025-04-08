@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.4
+
+* Deprecate fbc bundles in chunks by @xDaile in https://github.com/release-engineering/iib/pull/938
+* Updating requirements by @lipoja in https://github.com/release-engineering/iib/pull/960
+
 ## 9.2.3
 
 * Fix memory leak in opm_render
