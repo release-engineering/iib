@@ -723,6 +723,7 @@ def handle_add_request(
     build_tags: Optional[List[str]] = None,
     graph_update_mode: Optional[str] = None,
     check_related_images: bool = False,
+    index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
     username: Optional[str] = None,
     traceparent: Optional[str] = None,
 ) -> None:
@@ -761,6 +762,8 @@ def handle_add_request(
     :param list build_tags: List of tags which will be applied to intermediate index images.
     :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
         in the index.
+    :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
+        (values) in order to push their catalogs into GitLab.
     :param str traceparent: the traceparent header value to be used for tracing the request.
     :raises IIBError: if the index image build fails.
     """
@@ -1012,6 +1015,7 @@ def handle_rm_request(
     distribution_scope: Optional[str] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     build_tags: Optional[List[str]] = None,
+    index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -1035,6 +1039,8 @@ def handle_rm_request(
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
     :param list build_tags: List of tags which will be applied to intermediate index images.
+    :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
+        (values) in order to remove their catalogs from GitLab.
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
