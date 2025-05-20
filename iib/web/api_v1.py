@@ -99,6 +99,7 @@ def _get_rm_args(
         request.distribution_scope,
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
     ]
 
 
@@ -136,6 +137,7 @@ def _get_add_args(
         payload.get('build_tags', []),
         payload.get('graph_update_mode'),
         payload.get('check_related_images', False),
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
     ]
 
 
@@ -750,6 +752,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'parent_bundle_image_resolved',
         'source_from_index_resolved',
         'target_index_resolved',
+        'index_to_gitlab_push_map',
     )
     start_time = time.time()
     for key in image_keys:
@@ -1315,6 +1318,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
         payload.get('build_tags'),
         payload.get('add_arches'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
