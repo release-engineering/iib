@@ -561,9 +561,9 @@ markupsafe==3.0.2 \
     #   jinja2
     #   mako
     #   werkzeug
-opentelemetry-api==1.31.1 \
-    --hash=sha256:137ad4b64215f02b3000a0292e077641c8611aab636414632a9b9068593b7e91 \
-    --hash=sha256:1511a3f470c9c8a32eeea68d4ea37835880c0eed09dd1a0187acc8b1301da0a1
+opentelemetry-api==1.33.1 \
+    --hash=sha256:1c6055fc0a2d3f23a50c7e17e16ef75ad489345fd3df1f8b8af7c0bbf8a109e8 \
+    --hash=sha256:4db83ebcf7ea93e64637ec6ee6fabee45c5cbe4abd9cf3da95c43828ddb50b83
     # via
     #   iib (setup.py)
     #   opentelemetry-exporter-otlp-proto-grpc
