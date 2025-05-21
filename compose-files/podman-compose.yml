@@ -18,7 +18,7 @@ services:
       - registry-certs-volume:/opt/app-root/certs:z
 
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - 8443:8443
     environment:
