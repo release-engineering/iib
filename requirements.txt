@@ -579,9 +579,9 @@ opentelemetry-api==1.31.1 \
     #   opentelemetry-propagator-aws-xray
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp==1.31.1 \
-    --hash=sha256:004db12bfafb9e07b79936783d91db214b1e208a152b5c36b1f2ef2264940692 \
-    --hash=sha256:36286c28709cbfba5177129ec30bfe4de67bdec8f375c1703014e0eea44322c6
+opentelemetry-exporter-otlp==1.33.1 \
+    --hash=sha256:4d050311ea9486e3994575aa237e32932aad58330a31fba24fdba5c0d531cf04 \
+    --hash=sha256:9bcf1def35b880b55a49e31ebd63910edac14b294fd2ab884953c4deaff5b300
     # via iib (setup.py)
 opentelemetry-exporter-otlp-proto-common==1.31.1 \
     --hash=sha256:7cadf89dbab12e217a33c5d757e67c76dd20ce173f8203e7370c4996f2e9efd8 \
