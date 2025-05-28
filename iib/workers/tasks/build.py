@@ -478,6 +478,11 @@ def _overwrite_from_index(
 
     new_index_src = f'docker://{output_pull_spec}'
     temp_dir = None
+    skopeo_failed = False
+    git_failed = False
+    skopeo_error = None
+    git_error = None
+
     try:
         if overwrite_from_index_token:
             output_pull_spec_registry = ImageName.parse(output_pull_spec).registry
@@ -501,14 +506,53 @@ def _overwrite_from_index(
                     output_pull_spec_registry,
                     from_index_registry,
                 )
-                exc_msg = f'Failed to export {output_pull_spec} to the OCI format'
-                _skopeo_copy(
-                    f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
-                )
+                try:
+                    exc_msg = f'Failed to export {output_pull_spec} to the OCI format'
+                    _skopeo_copy(
+                        f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
+                    )
+                except IIBError as e:
+                    skopeo_failed = True
+                    skopeo_error = e
+        try:
+            exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
+            with set_registry_token(overwrite_from_index_token, from_index, append=True):
+                _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+        except IIBError as e:
+            skopeo_failed = True
+            skopeo_error = e
+            log.warning("skopeo_copy failed: %s", str(e))
 
-        exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
-        with set_registry_token(overwrite_from_index_token, from_index, append=True):
-            _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+        # Try GitHub fallback
+        try:
+            log.info('Attempting to push to GitHub repository as secondary action.')
+            conf = get_worker_config()
+            # we can do the checkout here for now (not in the commit_to_git)
+            # and later we can move this checkout to a part of the code, where the image is pulled
+            index_image, ocp_version = from_index.rsplit(":", 1) # split from right only once
+            do_checkout(
+                repo_name=conf["repository_mappping"][index_image],
+                ocp_version=ocp_version,
+                local_repo_path=f"git_{request_id}"
+            )
+            commit_to_git(
+                repo_name=conf["repository_mappping"][index_image],
+                ocp_version=ocp_version,
+                src_configs_path=f"git_{request_id}/configs"
+
+            )
+        except Exception as e:
+            git_failed = True
+            git_error = e
+            log.warning("commit_to_git failed: %s", str(e))
+
+        # Final evaluation
+        if skopeo_failed and git_failed:
+            raise IIBError(
+                f'Both skopeo_copy and GitHub push failed.\n'
+                f'skopeo error: {skopeo_error}\n'
+                f'git error: {git_error}'
+            )
     finally:
         if temp_dir:
             temp_dir.cleanup()
