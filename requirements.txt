@@ -583,9 +583,9 @@ opentelemetry-exporter-otlp==1.31.1 \
     --hash=sha256:004db12bfafb9e07b79936783d91db214b1e208a152b5c36b1f2ef2264940692 \
     --hash=sha256:36286c28709cbfba5177129ec30bfe4de67bdec8f375c1703014e0eea44322c6
     # via iib (setup.py)
-opentelemetry-exporter-otlp-proto-common==1.31.1 \
-    --hash=sha256:7cadf89dbab12e217a33c5d757e67c76dd20ce173f8203e7370c4996f2e9efd8 \
-    --hash=sha256:c748e224c01f13073a2205397ba0e415dcd3be9a0f95101ba4aace5fc730e0da
+opentelemetry-exporter-otlp-proto-common==1.33.1 \
+    --hash=sha256:b81c1de1ad349785e601d02715b2d29d6818aed2c809c20219f3d1f20b038c36 \
+    --hash=sha256:c57b3fa2d0595a21c4ed586f74f948d259d9949b58258f11edb398f246bec131
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
