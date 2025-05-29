@@ -11,6 +11,7 @@ RUN dnf -y install \
     buildah \
     fuse-overlayfs \
     gcc \
+    git \
     krb5-devel \
     libffi-devel \
     libpq-devel \
