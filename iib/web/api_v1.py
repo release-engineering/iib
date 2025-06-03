@@ -758,7 +758,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     for key in image_keys:
         if key not in payload:
             continue
-        key_value = payload.get(key, None)
+        key_value = payload.get(key, "")
         key_object = Image.get_or_create(key_value)
         # SQLAlchemy will not add the object to the database if it's already present
         setattr(request, key, key_object)
