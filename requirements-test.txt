@@ -685,9 +685,9 @@ markupsafe==3.0.2 \
     #   jinja2
     #   mako
     #   werkzeug
-opentelemetry-api==1.33.1 \
-    --hash=sha256:1c6055fc0a2d3f23a50c7e17e16ef75ad489345fd3df1f8b8af7c0bbf8a109e8 \
-    --hash=sha256:4db83ebcf7ea93e64637ec6ee6fabee45c5cbe4abd9cf3da95c43828ddb50b83
+opentelemetry-api==1.34.0 \
+    --hash=sha256:390b81984affe4453180820ca518de55e3be051111e70cc241bb3b0071ca3a2c \
+    --hash=sha256:48d167589134799093005b7f7f347c69cc67859c693b17787f334fbe8871279f
     # via
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
