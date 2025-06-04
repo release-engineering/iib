@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.2.5
+*Update dependency setuptools to v78.1.1 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/969
+* Update dependency sqlalchemy to v2.0.41 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/968
+* Update dependency flask to v3.1.1 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/967
+* Update dependency googleapis-common-protos to v1.70.0 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/966
+* Update dependency mako to v1.3.10 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/965
+* Update dependency typing-extensions to v4.13.2 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/959
+* Update dependency celery to v5.5.2 by @renovate in https://github.com/release-engineering/iib/pull/971
+* Update dependency kombu to v5.5.3 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/958
+* Update dependency charset-normalizer to v3.4.2 by @renovate in https://github.com/release-engineering/iib/pull/972
+* Update python Docker tag to v3.13.3 by @renovate in https://github.com/release-engineering/iib/pull/963
+* Update dependency coverage to v7.8.1 by @renovate in https://github.com/release-engineering/iib/pull/973
+* Update dependency cryptography to v44.0.3 by @renovate in https://github.com/release-engineering/iib/pull/974
+* Update registry Docker tag to v3 by @renovate in https://github.com/release-engineering/iib/pull/961
+* Update dependency prompt-toolkit to v3.0.51 by @renovate in https://github.com/release-engineering/iib/pull/975
+* Update dependency botocore to v1.38.18 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/957
+* Update dependency boto3 to v1.38.18 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/956
+* Bump s3tranfer by @JAVGan in https://github.com/release-engineering/iib/pull/976
+* Update dependency botocore to v1.38.20 by @renovate in https://github.com/release-engineering/iib/pull/953
+* Update dependency boto3 to v1.38.20 by @renovate in https://github.com/release-engineering/iib/pull/952
+* Update dependency certifi to v2025.4.26 by @renovate in https://github.com/release-engineering/iib/pull/977
+* Update dependency click to v8.2.1 by @renovate in https://github.com/release-engineering/iib/pull/978
+* Update dependency greenlet to v3.2.2 by @renovate in https://github.com/release-engineering/iib/pull/982
+* Update rabbitmq Docker tag to v4.1 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/980
+* Update postgres Docker tag to v17.5 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/979
+* Add Index Catalog to GitLab push configuration by @JAVGan in https://github.com/release-engineering/iib/pull/970
+* Update dependency alembic to v1.16.1 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/993
+* Update dependency coverage to v7.8.2 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/992
+* Update dependency botocore to v1.38.23 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/991
+* Bump IIB's dependencies by @JAVGan in https://github.com/release-engineering/iib/pull/999
+
 ## 9.2.4
 
 * Deprecate fbc bundles in chunks by @xDaile in https://github.com/release-engineering/iib/pull/938
