@@ -506,9 +506,24 @@ def _overwrite_from_index(
                     f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
                 )
 
+        # Push the /configs to the Gitlab, then skopeo_copy the result.
+        push_configs_to_git(
+            request_id=request_id,
+            from_index=output_pull_spec,
+            src_configs_path="./test",
+        )
         exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
-        with set_registry_token(overwrite_from_index_token, from_index, append=True):
-            _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+
+        # Revert the Git commit if the skopeo_copy fails
+        try:
+            with set_registry_token(overwrite_from_index_token, from_index, append=True):
+                _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+        except IIBError as e:
+            revert_push_configs_to_git(
+                request_id=request_id,
+                from_index=output_pull_spec,
+            )
+            raise e
     finally:
         if temp_dir:
             temp_dir.cleanup()
