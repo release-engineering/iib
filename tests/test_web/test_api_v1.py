@@ -553,7 +553,7 @@ def test_add_bundles_overwrite_not_allowed(mock_smfsc, client, db):
         'from_index': 'pull:spec',
         'overwrite_from_index': True,
     }
-    rv = client.post(f'/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
+    rv = client.post('/api/v1/builds/add', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
     assert rv.status_code == 403
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
     assert error_msg == rv.json['error']
@@ -660,7 +660,7 @@ def test_add_bundles_unique_bundles(mock_smfsc, mock_har, mock_radd, mock_fj, mo
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_rm_operators_invalid_params_format(mock_smfsc, db, auth_env, client, data, error_msg):
-    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -674,7 +674,7 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
         'from_index': 'pull:spec',
         'overwrite_from_index': True,
     }
-    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base={'REMOTE_USER': 'tom_hanks'})
     assert rv.status_code == 403
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
     assert error_msg == rv.json['error']
@@ -709,7 +709,7 @@ def test_rm_operators_overwrite_not_allowed(mock_smfsc, client, db):
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_missing_required_param(mock_smfsc, data, error_msg, db, auth_env, client):
-    rv = client.post(f'/api/v1/builds/add', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
     mock_smfsc.assert_not_called()
@@ -746,7 +746,7 @@ def test_add_bundle_missing_required_param(mock_smfsc, data, error_msg, db, auth
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_rm_operator_missing_required_param(mock_smfsc, data, error_msg, db, auth_env, client):
-    rv = client.post(f'/api/v1/builds/rm', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/rm', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
     mock_smfsc.assert_not_called()
@@ -1639,7 +1639,7 @@ def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
-    rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -1656,7 +1656,7 @@ def test_regenerate_bundle_invalid_params_format(mock_smfsc, data, error_msg, db
 def test_regenerate_bundle_missing_required_param(
     mock_smfsc, data, error_msg, db, auth_env, client
 ):
-    rv = client.post(f'/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/regenerate-bundle', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
     mock_smfsc.assert_not_called()
@@ -2297,7 +2297,7 @@ def test_create_empty_index_success(
 def test_create_empty_index_invalid_params_format(
     mock_smfsc, data, error_msg, db, auth_env, client
 ):
-    rv = client.post(f'/api/v1/builds/create-empty-index', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/create-empty-index', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -2312,7 +2312,7 @@ def test_create_empty_index_invalid_params_format(
                 'binary_image': 'binary:image',
                 'overwrite_from_index': True,
             },
-            f'The "overwrite_from_index" arg is invalid for the create-empty-index endpoint.',
+            'The "overwrite_from_index" arg is invalid for the create-empty-index endpoint.',
         ),
         (
             {
@@ -2320,18 +2320,18 @@ def test_create_empty_index_invalid_params_format(
                 'binary_image': 'binary:image',
                 'overwrite_from_index_token': "token",
             },
-            f'The "overwrite_from_index_token" arg is invalid for the create-empty-index endpoint.',
+            'The "overwrite_from_index_token" arg is invalid for the create-empty-index endpoint.',
         ),
         (
             {'from_index': 'pull:spec', 'binary_image': 'binary:image', 'add_arches': ['arch1']},
-            f'The "add_arches" arg is invalid for the create-empty-index endpoint.',
+            'The "add_arches" arg is invalid for the create-empty-index endpoint.',
         ),
     ),
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_create_empty_index_not_allowed_params(mock_smfsc, data, error_msg, client, db):
     rv = client.post(
-        f'/api/v1/builds/create-empty-index', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
+        '/api/v1/builds/create-empty-index', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
     )
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
@@ -2543,7 +2543,7 @@ def test_recursive_related_bundles_success(mock_smfsc, mock_hrbr, db, auth_env, 
 def test_recursive_related_bundles_invalid_params_format(
     mock_smfsc, data, error_msg, db, auth_env, client
 ):
-    rv = client.post(f'/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -2560,7 +2560,7 @@ def test_recursive_related_bundles_invalid_params_format(
 def test_recursive_related_bundles_missing_required_param(
     mock_smfsc, data, error_msg, db, auth_env, client
 ):
-    rv = client.post(f'/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/recursive-related-bundles', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert rv.json['error'] == error_msg
     mock_smfsc.assert_not_called()
@@ -2762,7 +2762,7 @@ def test_get_nested_bundles_invalid_request_type(
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_fbc_operations_invalid_params_format(mock_smfsc, data, error_msg, db, auth_env, client):
-    rv = client.post(f'/api/v1/builds/fbc-operations', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/fbc-operations', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -2777,7 +2777,7 @@ def test_fbc_operations_overwrite_not_allowed(mock_smfsc, client, db):
         'overwrite_from_index': True,
     }
     rv = client.post(
-        f'/api/v1/builds/fbc-operations', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
+        '/api/v1/builds/fbc-operations', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
     )
     assert rv.status_code == 403
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'
@@ -2894,7 +2894,7 @@ def test_fbc_operations(
 )
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_deprecations_invalid_params_format(mock_smfsc, db, auth_env, client, data, error_msg):
-    rv = client.post(f'/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
     assert rv.status_code == 400
     assert error_msg == rv.json['error']
     mock_smfsc.assert_not_called()
@@ -2943,7 +2943,7 @@ def test_add_deprecations_success(mock_had, mock_smfsc, db, auth_env, client):
         'updated': '2020-02-12T17:03:00Z',
         'user': 'tbrady@DOMAIN.LOCAL',
     }
-    rv = client.post(f'/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
+    rv = client.post('/api/v1/builds/add-deprecations', json=data, environ_base=auth_env)
     assert rv.status_code == 201
     rv_json = rv.json
     mock_had.apply_async.assert_called_once()
@@ -2994,7 +2994,7 @@ def test_add_deprecations_overwrite_not_allowed_without_token(mock_smfsc, db, au
         'overwrite_from_index': True,
     }
     rv = client.post(
-        f'/api/v1/builds/add-deprecations', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
+        '/api/v1/builds/add-deprecations', json=data, environ_base={'REMOTE_USER': 'tom_hanks'}
     )
     assert rv.status_code == 403
     error_msg = 'You must set "overwrite_from_index_token" to use "overwrite_from_index"'

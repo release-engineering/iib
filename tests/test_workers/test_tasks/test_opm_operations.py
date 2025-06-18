@@ -735,7 +735,7 @@ def test_deprecate_bundles_fbc_too_many_bundles(
     expected_calls = [
         mock.call(
             base_dir=tmpdir,
-            bundles=bundles[i : i + iib_deprecate_bundles_limit],
+            bundles=bundles[i : i + iib_deprecate_bundles_limit],  # noqa: E203
             index_db=index_db_file,
         )
         for i in range(0, len(bundles), iib_deprecate_bundles_limit)

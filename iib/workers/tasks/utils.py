@@ -241,9 +241,9 @@ class RequestConfig:
             setattr(self, key, kwargs[key])
 
     def __eq__(self, other: object) -> bool:
-        if type(self) == type(other) and [getattr(self, x) for x in self.__slots__] == [
+        if type(self) == type(other) and [  # noqa: E721 E501
             getattr(self, x) for x in self.__slots__
-        ]:
+        ] == [getattr(self, x) for x in self.__slots__]:
             return True
         return False
 

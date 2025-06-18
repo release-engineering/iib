@@ -796,7 +796,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     start_time = time.time()
     db.session.commit()
     flask.current_app.logger.debug(
-        f'Time for web/api_v1/689:db commit: {time.time()-start_time}'
+        f'Time for web/api_v1/689:db commit: {time.time() - start_time}'
         f' time from start: {time.time() - overall_start_time}'
     )
 
@@ -805,7 +805,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         messaging.send_message_for_state_change(request)
         flask.current_app.logger.debug(
             f'Time for web/api_v1/697:send_message_for_state_change(): {time.time() - start_time},'
-            f' time from start: {time.time()-overall_start_time}'
+            f' time from start: {time.time() - overall_start_time}'
         )
 
     if current_user.is_authenticated:

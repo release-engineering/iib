@@ -399,7 +399,7 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMoc
                 '-f',
                 'bar',
             ],
-            exc_msg=f'Failed to build the container image on the arch amd64',
+            exc_msg='Failed to build the container image on the arch amd64',
         )
 
     mock_sub_run.assert_called_once()
@@ -936,7 +936,7 @@ def test_prepare_request_for_build(
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        index_resolved = f'index-image@sha256:abcdef1234'
+        index_resolved = 'index-image@sha256:abcdef1234'
         mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.side_effect = [expected_arches]
         gil_side_effect = []
@@ -1123,7 +1123,7 @@ def test_prepare_request_for_build_binaryless(
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        index_resolved = f'index-image@sha256:abcdef1234'
+        index_resolved = 'index-image@sha256:abcdef1234'
         mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.return_value = from_index_arches
         gil_side_effect = []
