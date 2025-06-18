@@ -724,6 +724,7 @@ def handle_add_request(
     graph_update_mode: Optional[str] = None,
     check_related_images: bool = False,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    index_to_gitlab_token_map: Optional[Dict[str, str]] = None,
     username: Optional[str] = None,
     traceparent: Optional[str] = None,
 ) -> None:
@@ -764,6 +765,8 @@ def handle_add_request(
         in the index.
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
+    :param dict index_to_gitlab_token_map: the dict mapping GitLab repos (keys) into its auth tokens
+        (values).
     :param str traceparent: the traceparent header value to be used for tracing the request.
     :raises IIBError: if the index image build fails.
     """
@@ -1016,6 +1019,7 @@ def handle_rm_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     build_tags: Optional[List[str]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    index_to_gitlab_token_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Coordinate the work needed to remove the input operators and rebuild the index image.
@@ -1042,6 +1046,8 @@ def handle_rm_request(
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to remove their catalogs from GitLab.
     :raises IIBError: if the index image build fails.
+    :param dict index_to_gitlab_token_map: the dict mapping GitLab repos (keys) into its auth tokens
+        (values).
     """
     _cleanup()
     prebuild_info = prepare_request_for_build(

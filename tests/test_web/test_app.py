@@ -170,6 +170,55 @@ def test_validate_api_config_failure_aws_s3_params(config, error_msg):
         validate_api_config(config)
 
 
+def test_validate_gitlab_failure_no_token():
+    config = {
+        'IIB_AWS_S3_BUCKET_NAME': None,
+        'IIB_REQUEST_LOGS_DIR': 'some-dir',
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
+        'IIB_GREENWAVE_CONFIG': {},
+        'IIB_BINARY_IMAGE_CONFIG': {},
+        "IIB_INDEX_TO_GITLAB_PUSH_MAP": {"test-img": "https://repo.git"},
+    }
+    error_msg = (
+        'The "IIB_INDEX_TO_GITLAB_TOKEN_MAP" environment variable must be set '
+        '"when using IIB_INDEX_TO_GITLAB_PUSH_MAP".'
+    )
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
+@mock.patch.dict(
+    os.environ, {"IIB_INDEX_TO_GITLAB_TOKEN_MAP": "{\"https://repo.git\": \"abcdef\"}"}
+)
+def test_validate_gitlab_failure_repo_format():
+    config = {
+        'IIB_AWS_S3_BUCKET_NAME': None,
+        'IIB_REQUEST_LOGS_DIR': 'some-dir',
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
+        'IIB_GREENWAVE_CONFIG': {},
+        'IIB_BINARY_IMAGE_CONFIG': {},
+        "IIB_INDEX_TO_GITLAB_PUSH_MAP": "foo-bar",
+    }
+    error_msg = r"The \"IIB_INDEX_TO_GITLAB_PUSH_MAP\" must be a dict\[str, str\]."
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
+@mock.patch.dict(os.environ, {"IIB_INDEX_TO_GITLAB_TOKEN_MAP": "foo-bar"})
+def test_validate_gitlab_failure_token_format():
+    config = {
+        'IIB_AWS_S3_BUCKET_NAME': None,
+        'IIB_REQUEST_LOGS_DIR': 'some-dir',
+        'IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR': 'some-dir',
+        'IIB_GREENWAVE_CONFIG': {},
+        'IIB_BINARY_IMAGE_CONFIG': {},
+        "IIB_INDEX_TO_GITLAB_PUSH_MAP": {"test-img": "https://repo.git"},
+    }
+    error_msg = r"The \"IIB_INDEX_TO_GITLAB_TOKEN_MAP\" must be a dict\[str, str\]."
+    with pytest.raises(ConfigError, match=error_msg):
+        validate_api_config(config)
+
+
 @mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'True'})
 def test_validate_api_config_failure_otel_params():
     config = {

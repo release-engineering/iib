@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import os
+import json
 from typing import Optional
 
 from flask import Flask
@@ -158,6 +159,30 @@ def validate_api_config(config: Config) -> None:
                 '"IIB_AWS_S3_BUCKET_NAME" is set. '
                 'These are used for read/write access to the s3 bucket by IIB'
             )
+
+    if push_map := config.get('IIB_INDEX_TO_GITLAB_PUSH_MAP', {}):
+        if not (token_map := os.getenv('IIB_INDEX_TO_GITLAB_TOKEN_MAP')):
+            raise ConfigError(
+                'The "IIB_INDEX_TO_GITLAB_TOKEN_MAP" environment variable must be set '
+                '"when using IIB_INDEX_TO_GITLAB_PUSH_MAP".'
+            )
+        gitlab_maps = {
+            'IIB_INDEX_TO_GITLAB_PUSH_MAP': push_map,
+            'IIB_INDEX_TO_GITLAB_TOKEN_MAP': token_map,
+        }
+        for cfg_name, git_map in gitlab_maps.items():
+            err_msg = f'The "{cfg_name}" must be a dict[str, str].'
+            if isinstance(git_map, str):
+                try:
+                    json.loads(git_map)
+                except json.JSONDecodeError:
+                    raise ConfigError(err_msg)
+            if not isinstance(git_map, dict):
+                raise ConfigError(err_msg)
+            for k, v in git_map.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    raise ConfigError(err_msg)
+        config['IIB_INDEX_TO_GITLAB_TOKEN_MAP'] = json.loads(token_map)
 
     if os.getenv('IIB_OTEL_TRACING', '').lower() == 'true':
         if not os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT') or not os.getenv('OTEL_SERVICE_NAME'):

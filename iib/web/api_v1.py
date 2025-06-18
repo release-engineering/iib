@@ -100,6 +100,7 @@ def _get_rm_args(
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP'],
     ]
 
 
@@ -138,6 +139,7 @@ def _get_add_args(
         payload.get('graph_update_mode'),
         payload.get('check_related_images', False),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP'],
     ]
 
 
@@ -165,6 +167,8 @@ def _get_safe_args(
         ] = '*****'
     if payload.get('registry_auths'):
         safe_args[safe_args.index(payload['registry_auths'])] = '*****'  # type: ignore
+    if git_tokens := flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP']:
+        safe_args[safe_args.index(git_tokens)] = '*****'  # type: ignore
 
     return safe_args
 

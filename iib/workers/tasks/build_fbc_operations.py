@@ -47,6 +47,7 @@ def handle_fbc_operation_request(
     add_arches: Optional[Set[str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    index_to_gitlab_token_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Add a fbc fragment to an fbc index image.
@@ -62,6 +63,8 @@ def handle_fbc_operation_request(
         to build the index image for
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
+    :param dict index_to_gitlab_token_map: the dict mapping GitLab repos (keys) into its auth tokens
+    (values).
     """
     _cleanup()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragment')
