@@ -528,7 +528,9 @@ def deprecate_bundles_fbc(
         opm_registry_deprecatetruncate(
             base_dir=base_dir,
             index_db=index_db_file,
-            bundles=bundles[i : i + conf.iib_deprecate_bundles_limit],  # Pass a chunk starting at i
+            bundles=bundles[
+                i : i + conf.iib_deprecate_bundles_limit  # noqa: E203
+            ],  # Pass a chunk starting at i
         )
 
     fbc_dir, _ = opm_migrate(index_db_file, base_dir)

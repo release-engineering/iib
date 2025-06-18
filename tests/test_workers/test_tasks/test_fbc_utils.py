@@ -196,8 +196,8 @@ def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
         '{"one_more": "chunk", "createdAt": "2025-01-21T07:15:29"}'
     )
 
-    input = os.path.join(tmpdir, f"test_file.yaml")
-    output = os.path.join(tmpdir, f"test_file.json")
+    input = os.path.join(tmpdir, "test_file.yaml")
+    output = os.path.join(tmpdir, "test_file.json")
     with open(input, 'w') as w:
         w.write(dedent(multiple_chunks_yaml))
 
@@ -231,5 +231,5 @@ def test__serialize_datetime():
 
 
 def test__serialize_datetime_raise():
-    with pytest.raises(TypeError, match=f"Type <class 'int'> is not serializable."):
+    with pytest.raises(TypeError, match="Type <class 'int'> is not serializable."):
         _serialize_datetime(2025)

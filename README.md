@@ -276,6 +276,11 @@ must be set along with `IIB_AWS_S3_BUCKET_NAME` config variable:
 
 More info on these environment variables can be found in the [AWS User Guide](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
 
+If you wish to store the FBC catalogs into a GitLab repository, you must configure the `IIB_INDEX_TO_GITLAB_PUSH_MAP` and set the following enviroment variable to map the repositories with the Git auth token:
+
+* `IIB_INDEX_TO_GITLAB_TOKEN_MAP` - the map between Git repositories and their tokens for authentication.
+
+
 ### Opentelemetry Environment Variable
 
 To integrate IIB with Opentelemetery tracing, we will need the following parameters as

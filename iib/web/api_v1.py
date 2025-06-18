@@ -100,6 +100,7 @@ def _get_rm_args(
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP'],
     ]
 
 
@@ -138,6 +139,7 @@ def _get_add_args(
         payload.get('graph_update_mode'),
         payload.get('check_related_images', False),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP'],
     ]
 
 
@@ -165,6 +167,8 @@ def _get_safe_args(
         ] = '*****'
     if payload.get('registry_auths'):
         safe_args[safe_args.index(payload['registry_auths'])] = '*****'  # type: ignore
+    if git_tokens := flask.current_app.config['IIB_INDEX_TO_GITLAB_TOKEN_MAP']:
+        safe_args[safe_args.index(git_tokens)] = '*****'  # type: ignore
 
     return safe_args
 
@@ -792,7 +796,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     start_time = time.time()
     db.session.commit()
     flask.current_app.logger.debug(
-        f'Time for web/api_v1/689:db commit: {time.time()-start_time}'
+        f'Time for web/api_v1/689:db commit: {time.time() - start_time}'
         f' time from start: {time.time() - overall_start_time}'
     )
 
@@ -801,7 +805,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         messaging.send_message_for_state_change(request)
         flask.current_app.logger.debug(
             f'Time for web/api_v1/697:send_message_for_state_change(): {time.time() - start_time},'
-            f' time from start: {time.time()-overall_start_time}'
+            f' time from start: {time.time() - overall_start_time}'
         )
 
     if current_user.is_authenticated:
