@@ -43,6 +43,7 @@ class Config(object):
     iib_opm_pprof_lock_required_min_version = "1.29.0"
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry: Optional[str] = None
+    iib_index_configs_gitlab_tokens_map: Optional[Dict[str, Dict[str, str]]] = None
     iib_log_level: str = 'INFO'
     iib_deprecate_bundles_limit = 200
     iib_max_recursive_related_bundles = 15
