@@ -25,6 +25,7 @@ from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, merge_catalogs_dirs
+from iib.workers.tasks.git_utils import push_configs_to_git, revert_last_commit
 from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
     opm_migrate,
@@ -276,13 +277,13 @@ def _update_index_image_pull_spec(
     conf = get_worker_config()
     if from_index and overwrite_from_index:
         _overwrite_from_index(
-            request_id,
-            output_pull_spec,
-            from_index,
+            request_id=request_id,
+            output_pull_spec=output_pull_spec,
+            from_index=from_index,
             # MYPY error: Argument 4 to "_overwrite_from_index"
             # has incompatible type "Optional[str]"; expected "str"
-            resolved_prebuild_from_index,  # type: ignore
-            overwrite_from_index_token,
+            resolved_prebuild_from_index=resolved_prebuild_from_index,  # type: ignore
+            overwrite_from_index_token=overwrite_from_index_token,
         )
         index_image = from_index
     elif conf['iib_index_image_output_registry']:
@@ -506,9 +507,32 @@ def _overwrite_from_index(
                     f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
                 )
 
-        exc_msg = f'Failed to overwrite the input from_index container image of {from_index}'
-        with set_registry_token(overwrite_from_index_token, from_index, append=True):
-            _skopeo_copy(new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg)
+        # Push the /configs to the Gitlab, then skopeo_copy the result.
+        src_configs = get_catalog_dir(
+            from_index=output_pull_spec,
+            base_dir=f'iib-{request_id}-configs',
+        )
+        push_configs_to_git(
+            request_id=request_id,
+            from_index=from_index,
+            src_configs_path=src_configs,
+        )
+
+        # Revert the Git commit if the skopeo_copy fails
+        try:
+            with set_registry_token(overwrite_from_index_token, from_index, append=True):
+                exc_msg = (
+                    f'Failed to overwrite the input from_index container image of {from_index}'
+                )
+                _skopeo_copy(
+                    new_index_src, f'docker://{from_index}', copy_all=True, exc_msg=exc_msg
+                )
+        except IIBError as e:
+            revert_last_commit(
+                request_id=request_id,
+                from_index=from_index,
+            )
+            raise e
     finally:
         if temp_dir:
             temp_dir.cleanup()
@@ -986,13 +1010,13 @@ def handle_add_request(
     output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
     _update_index_image_pull_spec(
-        output_pull_spec,
-        request_id,
-        arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
-        from_index_resolved,
+        output_pull_spec=output_pull_spec,
+        request_id=request_id,
+        arches=arches,
+        from_index=from_index,
+        overwrite_from_index=overwrite_from_index,
+        overwrite_from_index_token=overwrite_from_index_token,
+        resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
     )
     _cleanup()
@@ -1178,13 +1202,13 @@ def handle_rm_request(
     output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
     _update_index_image_pull_spec(
-        output_pull_spec,
-        request_id,
-        arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
-        from_index_resolved,
+        output_pull_spec=output_pull_spec,
+        request_id=request_id,
+        arches=arches,
+        from_index=from_index,
+        overwrite_from_index=overwrite_from_index,
+        overwrite_from_index_token=overwrite_from_index_token,
+        resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
     )
     _cleanup()
