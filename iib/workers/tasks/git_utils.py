@@ -228,28 +228,43 @@ def configure_git_user(
 
 
 def revert_last_commit(
-    local_repo_path: str,
-    repo_url: str,
-    branch: str,
+    request_id: int,
+    from_index: str,
 ) -> None:
     """
     Revert the last commit and push to remote Git repo.
 
-    :param str local_repo_path: Path to local git repository.
-    :param str branch: The branch to reset.
-    :param str repo_url: Remote Git repository URL.
-    :raises IIBError: If a Git operation fails.
+    :param int request_id: The ID of the IIB request.
+    :param str from_index: The from_index pullspec.
     """
-    log.info("Reverting last commit to %s branch of %s", branch, repo_url)
-    revert_output = run_cmd(
-        ["git", "-C", local_repo_path, "reset", "--hard", "HEAD~1"],
-        exc_msg="Error resetting last commit",
-    )
-    log.info(revert_output)
+    index_image = ImageName.parse(from_index)
+    branch = index_image.tag
+    repo_url = get_git_url(from_index)
+    git_token_name, git_token = get_git_token(repo_url)
 
-    log.info("Pushing 1-commit reverted %s branch of %s", branch, repo_url)
-    force_push_output = run_cmd(
-        ["git", "-C", local_repo_path, "push", "--force", "origin", branch],
-        exc_msg=f"Error pushing changes to git repo {repo_url}",
-    )
-    log.info(force_push_output)
+    with tempfile.TemporaryDirectory(prefix=f"git-repo-{request_id}-") as local_repo_dir:
+        log.info("Cloning repo to %s", local_repo_dir)
+        try:
+            clone_git_repo(repo_url, branch, git_token_name, git_token, local_repo_dir)
+
+            # Configure Git user for commits
+            configure_git_user(local_repo_dir)
+
+            log.info("Reverting last commit to %s branch of %s", branch, repo_url)
+            revert_output = run_cmd(
+                ["git", "-C", local_repo_dir, "reset", "--hard", "HEAD~1"],
+                exc_msg="Error resetting last commit",
+            )
+            log.info(revert_output)
+
+            log.info("Pushing 1-commit reverted %s branch of %s", branch, repo_url)
+            force_push_output = run_cmd(
+                ["git", "-C", local_repo_dir, "push", "--force", "origin", branch],
+                exc_msg=f"Error pushing changes to git repo {repo_url}",
+            )
+            log.info(force_push_output)
+        finally:
+            # tempfile should have done this already, but just in case
+            if os.path.exists(local_repo_dir):
+                shutil.rmtree(local_repo_dir)
+                log.debug("Cleaned up local Git repository %s", local_repo_dir)

@@ -439,13 +439,13 @@ def handle_merge_request(
         request_id, prebuild_info['arches'], build_tags
     )
     _update_index_image_pull_spec(
-        output_pull_spec,
-        request_id,
-        prebuild_info['arches'],
-        target_index,
-        overwrite_target_index,
-        overwrite_target_index_token,
-        target_index_resolved,
+        output_pull_spec=output_pull_spec,
+        request_id=request_id,
+        arches=prebuild_info['arches'],
+        from_index=target_index,
+        overwrite_from_index=overwrite_target_index,
+        overwrite_from_index_token=overwrite_target_index_token,
+        resolved_prebuild_from_index=target_index_resolved,
     )
     _cleanup()
     set_request_state(
