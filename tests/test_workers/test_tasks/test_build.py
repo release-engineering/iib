@@ -325,7 +325,11 @@ def test_update_index_image_pull_spec(
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:
         mock_ofi.assert_called_once_with(
-            request_id, default, from_index, resolved_from_index, overwrite_token
+            request_id=request_id,
+            output_pull_spec=default,
+            from_index=from_index,
+            resolved_prebuild_from_index=resolved_from_index,
+            overwrite_from_index_token=overwrite_token,
         )
     else:
         mock_ofi.assert_not_called()
@@ -370,7 +374,11 @@ def test_get_local_pull_spec(request_id, arch):
 @mock.patch('iib.workers.tasks.build._skopeo_copy')
 @mock.patch('iib.workers.tasks.build.set_registry_token')
 @mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build.push_configs_to_git')
+@mock.patch('iib.workers.tasks.build.get_catalog_dir')
 def test_overwrite_from_index(
+    mock_gcd,
+    mock_pcg,
     mock_vii,
     mock_srt,
     mock_sc,
@@ -382,9 +390,25 @@ def test_overwrite_from_index(
     overwrite_from_index_token,
     oci_export_expected,
 ):
+    mock_gcd.return_value = '/tmp/catalog_dir'
     mock_td.return_value.name = '/tmp/iib-12345'
     build._overwrite_from_index(
-        1, output_pull_spec, from_index, resolved_from_index, overwrite_from_index_token
+        request_id=1,
+        output_pull_spec=output_pull_spec,
+        from_index=from_index,
+        resolved_prebuild_from_index=resolved_from_index,
+        overwrite_from_index_token=overwrite_from_index_token,
+    )
+
+    # Verify catalog config handling
+    mock_gcd.assert_called_once_with(
+        from_index=output_pull_spec,
+        base_dir='iib-1-configs',
+    )
+    mock_pcg.assert_called_once_with(
+        request_id=1,
+        from_index=from_index,
+        src_configs_path='/tmp/catalog_dir',
     )
 
     if oci_export_expected:
@@ -409,6 +433,79 @@ def test_overwrite_from_index(
 
     mock_srt.assert_called_once()
     mock_vii.assert_called_once_with(resolved_from_index, from_index, overwrite_from_index_token)
+
+
+@mock.patch('iib.workers.tasks.build.revert_last_commit')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build._skopeo_copy')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.push_configs_to_git')
+@mock.patch('iib.workers.tasks.build.get_catalog_dir')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+def test_overwrite_from_index_reverts_on_failure(
+    mock_vii,
+    mock_gcd,
+    mock_pgt,
+    mock_srt,
+    mock_sc,
+    mock_td,
+    mock_srs,
+    mock_rlc,
+):
+    # Setup values
+    mock_td.return_value.name = '/tmp/iib-12345'
+    mock_gcd.return_value = '/path/to/configs'
+
+    from_index = 'quay.io/ns/repo:v1'
+    output_pull_spec = 'quay.io/ns/repo:1'
+    resolved_from_index = 'quay.io/ns/repo:abcdef'
+
+    # Simulate first skopeo_copy call succeeds, second raises
+    mock_sc.side_effect = [None, IIBError('copy failed')]
+
+    # Run test and assert error
+    with pytest.raises(IIBError, match='copy failed'):
+        build._overwrite_from_index(
+            request_id=1,
+            output_pull_spec=output_pull_spec,
+            from_index=from_index,
+            resolved_prebuild_from_index=resolved_from_index,
+            overwrite_from_index_token='user:pass',
+        )
+
+    # First skopeo copy: docker:// to oci: (local export)
+    mock_sc.assert_any_call(
+        f'docker://{output_pull_spec}',
+        f'oci:{mock_td.return_value.name}',
+        copy_all=True,
+        exc_msg=f'Failed to export {output_pull_spec} to the OCI format',
+    )
+
+    # Ensure push_configs_to_git was called before failure
+    mock_gcd.assert_called_once_with(
+        from_index=output_pull_spec,
+        base_dir='iib-1-configs',
+    )
+    mock_pgt.assert_called_once_with(
+        request_id=1,
+        from_index=from_index,
+        src_configs_path='/path/to/configs',
+    )
+
+    # Second copy: oci: to docker:// — triggers failure
+    mock_sc.assert_any_call(
+        f'oci:{mock_td.return_value.name}',
+        f'docker://{from_index}',
+        copy_all=True,
+        exc_msg=f'Failed to overwrite the input from_index container image of {from_index}',
+    )
+
+    # Ensure rollback was triggered due to failure
+    mock_rlc.assert_called_once_with(
+        request_id=1,
+        from_index=from_index,
+    )
 
 
 @pytest.mark.parametrize('bundle_mapping', (True, False))

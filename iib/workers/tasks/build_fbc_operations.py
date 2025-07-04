@@ -123,13 +123,13 @@ def handle_fbc_operation_request(
     output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
     _update_index_image_pull_spec(
-        output_pull_spec,
-        request_id,
-        arches,
-        from_index,
-        overwrite_from_index,
-        overwrite_from_index_token,
-        from_index_resolved,
+        output_pull_spec=output_pull_spec,
+        request_id=request_id,
+        arches=arches,
+        from_index=from_index,
+        overwrite_from_index=overwrite_from_index,
+        overwrite_from_index_token=overwrite_from_index_token,
+        resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
     )
     _cleanup()
