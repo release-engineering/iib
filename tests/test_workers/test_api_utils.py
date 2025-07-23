@@ -4,7 +4,7 @@ from unittest import mock
 import requests
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, ValidationError
 from iib.workers import api_utils
 from iib.workers.config import get_worker_config
 
@@ -98,3 +98,15 @@ def test_update_request_not_ok(mock_session, exc_msg, expected):
 
     with pytest.raises(IIBError, match=expected):
         api_utils.update_request(3, {'index_image': 'index-image:latest'}, exc_msg=exc_msg)
+
+
+@pytest.mark.parametrize(
+    "failed_reason",
+    ["A failed request cannot change states", "A complete request cannot change states"],
+)
+@mock.patch('iib.workers.api_utils.requests_auth_session')
+def test_update_final_state(mock_session, failed_reason):
+    mock_session.patch.return_value.ok = False
+    mock_session.patch.return_value.json.return_value = {"error": failed_reason}
+    with pytest.raises(ValidationError):
+        api_utils.update_request(3, {"state": "failed", "state_reason": "marking as failed_1"})

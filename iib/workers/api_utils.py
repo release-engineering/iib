@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, ValidationError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
@@ -145,7 +145,8 @@ def update_request(
     :param str exc_msg: an optional custom exception that can be a template
     :return: the updated request
     :rtype: dict
-    :raises IIBError: if the request to the IIB API fails
+    :raises ValidationError: if the request fails trying changing final state (complete, failed)
+    :raises IIBError: if the request to the IIB API fails otherwise
     """
     # Prevent a circular import
     start_time = time.time()
@@ -168,6 +169,11 @@ def update_request(
             rv.status_code,
             rv.text,
         )
+        if rv.json().get("error") in [
+            "A failed request cannot change states",
+            "A complete request cannot change states",
+        ]:
+            raise ValidationError(rv.json().get("error"))
         if exc_msg:
             _exc_msg = exc_msg.format(**payload, request_id=request_id)
         else:
