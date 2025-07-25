@@ -4,7 +4,7 @@ from typing import Any
 
 import celery.app.task
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FinalStateOverwiteError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import request_logger
@@ -36,5 +36,9 @@ def failed_request_callback(
         msg = 'An unknown error occurred. See logs for details'
         log.error(msg, exc_info=exc)
 
+    if isinstance(exc, FinalStateOverwiteError):
+        log.info(f"Request {request_id} is in a final state,ignoring update.")
+        _cleanup()
+        return
     _cleanup()
     set_request_state(request_id, 'failed', msg)

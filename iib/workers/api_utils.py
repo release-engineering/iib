@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from iib.exceptions import IIBError, ValidationError
+from iib.exceptions import IIBError, FinalStateOverwiteError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
@@ -173,7 +173,7 @@ def update_request(
             "A failed request cannot change states",
             "A complete request cannot change states",
         ]:
-            raise ValidationError(rv.json().get("error"))
+            raise FinalStateOverwiteError(rv.json().get("error"))
         if exc_msg:
             _exc_msg = exc_msg.format(**payload, request_id=request_id)
         else:
