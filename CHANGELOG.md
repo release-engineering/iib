@@ -6,6 +6,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.3.0
+
+* Update dependency python-qpid-proton to v0.40.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1007
+* Update python Docker tag to v3.13.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1004
+* Update dependency greenlet to v3.2.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1008
+* Update dependency grpcio to v1.73.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1010
+* Update dependency zipp to v3.23.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1009
+* Update dependency requests to v2.32.4 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1011
+* Update dependency cryptography to v45.0.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1012
+* Update dependency botocore to v1.38.34 by @renovate[bot] in https://github.com/release-engineering/iib/pull/986
+* Update dependency boto3 to v1.38.34 by @renovate[bot] in https://github.com/release-engineering/iib/pull/985
+* Update python Docker tag to v3.13.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1024
+* Update dependency pytest-cov to v6.2.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1023
+* Update dependency coverage to v7.9.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1022
+* Update dependency botocore to v1.38.36 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1021
+* Update dependency boto3 to v1.38.36 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1020
+* Update dependency coverage to v7.9.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1025
+* Update dependency botocore to v1.38.37 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1029
+* Update dependency boto3 to v1.38.37 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1028
+* Update dependency alembic to v1.16.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1027
+* Update dependency certifi to v2025.6.15 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1026
+* Update dependency pytest to v8.4.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1032
+* Update dependency urllib3 to v2.5.0 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1033
+* Update dependency botocore to v1.38.38 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1031
+* Update dependency botocore to v1.38.39 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1035
+* Update dependency boto3 to v1.38.39 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1030
+* Update dependency pygments to v2.19.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1039
+* Update dependency botocore to v1.38.41 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1038
+* Update dependency boto3 to v1.38.41 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1037
+* Add gitlab_tokens map for index_configs by @xDaile in https://github.com/release-engineering/iib/pull/1036
+* Update dependency click-plugins to v1.1.1.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1042
+* Update dependency botocore to v1.38.44 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1041
+* Update dependency boto3 to v1.38.44 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1040
+* Update dependency grpcio to v1.73.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1043
+* Update dependency botocore to v1.39.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1045
+* Update dependency boto3 to v1.39.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1044
+* feat(CLOUDDST-23764): add utils for pushing to gitlab by @nmars in https://github.com/release-engineering/iib/pull/998
+* chore(deps): update dependency cryptography to v45.0.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1048
+* chore(deps): update dependency coverage to v7.9.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1049
+* chore(deps): update dependency botocore to v1.39.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1047
+* chore(deps): update dependency boto3 to v1.39.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1046
+* Add git_commit usage by @xDaile in https://github.com/release-engineering/iib/pull/995
+* chore(deps): update dependency typing-extensions to v4.14.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1054
+* chore(deps): update dependency alembic to v1.16.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1059
+
+## New Contributors
+* @nmars made their first contribution in https://github.com/release-engineering/iib/pull/998
+
 ## 9.2.5
 *Update dependency setuptools to v78.1.1 [SECURITY] by @renovate in https://github.com/release-engineering/iib/pull/969
 * Update dependency sqlalchemy to v2.0.41 by @red-hat-konflux in https://github.com/release-engineering/iib/pull/968
