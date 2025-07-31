@@ -351,6 +351,7 @@ def test_update_index_image_pull_spec(
             resolved_prebuild_from_index=resolved_from_index,
             overwrite_from_index_token=overwrite_token,
             is_image_fbc=is_image_fbc,
+            index_repo_map={},
         )
     else:
         mock_ofi.assert_not_called()
@@ -365,7 +366,7 @@ def test_get_local_pull_spec(request_id, arch):
 
 @pytest.mark.parametrize(
     'output_pull_spec, from_index, resolved_from_index,'
-    'overwrite_from_index_token, oci_export_expected,is_image_fbc',
+    'overwrite_from_index_token, oci_export_expected,is_image_fbc, url_repo_map',
     (
         (
             'quay.io/ns/repo:1',
@@ -374,6 +375,7 @@ def test_get_local_pull_spec(request_id, arch):
             'user:pass',
             True,
             True,
+            {"quay.io/ns/repo:1": "https://fake.url.git"},
         ),
         (
             'quay.io/ns/repo:1',
@@ -382,6 +384,7 @@ def test_get_local_pull_spec(request_id, arch):
             'user:pass',
             False,
             False,
+            {},
         ),
         (
             'quay.io/ns/repo:1',
@@ -390,6 +393,7 @@ def test_get_local_pull_spec(request_id, arch):
             None,
             False,
             True,
+            {"quay.io/ns/repo:1": "https://fake.url.git"},
         ),
     ),
 )
@@ -414,6 +418,7 @@ def test_overwrite_from_index(
     overwrite_from_index_token,
     oci_export_expected,
     is_image_fbc,
+    url_repo_map,
 ):
     mock_gcd.return_value = '/tmp/catalog_dir'
 
@@ -443,6 +448,7 @@ def test_overwrite_from_index(
         resolved_prebuild_from_index=resolved_from_index,
         overwrite_from_index_token=overwrite_from_index_token,
         is_image_fbc=is_image_fbc,
+        index_repo_map=url_repo_map,
     )
 
     # Verify catalog config handling
@@ -455,11 +461,13 @@ def test_overwrite_from_index(
             request_id=1,
             from_index=from_index,
             src_configs_path='/tmp/catalog_dir',
+            index_repo_map=url_repo_map,
         )
         mock_pcg.assert_called_once_with(
             request_id=1,
             from_index=from_index,
             src_configs_path='/tmp/catalog_dir',
+            index_repo_map=url_repo_map,
         )
     else:
         mock_gcd.assert_not_called()
@@ -513,6 +521,7 @@ def test_overwrite_from_index_reverts_on_failure(
     from_index = 'quay.io/ns/repo:v1'
     output_pull_spec = 'quay.io/ns/repo:1'
     resolved_from_index = 'quay.io/ns/repo:abcdef'
+    url_repo_map = {"quay.io/ns/repo:1": "https://fake.url.git"}
 
     # Simulate first skopeo_copy call succeeds, second raises
     mock_sc.side_effect = [None, IIBError('copy failed')]
@@ -526,6 +535,7 @@ def test_overwrite_from_index_reverts_on_failure(
             resolved_prebuild_from_index=resolved_from_index,
             overwrite_from_index_token='user:pass',
             is_image_fbc=True,
+            index_repo_map=url_repo_map,
         )
 
     # First skopeo copy: docker:// to oci: (local export)
@@ -545,6 +555,7 @@ def test_overwrite_from_index_reverts_on_failure(
         request_id=1,
         from_index=from_index,
         src_configs_path='/path/to/configs',
+        index_repo_map=url_repo_map,
     )
 
     # Second copy: oci: to docker:// — triggers failure
@@ -559,6 +570,7 @@ def test_overwrite_from_index_reverts_on_failure(
     mock_rlc.assert_called_once_with(
         request_id=1,
         from_index=from_index,
+        index_repo_map=url_repo_map,
     )
 
 

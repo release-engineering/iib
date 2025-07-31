@@ -4,7 +4,7 @@ import logging
 import os
 import tempfile
 import shutil
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from operator_manifest.operator import ImageName
 
@@ -19,7 +19,11 @@ log = logging.getLogger(__name__)
 
 @instrument_tracing(span_name="workers.tasks.git_utils.push_configs_to_git")
 def push_configs_to_git(
-    request_id: int, from_index: str, src_configs_path: str, commit_message: Optional[str] = None
+    request_id: int,
+    from_index: str,
+    src_configs_path: str,
+    index_repo_map: Dict[str, str],
+    commit_message: Optional[str] = None,
 ) -> None:
     """
     Pushes /configs subfolders to a Git repository.
@@ -30,6 +34,7 @@ def push_configs_to_git(
                            assumes that the branch already exists in remote repo.
     :param str src_configs_path: Path to /configs folder where <pkg>/catalog.json
                            files reside.
+    :param dict(str) index_repo_map: The repo mapping to resolve the git URL.
     :param str commit_message: Custom commit message. If None, a default message is used.
     :raises IIBError: If src_configs_path is not found, remote branch does not exist,
                       or a Git operation fails.
@@ -37,7 +42,7 @@ def push_configs_to_git(
     # Determine Git repo from pullspec
     index_image = ImageName.parse(from_index)
     branch = index_image.tag
-    repo_url = get_git_url(from_index)
+    repo_url = resolve_git_url(from_index, index_repo_map)
     git_token_name, git_token = get_git_token(repo_url)
 
     # Validate branch
@@ -139,18 +144,18 @@ def commit_and_push(
     log.info(push_output)
 
 
-def get_git_url(from_index) -> str:
+def resolve_git_url(from_index, index_repo_map: Dict[str, str]) -> str:
     """
     Get Git repository URL from iib_web_index_to_gitlab_push_map.
 
     :param str from_index: from_index image pull spec.
+    :param dict(str) index_repo_map: The repo mapping to resolve the git URL.
     :return: Git URL.
     :rtype: str
     :raises IIBError: If no mapping found.
     """
     index_image = ImageName.parse(from_index)
     index_no_tag = f"{index_image.registry}/{index_image.namespace}/{index_image.repo}"
-    index_repo_map = get_worker_config()['iib_web_index_to_gitlab_push_map']
     git_url = index_repo_map.get(index_no_tag, None)
     if not git_url:
         raise IIBError(f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'")
@@ -230,16 +235,18 @@ def configure_git_user(
 def revert_last_commit(
     request_id: int,
     from_index: str,
+    index_repo_map: Dict[str, str],
 ) -> None:
     """
     Revert the last commit and push to remote Git repo.
 
     :param int request_id: The ID of the IIB request.
     :param str from_index: The from_index pullspec.
+    :param dict(str) index_repo_map: The repo mapping to resolve the git URL.
     """
     index_image = ImageName.parse(from_index)
     branch = index_image.tag
-    repo_url = get_git_url(from_index)
+    repo_url = resolve_git_url(from_index, index_repo_map)
     git_token_name, git_token = get_git_token(repo_url)
 
     with tempfile.TemporaryDirectory(prefix=f"git-repo-{request_id}-") as local_repo_dir:

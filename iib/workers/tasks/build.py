@@ -255,6 +255,7 @@ def _update_index_image_pull_spec(
     resolved_prebuild_from_index: Optional[str] = None,
     add_or_rm: bool = False,
     is_image_fbc: bool = False,
+    index_repo_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Update the request with the modified index image.
@@ -274,6 +275,8 @@ def _update_index_image_pull_spec(
     :param str resolved_prebuild_from_index: resolved index image before starting the build.
     :param bool add_or_rm: true if the request is an ``Add`` or ``Rm`` request. defaults to false
     :param is_image_fbc: Set to True if the index image is an FBC (File-Based Catalog) image.
+    :param dict(str) index_repo_map: The mapping between index images and git repositories. Only
+        required if ``is_image_fbc`` is ``True``.
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -287,6 +290,7 @@ def _update_index_image_pull_spec(
             resolved_prebuild_from_index=resolved_prebuild_from_index,  # type: ignore
             overwrite_from_index_token=overwrite_from_index_token,
             is_image_fbc=is_image_fbc,
+            index_repo_map=index_repo_map or {},
         )
         index_image = from_index
     elif conf['iib_index_image_output_registry']:
@@ -461,6 +465,7 @@ def _overwrite_from_index(
     resolved_prebuild_from_index: str,
     overwrite_from_index_token: Optional[str] = None,
     is_image_fbc: bool = False,
+    index_repo_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Overwrite the ``from_index`` image.
@@ -472,6 +477,8 @@ def _overwrite_from_index(
     :param str resolved_prebuild_from_index: resolved index image before starting the build.
     :param str overwrite_from_index_token: the user supplied token to use when overwriting the
         ``from_index`` image. If this is not set, IIB's configured credentials will be used.
+    :param dict(str) index_repo_map: The mapping between index images and git repositories. Only
+        required if ``is_image_fbc`` is ``True``.
     :raises IIBError: if one of the skopeo commands fails or if the index image has changed
         since IIB build started.
     """
@@ -523,6 +530,7 @@ def _overwrite_from_index(
                     request_id=request_id,
                     from_index=from_index,
                     src_configs_path=src_configs,
+                    index_repo_map=index_repo_map or {},
                 )
 
         # Revert the Git commit if the skopeo_copy fails
@@ -538,6 +546,7 @@ def _overwrite_from_index(
             revert_last_commit(
                 request_id=request_id,
                 from_index=from_index,
+                index_repo_map=index_repo_map or {},
             )
             raise e
     finally:
@@ -1026,6 +1035,7 @@ def handle_add_request(
         resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
         is_image_fbc=is_fbc,
+        index_repo_map=index_to_gitlab_push_map or {},
     )
     _cleanup()
     set_request_state(
@@ -1219,6 +1229,7 @@ def handle_rm_request(
         resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
         is_image_fbc=image_is_fbc,
+        index_repo_map=index_to_gitlab_push_map or {},
     )
     _cleanup()
     set_request_state(

@@ -12,7 +12,7 @@ from iib.workers.tasks.utils import run_cmd
 from iib.workers.tasks.git_utils import (
     configure_git_user,
     get_git_token,
-    get_git_url,
+    resolve_git_url,
 )
 
 GIT_BASE_URL = 'https://gitlab.cee.redhat.com/exd-guild-hello-operator-gitlab'
@@ -30,16 +30,20 @@ PUB_PENDING_TOKEN_VALUE = "iibpubpendingabc123"
 def mock_gwc():
     with mock.patch('iib.workers.tasks.git_utils.get_worker_config') as mc:
         mc.return_value = {
-            "iib_web_index_to_gitlab_push_map": {
-                PUB_INDEX_IMAGE: PUB_GIT_REPO,
-                PUB_PENDING_INDEX_IMAGE: PUB_PENDING_GIT_REPO,
-            },
             "iib_index_configs_gitlab_tokens_map": {
                 PUB_GIT_REPO: (PUB_TOKEN_NAME, PUB_TOKEN_VALUE),
                 PUB_PENDING_GIT_REPO: (PUB_PENDING_TOKEN_NAME, PUB_PENDING_TOKEN_VALUE),
             },
         }
         yield mc
+
+
+@pytest.fixture()
+def gitlab_url_mapping():
+    return {
+        PUB_INDEX_IMAGE: PUB_GIT_REPO,
+        PUB_PENDING_INDEX_IMAGE: PUB_PENDING_GIT_REPO,
+    }
 
 
 def test_configure_git_user():
@@ -74,12 +78,12 @@ def test_get_git_token(repo_url, expected_token_name, expected_token_value, mock
     assert git_token_value == expected_token_value
 
 
-def test_unmapped_git_url(mock_gwc):
+def test_unmapped_git_url(mock_gwc, gitlab_url_mapping):
     index_image = ImageName.parse("some-registry.com/test/image:latest")
     index_no_tag = f"{index_image.registry}/{index_image.namespace}/{index_image.repo}"
     expected_error = f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'"
     with pytest.raises(IIBError, match=expected_error):
-        get_git_url(index_image)
+        resolve_git_url(index_image, gitlab_url_mapping)
 
 
 @pytest.mark.parametrize(
@@ -95,6 +99,6 @@ def test_unmapped_git_url(mock_gwc):
         ),
     ],
 )
-def test_get_git_url(from_index, expected_git_repo, mock_gwc):
-    mapped_git_repo = get_git_url(from_index)
+def test_resolve_git_url(from_index, expected_git_repo, mock_gwc, gitlab_url_mapping):
+    mapped_git_repo = resolve_git_url(from_index, gitlab_url_mapping)
     assert mapped_git_repo == expected_git_repo
