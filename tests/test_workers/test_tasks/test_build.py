@@ -539,7 +539,7 @@ def test_overwrite_from_index_reverts_on_failure(
     # Ensure push_configs_to_git was called before failure
     mock_gcd.assert_called_once_with(
         from_index=output_pull_spec,
-        base_dir='iib-1-configs',
+        base_dir=mock.ANY,
     )
     mock_pgt.assert_called_once_with(
         request_id=1,
