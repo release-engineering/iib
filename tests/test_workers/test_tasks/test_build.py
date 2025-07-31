@@ -416,7 +416,26 @@ def test_overwrite_from_index(
     is_image_fbc,
 ):
     mock_gcd.return_value = '/tmp/catalog_dir'
-    mock_td.return_value.name = '/tmp/iib-12345'
+
+    temp_dir_mocks = []
+
+    # first temporary directory setup
+    if oci_export_expected:
+        mock_temp_dir_1 = mock.MagicMock()
+        mock_temp_dir_1.name = "temp1"
+        mock_temp_dir_1.cleanup = mock.MagicMock()
+        temp_dir_mocks.append(mock_temp_dir_1)
+    else:
+        mock_temp_dir_1 = None
+
+    # Second temporary directory setup (context manager)
+    mock_temp_dir_2 = mock.MagicMock()
+    mock_temp_dir_2.name = "temp2"
+    mock_temp_dir_2.__enter__.return_value = mock_temp_dir_2
+    temp_dir_mocks.append(mock_temp_dir_2)
+
+    mock_td.side_effect = temp_dir_mocks
+
     build._overwrite_from_index(
         request_id=1,
         output_pull_spec=output_pull_spec,
@@ -430,7 +449,12 @@ def test_overwrite_from_index(
     if is_image_fbc:
         mock_gcd.assert_called_once_with(
             from_index=output_pull_spec,
-            base_dir='iib-1-configs',
+            base_dir=mock_temp_dir_2,
+        )
+        mock_pcg.assert_called_once_with(
+            request_id=1,
+            from_index=from_index,
+            src_configs_path='/tmp/catalog_dir',
         )
         mock_pcg.assert_called_once_with(
             request_id=1,
@@ -441,7 +465,7 @@ def test_overwrite_from_index(
         mock_gcd.assert_not_called()
 
     if oci_export_expected:
-        oci_pull_spec = f'oci:{mock_td.return_value.name}'
+        oci_pull_spec = f'oci:{mock_temp_dir_1.name}'
         mock_sc.assert_has_calls(
             (
                 mock.call(
@@ -450,7 +474,7 @@ def test_overwrite_from_index(
                 mock.call(oci_pull_spec, f'docker://{from_index}', copy_all=True, exc_msg=mock.ANY),
             )
         )
-        mock_td.return_value.cleanup.assert_called_once_with()
+        mock_temp_dir_1.cleanup.assert_called_once_with()
     else:
         mock_sc.assert_called_once_with(
             f'docker://{output_pull_spec}',

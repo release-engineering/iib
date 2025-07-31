@@ -513,15 +513,17 @@ def _overwrite_from_index(
 
         if is_image_fbc:
             # Push the /configs to the Gitlab, then skopeo_copy the result.
-            src_configs = get_catalog_dir(
-                from_index=output_pull_spec,
-                base_dir=f'iib-{request_id}-configs',
-            )
-            push_configs_to_git(
-                request_id=request_id,
-                from_index=from_index,
-                src_configs_path=src_configs,
-            )
+            with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-configs-') as tmpdir:
+                # Push the /configs to the Gitlab, then skopeo_copy the result.
+                src_configs = get_catalog_dir(
+                    from_index=output_pull_spec,
+                    base_dir=tmpdir,
+                )
+                push_configs_to_git(
+                    request_id=request_id,
+                    from_index=from_index,
+                    src_configs_path=src_configs,
+                )
 
         # Revert the Git commit if the skopeo_copy fails
         try:
