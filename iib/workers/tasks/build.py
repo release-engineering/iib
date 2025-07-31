@@ -254,6 +254,7 @@ def _update_index_image_pull_spec(
     overwrite_from_index_token: Optional[str] = None,
     resolved_prebuild_from_index: Optional[str] = None,
     add_or_rm: bool = False,
+    is_image_fbc: bool = False,
 ) -> None:
     """
     Update the request with the modified index image.
@@ -272,6 +273,7 @@ def _update_index_image_pull_spec(
         ``from_index`` image.
     :param str resolved_prebuild_from_index: resolved index image before starting the build.
     :param bool add_or_rm: true if the request is an ``Add`` or ``Rm`` request. defaults to false
+    :param is_image_fbc: Set to True if the index image is an FBC (File-Based Catalog) image.
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -284,6 +286,7 @@ def _update_index_image_pull_spec(
             # has incompatible type "Optional[str]"; expected "str"
             resolved_prebuild_from_index=resolved_prebuild_from_index,  # type: ignore
             overwrite_from_index_token=overwrite_from_index_token,
+            is_image_fbc=is_image_fbc,
         )
         index_image = from_index
     elif conf['iib_index_image_output_registry']:
@@ -457,6 +460,7 @@ def _overwrite_from_index(
     from_index: str,
     resolved_prebuild_from_index: str,
     overwrite_from_index_token: Optional[str] = None,
+    is_image_fbc: bool = False,
 ) -> None:
     """
     Overwrite the ``from_index`` image.
@@ -507,16 +511,17 @@ def _overwrite_from_index(
                     f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
                 )
 
-        # Push the /configs to the Gitlab, then skopeo_copy the result.
-        src_configs = get_catalog_dir(
-            from_index=output_pull_spec,
-            base_dir=f'iib-{request_id}-configs',
-        )
-        push_configs_to_git(
-            request_id=request_id,
-            from_index=from_index,
-            src_configs_path=src_configs,
-        )
+        if is_image_fbc:
+            # Push the /configs to the Gitlab, then skopeo_copy the result.
+            src_configs = get_catalog_dir(
+                from_index=output_pull_spec,
+                base_dir=f'iib-{request_id}-configs',
+            )
+            push_configs_to_git(
+                request_id=request_id,
+                from_index=from_index,
+                src_configs_path=src_configs,
+            )
 
         # Revert the Git commit if the skopeo_copy fails
         try:
@@ -1018,6 +1023,7 @@ def handle_add_request(
         overwrite_from_index_token=overwrite_from_index_token,
         resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
+        is_image_fbc=is_fbc,
     )
     _cleanup()
     set_request_state(
@@ -1210,6 +1216,7 @@ def handle_rm_request(
         overwrite_from_index_token=overwrite_from_index_token,
         resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
+        is_image_fbc=image_is_fbc,
     )
     _cleanup()
     set_request_state(
