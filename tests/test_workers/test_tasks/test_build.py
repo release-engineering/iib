@@ -242,9 +242,9 @@ def test_create_and_push_manifest_list_failure_to_rm_manifest_list(mock_run_cmd,
 
 @pytest.mark.parametrize(
     'iib_index_image_output_registry, from_index, overwrite, expected, resolved_from_index,'
-    'add_or_rm',
+    'add_or_rm, is_image_fbc',
     (
-        (None, None, False, '{default}', None, False),
+        (None, None, False, '{default}', None, False, False),
         (
             'registry-proxy.domain.local',
             None,
@@ -252,9 +252,26 @@ def test_create_and_push_manifest_list_failure_to_rm_manifest_list(mock_run_cmd,
             'registry-proxy.domain.local/{default_no_registry}',
             None,
             False,
+            True,
         ),
-        (None, 'quay.io/ns/iib:v4.5', True, 'quay.io/ns/iib:v4.5', 'quay.io/ns/iib:abcdef', True),
-        (None, 'quay.io/ns/iib:v5.4', True, 'quay.io/ns/iib:v5.4', 'quay.io/ns/iib:fedcba', True),
+        (
+            None,
+            'quay.io/ns/iib:v4.5',
+            True,
+            'quay.io/ns/iib:v4.5',
+            'quay.io/ns/iib:abcdef',
+            True,
+            True,
+        ),
+        (
+            None,
+            'quay.io/ns/iib:v5.4',
+            True,
+            'quay.io/ns/iib:v5.4',
+            'quay.io/ns/iib:fedcba',
+            True,
+            False,
+        ),
     ),
 )
 @mock.patch('iib.workers.tasks.build.get_worker_config')
@@ -274,6 +291,7 @@ def test_update_index_image_pull_spec(
     expected,
     resolved_from_index,
     add_or_rm,
+    is_image_fbc,
 ):
     default_no_registry = 'namespace/some-image:3'
     default = f'quay.io/{default_no_registry}'
@@ -298,6 +316,7 @@ def test_update_index_image_pull_spec(
             overwrite_token,
             resolved_prebuild_from_index=resolved_from_index,
             add_or_rm=add_or_rm,
+            is_image_fbc=is_image_fbc,
         )
     else:
         build._update_index_image_pull_spec(
@@ -308,6 +327,7 @@ def test_update_index_image_pull_spec(
             overwrite,
             overwrite_token,
             resolved_prebuild_from_index=resolved_from_index,
+            is_image_fbc=is_image_fbc,
         )
 
     mock_ur.assert_called_once()
@@ -330,6 +350,7 @@ def test_update_index_image_pull_spec(
             from_index=from_index,
             resolved_prebuild_from_index=resolved_from_index,
             overwrite_from_index_token=overwrite_token,
+            is_image_fbc=is_image_fbc,
         )
     else:
         mock_ofi.assert_not_called()
@@ -344,13 +365,14 @@ def test_get_local_pull_spec(request_id, arch):
 
 @pytest.mark.parametrize(
     'output_pull_spec, from_index, resolved_from_index,'
-    'overwrite_from_index_token, oci_export_expected',
+    'overwrite_from_index_token, oci_export_expected,is_image_fbc',
     (
         (
             'quay.io/ns/repo:1',
             'quay.io/user_ns/repo:v1',
             'quay.io/user_ns/repo:abcdef',
             'user:pass',
+            True,
             True,
         ),
         (
@@ -359,6 +381,7 @@ def test_get_local_pull_spec(request_id, arch):
             'quay.io/user_ns/repo:abcdef',
             'user:pass',
             False,
+            False,
         ),
         (
             'quay.io/ns/repo:1',
@@ -366,6 +389,7 @@ def test_get_local_pull_spec(request_id, arch):
             'quay.io/user_ns/repo:abcdef',
             None,
             False,
+            True,
         ),
     ),
 )
@@ -389,6 +413,7 @@ def test_overwrite_from_index(
     resolved_from_index,
     overwrite_from_index_token,
     oci_export_expected,
+    is_image_fbc,
 ):
     mock_gcd.return_value = '/tmp/catalog_dir'
     mock_td.return_value.name = '/tmp/iib-12345'
@@ -398,18 +423,22 @@ def test_overwrite_from_index(
         from_index=from_index,
         resolved_prebuild_from_index=resolved_from_index,
         overwrite_from_index_token=overwrite_from_index_token,
+        is_image_fbc=is_image_fbc,
     )
 
     # Verify catalog config handling
-    mock_gcd.assert_called_once_with(
-        from_index=output_pull_spec,
-        base_dir='iib-1-configs',
-    )
-    mock_pcg.assert_called_once_with(
-        request_id=1,
-        from_index=from_index,
-        src_configs_path='/tmp/catalog_dir',
-    )
+    if is_image_fbc:
+        mock_gcd.assert_called_once_with(
+            from_index=output_pull_spec,
+            base_dir='iib-1-configs',
+        )
+        mock_pcg.assert_called_once_with(
+            request_id=1,
+            from_index=from_index,
+            src_configs_path='/tmp/catalog_dir',
+        )
+    else:
+        mock_gcd.assert_not_called()
 
     if oci_export_expected:
         oci_pull_spec = f'oci:{mock_td.return_value.name}'
@@ -472,6 +501,7 @@ def test_overwrite_from_index_reverts_on_failure(
             from_index=from_index,
             resolved_prebuild_from_index=resolved_from_index,
             overwrite_from_index_token='user:pass',
+            is_image_fbc=True,
         )
 
     # First skopeo copy: docker:// to oci: (local export)
