@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FinalStateOverwiteError
 from iib.workers.tasks import general
 
 
@@ -12,6 +12,7 @@ from iib.workers.tasks import general
     (
         (IIBError('Is it lunch time yet?'), 'Is it lunch time yet?'),
         (RuntimeError('I cannot run in the rain!'), 'An unknown error occurred'),
+        (FinalStateOverwiteError("can not overwite final state"), "Already in final state"),
     ),
 )
 @mock.patch('iib.workers.tasks.general._cleanup')
