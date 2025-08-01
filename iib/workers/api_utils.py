@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from iib.exceptions import IIBError, FinalStateOverwiteError
+from iib.exceptions import IIBError, FinalStateOverwriteError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import UpdateRequestPayload
 import time
@@ -145,7 +145,7 @@ def update_request(
     :param str exc_msg: an optional custom exception that can be a template
     :return: the updated request
     :rtype: dict
-    :raises ValidationError: if the request fails trying changing final state (complete, failed)
+    :raises FinalStateOverwriteError: if request fails overwriting final state (complete/failed)
     :raises IIBError: if the request to the IIB API fails otherwise
     """
     # Prevent a circular import
@@ -173,7 +173,7 @@ def update_request(
             "A failed request cannot change states",
             "A complete request cannot change states",
         ]:
-            raise FinalStateOverwiteError(rv.json().get("error"))
+            raise FinalStateOverwriteError(rv.json().get("error"))
         if exc_msg:
             _exc_msg = exc_msg.format(**payload, request_id=request_id)
         else:
