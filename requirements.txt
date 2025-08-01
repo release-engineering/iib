@@ -676,8 +676,8 @@ opentelemetry-util-http==0.54b1 \
     #   opentelemetry-instrumentation-flask
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-wsgi
-operator-manifest==0.0.5 \
-    --hash=sha256:8e1dfc47fc133947ed575f947f0d51d7c5efb4beb0f5de5202214bea257c26b5
+operator-manifest==2.0.1 \
+    --hash=sha256:8c2b26de4378244d9c383944b8669ad2863f72e5410d235e6a9f95ef33f6edec
     # via iib (setup.py)
 packaging==25.0 \
     --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
