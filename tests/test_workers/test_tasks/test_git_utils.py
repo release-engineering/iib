@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Basic unit tests for git_utils."""
+import logging
 import pytest
 import tempfile
 from unittest import mock
@@ -12,7 +13,9 @@ from iib.workers.tasks.utils import run_cmd
 from iib.workers.tasks.git_utils import (
     configure_git_user,
     get_git_token,
+    push_configs_to_git,
     resolve_git_url,
+    revert_last_commit,
 )
 
 GIT_BASE_URL = 'https://gitlab.cee.redhat.com/exd-guild-hello-operator-gitlab'
@@ -78,12 +81,19 @@ def test_get_git_token(repo_url, expected_token_name, expected_token_value, mock
     assert git_token_value == expected_token_value
 
 
-def test_unmapped_git_url(mock_gwc, gitlab_url_mapping):
+def test_unmapped_git_url(mock_gwc, gitlab_url_mapping, caplog):
+    # Setting the logging level via caplog.set_level is not sufficient. The flask
+    # related settings from previous tests interfere with this.
+    git_logger = logging.getLogger('iib.workers.tasks.git_utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
     index_image = ImageName.parse("some-registry.com/test/image:latest")
     index_no_tag = f"{index_image.registry}/{index_image.namespace}/{index_image.repo}"
-    expected_error = f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'"
-    with pytest.raises(IIBError, match=expected_error):
-        resolve_git_url(index_image, gitlab_url_mapping)
+    expected_warning = f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'"
+    res = resolve_git_url(index_image, gitlab_url_mapping)
+    assert not res
+    assert expected_warning in caplog.messages
 
 
 @pytest.mark.parametrize(
@@ -102,3 +112,34 @@ def test_unmapped_git_url(mock_gwc, gitlab_url_mapping):
 def test_resolve_git_url(from_index, expected_git_repo, mock_gwc, gitlab_url_mapping):
     mapped_git_repo = resolve_git_url(from_index, gitlab_url_mapping)
     assert mapped_git_repo == expected_git_repo
+
+
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None:
+    """Ensure the ``push_configs_to_git`` will not store the catalog to git without the repo map."""
+    res = push_configs_to_git(
+        request_id=1,
+        from_index="some-registry.com/foobar:latest",
+        src_configs_path="/configs",
+        index_repo_map={},
+    )
+
+    assert not res
+    mock_ggt.assert_not_called()
+    mock_cmd.assert_not_called()
+
+
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_revert_last_commit_aborts_without_repo_map(mock_ggt, mock_cmd) -> None:
+    """Ensure the ``revert_last_commit`` will not store the catalog to git without the repo map."""
+    res = revert_last_commit(
+        request_id=1,
+        from_index="some-registry.com/foobar:latest",
+        index_repo_map={},
+    )
+
+    assert not res
+    mock_ggt.assert_not_called()
+    mock_cmd.assert_not_called()

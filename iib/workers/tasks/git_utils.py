@@ -43,6 +43,13 @@ def push_configs_to_git(
     index_image = ImageName.parse(from_index)
     branch = index_image.tag
     repo_url = resolve_git_url(from_index, index_repo_map)
+
+    # Do not proceed to store with git if the image is not present in the mappings
+    if not repo_url:
+        log.info(f"Aborting git storage: no repository set for {from_index}.")
+        return
+
+    # Retrieve the repo auth token
     git_token_name, git_token = get_git_token(repo_url)
 
     # Validate branch
@@ -144,7 +151,7 @@ def commit_and_push(
     log.info(push_output)
 
 
-def resolve_git_url(from_index, index_repo_map: Dict[str, str]) -> str:
+def resolve_git_url(from_index, index_repo_map: Dict[str, str]) -> Optional[str]:
     """
     Get Git repository URL from iib_web_index_to_gitlab_push_map.
 
@@ -152,13 +159,12 @@ def resolve_git_url(from_index, index_repo_map: Dict[str, str]) -> str:
     :param dict(str) index_repo_map: The repo mapping to resolve the git URL.
     :return: Git URL.
     :rtype: str
-    :raises IIBError: If no mapping found.
     """
     index_image = ImageName.parse(from_index)
     index_no_tag = f"{index_image.registry}/{index_image.namespace}/{index_image.repo}"
     git_url = index_repo_map.get(index_no_tag, None)
     if not git_url:
-        raise IIBError(f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'")
+        log.warning(f"Missing key '{index_no_tag}' in 'iib_web_index_to_gitlab_push_map'")
     return git_url
 
 
@@ -247,6 +253,13 @@ def revert_last_commit(
     index_image = ImageName.parse(from_index)
     branch = index_image.tag
     repo_url = resolve_git_url(from_index, index_repo_map)
+
+    # Do not proceed to store with git if the image is not present in the mappings
+    if not repo_url:
+        log.info(f"Aborting git revert: no repository set for {from_index}.")
+        return
+
+    # Get repo auth token
     git_token_name, git_token = get_git_token(repo_url)
 
     with tempfile.TemporaryDirectory(prefix=f"git-repo-{request_id}-") as local_repo_dir:
