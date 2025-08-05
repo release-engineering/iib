@@ -753,6 +753,22 @@ def _regex_reverse_search(
     return None
 
 
+def _sanitize_cmd_log(cmd: List[str]) -> List[str]:
+    """
+    Sanitize known commands to allow ``run_cmd`` to safely log them.
+
+    :param list(str): cmd args
+    :return: sanitized cmd args for known commands.
+    :rtype: list(str)
+    """
+    git_token_regex = r"^((https?|git|ssh):\/\/)([^\/:@]+(:[^\/@]*)?@)"
+    sanitized_args = []
+    for arg in cmd:
+        new_arg = re.sub(git_token_regex, r"\1*****:*******@", arg)
+        sanitized_args.append(new_arg)
+    return sanitized_args
+
+
 def run_cmd(
     cmd: List[str],
     params: Optional[Dict[str, Any]] = None,
@@ -778,7 +794,7 @@ def run_cmd(
     params.setdefault('stderr', subprocess.PIPE)
     params.setdefault('stdout', subprocess.PIPE)
 
-    log.debug('Running the command "%s"', ' '.join(cmd))
+    log.debug('Running the command "%s"', ' '.join(_sanitize_cmd_log(cmd)))
     response: subprocess.CompletedProcess = subprocess.run(cmd, **params)
 
     if strict and response.returncode != 0:

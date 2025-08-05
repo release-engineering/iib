@@ -11,6 +11,7 @@ from operator_manifest.operator import ImageName
 from iib.exceptions import IIBError
 from iib.workers.tasks.utils import run_cmd
 from iib.workers.tasks.git_utils import (
+    clone_git_repo,
     configure_git_user,
     get_git_token,
     push_configs_to_git,
@@ -143,3 +144,124 @@ def test_revert_last_commit_aborts_without_repo_map(mock_ggt, mock_cmd) -> None:
     assert not res
     mock_ggt.assert_not_called()
     mock_cmd.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "token_name,token_secret",
+    [
+        ("token", "token_super_secret"),
+        ("secret-token", "Sup3r_S3cr31-T0ken"),
+        ("secret-token", "Sup3r_S3cr31-T0ken"),
+        ("fake_GH-secret", "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789"),
+        ("F4k3-G1tL4b-T0k3n", "glpat-ABcdeF5g6HIjkl1Mnop11"),
+    ],
+)
+@mock.patch("iib.workers.tasks.utils.subprocess")
+def test_clone_git_repo_wont_leak_credentials(
+    mock_subprocess, token_name, token_secret, caplog
+) -> None:
+    # Setting the logging level via caplog.set_level is not sufficient. The flask
+    # related settings from previous tests interfere with this.
+    git_logger = logging.getLogger('iib.workers.tasks.utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
+    # Prepare the subprocess mock
+    mock_run_result = mock.MagicMock()
+    mock_run_result.returncode = 0
+    mock_subprocess.run.return_value = mock_run_result
+    default_run_cmd_args = {
+        "universal_newlines": True,
+        "encoding": "utf-8",
+        "stderr": mock_subprocess.PIPE,
+        "stdout": mock_subprocess.PIPE,
+    }
+
+    # Git clone params
+    branch = "main"
+    local_repo_path = "https://local_repo"
+    remote_url = f"https://{token_name}:{token_secret}@fake_repo"
+
+    # Test
+    clone_git_repo(
+        repo_url="https://fake_repo",
+        branch=branch,
+        token_name=token_name,
+        token=token_secret,
+        local_repo_path=local_repo_path,
+    )
+
+    mock_subprocess.run.assert_has_calls(
+        [
+            mock.call(
+                ["git", "clone", "--depth", "1", "--branch", branch, remote_url, local_repo_path],
+                **default_run_cmd_args,
+            ),
+            mock.call(["git", "-C", local_repo_path, "log", "-n1"], **default_run_cmd_args),
+        ],
+        any_order=True,
+    )
+
+    # Ensure the `super_secret_token` isn't leaked
+    for msg in caplog.messages:
+        assert msg.find(token_secret) == -1
+
+    # Ensure the sanitized log is present
+    expected_log = (
+        f'Running the command "git clone --depth 1 --branch {branch} '
+        f'https://*****:*******@fake_repo {local_repo_path}"'
+    )
+    assert expected_log in caplog.messages
+
+
+@mock.patch("iib.workers.tasks.utils.subprocess")
+def test_clone_git_repo_no_credentials(mock_subprocess, caplog) -> None:
+    # Setting the logging level via caplog.set_level is not sufficient. The flask
+    # related settings from previous tests interfere with this.
+    git_logger = logging.getLogger('iib.workers.tasks.utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
+    # Prepare the subprocess mock
+    mock_run_result = mock.MagicMock()
+    mock_run_result.returncode = 0
+    mock_subprocess.run.return_value = mock_run_result
+    default_run_cmd_args = {
+        "universal_newlines": True,
+        "encoding": "utf-8",
+        "stderr": mock_subprocess.PIPE,
+        "stdout": mock_subprocess.PIPE,
+    }
+
+    # Git clone params
+    branch = "main"
+    local_repo_path = "https://local_repo"
+    remote_url = "https://fake_repo"
+    expected_url = "https://:@fake_repo"
+
+    # Test
+    clone_git_repo(
+        repo_url=remote_url,
+        branch=branch,
+        token_name="",
+        token="",
+        local_repo_path=local_repo_path,
+    )
+
+    mock_subprocess.run.assert_has_calls(
+        [
+            mock.call(
+                ["git", "clone", "--depth", "1", "--branch", branch, expected_url, local_repo_path],
+                **default_run_cmd_args,
+            ),
+            mock.call(["git", "-C", local_repo_path, "log", "-n1"], **default_run_cmd_args),
+        ],
+        any_order=True,
+    )
+
+    # Ensure the sanitized log is present
+    expected_log = (
+        'Running the command "git clone --depth 1 --branch '
+        f'{branch} {expected_url} {local_repo_path}"'
+    )
+    assert expected_log in caplog.messages
