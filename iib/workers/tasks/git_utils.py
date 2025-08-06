@@ -7,9 +7,12 @@ import shutil
 from typing import Dict, Optional, Tuple
 
 from operator_manifest.operator import ImageName
+import requests
+from urllib.parse import urlparse, quote_plus
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
+from iib.workers.api_utils import requests_session
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd
 
@@ -129,6 +132,8 @@ def commit_and_push(
 
     :param int request_id: The ID of the IIB request.
     :param str local_repo_path: Path to local git repository where changes have been staged.
+    :param str repo_url: Git repository URL.
+    :param str branch: Branch name to push changes to.
     :param str commit_message: Custom commit message. If None, a default message is used.
     :raises IIBError: If a Git operation fails.
     """
@@ -288,3 +293,202 @@ def revert_last_commit(
             if os.path.exists(local_repo_dir):
                 shutil.rmtree(local_repo_dir)
                 log.debug("Cleaned up local Git repository %s", local_repo_dir)
+
+
+@instrument_tracing(span_name="workers.tasks.git_utils.create_mr")
+def create_mr(
+    request_id: int,
+    local_repo_path: str,
+    repo_url: str,
+    branch: str,
+    commit_message: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Create a merge request on GitLab repository.
+
+    :param int request_id: The ID of the IIB request.
+    :param str local_repo_path: Path to local git repository where changes have been staged.
+    :param str repo_url: Git repository URL.
+    :param str branch: Branch name corresponding to OCP version, like "v4.19".
+    :param str commit_message: Custom commit message. If None, a default message is used.
+    :return: Dictionary containing MR details (mr_id, mr_url, source_branch).
+    :rtype: Dict[str, str]
+    :raises IIBError: If a Git operation or GitLab API call fails.
+    """
+    # Get GitLab token for API access
+    _, git_token = get_git_token(repo_url)
+
+    # Create a feature branch for the MR
+    feature_branch = f"iib-request-{request_id}-{branch}"
+
+    # Create and switch to feature branch
+    log.info("Creating feature branch %s", feature_branch)
+    run_cmd(
+        ["git", "-C", local_repo_path, "checkout", "-b", feature_branch],
+        exc_msg="Error creating feature branch",
+    )
+
+    # Use commit_and_push to handle commit and push operations
+    commit_and_push(
+        request_id=request_id,
+        local_repo_path=local_repo_path,
+        repo_url=repo_url,
+        branch=feature_branch,
+        commit_message=commit_message,
+    )
+
+    return _create_gitlab_mr(repo_url, git_token, feature_branch, branch, request_id)
+
+
+def _extract_gitlab_info(repo_url: str) -> Tuple[str, str]:
+    """
+    Extract GitLab API URL and project path from repository URL.
+
+    :param str repo_url: Git repository URL.
+    :return: Tuple of (api_url, project_path).
+    :rtype: Tuple[str, str]
+    :raises IIBError: If the repository URL is not a valid GitLab URL.
+    """
+    # Parse the URL using urllib.parse for robust handling
+    parsed_url = urlparse(repo_url)
+
+    if parsed_url.scheme != 'https':
+        raise IIBError(f"Unsupported repository URL format: {repo_url}")
+
+    if not parsed_url.netloc:
+        raise IIBError(f"Invalid GitLab repository URL format: {repo_url}")
+
+    # Extract the path and remove .git suffix if present
+    path = parsed_url.path
+    if path.endswith('.git'):
+        path = path[:-4]  # Remove '.git'
+
+    if not path:
+        raise IIBError(f"Invalid GitLab repository URL format: {repo_url}")
+
+    # Remove leading slash
+    if path.startswith('/'):
+        path = path[1:]
+
+    # Construct API URL from the base URL (scheme + netloc)
+    api_url = f"https://{parsed_url.netloc}/api/v4"
+
+    # The project path is everything in the path
+    project_path = path
+
+    return api_url, project_path
+
+
+def _create_gitlab_mr(
+    repo_url: str, git_token: str, source_branch: str, target_branch: str, request_id: int
+) -> Dict[str, str]:
+    """
+    Create a merge request using GitLab API.
+
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str source_branch: Source branch for the MR.
+    :param str target_branch: Target branch for the MR.
+    :param int request_id: The ID of the IIB request.
+    :return: Dictionary containing MR details (mr_id, mr_url, source_branch).
+    :rtype: Dict[str, str]
+    :raises IIBError: If GitLab API call fails.
+    """
+    # Extract GitLab information from repository URL
+    api_url, project_path = _extract_gitlab_info(repo_url)
+
+    # GitLab API endpoint for creating merge requests
+    api_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests"
+
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {git_token}'}
+
+    payload = {
+        'source_branch': source_branch,
+        'target_branch': target_branch,
+        'title': f'IIB: Update for request id {request_id}',
+        'description': f'Automated merge request created by IIB for request {request_id}',
+        'remove_source_branch': True,
+        'squash': True,
+    }
+
+    try:
+        log.info("Creating merge request via GitLab API for project %s", project_path)
+        response = requests_session.post(api_url, headers=headers, json=payload, timeout=30)
+
+        if not response.ok:
+            log.error(
+                'Failed to create merge request. Status: %d, Response: %s',
+                response.status_code,
+                response.text,
+            )
+            raise IIBError(f'Failed to create merge request: {response.status_code}')
+
+        mr_data = response.json()
+        mr_id = str(mr_data['iid'])
+        mr_url = mr_data['web_url']
+
+        log.info("Successfully created merge request %s: %s", mr_id, mr_url)
+
+        return {'mr_id': mr_id, 'mr_url': mr_url, 'source_branch': source_branch}
+
+    except requests.RequestException as e:
+        log.exception("Error creating merge request via GitLab API")
+        raise IIBError(f'GitLab API request failed: {str(e)}')
+
+
+@instrument_tracing(span_name="workers.tasks.git_utils.close_mr")
+def close_mr(mr_details: Dict[str, str], repo_url: str) -> None:
+    """
+    Close a merge request on GitLab repository.
+
+    :param dict mr_details: Dictionary containing MR details (mr_id, mr_url, source_branch).
+    :param str repo_url: Git repository URL.
+    :raises IIBError: If GitLab API call fails.
+    """
+    mr_id = mr_details.get('mr_id')
+    if not mr_id:
+        raise IIBError("Missing mr_id in mr_details")
+
+    # Get GitLab token for API access
+    _, git_token = get_git_token(repo_url)
+
+    # Close merge request via GitLab API
+    _close_gitlab_mr(repo_url, git_token, mr_id)
+
+
+def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
+    """
+    Close a merge request using GitLab API.
+
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str mr_id: Merge request ID.
+    :raises IIBError: If GitLab API call fails.
+    """
+    # Extract GitLab information from repository URL
+    api_url, project_path = _extract_gitlab_info(repo_url)
+
+    # GitLab API endpoint for updating merge requests
+    api_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests/{mr_id}"
+
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {git_token}'}
+
+    payload = {'state_event': 'close'}
+
+    try:
+        log.info("Closing merge request %s via GitLab API", mr_id)
+        response = requests_session.put(api_url, headers=headers, json=payload, timeout=30)
+
+        if not response.ok:
+            log.error(
+                'Failed to close merge request. Status: %d, Response: %s',
+                response.status_code,
+                response.text,
+            )
+            raise IIBError(f'Failed to close merge request: {response.status_code}')
+
+        log.info("Successfully closed merge request %s", mr_id)
+
+    except requests.RequestException as e:
+        log.exception("Error closing merge request via GitLab API")
+        raise IIBError(f'GitLab API request failed: {str(e)}')
