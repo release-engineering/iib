@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.3.1
+
+* chore(deps): update dependency botocore to v1.39.16 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1063
+* chore(deps): update dependency s3transfer to v0.13.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1064
+* chore(deps): update dependency sqlalchemy to v2.0.42 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1069
+* chore(deps): update dependency grpcio to v1.74.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1071
+* chore(deps): update dependency coverage to v7.10.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1066
+* chore(deps): update dependency certifi to v2025.7.14 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1065
+* chore(deps): update dependency botocore to v1.39.17 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1068
+* chore(deps): update dependency boto3 to v1.39.17 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1062
+* bugfix(workers): Only save to git FBC images by @JAVGan in https://github.com/release-engineering/iib/pull/1075
+* Fix overwrite_from_index temp_dir bug by @xDaile in https://github.com/release-engineering/iib/pull/1070
+* bugfix(git_utils): Use the git_url_map from params by @JAVGan in https://github.com/release-engineering/iib/pull/1078
+* fix(git_utils): Do not fail when git repo url is not set by @JAVGan in https://github.com/release-engineering/iib/pull/1087
+* chore(deps): update dependency certifi to v2025.8.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1086
+* chore(deps): update dependency coverage to v7.10.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1085
+* feat(utils): Sanitize logs of git operations by @JAVGan in https://github.com/release-engineering/iib/pull/1088
+* chore(deps): update dependency cryptography to v45.0.6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1089
+* chore(deps): update python docker tag to v3.13.6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1091
+* chore(deps): update dependency greenlet to v3.2.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1090
+* chore(deps): update dependency charset-normalizer to v3.4.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1092
+* chore(deps): update dependency coverage to v7.10.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1093
+
 ## 9.3.0
 
 * Update dependency python-qpid-proton to v0.40.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1007
