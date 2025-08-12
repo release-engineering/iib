@@ -2,6 +2,7 @@
 import logging
 import os
 import stat
+import subprocess
 import textwrap
 from unittest import mock
 
@@ -403,6 +404,40 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMoc
         )
 
     mock_sub_run.assert_called_once()
+
+
+@pytest.mark.parametrize("protocol", ["https", "ssh", "git"])
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_git_clone_sanitized_success(mock_sub_run, protocol, caplog) -> None:
+    # Setting the logging level via caplog.set_level is not sufficient. The flask
+    # related settings from previous tests interfere with this.
+    git_logger = logging.getLogger('iib.workers.tasks.utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
+    # Setup subprocess mock
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 0
+    mock_sub_run.return_value = mock_rv
+    default_args = {
+        "universal_newlines": True,
+        "encoding": 'utf-8',
+        "stderr": subprocess.PIPE,
+        "stdout": subprocess.PIPE,
+    }
+
+    # Setup run_cmd args
+    secret_token = "super-secret-token"
+    clone_uri = f"{protocol}://test-account:{secret_token}@fakerepo"
+    full_cmd = ["git", "clone", clone_uri, "."]
+    sanitized_cmd = f"git clone {protocol}://*****:*******@fakerepo ."
+    expected_log_output = f'Running the command "{sanitized_cmd}"'
+
+    # Test
+    utils.run_cmd(full_cmd)
+
+    mock_sub_run.assert_called_once_with(full_cmd, **default_args)
+    assert expected_log_output in caplog.messages
 
 
 @mock.patch('iib.workers.tasks.utils.run_cmd')
