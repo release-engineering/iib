@@ -400,7 +400,7 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMoc
                 '-f',
                 'bar',
             ],
-            exc_msg=f'Failed to build the container image on the arch amd64',
+            exc_msg='Failed to build the container image on the arch amd64',
         )
 
     mock_sub_run.assert_called_once()
@@ -971,7 +971,7 @@ def test_prepare_request_for_build(
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        index_resolved = f'index-image@sha256:abcdef1234'
+        index_resolved = 'index-image@sha256:abcdef1234'
         mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.side_effect = [expected_arches]
         gil_side_effect = []
@@ -1158,7 +1158,7 @@ def test_prepare_request_for_build_binaryless(
         gil_side_effect = ['v4.6', resolved_distribution_scope]
         ocp_version = 'v4.6'
     else:
-        index_resolved = f'index-image@sha256:abcdef1234'
+        index_resolved = 'index-image@sha256:abcdef1234'
         mock_gri.side_effect = [binary_image_resolved, index_resolved]
         mock_gia.return_value = from_index_arches
         gil_side_effect = []
@@ -1323,3 +1323,145 @@ def test_add_max_ocp_version_property_empty_index(mock_apti, mock_glb, mock_gbj,
 
     mock_gbj.assert_not_called()
     mock_apti.assert_not_called()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths_use_empty_config_config_exists_template_exists(
+    mock_rdc, mock_json_dump, mock_open, mock_exists, mock_remove, mock_expanduser
+):
+    """Test set_registry_auths with use_empty_config=True when config and template exist."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_exists.return_value = True
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'quay.io': {'auth': 'd2lsZGNhcmQ6cGFzcw=='},  # wildcard:pass
+        }
+    }
+
+    with utils.set_registry_auths(registry_auths, use_empty_config=True):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+    assert mock_open.call_count == 1
+    assert mock_json_dump.call_args[0][0] == registry_auths
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths_use_empty_config_config_exists_template_not_exists(
+    mock_rdc, mock_json_dump, mock_open, mock_exists, mock_remove, mock_expanduser
+):
+    """Test set_registry_auths with use_empty_config=True with config without template doesn't."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_exists.return_value = False
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'quay.io': {'auth': 'd2lsZGNhcmQ6cGFzcw=='},  # wildcard:pass
+        }
+    }
+
+    with utils.set_registry_auths(registry_auths, use_empty_config=True):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+    assert mock_open.call_count == 1
+    assert mock_json_dump.call_args[0][0] == registry_auths
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths_use_empty_config_config_not_exists_template_exists(
+    mock_rdc, mock_json_dump, mock_open, mock_exists, mock_remove, mock_expanduser
+):
+    """Test set_registry_auths with use_empty_config=True without config and with template."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_remove.side_effect = FileNotFoundError()
+    mock_exists.return_value = True
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'quay.io': {'auth': 'd2lsZGNhcmQ6cGFzcw=='},  # wildcard:pass
+        }
+    }
+
+    with utils.set_registry_auths(registry_auths, use_empty_config=True):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+    assert mock_open.call_count == 1
+    assert mock_json_dump.call_args[0][0] == registry_auths
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_auths_use_empty_config_config_not_exists_template_not_exists(
+    mock_rdc, mock_json_dump, mock_open, mock_exists, mock_remove, mock_expanduser
+):
+    """Test set_registry_auths with use_empty_config=True when neither config nor template exist."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_remove.side_effect = FileNotFoundError()
+    mock_exists.return_value = False
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io": {"auth": "IkhlbGxvIE9wZXJhdG9yLCBnaXZlIG1lIHRoZSBudW1iZXIg'
+            r'Zm9yIDkxMSEiIC0gSG9tZXIgSi4gU2ltcHNvbgo="}}}'
+        )
+    )
+
+    registry_auths = {
+        'auths': {
+            'quay.io': {'auth': 'd2lsZGNhcmQ6cGFzcw=='},  # wildcard:pass
+        }
+    }
+
+    with utils.set_registry_auths(registry_auths, use_empty_config=True):
+        pass
+
+    mock_remove.assert_called_once_with('/home/iib-worker/.docker/config.json')
+    mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
+    assert mock_open.call_count == 1
+    assert mock_json_dump.call_args[0][0] == registry_auths
+    mock_rdc.assert_called_once_with()

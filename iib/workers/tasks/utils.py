@@ -618,21 +618,24 @@ def set_registry_token(
 
 
 @contextmanager
-def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
+def set_registry_auths(
+    registry_auths: Optional[Dict[str, Any]], use_empty_config: bool = False
+) -> Generator:
     """
     Configure authentication to the registry with provided dockerconfig.json.
 
     This context manager will reset the authentication to the way it was after it exits. If
     ``registry_auths`` is falsy, this context manager will do nothing.
-    :param dict registry_auths: dockerconfig.json auth only information to private registries
 
+    :param dict registry_auths: dockerconfig.json auth only information to private registries
+    :param bool use_empty_config: When True, only use provided credentials in config.json
+        (no template merging)
     :return: None
     :rtype: None
     """
     if not registry_auths:
         log.debug('Not changing the Docker configuration since no registry_auths were provided')
         yield
-
         return
 
     docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
@@ -643,20 +646,26 @@ def set_registry_auths(registry_auths: Optional[Dict[str, Any]]) -> Generator:
         except FileNotFoundError:
             log.debug('The Docker config symlink at %s does not exist', docker_config_path)
 
-        conf = get_worker_config()
-        if os.path.exists(conf.iib_docker_config_template):
-            with open(conf.iib_docker_config_template, 'r') as f:
-                docker_config = json.load(f)
+        if use_empty_config:
+            # When use_empty_config is True, only use the provided registry_auths
+            docker_config = registry_auths
         else:
-            docker_config = {}
+            # Original behavior: use template and merge with all provided credentials
+            conf = get_worker_config()
+            if os.path.exists(conf.iib_docker_config_template):
+                with open(conf.iib_docker_config_template, 'r') as f:
+                    docker_config = json.load(f)
+            else:
+                docker_config = {'auths': {}}
 
-        registries = list(registry_auths.get('auths', {}).keys())
-        log.debug(
-            'Setting the override token for the registries %s in the Docker config', registries
-        )
+            registries = list(registry_auths.get('auths', {}).keys())
+            log.debug(
+                'Setting the override token for the registries %s in the Docker config',
+                registries,
+            )
+            docker_config.setdefault('auths', {})
+            docker_config['auths'].update(registry_auths.get('auths', {}))
 
-        docker_config.setdefault('auths', {})
-        docker_config['auths'].update(registry_auths.get('auths', {}))
         with open(docker_config_path, 'w') as f:
             json.dump(docker_config, f)
 
