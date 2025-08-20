@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.3.2
+
+* CLOUDDST-28116: IIB skip processing of task in final state by @ashwgit in https://github.com/release-engineering/iib/pull/1061
+* Add functions to create and close gitlab MRs by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1097
+* chore(deps): update dependency sqlalchemy to v2.0.43 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1094
+* chore(deps): update dependency pbr to v7 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1099
+* chore(deps): update dependency wrapt to v1.17.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1098
+* chore(deps): update dependency coverage to v7.10.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1101
+* chore(deps): update python docker tag to v3.13.7 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1102
+* Add oras_utils.py module to push and pull artifacts by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1100
+* chore(deps): update dependency requests to v2.32.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1103
+* chore(deps): update postgres docker tag to v17.6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1104
+* chore(deps): update dependency flask to v3.1.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1106
+* fix(git_utils): get_git_token format adjustment by @JAVGan in https://github.com/release-engineering/iib/pull/1107
+
 ## 9.3.1
 
 * chore(deps): update dependency botocore to v1.39.16 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1063
