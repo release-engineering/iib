@@ -385,9 +385,9 @@ dogpile-cache==1.4.0 \
     --hash=sha256:b00a9e2f409cf9bf48c2e7a3e3e68dac5fa75913acbf1a62f827c812d35f3d09 \
     --hash=sha256:f1581953afefd5f55743178694bf3b3ffb2782bba3d9537566a09db6daa48a63
     # via -r requirements.txt
-flask==3.1.1 \
-    --hash=sha256:07aae2bb5eaf77993ef57e357491839f5fd9f4dc281593a81a9e4d79a24f295c \
-    --hash=sha256:284c7b8f2f58cb737f0cf1c30fd7eaf0ccfcde196099d24ecede3fc2005aa59e
+Flask==3.1.2 \
+    --hash=sha256:bf656c15c80190ed628ad08cdfd3aaa35beb087855e2f494910aa3774cc4fd87 \
+    --hash=sha256:ca1d8112ec8a6158cc29ea4858963350011b5c846a414cdb7a954aa9e967d03c
     # via
     #   -r requirements.txt
     #   flask-login
