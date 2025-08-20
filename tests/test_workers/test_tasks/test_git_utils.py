@@ -27,6 +27,8 @@ PUB_PENDING_INDEX_IMAGE = 'registry-proxy.engineering.redhat.com/rh-osbs/iib-pub
 PUB_PENDING_GIT_REPO = f"{GIT_BASE_URL}/iib-pub-pending-index-configs.git"
 PUB_PENDING_TOKEN_NAME = "iibpubpendingtoken"
 PUB_PENDING_TOKEN_VALUE = "iibpubpendingabc123"
+TESTING_REPO = f"{GIT_BASE_URL}/testing.git"
+TESTING_TOKEN_VALUE = "abcdef"
 
 
 @pytest.fixture()
@@ -34,8 +36,9 @@ def mock_gwc():
     with mock.patch('iib.workers.tasks.git_utils.get_worker_config') as mc:
         mc.return_value = {
             "iib_index_configs_gitlab_tokens_map": {
-                PUB_GIT_REPO: (PUB_TOKEN_NAME, PUB_TOKEN_VALUE),
-                PUB_PENDING_GIT_REPO: (PUB_PENDING_TOKEN_NAME, PUB_PENDING_TOKEN_VALUE),
+                PUB_GIT_REPO: f"{PUB_TOKEN_NAME}:{PUB_TOKEN_VALUE}",
+                PUB_PENDING_GIT_REPO: f"{PUB_PENDING_TOKEN_NAME}:{PUB_PENDING_TOKEN_VALUE}",
+                TESTING_REPO: f"{TESTING_TOKEN_VALUE}:{TESTING_TOKEN_VALUE}:",
             },
         }
         yield mc
@@ -73,12 +76,45 @@ def test_unmapped_git_token(mock_gwc):
     [
         (PUB_GIT_REPO, PUB_TOKEN_NAME, PUB_TOKEN_VALUE),
         (PUB_PENDING_GIT_REPO, PUB_PENDING_TOKEN_NAME, PUB_PENDING_TOKEN_VALUE),
+        (TESTING_REPO, TESTING_TOKEN_VALUE, TESTING_TOKEN_VALUE),
     ],
 )
 def test_get_git_token(repo_url, expected_token_name, expected_token_value, mock_gwc):
     git_token_name, git_token_value = git_utils.get_git_token(repo_url)
     assert git_token_name == expected_token_name
     assert git_token_value == expected_token_value
+
+
+@pytest.mark.parametrize(
+    "repo_url, token_value, expected_err",
+    [
+        (
+            TESTING_REPO,
+            TESTING_TOKEN_VALUE,
+            f"Invalid token format for '{TESTING_REPO}' in 'iib_index_configs_gitlab_tokens_map'. Expected 'token_name:token_value'.",  # noqa: E501
+        ),
+        (
+            TESTING_REPO,
+            "",
+            f"Invalid token format for '{TESTING_REPO}' in 'iib_index_configs_gitlab_tokens_map'. Expected 'token_name:token_value'.",  # noqa: E501
+        ),
+        (
+            TESTING_REPO,
+            ":some_value",
+            f"Invalid token format for '{TESTING_REPO}' in 'iib_index_configs_gitlab_tokens_map'. Expected 'token_name:token_value'.",  # noqa: E501
+        ),
+        (
+            TESTING_REPO,
+            "some_name:",
+            f"Invalid token format for '{TESTING_REPO}' in 'iib_index_configs_gitlab_tokens_map'. Expected 'token_name:token_value'.",  # noqa: E501
+        ),
+    ],
+)
+def test_get_git_token_missing_name_value(repo_url, token_value, expected_err, mock_gwc):
+    with mock.patch('iib.workers.tasks.git_utils.get_worker_config') as mc:
+        mc.return_value = {"iib_index_configs_gitlab_tokens_map": {repo_url: token_value}}
+        with pytest.raises(IIBError, match=expected_err):
+            git_utils.get_git_token(repo_url)
 
 
 def test_unmapped_git_url(mock_gwc, gitlab_url_mapping, caplog):

@@ -340,6 +340,7 @@ The custom configuration options for the Celery workers are listed below:
   `{registry}/iib-build:{request_id}`.
 * `iib_index_configs_gitlab_tokens_map` - A map of index image addresses to GitLab tokens.
   These Gitlab repositories are intended to store image `/configs` directories.
+  Its format should be the full repository URL as keys and `token-name:token-value` as value.
 * `iib_log_level` - the Python log level for `iib.workers` logger. This defaults to `INFO`.
 * `iib_max_recursive_related_bundles` - the maximum number of recursive related bundles IIB will
   recurse through. This is to avoid DOS attacks.

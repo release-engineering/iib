@@ -185,7 +185,15 @@ def get_git_token(git_repo) -> Tuple[str, str]:
     git_token_map = get_worker_config()['iib_index_configs_gitlab_tokens_map']
     if git_repo not in git_token_map:
         raise IIBError(f"Missing key '{git_repo}' in 'iib_index_configs_gitlab_tokens_map'")
-    return git_token_map[git_repo]
+    str_token_name_value = git_token_map[git_repo]
+    splitted_token = str_token_name_value.split(":")
+    if ":" not in str_token_name_value or '' in splitted_token[:2]:
+        raise IIBError(
+            f"Invalid token format for '{git_repo}' in 'iib_index_configs_gitlab_tokens_map'. "
+            "Expected 'token_name:token_value'."
+        )
+    token_name, token_value = splitted_token[:2]
+    return token_name, token_value
 
 
 def clone_git_repo(
