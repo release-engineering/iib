@@ -985,7 +985,7 @@ requests-kerberos==0.15.0 \
     --hash=sha256:437512e424413d8113181d696e56694ffa4259eb9a5fc4e803926963864eaf4e \
     --hash=sha256:ba9b0980b8489c93bfb13854fd118834e576d6700bfea3745cb2e62278cd16a6
     # via -r requirements.txt
-ruamel-yaml==0.18.12 \
+ruamel-yaml==0.18.15 \
     --hash=sha256:5a38fd5ce39d223bebb9e3a6779e86b9427a03fb0bf9f270060f8b149cffe5e2 \
     --hash=sha256:790ba4c48b6a6e6b12b532a7308779eb12d2aaab3a80fdb8389216f28ea2b287
     # via
@@ -1268,3 +1268,6 @@ setuptools==80.9.0 \
     # via
     #   -r requirements-test.in
     #   pbr
+ruamel.yaml==0.18.15 \
+    --hash=sha256:148f6488d698b7a5eded5ea793a025308b25eca97208181b6a026037f391f701 \
+    --hash=sha256:dbfca74b018c4c3fba0b9cc9ee33e53c371194a9000e694995e620490fd40700
