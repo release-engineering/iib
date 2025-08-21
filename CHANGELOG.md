@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.3.3
+
+* chore(deps): update dependency botocore to v1.40.14 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1108
+* chore(deps): update dependency boto3 to v1.40.14 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1110
+* Fix bug on failed_request_callback by @JAVGan in https://github.com/release-engineering/iib/pull/1112
+* chore(deps): update dependency pbr to v7.0.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1111
+
 ## 9.3.2
 
 * CLOUDDST-28116: IIB skip processing of task in final state by @ashwgit in https://github.com/release-engineering/iib/pull/1061
