@@ -830,9 +830,9 @@ packaging==25.0 \
     #   opentelemetry-instrumentation-flask
     #   opentelemetry-instrumentation-sqlalchemy
     #   pytest
-pbr==7.0.0 \
-    --hash=sha256:b447e63a2bc04fd975fc0480b8d5ebf979179e2c0ae203bf1eff9ea20073bc38 \
-    --hash=sha256:cf4127298723dafbce3afd13775ccf3885be5d3c8435751b867f9a6a10b71a39
+pbr==7.0.1 \
+    --hash=sha256:32df5156fbeccb6f8a858d1ebc4e465dcf47d6cc7a4895d5df9aa951c712fc35 \
+    --hash=sha256:3ecbcb11d2b8551588ec816b3756b1eb4394186c3b689b17e04850dfc20f7e57
     # via
     #   -r requirements.txt
     #   stevedore
