@@ -183,7 +183,7 @@ def minimal_request_fbc_operations(db):
     request = models.RequestFbcOperations(
         batch=batch,
         binary_image=binary_image,
-        fbc_fragment=fbc_fragment_image,
+        fbc_fragments=[fbc_fragment_image],
         from_index=from_index_image,
     )
     db.session.add(request)

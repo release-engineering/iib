@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import tempfile
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 )
 def handle_fbc_operation_request(
     request_id: int,
-    fbc_fragment: str,
+    fbc_fragments: List[str],
     from_index: Optional[str] = None,
     binary_image: Optional[str] = None,
     distribution_scope: Optional[str] = None,
@@ -49,9 +49,9 @@ def handle_fbc_operation_request(
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
 ) -> None:
     """
-    Add a fbc fragment to an fbc index image.
+    Add fbc fragments to an fbc index image.
 
-    :param str fbc_fragment: fbc fragment that needs to be added to final FBC index image
+    :param list fbc_fragments: list of fbc fragments that need to be added to final FBC index image
     :param int request_id: the ID of the IIB build request
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from.
@@ -64,10 +64,14 @@ def handle_fbc_operation_request(
         (values) in order to push their catalogs into GitLab.
     """
     _cleanup()
-    set_request_state(request_id, 'in_progress', 'Resolving the fbc fragment')
+    set_request_state(request_id, 'in_progress', 'Resolving the fbc fragments')
 
-    with set_registry_token(overwrite_from_index_token, fbc_fragment, append=True):
-        resolved_fbc_fragment = get_resolved_image(fbc_fragment)
+    # Resolve all fbc fragments
+    resolved_fbc_fragments = []
+    for fbc_fragment in fbc_fragments:
+        with set_registry_token(overwrite_from_index_token, fbc_fragment, append=True):
+            resolved_fbc_fragment = get_resolved_image(fbc_fragment)
+            resolved_fbc_fragments.append(resolved_fbc_fragment)
 
     prebuild_info = prepare_request_for_build(
         request_id,
@@ -76,7 +80,7 @@ def handle_fbc_operation_request(
             from_index=from_index,
             overwrite_from_index_token=overwrite_from_index_token,
             add_arches=add_arches,
-            fbc_fragment=fbc_fragment,
+            fbc_fragments=fbc_fragments,
             distribution_scope=distribution_scope,
             binary_image_config=binary_image_config,
         ),
@@ -86,17 +90,23 @@ def handle_fbc_operation_request(
     binary_image_resolved = prebuild_info['binary_image_resolved']
     Opm.set_opm_version(from_index_resolved)
 
-    prebuild_info['fbc_fragment_resolved'] = resolved_fbc_fragment
+    # Store the first resolved fragment for backward compatibility
+    prebuild_info['fbc_fragment_resolved'] = (
+        resolved_fbc_fragments[0] if resolved_fbc_fragments else None
+    )
+    # Store all resolved fragments
+    prebuild_info['fbc_fragments_resolved'] = resolved_fbc_fragments
 
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
+        # Process all resolved fbc fragments at once
         opm_registry_add_fbc_fragment(
             request_id,
             temp_dir,
             from_index_resolved,
             binary_image_resolved,
-            resolved_fbc_fragment,
+            resolved_fbc_fragments,
             overwrite_from_index_token,
         )
 
@@ -134,5 +144,8 @@ def handle_fbc_operation_request(
     )
     _cleanup()
     set_request_state(
-        request_id, 'complete', 'The FBC fragment was successfully added in the index image'
+        request_id,
+        'complete',
+        f"The {len(resolved_fbc_fragments)} FBC fragment(s) were successfully added"
+        "in the index image",
     )

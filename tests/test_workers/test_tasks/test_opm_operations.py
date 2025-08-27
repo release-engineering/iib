@@ -893,7 +893,7 @@ def test_opm_registry_add_fbc_fragment(
     assert os.path.exists(deprecation_file)
 
     opm_operations.opm_registry_add_fbc_fragment(
-        10, tmpdir, from_index, binary_image, fbc_fragment, None
+        10, tmpdir, from_index, binary_image, [fbc_fragment], None
     )
 
     mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment)

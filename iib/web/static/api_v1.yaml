@@ -578,9 +578,9 @@ paths:
   /builds/fbc-operations:
     post:
       description: >
-        Submit a request to add/update FBC fragment to an index image
+        Submit a request to add/update FBC fragments to an index image. Supports both single fragment (fbc_fragment) for backward compatibility and multiple fragments (fbc_fragments) for new requests.
       requestBody:
-        description: The request to add FBC fragment
+        description: The request to add FBC fragment(s)
         required: true
         content:
           application/json:
@@ -604,7 +604,7 @@ paths:
                 properties:
                   error:
                     type: string
-                    example: '"fbc_fragment" should be a non-empty string'
+                    example: 'Either "fbc_fragment" or "fbc_fragments" must be provided'
         '401':
           description: >
             The user is not allowed to create a request with this input
@@ -1579,8 +1579,19 @@ components:
         fbc_fragment:
           type: string
           description: >
-            fbc_fragment is required.
+            FBC fragment to be added to the index image. For backward compatibility, this can be used
+            instead of fbc_fragments. Cannot be used together with fbc_fragments.
           example: 'quay.io/iib-stage/fbc_fragment:4'
+        fbc_fragments:
+          type: array
+          description: >
+            Array of FBC fragments to be added to the index image. This is the preferred format.
+            Cannot be used together with fbc_fragment.
+          items:
+            type: string
+          example:
+            - 'quay.io/iib-stage/fbc_fragment1:4'
+            - 'quay.io/iib-stage/fbc_fragment2:4'
         from_index:
           type: string
           description: >
@@ -1612,7 +1623,7 @@ components:
             type: string
           example: ["v4.5-10-08-2021"]
       required:
-        - bundles
+        - from_index
     FbcResponse:
       allOf:
         - $ref: '#/components/schemas/BaseResponse'
@@ -1670,10 +1681,32 @@ components:
               example: fbc-operations
             fbc_fragment:
               type: string
+              description: >
+                FBC fragment that was added (for backward compatibility). Present when fbc_fragment was used in request.
               example: "quay.io/iib/fbc-fragment:v1.0"
             fbc_fragment_resolved:
               type: string
+              description: >
+                Resolved FBC fragment that was added (for backward compatibility). Present when fbc_fragment was used in request.
               example: "quay.io/iib/fbc-fragment@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e"
+            fbc_fragments:
+              type: array
+              description: >
+                Array of FBC fragments that were added. Present when fbc_fragments was used in request.
+              items:
+                type: string
+              example:
+                - "quay.io/iib/fbc-fragment1:v1.0"
+                - "quay.io/iib/fbc-fragment2:v1.0"
+            fbc_fragments_resolved:
+              type: array
+              description: >
+                Array of resolved FBC fragments that were added. Present when fbc_fragments was used in request.
+              items:
+                type: string
+              example:
+                - "quay.io/iib/fbc-fragment1@sha256:7d8e5dddad0275bc903b6ef17840f98441b15b8b999609af2c9579960e52080e"
+                - "quay.io/iib/fbc-fragment2@sha256:abcdef012356789"
     AddDeprecationsRequest:
       type: object
       properties:
