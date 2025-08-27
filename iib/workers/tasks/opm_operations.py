@@ -988,11 +988,11 @@ def opm_registry_add_fbc_fragment(
     temp_dir: str,
     from_index: str,
     binary_image: str,
-    fbc_fragment: str,
+    fbc_fragments: List[str],
     overwrite_from_index_token: Optional[str],
 ) -> None:
     """
-    Add FBC fragment to from_index image.
+    Add FBC fragments to from_index image.
 
     This only produces the index.Dockerfile file and does not build the container image.
 
@@ -1002,13 +1002,13 @@ def opm_registry_add_fbc_fragment(
         the index image build will be based from.
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from. This should point to a digest or stable tag.
-    :param str fbc_fragment: the pull specification of fbc fragment to be added in from_index.
+    :param list fbc_fragments: the list of pull specifications of fbc fragments to be added.
     :param str overwrite_from_index_token: token used to access the image
     """
-    set_request_state(request_id, 'in_progress', 'Extracting operator package from fbc_fragment')
-    # fragment path will look like /tmp/iib-**/fbc-fragment
-    fragment_path, fragment_operators = extract_fbc_fragment(
-        temp_dir=temp_dir, fbc_fragment=fbc_fragment
+    set_request_state(
+        request_id,
+        'in_progress',
+        f'Extracting operator packages from {len(fbc_fragments)} fbc fragment(s)',
     )
 
     # the dir where all the configs from from_index are stored
@@ -1016,13 +1016,27 @@ def opm_registry_add_fbc_fragment(
     from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
     log.info("The content of from_index configs located at %s", from_index_configs_dir)
 
+    # Single pass: Extract all fragment paths and operators
+    fragment_data = []
+    all_fragment_operators = []
+
+    for fbc_fragment in fbc_fragments:
+        # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
+        fragment_path, fragment_operators = extract_fbc_fragment(
+            temp_dir=temp_dir, fbc_fragment=fbc_fragment
+        )
+        fragment_data.append((fragment_path, fragment_operators))
+        all_fragment_operators.extend(fragment_operators)
+
+    # Single verification: Check for operators that already exist in the database
     operators_in_db, index_db_path = verify_operators_exists(
         from_index=from_index,
         base_dir=temp_dir,
-        operator_packages=fragment_operators,
+        operator_packages=all_fragment_operators,
         overwrite_from_index_token=overwrite_from_index_token,
     )
 
+    # Remove existing operators if any conflicts found
     if operators_in_db:
         remove_operator_deprecations(
             from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
@@ -1047,19 +1061,26 @@ def opm_registry_add_fbc_fragment(
                 dirs_exist_ok=True,
             )
 
-    for fragment_operator in fragment_operators:
-        # copy fragment_operator to from_index configs
-        set_request_state(request_id, 'in_progress', 'Adding fbc_fragment to from_index')
-        fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
-        fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
-        if os.path.exists(fragment_opr_dest_path):
-            shutil.rmtree(fragment_opr_dest_path)
-        log.info(
-            "Copying content of %s to %s",
-            fragment_opr_src_path,
-            fragment_opr_dest_path,
+    # Copy operators to config directory using the collected data
+    for i, (fragment_path, fragment_operators) in enumerate(fragment_data):
+        set_request_state(
+            request_id,
+            'in_progress',
+            f'Adding fbc fragment {i + 1}/{len(fbc_fragments)} to from_index',
         )
-        shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
+
+        for fragment_operator in fragment_operators:
+            # copy fragment_operator to from_index configs
+            fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
+            fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
+            if os.path.exists(fragment_opr_dest_path):
+                shutil.rmtree(fragment_opr_dest_path)
+            log.info(
+                "Copying content of %s to %s",
+                fragment_opr_src_path,
+                fragment_opr_dest_path,
+            )
+            shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
 
     local_cache_path = os.path.join(temp_dir, 'cache')
     generate_cache_locally(

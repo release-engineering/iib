@@ -50,6 +50,7 @@ class PrebuildInfo(TypedDict):
     target_index_resolved: NotRequired[str]
     target_ocp_version: NotRequired[str]
     fbc_fragment_resolved: NotRequired[str]
+    fbc_fragments_resolved: NotRequired[List[str]]
 
 
 class BundleImage(TypedDict):
@@ -75,6 +76,8 @@ class UpdateRequestPayload(TypedDict, total=False):
     from_index_resolved: NotRequired[str]
     fbc_fragment: NotRequired[str]
     fbc_fragment_resolved: NotRequired[str]
+    fbc_fragments: NotRequired[List[str]]
+    fbc_fragments_resolved: NotRequired[List[str]]
     index_image: NotRequired[str]
     index_image_resolved: NotRequired[str]
     internal_index_image_copy: NotRequired[str]

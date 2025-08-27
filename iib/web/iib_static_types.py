@@ -133,7 +133,9 @@ class RmRequestPayload(TypedDict):
 class FbcOperationRequestPayload(TypedDict):
     """Datastructure of the request to /builds/fbc-operation API point."""
 
-    fbc_fragment: str
+    fbc_fragment: NotRequired[str]  # For backward compatibility
+    fbc_fragments: NotRequired[List[str]]
+    _used_fbc_fragment: NotRequired[bool]  # Internal flag for backward compatibility
     from_index: str
     binary_image: NotRequired[str]
     build_tags: NotRequired[List[str]]
@@ -221,7 +223,9 @@ class RequestPayload(TypedDict):
     check_related_images: NotRequired[bool]
     deprecation_list: NotRequired[List[str]]
     distribution_scope: NotRequired[str]
-    fbc_fragment: NotRequired[bool]
+    fbc_fragment: NotRequired[str]  # For backward compatibility
+    fbc_fragments: NotRequired[List[str]]
+    _used_fbc_fragment: NotRequired[bool]  # Internal flag for backward compatibility
     force_backport: NotRequired[bool]
     from_bundle_image: NotRequired[str]
     from_index: NotRequired[str]
@@ -444,8 +448,10 @@ class BaseClassRequestResponse(APIPartImageBuildRequestResponse, CommonIndexImag
 class FbcOperationRequestResponse(BaseClassRequestResponse):
     """Datastructure of the response to request from /builds/fbc-operations API point."""
 
-    fbc_fragment: str
+    fbc_fragment: Optional[str]
+    fbc_fragments: List[str]
     fbc_fragment_resolved: Optional[str]
+    fbc_fragments_resolved: List[str]
 
 
 class AddDeprecationsRequestResponse(BaseClassRequestResponse):

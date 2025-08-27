@@ -745,6 +745,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'from_index_resolved',
         'fbc_fragment',
         'fbc_fragment_resolved',
+        'fbc_fragments_resolved',
         'index_image',
         'index_image_resolved',
         'internal_index_image_copy',
@@ -789,10 +790,18 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
     if 'distribution_scope' in payload:
         request.distribution_scope = payload['distribution_scope']
 
+    # Handle fbc_fragments_resolved as a list of images
+    if 'fbc_fragments_resolved' in payload:
+        fbc_fragments_resolved = payload['fbc_fragments_resolved']
+        if isinstance(fbc_fragments_resolved, list):
+            request.fbc_fragments_resolved = [
+                Image.get_or_create(fragment) for fragment in fbc_fragments_resolved
+            ]
+
     start_time = time.time()
     db.session.commit()
     flask.current_app.logger.debug(
-        f'Time for web/api_v1/689:db commit: {time.time()-start_time}'
+        f'Time for web/api_v1/689:db commit: {time.time() - start_time}'
         f' time from start: {time.time() - overall_start_time}'
     )
 
@@ -801,7 +810,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         messaging.send_message_for_state_change(request)
         flask.current_app.logger.debug(
             f'Time for web/api_v1/697:send_message_for_state_change(): {time.time() - start_time},'
-            f' time from start: {time.time()-overall_start_time}'
+            f' time from start: {time.time() - overall_start_time}'
         )
 
     if current_user.is_authenticated:
@@ -1309,7 +1318,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
 
     args = [
         request.id,
-        payload['fbc_fragment'],
+        [fragment.pull_specification for fragment in request.fbc_fragments],
         payload['from_index'],
         payload.get('binary_image'),
         payload.get('distribution_scope'),

@@ -375,21 +375,21 @@ class RequestConfigFBCOperation(RequestConfig):
         arches ``from_index`` is currently built for;
         if ``from_index`` is ``None``, then this is used as the list of arches
         to build the index image for
-    :param str frb_fragment: the fbc_fragment to add in index image
+    :param list fbc_fragments: the list of fbc fragments to add in index image
     """
 
     _attrs: List[str] = RequestConfig._attrs + [
         "overwrite_from_index_token",
         "from_index",
         "add_arches",
-        "fbc_fragment",
+        "fbc_fragments",
     ]
     __slots__ = _attrs
     if TYPE_CHECKING:
         overwrite_from_index_token: str
         from_index: str
         add_arches: Set[str]
-        fbc_fragment: str
+        fbc_fragments: List[str]
 
 
 class RequestConfigAddDeprecations(RequestConfig):

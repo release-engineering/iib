@@ -385,6 +385,42 @@ class RequestAddBundle(db.Model):
     __table_args__ = (db.UniqueConstraint('request_add_id', 'image_id'),)
 
 
+class RequestFbcOperationsFragment(db.Model):
+    """An association table between fbc operations requests and the fbc fragments."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_fbc_operations_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request_fbc_operations.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    image_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (db.UniqueConstraint('request_fbc_operations_id', 'image_id'),)
+
+
+class RequestFbcOperationsFragmentResolved(db.Model):
+    """An association table between fbc operations requests and the resolved fbc fragments."""
+
+    # A primary key is required by SQLAlchemy when using declaritive style tables, so a composite
+    # primary key is used on the two required columns
+    request_fbc_operations_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('request_fbc_operations.id'),
+        autoincrement=False,
+        index=True,
+        primary_key=True,
+    )
+    image_id: Mapped[int] = db.mapped_column(
+        db.ForeignKey('image.id'), autoincrement=False, index=True, primary_key=True
+    )
+
+    __table_args__ = (db.UniqueConstraint('request_fbc_operations_id', 'image_id'),)
+
+
 class Request(db.Model):
     """A generic image build request."""
 
@@ -636,7 +672,7 @@ class Batch(db.Model):
 
     @staticmethod
     def validate_batch_request_params(
-        payload: Union[AddRmBatchPayload, RegenerateBundleBatchPayload]
+        payload: Union[AddRmBatchPayload, RegenerateBundleBatchPayload],
     ) -> None:
         """
         Validate batch specific parameters from the input JSON payload.
@@ -794,8 +830,9 @@ def get_request_query_options(verbose: Optional[bool] = False) -> List[_Abstract
         joinedload(RequestRm.operators),
         joinedload(RequestRm.build_tags),
         joinedload(RequestMergeIndexImage.build_tags),
-        joinedload(RequestFbcOperations.fbc_fragment),
+        joinedload(RequestFbcOperations.fbc_fragments),
         joinedload(RequestFbcOperations.fbc_fragment_resolved),
+        joinedload(RequestFbcOperations.fbc_fragments_resolved),
     ]
     if verbose:
         query_options.append(joinedload(Request.states))
@@ -2108,13 +2145,19 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         db.ForeignKey('request.id'), autoincrement=False, primary_key=True
     )
 
-    fbc_fragment_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
-    fbc_fragment_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
-    fbc_fragment: Mapped['Image'] = db.relationship(
-        'Image', foreign_keys=[fbc_fragment_id], uselist=False
+    fbc_fragments: Mapped[List['Image']] = db.relationship(
+        'Image', secondary=RequestFbcOperationsFragment.__table__
     )
+    fbc_fragment_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
     fbc_fragment_resolved: Mapped['Image'] = db.relationship(
         'Image', foreign_keys=[fbc_fragment_resolved_id], uselist=False
+    )
+    fbc_fragments_resolved: Mapped[List['Image']] = db.relationship(
+        'Image', secondary=RequestFbcOperationsFragmentResolved.__table__
+    )
+    # Track whether the original request used fbc_fragment (for backward compatibility in response)
+    _used_fbc_fragment: Mapped[Optional[bool]] = db.mapped_column(
+        'used_fbc_fragment', db.Boolean, default=False
     )
 
     __mapper_args__ = {
@@ -2133,9 +2176,35 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         """
         request_kwargs = deepcopy(kwargs)
 
+        # Handle backward compatibility: if fbc_fragment is a string, convert it to an array
+        fbc_fragment = request_kwargs.get('fbc_fragment')
+        fbc_fragments = request_kwargs.get('fbc_fragments')
+
+        # Validate that both fbc_fragment and fbc_fragments are not provided
+        if fbc_fragment is not None and fbc_fragments is not None:
+            raise ValidationError(
+                'Cannot provide both "fbc_fragment" and "fbc_fragments" parameters'
+            )
+
+        if isinstance(fbc_fragment, str):
+            request_kwargs['fbc_fragments'] = [fbc_fragment]
+            # Track that original request used fbc_fragment
+            request_kwargs['_used_fbc_fragment'] = True
+            request_kwargs.pop('fbc_fragment')
+        elif fbc_fragment is not None:
+            raise ValidationError('"fbc_fragment" must be a string')
+        elif fbc_fragments is None:
+            raise ValidationError('Either "fbc_fragment" or "fbc_fragments" must be provided')
+        else:
+            # User provided fbc_fragments directly
+            request_kwargs['_used_fbc_fragment'] = False
+
+        # Store the flag for later use, but remove it from validation
+        used_fbc_fragment = request_kwargs.pop('_used_fbc_fragment', False)
+
         validate_request_params(
             request_kwargs,
-            required_params={'fbc_fragment', 'from_index'},
+            required_params={'fbc_fragments', 'from_index'},
             optional_params={
                 'add_arches',
                 'binary_image',
@@ -2146,22 +2215,33 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
             },
         )
 
-        # Validate parent_bundle_image is correctly provided
-        fbc_fragment = request_kwargs.get('fbc_fragment')
-        if not isinstance(fbc_fragment, str):
-            raise ValidationError('The "fbc_fragment" must be a string')
-        request_kwargs['fbc_fragment'] = Image.get_or_create(pull_specification=fbc_fragment)
+        # Validate fbc_fragments is correctly provided
+        fbc_fragments = request_kwargs.get('fbc_fragments', [])
+        if not isinstance(fbc_fragments, list) or any(
+            not item or not isinstance(item, str) for item in fbc_fragments
+        ):
+            raise ValidationError(
+                '"fbc_fragments" should be either an empty array or an array of non-empty strings'
+            )
 
         # cast to more wider type, see _from_json method
         cls._from_json(
             cast(RequestPayload, request_kwargs),
             additional_optional_params=[
                 'bundles',
-                'fbc_fragment',
+                'fbc_fragments',
                 'from_index',
                 'organization',
             ],
         )
+
+        request_kwargs['fbc_fragments'] = [
+            Image.get_or_create(pull_specification=item)
+            for item in request_kwargs.get('fbc_fragments', [])
+        ]
+
+        # Add the flag back for the model creation
+        request_kwargs['_used_fbc_fragment'] = used_fbc_fragment
 
         build_tags = request_kwargs.pop('build_tags', [])
         request = cls(**request_kwargs)
@@ -2183,10 +2263,28 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         # cast to result type, super-type returns Union
         rv = cast(FbcOperationRequestResponse, super().to_json(verbose=verbose))
         rv.update(self.get_common_index_image_json())  # type: ignore
-        rv['fbc_fragment'] = self.fbc_fragment.pull_specification
-        rv['fbc_fragment_resolved'] = getattr(
-            self.fbc_fragment_resolved, 'pull_specification', None
-        )
+
+        # Determine which fields to populate based on original request format
+        if self._used_fbc_fragment:
+            # Original request used fbc_fragment - populate single fragment fields
+            rv['fbc_fragment'] = (
+                self.fbc_fragments[0].pull_specification if self.fbc_fragments else None
+            )
+            rv['fbc_fragment_resolved'] = getattr(
+                self.fbc_fragment_resolved, 'pull_specification', None
+            )
+            # Keep array fields empty but present for backward compatibility
+            rv['fbc_fragments'] = []
+            rv['fbc_fragments_resolved'] = []
+        else:
+            # Original request used fbc_fragments - populate array fields
+            rv['fbc_fragments'] = [fragment.pull_specification for fragment in self.fbc_fragments]
+            rv['fbc_fragments_resolved'] = [
+                fragment.pull_specification for fragment in self.fbc_fragments_resolved
+            ]
+            # Keep single fragment fields empty but present for backward compatibility
+            rv['fbc_fragment'] = None
+            rv['fbc_fragment_resolved'] = None
 
         rv.pop('bundles')
         rv.pop('bundle_mapping')
@@ -2206,6 +2304,8 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
         rv.add('fbc_fragment_resolved')
+        rv.add('fbc_fragments')
+        rv.add('fbc_fragments_resolved')
         return rv
 
 
