@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Basic unit tests for git_utils."""
 import logging
+import os
 import pytest
 import tempfile
 from unittest import mock
@@ -164,6 +165,67 @@ def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None
     assert not res
     mock_ggt.assert_not_called()
     mock_cmd.assert_not_called()
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_push_configs_to_git_empty_repository(
+    mock_ggt, mock_cmd, mock_shutil, mock_gwc, gitlab_url_mapping
+):
+    """Ensure it properly works with an empty repository."""
+    mock_ggt.return_value = "foo", "bar"
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as empty_repo:
+        configs_empty_dir = os.path.join(empty_repo, "configs")
+        os.mkdir(configs_empty_dir)
+
+        push_configs_to_git(
+            request_id=1,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=configs_empty_dir,
+            index_repo_map=gitlab_url_mapping,
+        )
+
+        mock_ggt.assert_called_once_with(
+            'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
+        )
+        mock_shutil.copytree.assert_called_once_with(configs_empty_dir, mock.ANY)
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_push_configs_to_git_existing_repository(
+    mock_ggt, mock_cmd, mock_shutil, mock_gwc, gitlab_url_mapping
+):
+    """Ensure it properly works with a repository already containing an operator."""
+    mock_ggt.return_value = "foo", "bar"
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as empty_repo:
+        configs_dir = os.path.join(empty_repo, "configs")
+        os.mkdir(configs_dir)
+
+        for i in range(2):
+            operator_dir = os.path.join(configs_dir, f"fake_operator{i}")
+            os.mkdir(operator_dir)
+            with open(f"{operator_dir}/catalog.json", 'w') as f:
+                f.write('{"foo": "bar"}')
+
+        push_configs_to_git(
+            request_id=1,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=configs_dir,
+            index_repo_map=gitlab_url_mapping,
+        )
+
+        mock_ggt.assert_called_once_with(
+            'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
+        )
+        mock_shutil.copytree.assert_has_calls(
+            [
+                mock.call(f"{configs_dir}/fake_operator1", mock.ANY, dirs_exist_ok=True),
+                mock.call(f"{configs_dir}/fake_operator0", mock.ANY, dirs_exist_ok=True),
+            ]
+        )
 
 
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
