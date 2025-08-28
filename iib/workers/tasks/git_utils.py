@@ -61,13 +61,11 @@ def push_configs_to_git(
         raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
 
     # Verify the path to existing /configs is correct
-    if not os.path.exists(src_configs_path):
+    if not os.path.isdir(src_configs_path):
         raise IIBError(f"Catalog configs directory does not exist: {src_configs_path}")
 
-    # Make sure there are subdirs under /configs for the operator package dirs
+    # List operators content if any
     operator_packages = os.listdir(src_configs_path)
-    if not operator_packages:
-        raise IIBError(f"No packages found in configs directory {src_configs_path}")
 
     # Clone/checkout remote repo in temp dir
     with tempfile.TemporaryDirectory(prefix=f"git-repo-{request_id}-") as local_repo_dir:
@@ -78,18 +76,22 @@ def push_configs_to_git(
             # Configure Git user for commits
             configure_git_user(local_repo_dir)
 
-            # Copy configs/ subdirs to local Git repo
+            # Overwrite local Git repo configs/
             repo_configs_dir = os.path.join(local_repo_dir, 'configs')
             log.info(
                 "Copying content of %s to local Git repository %s",
                 src_configs_path,
                 repo_configs_dir,
             )
-            for operator_package in operator_packages:
-                src_pkg_dir = os.path.join(src_configs_path, operator_package)
-                dest_pkg_dir = os.path.join(repo_configs_dir, operator_package)
-                os.makedirs(dest_pkg_dir, exist_ok=True)
-                shutil.copytree(src_pkg_dir, dest_pkg_dir, dirs_exist_ok=True)
+
+            if operator_packages:
+                for operator_package in operator_packages:
+                    src_pkg_dir = os.path.join(src_configs_path, operator_package)
+                    dest_pkg_dir = os.path.join(repo_configs_dir, operator_package)
+                    os.makedirs(dest_pkg_dir, exist_ok=True)
+                    shutil.copytree(src_pkg_dir, dest_pkg_dir, dirs_exist_ok=True)
+            else:
+                shutil.copytree(src_configs_path, repo_configs_dir)
 
             # Print git status to the logs
             git_status = run_cmd(
