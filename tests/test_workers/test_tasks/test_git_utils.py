@@ -3,6 +3,7 @@
 import logging
 import os
 import pytest
+import re
 import tempfile
 from unittest import mock
 
@@ -51,6 +52,29 @@ def gitlab_url_mapping():
         PUB_INDEX_IMAGE: PUB_GIT_REPO,
         PUB_PENDING_INDEX_IMAGE: PUB_PENDING_GIT_REPO,
     }
+
+
+class RegexMatcher:
+    """Class to use Regex matching in assert_has_calls.
+
+    Example:
+        mock_shutil.rmtree.assert_has_calls([
+            mock.call(RegexMatcher(r".*/configs/operator1$")),
+            mock.call(RegexMatcher(r".*/configs/operator2$")),
+        ])
+    """
+
+    def __init__(self, pattern):
+        """Initialize the RegexMatcher with the given pattern."""
+        self.pattern = pattern
+
+    def __eq__(self, other):
+        """Check if the given string matches the pattern."""
+        return bool(re.match(self.pattern, other))
+
+    def __repr__(self):
+        """Return the string representation of the RegexMatcher."""
+        return f"RegexMatcher('{self.pattern}')"
 
 
 def test_configure_git_user():
@@ -170,11 +194,34 @@ def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None
 @mock.patch("iib.workers.tasks.git_utils.shutil")
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
 def test_push_configs_to_git_empty_repository(
-    mock_ggt, mock_cmd, mock_shutil, mock_gwc, gitlab_url_mapping
+    mock_listdir,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
 ):
     """Ensure it properly works with an empty repository."""
     mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+
+    # Mock the listdir calls
+    mock_listdir.side_effect = [
+        [],  # Source configs (empty)
+        ["operator1", "operator2"],  # Repo configs (operators in git)
+    ]
+
     with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as empty_repo:
         configs_empty_dir = os.path.join(empty_repo, "configs")
         os.mkdir(configs_empty_dir)
@@ -189,23 +236,55 @@ def test_push_configs_to_git_empty_repository(
         mock_ggt.assert_called_once_with(
             'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
         )
+        mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
+        # configure_git_user is called with only one argument (local_repo_dir)
+        mock_configure_git.assert_called_once_with(mock.ANY)
+        mock_commit_and_push.assert_called_once()
+        # commit_and_push is called with positional arguments, not keyword arguments
+        call_args = mock_commit_and_push.call_args
+        assert call_args[0][0] == 1  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
         mock_shutil.copytree.assert_called_once_with(configs_empty_dir, mock.ANY)
 
 
 @mock.patch("iib.workers.tasks.git_utils.shutil")
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
 def test_push_configs_to_git_existing_repository(
-    mock_ggt, mock_cmd, mock_shutil, mock_gwc, gitlab_url_mapping
+    mock_listdir,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
 ):
     """Ensure it properly works with a repository already containing an operator."""
     mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+
+    # Mock the listdir calls
+    mock_listdir.side_effect = [
+        ["operator1", "operator2"],  # Source configs
+        ["operator1", "operator2", "operator3", "operator4"],  # Repo configs
+    ]
+
     with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as empty_repo:
         configs_dir = os.path.join(empty_repo, "configs")
         os.mkdir(configs_dir)
 
         for i in range(2):
-            operator_dir = os.path.join(configs_dir, f"fake_operator{i}")
+            operator_dir = os.path.join(configs_dir, f"operator{i + 1}")
             os.mkdir(operator_dir)
             with open(f"{operator_dir}/catalog.json", 'w') as f:
                 f.write('{"foo": "bar"}')
@@ -220,10 +299,19 @@ def test_push_configs_to_git_existing_repository(
         mock_ggt.assert_called_once_with(
             'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
         )
+        mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
+        # configure_git_user is called with only one argument (local_repo_dir)
+        mock_configure_git.assert_called_once_with(mock.ANY)
+        mock_commit_and_push.assert_called_once()
+        # commit_and_push is called with positional arguments, not keyword arguments
+        call_args = mock_commit_and_push.call_args
+        assert call_args[0][0] == 1  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
         mock_shutil.copytree.assert_has_calls(
             [
-                mock.call(f"{configs_dir}/fake_operator1", mock.ANY, dirs_exist_ok=True),
-                mock.call(f"{configs_dir}/fake_operator0", mock.ANY, dirs_exist_ok=True),
+                mock.call(f"{configs_dir}/operator1", mock.ANY, dirs_exist_ok=True),
+                mock.call(f"{configs_dir}/operator2", mock.ANY, dirs_exist_ok=True),
             ]
         )
 
@@ -660,3 +748,275 @@ def test_close_gitlab_mr_network_errors(mock_requests_put):
 
     # Verify API call was attempted
     mock_requests_put.assert_called_once()
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.path.exists")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
+def test_push_configs_to_git_removing_content(
+    mock_listdir,
+    mock_path_exists,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
+):
+    """Test push_configs_to_git when removing content (rm_operators provided)."""
+    mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"  # Mock git ls-remote output
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+    # we don't want "finally" to be executed as it removes the temp repo
+    mock_path_exists.return_value = False
+
+    # Mock the listdir calls for both source and repository configs
+    mock_listdir.side_effect = [
+        ["operator1", "operator2", "operator3"],  # Source configs (what's in the image)
+        [
+            "operator1",
+            "operator2",
+            "operator3",
+            "operator4",
+            "operator5",
+        ],  # Repo configs (what's in git)
+    ]
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as temp_repo:
+        # Create source configs with some operators
+        src_configs_dir = os.path.join(temp_repo, "src_configs")
+        os.makedirs(src_configs_dir)
+
+        # Create operator directories in source
+        for op in ["operator1", "operator2", "operator3"]:
+            os.makedirs(os.path.join(src_configs_dir, op))
+
+        # Test removing content by providing rm_operators
+        push_configs_to_git(
+            request_id=1,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=src_configs_dir,
+            index_repo_map=gitlab_url_mapping,
+            rm_operators=["operator1", "operator2"],  # This triggers removal mode
+        )
+
+        # Verify the function was called with correct parameters
+        mock_ggt.assert_called_once_with(PUB_GIT_REPO)
+        mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
+        # configure_git_user is called with only one argument (local_repo_dir)
+        mock_configure_git.assert_called_once_with(mock.ANY)
+
+        # Verify that commit_and_push was called with the correct parameters
+        mock_commit_and_push.assert_called_once()
+        # commit_and_push is called with positional arguments, not keyword arguments
+        call_args = mock_commit_and_push.call_args
+        assert call_args[0][0] == 1  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
+
+        mock_shutil.rmtree.assert_has_calls(
+            [
+                mock.call(RegexMatcher(r".*/configs/operator1$")),
+                mock.call(RegexMatcher(r".*/configs/operator2$")),
+            ],
+            any_order=True,
+        )
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.path.exists")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
+def test_push_configs_to_git_removing_all_operators(
+    mock_listdir,
+    mock_path_exists,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
+):
+    """Test push_configs_to_git when removing all operators (empty source)."""
+    mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+    # we don't want "finally" to be executed as it removes the temp repo
+    mock_path_exists.return_value = False
+
+    # Mock the listdir calls - source has no operators, repo has some
+    mock_listdir.side_effect = [
+        [],  # Source configs (empty - no operators in image)
+        ["operator1", "operator2", "operator3"],  # Repo configs (operators in git)
+    ]
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as temp_repo:
+        src_configs_dir = os.path.join(temp_repo, "src_configs")
+        os.makedirs(src_configs_dir)
+
+        # Test removing all content - this should remove all operators from git
+        result = push_configs_to_git(
+            request_id=3,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=src_configs_dir,
+            index_repo_map=gitlab_url_mapping,
+            rm_operators=["operator1", "operator2", "operator3"],  # Remove all operators
+        )
+
+        # Verify the function completed successfully
+        assert result is None
+        mock_commit_and_push.assert_called_once()
+
+        # Verify the commit message indicates removal of all content
+        call_args = mock_commit_and_push.call_args
+        # commit_and_push is called with positional arguments, not keyword arguments
+        assert call_args[0][0] == 3  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
+        mock_shutil.rmtree.assert_has_calls(
+            [
+                mock.call(RegexMatcher(r".*/configs/operator1$")),
+                mock.call(RegexMatcher(r".*/configs/operator2$")),
+                mock.call(RegexMatcher(r".*/configs/operator3$")),
+            ],
+            any_order=True,
+        )
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.path.exists")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
+def test_push_configs_to_git_removing_no_operators(
+    mock_listdir,
+    mock_path_exists,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
+):
+    """Test push_configs_to_git when no operators need to be removed."""
+    mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+    # we don't want "finally" to be executed as it removes the temp repo
+    mock_path_exists.return_value = False
+
+    # Mock the listdir calls - source and repo have the same operators
+    mock_listdir.side_effect = [
+        ["operator1", "operator2", "operator3"],  # Source configs
+        ["operator1", "operator2", "operator3"],  # Repo configs (same as source)
+    ]
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as temp_repo:
+        src_configs_dir = os.path.join(temp_repo, "src_configs")
+        os.makedirs(src_configs_dir)
+
+        # Create operator directories in source
+        for op in ["operator1", "operator2", "operator3"]:
+            os.makedirs(os.path.join(src_configs_dir, op))
+
+        # Test removing content when no changes are needed (empty rm_operators)
+        result = push_configs_to_git(
+            request_id=4,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=src_configs_dir,
+            index_repo_map=gitlab_url_mapping,
+            rm_operators=[],  # Empty list means no removal
+        )
+
+        # Verify the function completed successfully
+        assert result is None
+        mock_commit_and_push.assert_called_once()
+
+        # Verify the commit message indicates no changes were needed
+        call_args = mock_commit_and_push.call_args
+        # commit_and_push is called with positional arguments, not keyword arguments
+        assert call_args[0][0] == 4  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
+        mock_shutil.rmtree.assert_not_called()
+
+
+@mock.patch("iib.workers.tasks.git_utils.shutil")
+@mock.patch("iib.workers.tasks.git_utils.run_cmd")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.os.path.exists")
+@mock.patch("iib.workers.tasks.git_utils.os.listdir")
+def test_push_configs_to_git_removing_with_empty_repo(
+    mock_listdir,
+    mock_path_exists,
+    mock_commit_and_push,
+    mock_configure_git,
+    mock_clone,
+    mock_ggt,
+    mock_cmd,
+    mock_shutil,
+    mock_gwc,
+    gitlab_url_mapping,
+):
+    """Test push_configs_to_git when removing content from an empty repository."""
+    mock_ggt.return_value = "foo", "bar"
+    mock_cmd.return_value = "main"
+    mock_clone.return_value = None
+    mock_configure_git.return_value = None
+    mock_commit_and_push.return_value = None
+    # we don't want "finally" to be executed as it removes the temp repo
+    mock_path_exists.return_value = False
+    # Mock the listdir calls - both source and repo are empty
+    mock_listdir.side_effect = [[], []]  # Source configs (empty)  # Repo configs (empty)
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as temp_repo:
+        src_configs_dir = os.path.join(temp_repo, "src_configs")
+        os.makedirs(src_configs_dir)
+
+        # Test removing content from empty repository
+        result = push_configs_to_git(
+            request_id=8,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=src_configs_dir,
+            index_repo_map=gitlab_url_mapping,
+            rm_operators=[],  # No operators to remove
+        )
+
+        # Verify the function completed successfully
+        assert result is None
+        mock_commit_and_push.assert_called_once()
+
+        # Verify the commit message indicates no changes were needed
+        call_args = mock_commit_and_push.call_args
+        # commit_and_push is called with positional arguments, not keyword arguments
+        assert call_args[0][0] == 8  # request_id
+        assert call_args[0][2] == PUB_GIT_REPO  # repo_url
+        assert call_args[0][3] == "latest"  # branch
+        mock_shutil.rmtree.assert_not_called()

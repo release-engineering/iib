@@ -352,6 +352,7 @@ def test_update_index_image_pull_spec(
             overwrite_from_index_token=overwrite_token,
             is_image_fbc=is_image_fbc,
             index_repo_map={},
+            rm_operators=None,
         )
     else:
         mock_ofi.assert_not_called()
@@ -449,6 +450,7 @@ def test_overwrite_from_index(
         overwrite_from_index_token=overwrite_from_index_token,
         is_image_fbc=is_image_fbc,
         index_repo_map=url_repo_map,
+        rm_operators=None,
     )
 
     # Verify catalog config handling
@@ -462,12 +464,14 @@ def test_overwrite_from_index(
             from_index=from_index,
             src_configs_path='/tmp/catalog_dir',
             index_repo_map=url_repo_map,
+            rm_operators=None,
         )
         mock_pcg.assert_called_once_with(
             request_id=1,
             from_index=from_index,
             src_configs_path='/tmp/catalog_dir',
             index_repo_map=url_repo_map,
+            rm_operators=None,
         )
     else:
         mock_gcd.assert_not_called()
@@ -536,6 +540,7 @@ def test_overwrite_from_index_reverts_on_failure(
             overwrite_from_index_token='user:pass',
             is_image_fbc=True,
             index_repo_map=url_repo_map,
+            rm_operators=None,
         )
 
     # First skopeo copy: docker:// to oci: (local export)
@@ -556,6 +561,7 @@ def test_overwrite_from_index_reverts_on_failure(
         from_index=from_index,
         src_configs_path='/path/to/configs',
         index_repo_map=url_repo_map,
+        rm_operators=None,
     )
 
     # Second copy: oci: to docker:// — triggers failure
@@ -1299,6 +1305,8 @@ def test_handle_rm_request_fbc(
         from_index='from-index:latest',
         binary_image='binary-image:latest',
         binary_image_config={'prod': {'v4.6': 'some_image'}},
+        overwrite_from_index=True,
+        overwrite_from_index_token="token",
     )
     mock_prfb.assert_called_once_with(
         5,
@@ -1323,7 +1331,19 @@ def test_handle_rm_request_fbc(
     assert mock_srs.call_count == 2
     mock_sov.assert_called_once_with(from_index_resolved)
     mock_capml.assert_called_once_with(5, {'s390x', 'amd64'}, None)
-    mock_uiips.assert_called_once()
+    mock_uiips.assert_called_once_with(
+        output_pull_spec=mock_capml.return_value,
+        request_id=5,
+        arches={'amd64', 's390x'},
+        from_index='from-index:latest',
+        overwrite_from_index=True,
+        overwrite_from_index_token="token",
+        resolved_prebuild_from_index=from_index_resolved,
+        add_or_rm=True,
+        is_image_fbc=True,
+        index_repo_map={},
+        rm_operators=['some-operator'],
+    )
     assert mock_srs.call_args[0][1] == 'complete'
 
     # Assert deprecations were removed correctly
