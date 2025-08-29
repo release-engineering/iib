@@ -4,7 +4,7 @@ import logging
 import os
 import tempfile
 import shutil
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 from operator_manifest.operator import ImageName
 import requests
@@ -27,6 +27,7 @@ def push_configs_to_git(
     src_configs_path: str,
     index_repo_map: Dict[str, str],
     commit_message: Optional[str] = None,
+    rm_operators: Optional[List[str]] = None,
 ) -> None:
     """
     Pushes /configs subfolders to a Git repository.
@@ -39,6 +40,8 @@ def push_configs_to_git(
                            files reside.
     :param dict(str) index_repo_map: The repo mapping to resolve the git URL.
     :param str commit_message: Custom commit message. If None, a default message is used.
+    :param list(str) rm_operators: List of operators to remove from the index image. Only
+        required if ``add_or_rm`` is ``True`` and an RM operation is requested.
     :raises IIBError: If src_configs_path is not found, remote branch does not exist,
                       or a Git operation fails.
     """
@@ -84,13 +87,23 @@ def push_configs_to_git(
                 repo_configs_dir,
             )
 
-            if operator_packages:
+            if rm_operators:
+                # Remove operators from the Git repo if an RM operation is requested
+                for operator_package in set(rm_operators):
+                    operator_dir = os.path.join(repo_configs_dir, operator_package)
+                    try:
+                        shutil.rmtree(operator_dir)
+                    except FileNotFoundError:
+                        log.warning(f"Operator directory not found for removal: {operator_dir}")
+            elif operator_packages:
+                # Add content to the Git repo if an ADD or any other operation is requested
                 for operator_package in operator_packages:
                     src_pkg_dir = os.path.join(src_configs_path, operator_package)
                     dest_pkg_dir = os.path.join(repo_configs_dir, operator_package)
                     os.makedirs(dest_pkg_dir, exist_ok=True)
                     shutil.copytree(src_pkg_dir, dest_pkg_dir, dirs_exist_ok=True)
             else:
+                # Add all content to the Git repo for ADD or any other operation
                 shutil.copytree(src_configs_path, repo_configs_dir)
 
             # Print git status to the logs
