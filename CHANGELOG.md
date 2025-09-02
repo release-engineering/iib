@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.4.0
+
+* chore(deps): update dependency botocore to v1.40.18 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1115
+* chore(deps): update dependency coverage to v7.10.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1116
+* chore(deps): update dependency botocore to v1.40.19 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1121
+* chore(deps): update dependency boto3 to v1.40.19 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1114
+* chore(deps): update dependency stevedore to v5.5.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1117
+* chore(deps): update dependency typing-extensions to v4.15.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1118
+* chore(deps): update dependency prompt-toolkit to v3.0.52 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1122
+* chore(deps): update dependency alembic to v1.16.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1120
+* Add support for multiple FBC fragments in fbc-operations endpoint by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1119
+* fix(CLOUDDST-29225): remove check for non-empty configs dir by @nmars in https://github.com/release-engineering/iib/pull/1123
+* chore(deps): update dependency coverage to v7.10.6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1127
+* chore(deps): update dependency botocore to v1.40.21 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1125
+* chore(deps): update dependency boto3 to v1.40.21 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1124
+* chore(deps): update dependency krb5 to v0.8.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1129
+* chore(deps): update dependency cryptography to v45.0.7 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1128
+* git_utils: Fix behavior for RM request by @JAVGan in https://github.com/release-engineering/iib/pull/1126
+* chore(deps): update dependency gssapi to v1.10.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1130
+* chore(deps): update dependency pyspnego to v0.12.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1132
+
 ## 9.3.3
 
 * chore(deps): update dependency botocore to v1.40.14 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1108
