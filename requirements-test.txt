@@ -942,9 +942,9 @@ Pygments==2.19.2 \
     --hash=sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887 \
     --hash=sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b
     # via pytest
-pyspnego[kerberos]==0.11.2 \
-    --hash=sha256:74abc1fb51e59360eb5c5c9086e5962174f1072c7a50cf6da0bda9a4bcfdfbd4 \
-    --hash=sha256:994388d308fb06e4498365ce78d222bf4f3570b6df4ec95738431f61510c971b
+pyspnego[kerberos]==0.12.0 \
+    --hash=sha256:84cc8dae6ad21e04b37c50c1d3c743f05f193e39498f6010cc68ec1146afd007 \
+    --hash=sha256:e1d9cd3520a87a1d6db8d68783b17edc4e1464eae3d51ead411a51c82dbaae67
     # via
     #   -r requirements.txt
     #   requests-kerberos
