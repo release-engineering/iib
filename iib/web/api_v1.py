@@ -745,7 +745,6 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'from_index_resolved',
         'fbc_fragment',
         'fbc_fragment_resolved',
-        'fbc_fragments_resolved',
         'index_image',
         'index_image_resolved',
         'internal_index_image_copy',
@@ -1328,6 +1327,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
         payload.get('add_arches'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        request._used_fbc_fragment,  # Pass the legacy flag to the worker
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)

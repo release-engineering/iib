@@ -603,13 +603,15 @@ def _update_index_image_build_state(
     if target_index_resolved:
         payload['target_index_resolved'] = target_index_resolved
 
-    fbc_fragment_resolved = prebuild_info.get('fbc_fragment_resolved')
-    if fbc_fragment_resolved:
-        payload['fbc_fragment_resolved'] = fbc_fragment_resolved
-
     fbc_fragments_resolved = prebuild_info.get('fbc_fragments_resolved')
     if fbc_fragments_resolved:
         payload['fbc_fragments_resolved'] = fbc_fragments_resolved
+
+    # Handle old single fragment field for backward compatibility
+    # Only update if the worker actually populated this field
+    fbc_fragment_resolved = prebuild_info.get('fbc_fragment_resolved')
+    if fbc_fragment_resolved:
+        payload['fbc_fragment_resolved'] = fbc_fragment_resolved
 
     exc_msg = 'Failed setting the resolved images on the request'
     update_request(request_id, payload, exc_msg)

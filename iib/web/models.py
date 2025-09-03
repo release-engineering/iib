@@ -831,8 +831,9 @@ def get_request_query_options(verbose: Optional[bool] = False) -> List[_Abstract
         joinedload(RequestRm.build_tags),
         joinedload(RequestMergeIndexImage.build_tags),
         joinedload(RequestFbcOperations.fbc_fragments),
-        joinedload(RequestFbcOperations.fbc_fragment_resolved),
         joinedload(RequestFbcOperations.fbc_fragments_resolved),
+        joinedload(RequestFbcOperations.fbc_fragment),
+        joinedload(RequestFbcOperations.fbc_fragment_resolved),
     ]
     if verbose:
         query_options.append(joinedload(Request.states))
@@ -2145,16 +2146,28 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         db.ForeignKey('request.id'), autoincrement=False, primary_key=True
     )
 
+    # New multiple fragments support
     fbc_fragments: Mapped[List['Image']] = db.relationship(
         'Image', secondary=RequestFbcOperationsFragment.__table__
-    )
-    fbc_fragment_resolved_id: Mapped[Optional[int]] = db.mapped_column(db.ForeignKey('image.id'))
-    fbc_fragment_resolved: Mapped['Image'] = db.relationship(
-        'Image', foreign_keys=[fbc_fragment_resolved_id], uselist=False
     )
     fbc_fragments_resolved: Mapped[List['Image']] = db.relationship(
         'Image', secondary=RequestFbcOperationsFragmentResolved.__table__
     )
+
+    # Old single fragment support (kept for backward compatibility)
+    fbc_fragment_id: Mapped[Optional[int]] = db.mapped_column(
+        db.ForeignKey('image.id'), nullable=True
+    )
+    fbc_fragment_resolved_id: Mapped[Optional[int]] = db.mapped_column(
+        db.ForeignKey('image.id'), nullable=True
+    )
+    fbc_fragment: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[fbc_fragment_id], uselist=False
+    )
+    fbc_fragment_resolved: Mapped['Image'] = db.relationship(
+        'Image', foreign_keys=[fbc_fragment_resolved_id], uselist=False
+    )
+
     # Track whether the original request used fbc_fragment (for backward compatibility in response)
     _used_fbc_fragment: Mapped[Optional[bool]] = db.mapped_column(
         'used_fbc_fragment', db.Boolean, default=False
@@ -2240,6 +2253,11 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
             for item in request_kwargs.get('fbc_fragments', [])
         ]
 
+        # For backward compatibility, also set the old single fragment fields
+        if used_fbc_fragment and request_kwargs['fbc_fragments']:
+            # Set the first fragment as the old single fragment field
+            request_kwargs['fbc_fragment'] = request_kwargs['fbc_fragments'][0]
+
         # Add the flag back for the model creation
         request_kwargs['_used_fbc_fragment'] = used_fbc_fragment
 
@@ -2264,15 +2282,24 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         rv = cast(FbcOperationRequestResponse, super().to_json(verbose=verbose))
         rv.update(self.get_common_index_image_json())  # type: ignore
 
-        # Determine which fields to populate based on original request format
-        if self._used_fbc_fragment:
-            # Original request used fbc_fragment - populate single fragment fields
-            rv['fbc_fragment'] = (
-                self.fbc_fragments[0].pull_specification if self.fbc_fragments else None
-            )
-            rv['fbc_fragment_resolved'] = getattr(
-                self.fbc_fragment_resolved, 'pull_specification', None
-            )
+        # Determine which fields to populate based on available data
+        if self._used_fbc_fragment or self.fbc_fragment_id:
+            # Original request used fbc_fragment or we have old data
+            # Populate single fragment fields
+            if self.fbc_fragment:
+                rv['fbc_fragment'] = self.fbc_fragment.pull_specification
+            elif self.fbc_fragments:
+                # Fallback to first element of new fragments if old data not available
+                rv['fbc_fragment'] = self.fbc_fragments[0].pull_specification
+
+            if self.fbc_fragment_resolved:
+                rv['fbc_fragment_resolved'] = self.fbc_fragment_resolved.pull_specification
+            elif self.fbc_fragments_resolved:
+                # Fallback to first element of new resolved fragments if old data not available
+                rv['fbc_fragment_resolved'] = self.fbc_fragments_resolved[0].pull_specification
+            else:
+                rv['fbc_fragment_resolved'] = None
+
             # Keep array fields empty but present for backward compatibility
             rv['fbc_fragments'] = []
             rv['fbc_fragments_resolved'] = []
@@ -2303,9 +2330,11 @@ class RequestFbcOperations(Request, RequestIndexImageMixin):
         """
         rv = super().get_mutable_keys()
         rv.update(self.get_index_image_mutable_keys())
-        rv.add('fbc_fragment_resolved')
         rv.add('fbc_fragments')
         rv.add('fbc_fragments_resolved')
+        # Keep old fields mutable for backward compatibility
+        rv.add('fbc_fragment')
+        rv.add('fbc_fragment_resolved')
         return rv
 
 
