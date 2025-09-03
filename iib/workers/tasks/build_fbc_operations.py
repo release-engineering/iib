@@ -47,6 +47,7 @@ def handle_fbc_operation_request(
     add_arches: Optional[Set[str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    used_fbc_fragment: bool = False,
 ) -> None:
     """
     Add fbc fragments to an fbc index image.
@@ -62,6 +63,8 @@ def handle_fbc_operation_request(
         to build the index image for
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
+    :param bool used_fbc_fragment: flag indicating if the original request used fbc_fragment
+        (single) instead of fbc_fragments (array). Used for backward compatibility.
     """
     _cleanup()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragments')
@@ -90,12 +93,13 @@ def handle_fbc_operation_request(
     binary_image_resolved = prebuild_info['binary_image_resolved']
     Opm.set_opm_version(from_index_resolved)
 
-    # Store the first resolved fragment for backward compatibility
-    prebuild_info['fbc_fragment_resolved'] = (
-        resolved_fbc_fragments[0] if resolved_fbc_fragments else None
-    )
     # Store all resolved fragments
     prebuild_info['fbc_fragments_resolved'] = resolved_fbc_fragments
+
+    # For backward compatibility, only populate old fields if original request used fbc_fragment
+    # This flag should be passed from the API layer
+    if used_fbc_fragment and resolved_fbc_fragments:
+        prebuild_info['fbc_fragment_resolved'] = resolved_fbc_fragments[0]
 
     _update_index_image_build_state(request_id, prebuild_info)
 
