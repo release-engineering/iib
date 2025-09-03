@@ -681,7 +681,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
             for v in value.values():
                 if not isinstance(v, list) or any(not isinstance(s, str) for s in v):
                     raise ValidationError(exc_msg)
-        elif key == 'recursive_related_bundles':
+        elif key == 'recursive_related_bundles' or key == 'fbc_fragments_resolved':
             if not isinstance(value, list):
                 exc_msg = f'The value for "{key}" must be a list of non-empty strings'
                 raise ValidationError(exc_msg)
