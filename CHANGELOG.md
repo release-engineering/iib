@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.4.1
+
+* Fix: Do not drop old columns for fbc-operations migration by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1135
+
 ## 9.4.0
 
 * chore(deps): update dependency botocore to v1.40.18 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1115
