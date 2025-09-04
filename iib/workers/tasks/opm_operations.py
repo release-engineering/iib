@@ -1020,10 +1020,10 @@ def opm_registry_add_fbc_fragment(
     fragment_data = []
     all_fragment_operators = []
 
-    for fbc_fragment in fbc_fragments:
+    for i, fbc_fragment in enumerate(fbc_fragments):
         # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
         fragment_path, fragment_operators = extract_fbc_fragment(
-            temp_dir=temp_dir, fbc_fragment=fbc_fragment
+            temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
         )
         fragment_data.append((fragment_path, fragment_operators))
         all_fragment_operators.extend(fragment_operators)
@@ -1066,7 +1066,8 @@ def opm_registry_add_fbc_fragment(
         set_request_state(
             request_id,
             'in_progress',
-            f'Adding fbc fragment {i + 1}/{len(fbc_fragments)} to from_index',
+            f'Adding package(s) {fragment_operators} from fbc fragment '
+            f'{i + 1}/{len(fbc_fragments)} to from_index',
         )
 
         for fragment_operator in fragment_operators:

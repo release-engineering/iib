@@ -102,22 +102,27 @@ def merge_catalogs_dirs(src_config: str, dest_config: str):
     opm_validate(conf_dir)
 
 
-def extract_fbc_fragment(temp_dir: str, fbc_fragment: str) -> Tuple[str, List[str]]:
+def extract_fbc_fragment(
+    temp_dir: str, fbc_fragment: str, fragment_index: int = 0
+) -> Tuple[str, List[str]]:
     """
     Extract operator packages from the fbc_fragment image.
 
     :param str temp_dir: base temp directory for IIB request.
     :param str fbc_fragment: pull specification of fbc_fragment in the IIB request.
+    :param int fragment_index: index of the fragment to create unique paths and
+        prevent cross-contamination.
     :return: fbc_fragment path, fbc_operator_packages.
     :rtype: tuple
     """
     from iib.workers.tasks.build import _copy_files_from_image
 
     log.info("Extracting the fbc_fragment's catalog from  %s", fbc_fragment)
-    # store the fbc_fragment at /tmp/iib-**/fbc-fragment
+    # store the fbc_fragment at /tmp/iib-**/fbc-fragment-{index} to prevent
+    # cross-contamination
     conf = get_worker_config()
-    fbc_fragment_path = os.path.join(temp_dir, conf['temp_fbc_fragment_path'])
-    # Copy fbc_fragment's catalog to /tmp/iib-**/fbc-fragment
+    fbc_fragment_path = os.path.join(temp_dir, f"{conf['temp_fbc_fragment_path']}-{fragment_index}")
+    # Copy fbc_fragment's catalog to /tmp/iib-**/fbc-fragment-{index}
     _copy_files_from_image(fbc_fragment, conf['fbc_fragment_catalog_path'], fbc_fragment_path)
 
     log.info("fbc_fragment extracted at %s", fbc_fragment_path)

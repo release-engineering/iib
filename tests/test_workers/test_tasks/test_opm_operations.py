@@ -896,7 +896,7 @@ def test_opm_registry_add_fbc_fragment(
         10, tmpdir, from_index, binary_image, [fbc_fragment], None
     )
 
-    mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment)
+    mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment, fragment_index=0)
     mock_voe.assert_called_with(
         from_index=from_index,
         base_dir=tmpdir,

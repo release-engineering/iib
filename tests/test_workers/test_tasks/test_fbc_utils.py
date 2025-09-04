@@ -196,8 +196,8 @@ def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
         '{"one_more": "chunk", "createdAt": "2025-01-21T07:15:29"}'
     )
 
-    input = os.path.join(tmpdir, f"test_file.yaml")
-    output = os.path.join(tmpdir, f"test_file.json")
+    input = os.path.join(tmpdir, "test_file.yaml")
+    output = os.path.join(tmpdir, "test_file.json")
     with open(input, 'w') as w:
         w.write(dedent(multiple_chunks_yaml))
 
@@ -213,15 +213,82 @@ def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
 def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
     test_fbc_fragment = "example.com/test/fbc_fragment:latest"
     mock_osldr.return_value = ldr_output
-    fbc_fragment_path = os.path.join(tmpdir, get_worker_config()['temp_fbc_fragment_path'])
+    # The function now adds -0 suffix by default when fragment_index is not provided
+    fbc_fragment_path = os.path.join(tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-0")
 
     if not ldr_output:
         with pytest.raises(IIBError):
             extract_fbc_fragment(tmpdir, test_fbc_fragment)
     else:
         extract_fbc_fragment(tmpdir, test_fbc_fragment)
-    mock_cffi.assert_has_calls([mock.call(test_fbc_fragment, '/configs', fbc_fragment_path)])
-    mock_osldr.assert_has_calls([mock.call(fbc_fragment_path)])
+        mock_cffi.assert_called_once_with(
+            test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+        )
+        mock_osldr.assert_called_once_with(fbc_fragment_path)
+
+
+@pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2']])
+@mock.patch('os.listdir')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+def test_extract_fbc_fragment_with_index(mock_cffi, mock_osldr, ldr_output, tmpdir):
+    """Test extract_fbc_fragment with non-zero fragment_index values."""
+    test_fbc_fragment = "example.com/test/fbc_fragment:latest"
+    mock_osldr.return_value = ldr_output
+
+    # Test with fragment_index = 2
+    fragment_index = 2
+    fbc_fragment_path = os.path.join(
+        tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-{fragment_index}"
+    )
+
+    result_path, result_operators = extract_fbc_fragment(
+        tmpdir, test_fbc_fragment, fragment_index=fragment_index
+    )
+
+    # Verify the path includes the correct index
+    assert result_path == fbc_fragment_path
+    assert result_path.endswith(f"-{fragment_index}")
+    assert result_operators == ldr_output
+
+    # Verify the function was called with the correct path
+    mock_cffi.assert_called_once_with(
+        test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+    )
+    mock_osldr.assert_called_once_with(fbc_fragment_path)
+
+
+@mock.patch('os.listdir')
+@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
+    """Test that multiple fragments with different indices create isolated directories."""
+    test_fbc_fragment1 = "example.com/test/fbc_fragment1:latest"
+    test_fbc_fragment2 = "example.com/test/fbc_fragment2:latest"
+
+    # Mock different outputs for each fragment
+    mock_osldr.side_effect = [['operator1'], ['operator2']]
+
+    # Extract first fragment with index 0
+    path1, operators1 = extract_fbc_fragment(tmpdir, test_fbc_fragment1, fragment_index=0)
+
+    # Extract second fragment with index 1
+    path2, operators2 = extract_fbc_fragment(tmpdir, test_fbc_fragment2, fragment_index=1)
+
+    # Verify paths are different and include correct indices
+    assert path1 != path2
+    assert path1.endswith("-0")
+    assert path2.endswith("-1")
+
+    # Verify operators are different (no cross-contamination)
+    assert operators1 == ['operator1']
+    assert operators2 == ['operator2']
+    assert operators1 != operators2
+
+    # Verify _copy_files_from_image was called with different paths
+    expected_calls = [
+        mock.call(test_fbc_fragment1, get_worker_config()['fbc_fragment_catalog_path'], path1),
+        mock.call(test_fbc_fragment2, get_worker_config()['fbc_fragment_catalog_path'], path2),
+    ]
+    mock_cffi.assert_has_calls(expected_calls, any_order=True)
 
 
 def test__serialize_datetime():
@@ -231,5 +298,5 @@ def test__serialize_datetime():
 
 
 def test__serialize_datetime_raise():
-    with pytest.raises(TypeError, match=f"Type <class 'int'> is not serializable."):
+    with pytest.raises(TypeError, match="Type <class 'int'> is not serializable."):
         _serialize_datetime(2025)

@@ -150,6 +150,6 @@ def handle_fbc_operation_request(
     set_request_state(
         request_id,
         'complete',
-        f"The {len(resolved_fbc_fragments)} FBC fragment(s) were successfully added"
+        f"The {len(resolved_fbc_fragments)} FBC fragment(s) were successfully added "
         "in the index image",
     )
