@@ -5,6 +5,7 @@ import textwrap
 import socket
 
 from unittest import mock
+from unittest.mock import call
 
 from iib.exceptions import IIBError, AddressAlreadyInUse
 from iib.workers.config import get_worker_config
@@ -36,6 +37,7 @@ def mock_config():
         mock_config.iib_grpc_max_port_tries = 3
         mock_config.iib_grpc_max_tries = 3
         mock_config.iib_deprecate_bundles_limit = 5
+        mock_config.iib_max_number_of_bundles_as_cmd_argument = 1
         mc.return_value = mock_config
         yield mc
 
@@ -462,6 +464,7 @@ def test_opm_registry_add(
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @pytest.mark.parametrize('graph_update_mode', (None, 'semver-skippatch'))
+@mock.patch('iib.workers.tasks.opm_operations._get_or_create_temp_index_db_file')
 @mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
@@ -475,6 +478,7 @@ def test_opm_registry_add_fbc(
     mock_ora,
     mock_om,
     mock_ogd,
+    mock_get_db_file,
     from_index,
     bundles,
     overwrite_csv,
@@ -482,6 +486,7 @@ def test_opm_registry_add_fbc(
     graph_update_mode,
     is_fbc,
     tmpdir,
+    mock_config,
 ):
     index_db_file = os.path.join(tmpdir, 'database/index.db')
     fbc_dir = os.path.join(tmpdir, 'catalogs')
@@ -490,6 +495,9 @@ def test_opm_registry_add_fbc(
     mock_gid.return_value = index_db_file
     mock_om.return_value = (fbc_dir, cache_dir)
     mock_iifbc.return_value = is_fbc
+
+    index_db_file = os.path.join(tmpdir, 'database/index.db')
+    mock_get_db_file.return_value = index_db_file
 
     opm_operations.opm_registry_add_fbc(
         base_dir=tmpdir,
@@ -500,15 +508,23 @@ def test_opm_registry_add_fbc(
         overwrite_csv=overwrite_csv,
         container_tool=container_tool,
     )
+    max_bundles = mock_config.return_value.iib_max_number_of_bundles_as_cmd_argument
 
-    mock_ora.assert_called_once_with(
-        base_dir=tmpdir,
-        index_db=index_db_file,
-        bundles=bundles,
-        overwrite_csv=overwrite_csv,
-        container_tool=container_tool,
-        graph_update_mode=graph_update_mode,
-    )
+    if bundles:
+        expected_calls = []
+        for i in range(0, len(bundles), max_bundles):
+            chunk = bundles[i : i + max_bundles]
+            expected_calls.append(
+                call(
+                    base_dir=tmpdir,
+                    index_db=index_db_file,
+                    bundles=chunk,
+                    overwrite_csv=overwrite_csv,
+                    container_tool=container_tool,
+                    graph_update_mode=graph_update_mode,
+                )
+            )
+        mock_ora.assert_has_calls(expected_calls)
 
     mock_om.assert_called_once_with(index_db=index_db_file, base_dir=tmpdir)
     mock_ogd.assert_called_once_with(
