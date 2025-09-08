@@ -823,6 +823,8 @@ def opm_registry_add_fbc(
         The format of the token must be in the format "user:password".
     :param str container_tool: the container tool to be used to operate on the index image
     """
+    conf = get_worker_config()
+
     index_db_file = _get_or_create_temp_index_db_file(
         base_dir=base_dir,
         from_index=from_index,
@@ -830,14 +832,15 @@ def opm_registry_add_fbc(
         ignore_existing=True,
     )
 
-    _opm_registry_add(
-        base_dir=base_dir,
-        index_db=index_db_file,
-        bundles=bundles,
-        overwrite_csv=overwrite_csv,
-        container_tool=container_tool,
-        graph_update_mode=graph_update_mode,
-    )
+    for i in range(0, len(bundles), conf.iib_max_number_of_bundles_as_cmd_argument):
+        _opm_registry_add(
+            base_dir=base_dir,
+            index_db=index_db_file,
+            bundles=bundles[i : i + conf.iib_max_number_of_bundles_as_cmd_argument],
+            overwrite_csv=overwrite_csv,
+            container_tool=container_tool,
+            graph_update_mode=graph_update_mode,
+        )
 
     fbc_dir, _ = opm_migrate(index_db=index_db_file, base_dir=base_dir)
     # we should keep generating Dockerfile here
