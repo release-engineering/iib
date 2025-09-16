@@ -8,6 +8,9 @@ from iib.exceptions import IIBError
 from iib.workers.tasks.oras_utils import (
     get_oras_artifact,
     push_oras_artifact,
+    verify_indexdb_cache_sync,
+    get_image_stream_digest,
+    refresh_indexdb_cache,
 )
 
 
@@ -326,3 +329,135 @@ def test_get_oras_artifact_with_base_dir_wont_leak_credentials(
     all_messages = ' '.join(caplog.messages)
     assert 'dXNlcjpwYXNz' not in all_messages  # base64 encoded credentials
     assert 'user:pass' not in all_messages  # decoded credentials
+
+
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_get_image_stream_digest(mock_run_cmd):
+    """Test successful retrieval of image digest from ImageStream."""
+    mock_run_cmd.return_value = 'sha256:12345'
+    tag = 'test-tag'
+
+    digest = get_image_stream_digest(tag)
+
+    assert digest == 'sha256:12345'
+    mock_run_cmd.assert_called_once_with(
+        [
+            'oc',
+            'get',
+            'imagestream',
+            'index-db-cache',
+            '-o',
+            'jsonpath=\'{.status.tags[?(@.tag=="test-tag")].items[0].image}\'',
+        ],
+        exc_msg='Failed to get digest for ImageStream tag test-tag.',
+    )
+
+
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_get_image_stream_digest_empty_string(mock_run_cmd):
+    """Test get_image_stream_digest with empty string output."""
+    mock_run_cmd.return_value = ''
+    tag = 'test-tag'
+    digest = get_image_stream_digest(tag)
+
+    assert digest is None or digest == '', "Expected None or empty digest for empty string output"
+
+
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_get_image_stream_digest_invalid_format(mock_run_cmd):
+    """Test get_image_stream_digest with non-digest output."""
+    mock_run_cmd.return_value = 'not-a-digest'
+    tag = 'test-tag'
+    digest = get_image_stream_digest(tag)
+
+    assert (
+        digest is None or digest == 'not-a-digest'
+    ), "Expected None or raw output for invalid digest format"
+
+
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd', side_effect=IIBError('cmd failed'))
+def test_get_image_stream_digest_failure(mock_run_cmd):
+    """Test failure during retrieval of image digest from ImageStream."""
+    with pytest.raises(IIBError, match='cmd failed'):
+        get_image_stream_digest('test-tag')
+
+
+@mock.patch('iib.workers.tasks.oras_utils.get_image_stream_digest')
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_verify_indexdb_cache_sync_match(mock_get_image_digest, mock_get_is_digest):
+    """Test successful verification when digests match."""
+    mock_get_image_digest.return_value = 'sha256:abc'
+    mock_get_is_digest.return_value = 'sha256:abc'
+    tag = 'test-tag'
+
+    result = verify_indexdb_cache_sync(tag)
+
+    assert result is True
+    mock_get_image_digest.assert_called_once_with(
+        'quay.io/exd-guild-hello-operator/example-repository:test-tag'
+    )
+    mock_get_is_digest.assert_called_once_with(tag)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.get_image_stream_digest')
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_verify_indexdb_cache_sync_no_match(mock_get_image_digest, mock_get_is_digest):
+    """Test successful verification when digests don't match."""
+    mock_get_image_digest.return_value = 'sha256:abc'
+    mock_get_is_digest.return_value = 'sha256:xyz'
+    tag = 'test-tag'
+
+    result = verify_indexdb_cache_sync(tag)
+
+    assert result is False
+    mock_get_image_digest.assert_called_once_with(
+        'quay.io/exd-guild-hello-operator/example-repository:test-tag'
+    )
+    mock_get_is_digest.assert_called_once_with(tag)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_refresh_indexdb_cache_success(mock_run_cmd, mock_auth, registry_auths):
+    """Test successful cache refresh."""
+    tag = 'test-tag'
+
+    refresh_indexdb_cache(tag, registry_auths)
+
+    mock_auth.assert_called_once_with(registry_auths, use_empty_config=True)
+    mock_run_cmd.assert_called_once_with(
+        [
+            'oc',
+            'import-image',
+            'index-db-cache:test-tag',
+            '--from=quay.io/exd-guild-hello-operator/example-repository:test-tag',
+            '--confirm',
+        ],
+        exc_msg='Failed to refresh OCI artifact test-tag.',
+    )
+
+
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd', side_effect=IIBError('refresh failed'))
+def test_refresh_indexdb_cache_failure(mock_run_cmd):
+    """Test cache refresh failure."""
+    tag = 'test-tag'
+
+    with pytest.raises(IIBError, match='refresh failed'):
+        refresh_indexdb_cache(tag)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_refresh_indexdb_cache_with_empty_registry_auths(mock_run_cmd, mock_auth):
+    """Test that refresh_indexdb_cache works correctly when registry_auths is an empty dict."""
+    tag = 'v4.15'
+    empty_auths = {}
+
+    # Call the function with empty registry_auths
+    refresh_indexdb_cache(tag, registry_auths=empty_auths)
+
+    # Verify set_registry_auths was called with empty dict as argument
+    mock_auth.assert_called_once_with(empty_auths, use_empty_config=True)
+
+    # Verify the oc command was executed
+    mock_run_cmd.assert_called_once()

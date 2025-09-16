@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import hashlib
+import json
 import logging
 import os
 import stat
@@ -526,6 +528,103 @@ def test_request_logger_no_request_id(tmpdir):
         mock_handler('spam', 'eggs', None, 'bacon')
 
     assert not logs_dir.listdir()
+
+
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
+def test_get_image_digest_schema_2(mock_skopeo_inspect):
+    """
+    Tests the get_image_digest function for an image with schemaVersion 2.
+
+    Verifies that the function correctly calculates the SHA256 digest from the raw JSON output.
+    """
+    # Simulate raw JSON output from skopeo inspect for schema v2
+    raw_output = textwrap.dedent(
+        """
+        {
+           "schemaVersion": 2,
+           "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+           "config": {
+              "mediaType": "application/vnd.docker.container.image.v1+json",
+              "size": 5545,
+              "digest": "sha256:720713e1a4410985aacd7008719efd13d8a32e76d08d34fca202a60ff43e516d"
+           }
+        }
+        """
+    ).strip()
+
+    # Configure the mock object to return the raw output
+    mock_skopeo_inspect.return_value = raw_output
+
+    # Expected digest (SHA256 hash of the raw_output)
+    expected_digest = f"sha256:{hashlib.sha256(raw_output.encode('utf-8')).hexdigest()}"
+
+    # Run the function under test
+    actual_digest = utils.get_image_digest("some-image:latest")
+
+    # Verify that skopeo_inspect was called with the correct parameters
+    mock_skopeo_inspect.assert_called_once_with(
+        "docker://some-image:latest", "--raw", return_json=False
+    )
+
+    # Verify the result
+    assert actual_digest == expected_digest
+
+
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
+def test_get_image_digest_schema_1(mock_skopeo_inspect):
+    """
+    Tests the get_image_digest function for an image with schemaVersion 1.
+
+    Verifies that the function correctly returns the digest from the parsed JSON output
+    (the second skopeo_inspect call).
+    """
+    # Simulate two different skopeo_inspect calls with different return values
+    mock_skopeo_inspect.side_effect = [
+        # First call (with --raw) to check the schema
+        '{"schemaVersion": 1, "name": "repository/name"}',
+        # Second call (without --raw) to get the digest
+        {
+            "Name": "registry.example.com/repository/name",
+            "Digest": "sha256:expected-digest-from-skopeo-output",
+        },
+    ]
+
+    # Expected digest from the second mock call
+    expected_digest = "sha256:expected-digest-from-skopeo-output"
+
+    # Run the function under test
+    actual_digest = utils.get_image_digest("registry.example.com/repository/name:1.0.0")
+
+    # Verify that the skopeo_inspect function was called twice with the correct parameters
+    mock_skopeo_inspect.assert_has_calls(
+        [
+            mock.call(
+                "docker://registry.example.com/repository/name:1.0.0", "--raw", return_json=False
+            ),
+            mock.call("docker://registry.example.com/repository/name:1.0.0"),
+        ]
+    )
+
+    # Verify the result
+    assert actual_digest == expected_digest
+
+
+@mock.patch('iib.workers.tasks.utils.skopeo_inspect')
+def test_get_image_digest_invalid_json(mock_skopeo_inspect):
+    """
+    Tests get_image_digest for invalid JSON output.
+
+    Verifies that the function correctly raises an error if the skopeo output is invalid.
+    """
+    # Simulate invalid JSON output
+    mock_skopeo_inspect.return_value = "This is not valid JSON"
+
+    # We expect the function to raise a ValueError (from json.loads)
+    with pytest.raises(json.JSONDecodeError):
+        utils.get_image_digest("invalid-image:latest")
+
+    # Verify that skopeo_inspect was called
+    mock_skopeo_inspect.assert_called_once()
 
 
 @pytest.mark.parametrize(
