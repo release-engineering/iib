@@ -8,7 +8,7 @@ from typing import Dict, Optional, Any
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
-from iib.workers.tasks.utils import run_cmd, set_registry_auths
+from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest
 
 log = logging.getLogger(__name__)
 
@@ -102,3 +102,81 @@ def push_oras_artifact(
             log.info('Successfully pushed OCI artifact to %s', artifact_ref)
         except Exception as e:
             raise IIBError(f'Failed to push OCI artifact to {artifact_ref}: {e}')
+
+
+def get_image_stream_digest(
+    tag: str,
+):
+    """
+    Retrieve the image digest from the OpenShift ImageStream.
+
+    This function queries the `index-db-cache` ImageStream to get the
+    SHA256 digest for a specific tag.
+
+    :param tag: The image tag to check.
+    :return: The image digest (e.g., "sha256:...").
+    :rtype: str
+    """
+    # This JSONPath expression navigates the ImageStream JSON structure to extract the image digest:
+    # - .status.tags: Access the 'tags' array within the 'status' object
+    # - [?(@.tag=="{tag}")]: Filter to find the tag object where the 'tag' field equals
+    #   the specified tag (@. refers to the current item in the array being filtered)
+    # - .items[0]: From the matched tag object, access the first item in its 'items' array
+    # - .image: Extract the 'image' field, which contains the SHA256 digest
+    jsonpath = f'\'{{.status.tags[?(@.tag=="{tag}")].items[0].image}}\''
+    return run_cmd(
+        ['oc', 'get', 'imagestream', 'index-db-cache', '-o', f'jsonpath={jsonpath}'],
+        exc_msg=f'Failed to get digest for ImageStream tag {tag}.',
+    )
+
+
+def verify_indexdb_cache_sync(tag: str) -> bool:
+    """
+    Compare the digest of the ImageStream with the digest of the image in repository.
+
+    This function verifies if the local ImageStream cache is up to date with
+    the latest image in the remote registry.
+
+    :param tag: The image tag to verify.
+    :return: True if the digests match (cache is synced), False otherwise.
+    :rtype: bool
+    """
+    # TODO - This is EXAMPLE location - final one should be loaded from config variable
+    repository = "quay.io/exd-guild-hello-operator/example-repository"
+
+    quay_digest = get_image_digest(f"{repository}:{tag}")
+    is_digest = get_image_stream_digest(tag)
+
+    return quay_digest == is_digest
+
+
+def refresh_indexdb_cache(
+    tag: str,
+    registry_auths: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Force a synchronization of the ImageStream with the remote registry.
+
+    This function imports the specified image from Quay.io into the `index-db-cache`
+    ImageStream, ensuring the local cache is up-to-date.
+
+    :param tag: The container image tag to refresh.
+    :param registry_auths: Optional authentication data for the registry.
+    """
+    log.info('Refreshing OCI artifact cache: %s', tag)
+
+    # TODO - This is EXAMPLE location - final one should be loaded from config variable
+    repository = "quay.io/exd-guild-hello-operator/example-repository"
+
+    # Use namespace-specific registry authentication if provided
+    with set_registry_auths(registry_auths, use_empty_config=True):
+        run_cmd(
+            [
+                'oc',
+                'import-image',
+                f'index-db-cache:{tag}',
+                f'--from={repository}:{tag}',
+                '--confirm',
+            ],
+            exc_msg=f'Failed to refresh OCI artifact {tag}.',
+        )
