@@ -191,6 +191,54 @@ def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None
     mock_cmd.assert_not_called()
 
 
+@mock.patch("iib.workers.tasks.git_utils.tempfile")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.validate_git_remote_branch")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_push_configs_to_git_no_changes(
+    mock_ggt,
+    mock_validate_branch,
+    mock_clone,
+    mock_configure_git,
+    mock_commit_and_push,
+    mock_tempfile,
+    gitlab_url_mapping,
+    caplog,
+) -> None:
+    """Ensure the ``push_configs_to_git`` gracefully exit when no changes are made to push."""
+    mock_ggt.return_value = "foo", "bar"
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as tempdir:
+
+        # Create a directory for configs and other to simulate the remote cloned repository
+        remote_repository = os.path.join(tempdir, "fake_git_repo")
+        local_data = os.path.join(tempdir, "configs")
+        for dir in [remote_repository, local_data]:
+            os.mkdir(dir)
+
+        # Ensure the remote repository dir is a git repo
+        run_cmd(["git", "-C", remote_repository, "init"])
+
+        # Make the remote repository the value from tempdir on push_configs_to_git
+        mock_tempfile.TemporaryDirectory.return_value.__enter__.return_value = remote_repository
+
+        # Test
+        push_configs_to_git(
+            request_id=1,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=local_data,
+            index_repo_map=gitlab_url_mapping,
+        )
+
+        assert "No changes to commit." in caplog.messages
+        mock_validate_branch.assert_called_once_with(PUB_GIT_REPO, "latest")
+        mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
+        mock_configure_git.assert_called_once_with(remote_repository)
+        mock_commit_and_push.assert_not_called()
+
+
 @mock.patch("iib.workers.tasks.git_utils.shutil")
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")

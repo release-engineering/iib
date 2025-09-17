@@ -59,9 +59,7 @@ def push_configs_to_git(
     git_token_name, git_token = get_git_token(repo_url)
 
     # Validate branch
-    remote_branch_status = run_cmd(["git", "ls-remote", "--heads", repo_url, branch], strict=False)
-    if not remote_branch_status.strip():
-        raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
+    validate_git_remote_branch(repo_url, branch)
 
     # Verify the path to existing /configs is correct
     if not os.path.isdir(src_configs_path):
@@ -112,6 +110,15 @@ def push_configs_to_git(
             )
             log.info(git_status)
 
+            # Check if there's anything to commit
+            changes = run_cmd(
+                ["git", "-C", local_repo_dir, "diff"], exc_msg="Error getting git diff"
+            )
+            if not changes:
+                _clean_up_local_repo(local_repo_dir)
+                log.warning("No changes to commit.")
+                return
+
             # Add updates
             log.info("Commiting changes to local Git repository.")
             run_cmd(
@@ -129,10 +136,27 @@ def push_configs_to_git(
                 commit_message,
             )
         finally:
-            # tempfile should have done this already, but just in case
-            if os.path.exists(local_repo_dir):
-                shutil.rmtree(local_repo_dir)
-                log.debug("Cleaned up local Git repository %s", local_repo_dir)
+            _clean_up_local_repo(local_repo_dir)
+
+
+def _clean_up_local_repo(local_repo_dir: str) -> None:
+    # tempfile should have done this already, but just in case
+    if os.path.exists(local_repo_dir):
+        shutil.rmtree(local_repo_dir)
+        log.debug("Cleaned up local Git repository %s", local_repo_dir)
+
+
+def validate_git_remote_branch(repo_url: str, branch: str) -> None:
+    """
+    Ensure the provided repository and branch exists.
+
+    :param str repo_url: The git repository URL to verify
+    :param str branch: The git branch to verify
+    :raises IIBError: If the remote repository or branch doesn't exist
+    """
+    remote_branch_status = run_cmd(["git", "ls-remote", "--heads", repo_url, branch], strict=False)
+    if not remote_branch_status.strip():
+        raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
 
 
 def commit_and_push(
