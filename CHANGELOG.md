@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.4.2
+
+* bugfix: Avoid failing on git with no changes by @JAVGan in https://github.com/release-engineering/iib/pull/1165
+* chore(deps): update dependency pytest to v8.4.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1141
+* chore(deps): update actions/setup-python action to v6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1138
+* chore(deps): update dependency pytest-cov to v6.3.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1142
+* chore(deps): update dependency botocore to v1.40.25 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1133
+* chore(deps): update dependency boto3 to v1.40.25 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1131
+* chore(deps): update dependency pycparser to v2.23 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1147
+* chore(deps): update dependency pytest-cov to v7 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1146
+* chore(deps): update dependency cffi to v2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1145
+* chore(deps): update dependency botocore to v1.40.27 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1144
+* chore(deps): update dependency s3transfer to v0.14.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1148
+* chore(deps): update dependency boto3 to v1.40.27 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1143
+* chore(deps): update dependency botocore to v1.40.29 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1150
+* chore(deps): update dependency botocore to v1.40.30 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1154
+* chore(deps): update dependency boto3 to v1.40.30 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1149
+* chore(deps): update dependency cryptography to v46 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1164
+* chore(deps): update dependency grpcio to v1.75.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1163
+* chore(deps): update dependency botocore to v1.40.33 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1161
+* chore(deps): update dependency boto3 to v1.40.33 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1160
+
 ## 9.4.1
 
 * Fix: Do not drop old columns for fbc-operations migration by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1135
