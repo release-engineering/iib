@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Basic unit tests for git_utils."""
+import json
 import logging
 import os
 import pytest
@@ -237,6 +238,62 @@ def test_push_configs_to_git_no_changes(
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
         mock_configure_git.assert_called_once_with(remote_repository)
         mock_commit_and_push.assert_not_called()
+
+
+@mock.patch("iib.workers.tasks.git_utils.tempfile")
+@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
+@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
+@mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
+@mock.patch("iib.workers.tasks.git_utils.validate_git_remote_branch")
+@mock.patch("iib.workers.tasks.git_utils.get_git_token")
+def test_push_configs_to_git_untracked_files(
+    mock_ggt,
+    mock_validate_branch,
+    mock_clone,
+    mock_configure_git,
+    mock_commit_and_push,
+    mock_tempfile,
+    gitlab_url_mapping,
+    caplog,
+) -> None:
+    """Ensure the ``push_configs_to_git`` performs the commit and push for new (untracked) files."""
+    mock_ggt.return_value = "foo", "bar"
+
+    with tempfile.TemporaryDirectory(prefix="test-push-configs-to-git") as tempdir:
+
+        # Create a directory for configs and other to simulate the remote cloned repository
+        remote_repository = os.path.join(tempdir, "fake_git_repo")
+        local_data = os.path.join(tempdir, "configs")
+        operator_path = os.path.join(local_data, "test-operator")
+        for dir in [remote_repository, local_data, operator_path]:
+            os.mkdir(dir)
+
+        # Add a new operator for the local data
+        operator_data = {"foo": "bar"}
+        with open(os.path.join(operator_path, "catalog.json"), 'w') as f:
+            json.dump(operator_data, f)
+
+        # Ensure the remote repository dir is a git repo
+        run_cmd(["git", "-C", remote_repository, "init"])
+
+        # Make the remote repository the value from tempdir on push_configs_to_git
+        mock_tempfile.TemporaryDirectory.return_value.__enter__.return_value = remote_repository
+
+        # Test
+        push_configs_to_git(
+            request_id=1,
+            from_index=PUB_INDEX_IMAGE,
+            src_configs_path=local_data,
+            index_repo_map=gitlab_url_mapping,
+        )
+
+        assert "No changes to commit." not in caplog.messages
+        mock_validate_branch.assert_called_once_with(PUB_GIT_REPO, "latest")
+        mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
+        mock_configure_git.assert_called_once_with(remote_repository)
+        mock_commit_and_push.assert_called_once_with(
+            1, remote_repository, PUB_GIT_REPO, "latest", None
+        )
 
 
 @mock.patch("iib.workers.tasks.git_utils.shutil")

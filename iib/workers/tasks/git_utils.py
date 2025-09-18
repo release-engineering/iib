@@ -110,15 +110,6 @@ def push_configs_to_git(
             )
             log.info(git_status)
 
-            # Check if there's anything to commit
-            changes = run_cmd(
-                ["git", "-C", local_repo_dir, "diff"], exc_msg="Error getting git diff"
-            )
-            if not changes:
-                _clean_up_local_repo(local_repo_dir)
-                log.warning("No changes to commit.")
-                return
-
             # Add updates
             log.info("Commiting changes to local Git repository.")
             run_cmd(
@@ -128,6 +119,16 @@ def push_configs_to_git(
                 ["git", "-C", local_repo_dir, "status"], exc_msg="Error getting git status"
             )
             log.info(git_status)
+
+            # Check if there's anything to commit
+            changes = run_cmd(
+                ["git", "-C", local_repo_dir, "diff", "--staged"], exc_msg="Error getting git diff"
+            )
+            if not changes:
+                _clean_up_local_repo(local_repo_dir)
+                log.warning("No changes to commit.")
+                return
+
             commit_and_push(
                 request_id,
                 local_repo_dir,
