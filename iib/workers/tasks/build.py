@@ -373,6 +373,17 @@ def get_rebuilt_image_pull_spec(request_id: int) -> str:
     )
 
 
+def has_hidden_database(from_index: str) -> bool:
+    """
+    Verify whether the provided index image has a hidden operators database.
+
+    :param str from_index: index image to verify whether it has the database file or not.
+    :returns: ``True`` when the database exists, ``False`` otherwise
+    :rtype: bool
+    """
+    return bool(get_image_label(from_index, 'operators.operatorframework.io.index.database.v1'))
+
+
 def _get_index_database(from_index: str, base_dir: str) -> str:
     """
     Get database file from the specified index image and save it locally.

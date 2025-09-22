@@ -19,6 +19,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
         (None, None, None),
     ),
 )
+@mock.patch('iib.workers.tasks.build_merge_index_image.has_hidden_database')
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
@@ -75,12 +76,14 @@ def test_handle_merge_request(
     mock_uiips,
     mock_run_cmd,
     mock_gidp,
+    mock_hhdb,
     target_index,
     target_index_resolved,
     binary_image,
     source_fbc,
     target_fbc,
 ):
+    mock_hhdb.return_value = False
     mock_run.return_value.returncode = 0
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
@@ -184,6 +187,186 @@ def test_handle_merge_request(
     mock_run_cmd.assert_called_once()
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image._get_index_database')
+@mock.patch('iib.workers.tasks.build_merge_index_image.has_hidden_database')
+@mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+@mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.create_dockerfile')
+@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_migrate')
+@mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles_fbc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.verify_operators_exists')
+@mock.patch('iib.workers.tasks.build_merge_index_image.deprecate_bundles')
+@mock.patch('iib.workers.tasks.build_merge_index_image._get_external_arch_pull_spec')
+@mock.patch(
+    'iib.workers.tasks.build_merge_index_image.get_bundles_from_deprecation_list', return_value=[]
+)
+@mock.patch(
+    'iib.workers.tasks.build_merge_index_image._add_bundles_missing_in_source',
+    return_value=([{'bundlePath': 'some_bundle'}], []),
+)
+@mock.patch('iib.workers.tasks.build_merge_index_image._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_merge_index_image._cleanup')
+@mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_registry_token')
+@mock.patch('subprocess.run')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc', return_value=True)
+@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_merge_request_filter_out_pure_fbc(
+    mock_sov,
+    mock_gwc,
+    mock_iifbc,
+    mock_run,
+    mock_set_registry_token,
+    mock_add_label_to_index,
+    mock_cleanup,
+    mock_prfb,
+    mock_uiibs,
+    mock_srs,
+    mock_gpb,
+    mock_abmis,
+    mock_gbfdl,
+    mock_geaps,
+    mock_dep_b,
+    mock_verify_operator_exits,
+    mock_dep_b_fbc,
+    mock_bi,
+    mock_pi,
+    mock_om,
+    mock_gid,
+    mock_ogd,
+    mock_vii,
+    mock_uiips,
+    mock_run_cmd,
+    mock_gidp,
+    mock_hhdb,
+    mock_gidb,
+):
+    source_from_index = "source-from-index:1.0"
+    source_from_index_resolved = "source-index@sha256:resolved"
+    target_index = "target-from-index:1.0"
+    target_index_resolved = "target-index@sha256:resolved"
+    binary_image = "binary-image:1.0"
+    mock_hhdb.return_value = True
+    mock_gpb.side_effect = [
+        (["bundle1", "bundle2"], ["bundle1", "bundle2"]),  # source FBC call
+        (["bundle1"], ["bundle1"]),  # source filter_out_pure_fbc_bundles (DB)
+        (["bundle3", "bundle4"], ["bundle3", "bundle4"]),  # target FBC call
+        (["bundle3"], ["bundle3"]),  # target filter_out_pure_fbc_bundles (DB)
+    ]
+    source_filtered_bundles = ["bundle1"]
+    target_filtered_bundles = ["bundle3"]
+    mock_run.return_value.returncode = 0
+    prebuild_info = {
+        'arches': {'amd64', 'other_arch'},
+        'binary_image': binary_image,
+        'target_ocp_version': '4.6',
+        'source_from_index_resolved': source_from_index_resolved,
+        'target_index_resolved': target_index_resolved,
+        'distribution_scope': 'stage',
+    }
+
+    mock_prfb.return_value = prebuild_info
+    binary_image_config = {'prod': {'v4.5': 'some_image'}, 'stage': {'stage': 'some_other_img'}}
+    mock_gwc.return_value = {
+        'iib_registry': 'quay.io',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+        'iib_api_url': 'http://iib-api:8080/api/v1/',
+    }
+    mock_gid.return_value = mock_gidb.return_value = 'database/index.db'
+    mock_om.return_value = 'catalog', 'cache'
+
+    # Simulate opm's behavior of creating files that cannot be deleted
+    def side_effect(*args, base_dir, **kwargs):
+        read_only_dir = os.path.join(base_dir, 'read-only-dir')
+        os.mkdir(read_only_dir)
+        with open(os.path.join(read_only_dir, 'read-only-file'), 'w') as f:
+            os.chmod(f.fileno(), stat.S_IRUSR | stat.S_IRGRP)
+        # Make the dir read-only *after* populating it
+        os.chmod(read_only_dir, mode=stat.S_IRUSR | stat.S_IRGRP)
+
+    mock_dep_b.side_effect = side_effect
+    mock_dep_b_fbc.side_effect = side_effect
+    mock_verify_operator_exits.return_value = (mock_dep_b, "")
+
+    mock_gidp.return_value = '/tmp'
+    mock_run_cmd.return_value = json.dumps(
+        {
+            "schema": "olm.bundle",
+            "image": "bundle1",
+            "name": "name1",
+            "package": "package1",
+            "version": "v1.0",
+            "properties": [{"type": "olm.package", "value": {"version": "0.1.0"}}],
+        }
+    )
+
+    build_merge_index_image.handle_merge_request(
+        source_from_index,
+        ['some-bundle:1.0'],
+        1,
+        binary_image,
+        target_index,
+        distribution_scope='stage',
+        binary_image_config=binary_image_config,
+    )
+
+    assert mock_hhdb.call_count == 2  # source and target calls
+    mock_abmis.assert_called_once_with(
+        source_index_bundles=source_filtered_bundles,
+        target_index_bundles=target_filtered_bundles,
+        base_dir=mock.ANY,
+        binary_image=binary_image,
+        source_from_index=source_from_index_resolved,
+        request_id=mock.ANY,
+        arch="amd64",
+        ocp_version=prebuild_info['target_ocp_version'],
+        graph_update_mode=mock.ANY,
+        target_index=target_index,
+        overwrite_target_index_token=mock.ANY,
+        distribution_scope=prebuild_info['distribution_scope'],
+        ignore_bundle_ocp_version=False,
+    )
+
+    mock_om.assert_called_once()
+    assert mock_cleanup.call_count == 2
+    mock_prfb.assert_called_once_with(
+        1,
+        RequestConfigMerge(
+            _binary_image=binary_image,
+            overwrite_target_index_token=None,
+            source_from_index='source-from-index:1.0',
+            target_index=target_index,
+            distribution_scope='stage',
+            binary_image_config=binary_image_config,
+        ),
+    )
+    mock_uiibs.assert_called_once_with(1, prebuild_info)
+    assert mock_gpb.call_count == 4
+    mock_vii.assert_not_called()
+    mock_gbfdl.assert_called_once()
+    mock_geaps.assert_called_once()
+
+    mock_dep_b_fbc.assert_not_called()
+    assert mock_bi.call_count == 2
+    assert mock_pi.call_count == 2
+
+    mock_set_registry_token.call_count == 2
+    assert mock_add_label_to_index.call_count == 2
+    mock_uiips.assert_called_once()
+
+    mock_sov.assert_called_once_with(target_index_resolved)
+    mock_run_cmd.assert_called_once()
+
+
 @pytest.mark.parametrize('source_fbc, target_fbc', [(False, False), (False, True), (True, True)])
 @pytest.mark.parametrize(
     'invalid_bundles, filtered_invalid_version_bundles_names',
@@ -196,6 +379,7 @@ def test_handle_merge_request(
         ([{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}], {}),
     ],
 )
+@mock.patch('iib.workers.tasks.build_merge_index_image.has_hidden_database')
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build_merge_index_image._update_index_image_pull_spec')
@@ -252,11 +436,13 @@ def test_handle_merge_request_no_deprecate(
     mock_uiips,
     mock_run_cmd,
     mock_gidp,
+    mock_hhdb,
     invalid_bundles,
     filtered_invalid_version_bundles_names,
     source_fbc,
     target_fbc,
 ):
+    mock_hhdb.return_value = False
     target_index_resolved = 'target-index@sha256:resolved'
     prebuild_info = {
         'arches': {'amd64', 'other_arch'},
