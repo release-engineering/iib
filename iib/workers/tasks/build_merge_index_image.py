@@ -31,6 +31,8 @@ from iib.workers.tasks.build import (
     _create_and_push_manifest_list,
     _get_external_arch_pull_spec,
     get_image_label,
+    has_hidden_database,
+    _get_index_database,
     _get_present_bundles,
     _push_image,
     _update_index_image_build_state,
@@ -53,6 +55,33 @@ from iib.workers.tasks.iib_static_types import BundleImage
 __all__ = ['handle_merge_request']
 
 log = logging.getLogger(__name__)
+
+
+def _filter_out_pure_fbc_bundles(
+    from_index: str,
+    fbc_index_bundles: List[BundleImage],
+    fbc_index_bundles_pull_spec: List[str],
+    temp_dir: str,
+) -> Tuple[List[BundleImage], List[str]]:
+    """
+    Filter out pure FBC operators from the given fbc_index_bundles and fbc_index_bundles_pull_spec.
+
+    :param str from_index_resolved: the incoming image to retrieve the hidden DB.
+    :param list fbc_index_bundles: list of bundles from FBC catalog.
+    :param list fbc_index_bundles_pull_spec: list of pullspecs from FBC catalog.
+    :param str temp_dir: temporary directory for operations.
+    :return: tuple with list of bundles and pullspecs which are present in both FBC and DB.
+    :rtype: tuple
+    """
+    db_dir = os.path.join(temp_dir, 'hidden_db_for_bundles')
+    os.makedirs(db_dir, exist_ok=True)
+    db_file = _get_index_database(from_index, db_dir)
+    db_index_bundles, db_bundles_pull_spec = _get_present_bundles(db_file, db_dir)
+
+    res_bundles = [x for x in fbc_index_bundles if x in db_index_bundles]
+    res_pullspec = [x for x in fbc_index_bundles_pull_spec if x in db_bundles_pull_spec]
+    shutil.rmtree(db_dir)
+    return res_bundles, res_pullspec
 
 
 def _add_bundles_missing_in_source(
@@ -287,6 +316,13 @@ def handle_merge_request(
             source_index_bundles, source_index_bundles_pull_spec = _get_present_bundles(
                 source_from_index_resolved, source_bundles_dir
             )
+            if source_fbc and has_hidden_database(source_from_index):
+                source_index_bundles, source_index_bundles_pull_spec = _filter_out_pure_fbc_bundles(
+                    source_from_index,
+                    source_index_bundles,
+                    source_index_bundles_pull_spec,
+                    temp_dir,
+                )
             shutil.rmtree(source_bundles_dir)
 
         target_index_bundles: List[BundleImage] = []
@@ -298,9 +334,13 @@ def handle_merge_request(
                 target_bundles_dir = os.path.join(temp_dir, 'target_bundles')
                 os.makedirs(target_bundles_dir, exist_ok=True)
 
-                target_index_bundles, _ = _get_present_bundles(
+                target_index_bundles, target_index_bundles_pull_spec = _get_present_bundles(
                     target_index_resolved, target_bundles_dir
                 )
+                if target_fbc and has_hidden_database(target_index):
+                    target_index_bundles, _ = _filter_out_pure_fbc_bundles(
+                        target_index, target_index_bundles, target_index_bundles_pull_spec, temp_dir
+                    )
                 shutil.rmtree(target_bundles_dir)
 
         arches = list(prebuild_info['arches'])
