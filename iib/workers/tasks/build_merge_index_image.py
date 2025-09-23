@@ -32,7 +32,7 @@ from iib.workers.tasks.build import (
     _get_external_arch_pull_spec,
     get_image_label,
     has_hidden_database,
-    _get_index_database,
+    get_index_database,
     _get_present_bundles,
     _push_image,
     _update_index_image_build_state,
@@ -75,7 +75,7 @@ def _filter_out_pure_fbc_bundles(
     """
     db_dir = os.path.join(temp_dir, 'hidden_db_for_bundles')
     os.makedirs(db_dir, exist_ok=True)
-    db_file = _get_index_database(from_index, db_dir)
+    db_file = get_index_database(from_index, db_dir)
     db_index_bundles, db_bundles_pull_spec = _get_present_bundles(db_file, db_dir)
 
     res_bundles = [x for x in fbc_index_bundles if x in db_index_bundles]

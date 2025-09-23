@@ -465,7 +465,7 @@ def test_opm_registry_add(
 @mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
-@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build.get_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
 def test_opm_registry_add_fbc(
@@ -572,7 +572,7 @@ def test_opm_registry_rm(mock_run_cmd):
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
 @mock.patch('iib.workers.tasks.opm_operations.get_hidden_index_database')
-@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build.get_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
 @mock.patch('iib.workers.tasks.opm_operations.set_request_state')
 def test_opm_create_empty_fbc(
@@ -1134,7 +1134,7 @@ def test_get_opm_version_number_fail(mock_run_cmd):
     ],
 )
 @mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
-@mock.patch('iib.workers.tasks.build._get_index_database')
+@mock.patch('iib.workers.tasks.build.get_index_database')
 @mock.patch('iib.workers.tasks.opm_operations.is_image_fbc')
 def test__get_input_data_path(mock_iif, mock_gid, mock_gcd, input, is_input_dir, is_fbc, tmpdir):
     mock_iif.return_value = is_fbc

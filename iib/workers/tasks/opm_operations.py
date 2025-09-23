@@ -353,10 +353,10 @@ def _get_input_data_path(input_image_or_path: str, base_dir: str) -> str:
         return input_image_or_path
 
     if not is_image_fbc(input_image_or_path):
-        from iib.workers.tasks.build import _get_index_database
+        from iib.workers.tasks.build import get_index_database
 
         log.info('Extracting SQLite DB from image %s', input_image_or_path)
-        return _get_index_database(input_image_or_path, base_dir)
+        return get_index_database(input_image_or_path, base_dir)
     else:
         log.info('Extracting FBC from image %s', input_image_or_path)
         return get_catalog_dir(input_image_or_path, base_dir)
@@ -443,7 +443,7 @@ def _get_or_create_temp_index_db_file(
     :return: Returns path to index.db located in base_dir.
     :rtype: str
     """
-    from iib.workers.tasks.build import _get_index_database
+    from iib.workers.tasks.build import get_index_database
     from iib.workers.tasks.utils import set_registry_token
 
     index_db_file = os.path.join(base_dir, get_worker_config()['temp_index_db_path'])
@@ -458,7 +458,7 @@ def _get_or_create_temp_index_db_file(
         with set_registry_token(overwrite_from_index_token, from_index, append=True):
             if is_image_fbc(from_index):
                 return get_hidden_index_database(from_index, base_dir)
-            return _get_index_database(from_index, base_dir)
+            return get_index_database(from_index, base_dir)
 
     log.info('Creating empty database file %s', index_db_file)
     index_db_dir = os.path.dirname(index_db_file)
@@ -953,10 +953,10 @@ def opm_create_empty_fbc(
         index_db_path = get_hidden_index_database(from_index=from_index, base_dir=temp_dir)
     # if the from_index is SQLite based, get the default index db location
     else:
-        from iib.workers.tasks.build import _get_index_database
+        from iib.workers.tasks.build import get_index_database
 
         log.debug('%s provided is SQLite index image', from_index)
-        index_db_path = _get_index_database(from_index=from_index, base_dir=temp_dir)
+        index_db_path = get_index_database(from_index=from_index, base_dir=temp_dir)
 
     # Remove all the operators from the index
     set_request_state(request_id, 'in_progress', 'Removing operators from index image')
