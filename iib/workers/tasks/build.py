@@ -384,7 +384,7 @@ def has_hidden_database(from_index: str) -> bool:
     return bool(get_image_label(from_index, 'operators.operatorframework.io.index.database.v1'))
 
 
-def _get_index_database(from_index: str, base_dir: str) -> str:
+def get_index_database(from_index: str, base_dir: str) -> str:
     """
     Get database file from the specified index image and save it locally.
 
