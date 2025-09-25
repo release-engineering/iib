@@ -5,7 +5,9 @@ import os
 import shutil
 import stat
 import tempfile
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+import semver
 
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
@@ -403,6 +405,12 @@ def handle_merge_request(
             ]
 
         if deprecation_bundles:
+            # We need to get the latest pullpecs from bundles in order to avoid failures
+            # on "opm deprecatetruncate" due to versions already removed before.
+            # Once we give the latest versions all lower ones get automatically deprecated by OPM.
+            all_bundles = source_index_bundles + target_index_bundles
+            deprecation_bundles = get_bundles_latest_version(deprecation_bundles, all_bundles)
+
             # we can check if source index is FBC or not because intermediate_image
             # will be always the same type because it is built
             # from source index image in _add_bundles_missing_in_source()
@@ -582,3 +590,50 @@ def is_bundle_version_valid(
         )
 
     return False
+
+
+def get_bundles_latest_version(bundles: List[str], bundle_images: List[BundleImage]) -> List[str]:
+    """Retrieve the pullspec of all bundle packages in their latest versions.
+
+    This function will reduce the ``bundles`` list to a subset containing only unique bundles
+    pullspecs which represents their latest versions.
+
+    It can be used to filter out lower bundle versions before calling OPM deprecatetruncate as the
+    latest versions will always deprecate all the other lower versions from a given operator
+    package.
+
+    :param list bundles: a list of bundles pullspec to be filtered out for latest versions.
+    :param list bundle_images: the BundleImage list containing all bundles
+        pullspecs, names and versions. It's used to map the pullspecs from ``bundles``
+        into their versions for reducing the data.
+    :return: list with bundles pullspecs in the major versions (semver).
+    :rtype: list
+    :raises IIBError: if ``bundles`` contains a pullspec not present in ``bundle_images``.
+    """
+
+    def parse_version(version):
+        return semver.VersionInfo.parse(version)
+
+    # Prepare data
+    latest_version_map: Dict[str, Tuple[str, str]] = {}
+    bundle_version_names = [
+        (bi["version"], bi["packageName"], bi["bundlePath"])
+        for bi in bundle_images
+        if bi["bundlePath"] in bundles
+    ]
+
+    # Validate the bundles and bundle_images lenght
+    if len(bundle_version_names) != len(bundles):
+        uniq_verions = [x[2] for x in bundle_version_names]
+        diff = set(bundles) - set(uniq_verions)
+        raise IIBError(f"Failed to retrieve bundles by semver, missing bundle images: {diff}")
+
+    # Retrieve the latest version of all bundle packages.
+    for bundle_version, bundle_name, bundle_path in bundle_version_names:
+        current_version, _ = latest_version_map.get(bundle_name, ('0.0.0', "nopath"))
+        if parse_version(bundle_version) >= parse_version(current_version):
+            latest_version_map[bundle_name] = (bundle_version, bundle_path)
+
+    # Return the bundle_path for all bundles in their latest versions
+    res = [x[1] for x in latest_version_map.values()]
+    return sorted(res)
