@@ -28,6 +28,7 @@ setup(
         'tenacity',
         'typing-extensions',
         'packaging',
+        'semver',
         'opentelemetry-api',
         'opentelemetry-sdk',
         'opentelemetry-exporter-otlp',
