@@ -23,6 +23,7 @@ python-qpid-proton
 recommonmark
 requests
 ruamel.yaml
+semver
 setuptools
 sphinx==8.2.3
 sphinx_rtd_theme

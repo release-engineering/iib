@@ -19,6 +19,7 @@ from iib.workers.tasks.utils import RequestConfigMerge
         (None, None, None),
     ),
 )
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_latest_version')
 @mock.patch('iib.workers.tasks.build_merge_index_image.has_hidden_database')
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
@@ -77,6 +78,7 @@ def test_handle_merge_request(
     mock_run_cmd,
     mock_gidp,
     mock_hhdb,
+    mock_gblv,
     target_index,
     target_index_resolved,
     binary_image,
@@ -183,6 +185,7 @@ def test_handle_merge_request(
     assert mock_add_label_to_index.call_count == 2
     mock_uiips.assert_called_once()
 
+    mock_gblv.assert_called_once()
     mock_sov.assert_called_once_with(target_index_resolved)
     mock_run_cmd.assert_called_once()
 
@@ -379,6 +382,7 @@ def test_handle_merge_request_filter_out_pure_fbc(
         ([{'bundlePath': 'invalid_bundle:1.0', "packageName": "invalid_bundle"}], {}),
     ],
 )
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_bundles_latest_version')
 @mock.patch('iib.workers.tasks.build_merge_index_image.has_hidden_database')
 @mock.patch('iib.workers.tasks.opm_operations._get_input_data_path')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
@@ -437,6 +441,7 @@ def test_handle_merge_request_no_deprecate(
     mock_run_cmd,
     mock_gidp,
     mock_hhdb,
+    mock_gblv,
     invalid_bundles,
     filtered_invalid_version_bundles_names,
     source_fbc,
@@ -452,6 +457,8 @@ def test_handle_merge_request_no_deprecate(
         'target_index_resolved': target_index_resolved,
         'distribution_scope': 'stage',
     }
+    # Return the bundles list as it is for mock
+    mock_gblv.side_effect = lambda x, _: x
 
     # returns different values to test different cases
     # depends on sequence of is_index_fbc calls:
@@ -508,7 +515,7 @@ def test_handle_merge_request_no_deprecate(
     if invalid_bundles:
         if filtered_invalid_version_bundles_names:
             mock_verify_operators_exists.assert_called_once()
-
+            mock_gblv.assert_called_once()
             if source_fbc:
                 mock_dep_b_fbc.assert_called_once_with(
                     bundles=['invalid_bundle:1.0'],
@@ -530,11 +537,13 @@ def test_handle_merge_request_no_deprecate(
                 assert mock_pi.call_count == 3
         else:
             mock_dep_b_fbc.assert_not_called()
+            mock_gblv.assert_not_called()
     else:
         mock_dep_b.assert_not_called()
         mock_dep_b_fbc.assert_not_called()
         assert mock_bi.call_count == 2
         assert mock_pi.call_count == 2
+        mock_gblv.assert_not_called()
     assert mock_add_label_to_index.call_count == 2
     mock_vii.assert_not_called()
     mock_capml.assert_called_once_with(1, {'amd64', 'other_arch'}, None)
@@ -979,3 +988,138 @@ def test_handle_merge_request_raises(
         )
 
         mock_uiibs.assert_called_once_with(1, prebuild_info)
+
+
+@pytest.mark.parametrize(
+    "bundle_images,expected",
+    [
+        (
+            [
+                {
+                    'bundlePath': 'operator1@sha256:0082',
+                    'packageName': 'operator1',
+                    'version': '0.8.2',
+                },
+                {
+                    'bundlePath': 'operator1@sha256:0090',
+                    'packageName': 'operator1',
+                    'version': '0.9.0',
+                },
+                {
+                    'bundlePath': 'operator2@sha256:0012',
+                    'packageName': 'operator2',
+                    'version': '0.0.12',
+                },
+                {
+                    'bundlePath': 'operator2@sha256:0010',
+                    'packageName': 'operator2',
+                    'version': '0.0.10',
+                },
+            ],
+            [
+                'operator1@sha256:0090',
+                'operator2@sha256:0012',
+            ],
+        ),
+        (
+            [
+                {
+                    'bundlePath': 'bar-operator@sha256:2100',
+                    'packageName': 'bar-operator',
+                    'version': '2.1.0',
+                },
+                {
+                    'bundlePath': 'foo-operator@sha256:0010',
+                    'packageName': 'foo-operator',
+                    'version': '0.0.10',
+                },
+                {
+                    'bundlePath': 'foo-operator@sha256:1009',
+                    'packageName': 'foo-operator',
+                    'version': '1.0.9',
+                },
+                {
+                    'bundlePath': 'bar-operator@sha256:0510',
+                    'packageName': 'bar-operator',
+                    'version': '0.5.1-0',
+                },
+                {
+                    'bundlePath': 'foo-operator@sha256:0001',
+                    'packageName': 'foo-operator',
+                    'version': '0.0.1',
+                },
+                {
+                    'bundlePath': 'foo-operator@sha256:1008',
+                    'packageName': 'foo-operator',
+                    'version': '1.0.8',
+                },
+                {
+                    'bundlePath': 'bar-operator@sha256:1111',
+                    'packageName': 'bar-operator',
+                    'version': '1.1.11',
+                },
+            ],
+            [
+                'bar-operator@sha256:2100',
+                'foo-operator@sha256:1009',
+            ],
+        ),
+        ([], []),
+    ],
+)
+def test_get_bundles_latest_version(bundle_images, expected):
+    bundles = [b['bundlePath'] for b in bundle_images]
+    res = build_merge_index_image.get_bundles_latest_version(bundles, bundle_images)
+    assert res == expected
+
+
+@pytest.mark.parametrize(
+    "bundles,bundle_images,diff_bundles",
+    [
+        (
+            ["operator1@sha256:1234", "operator2@sha256:1000"],
+            [
+                {
+                    'bundlePath': 'operator1@sha256:1234',
+                    'packageName': 'operator1',
+                    'version': '1.2.34',
+                },
+            ],
+            set(["operator2@sha256:1000"]),
+        ),
+        (
+            [
+                "missing-operator@sha256:1234",
+                "missing-operator@sha256:0001",
+                "operator1@sha256:1000",
+            ],
+            [
+                {
+                    'bundlePath': 'operator1@sha256:1000',
+                    'packageName': 'operator1',
+                    'version': '1.0.0',
+                },
+                {
+                    'bundlePath': 'operator1@sha256:2000',
+                    'packageName': 'operator1',
+                    'version': '2.0.0',
+                },
+                {
+                    'bundlePath': 'operator1@sha256:3000',
+                    'packageName': 'operator1',
+                    'version': '3.0.0',
+                },
+            ],
+            set(
+                [
+                    "missing-operator@sha256:1234",
+                    "missing-operator@sha256:0001",
+                ]
+            ),
+        ),
+    ],
+)
+def test_get_bundles_latest_version_missing_bundles(bundles, bundle_images, diff_bundles):
+    err = f"Failed to retrieve bundles by semver, missing bundle images: {diff_bundles}"
+    with pytest.raises(IIBError, match=err):
+        build_merge_index_image.get_bundles_latest_version(bundles, bundle_images)
