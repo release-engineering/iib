@@ -9,7 +9,7 @@ import celery
 import pytest
 
 from iib.exceptions import ConfigError
-from iib.workers.config import configure_celery, validate_celery_config
+from iib.workers.config import configure_celery, validate_celery_config, _validate_konflux_config
 
 
 @patch('os.path.isfile', return_value=False)
@@ -401,3 +401,122 @@ def test_validate_celery_config_iib_opm_ocp_mapping_opm_not_exist(mock_pe, tmpdi
     }
     with pytest.raises(ConfigError, match='opm-not-exist is not installed'):
         validate_celery_config(worker_config)
+
+
+def test_validate_konflux_config_no_config():
+    """Test validation when no Konflux config is provided."""
+    conf = mock.Mock()
+    conf.get.return_value = None
+
+    # Should not raise any error when no config is provided
+    _validate_konflux_config(conf)
+
+
+@pytest.mark.parametrize(
+    'url,token,ca_cert,namespace,expected_error',
+    [
+        # Partial config scenarios
+        (
+            None,
+            'test-token',
+            '/path/to/ca.crt',
+            'iib-tenant',
+            'iib_konflux_cluster_url must be a valid HTTPS URL when using Konflux configuration',
+        ),
+        (
+            'https://api.example.com:6443',
+            None,
+            '/path/to/ca.crt',
+            'iib-tenant',
+            'iib_konflux_cluster_token must be a string when using Konflux configuration',
+        ),
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            None,
+            'iib-tenant',
+            'iib_konflux_cluster_ca_cert must be a string when using Konflux configuration',
+        ),
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            '/path/to/ca.crt',
+            None,
+            'iib_konflux_namespace must be a non-empty string when using Konflux configuration',
+        ),
+        # Invalid URL
+        (
+            'http://api.example.com:6443',
+            'test-token',
+            '/path/to/ca.crt',
+            'iib-tenant',
+            'iib_konflux_cluster_url must be a valid HTTPS URL when using Konflux configuration',
+        ),
+        # Invalid token type
+        (
+            'https://api.example.com:6443',
+            123,
+            '/path/to/ca.crt',
+            'iib-tenant',
+            'iib_konflux_cluster_token must be a string when using Konflux configuration',
+        ),
+        # Invalid CA cert type
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            123,
+            'iib-tenant',
+            'iib_konflux_cluster_ca_cert must be a string when using Konflux configuration',
+        ),
+        # Invalid namespace type
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            '/path/to/ca.crt',
+            123,
+            'iib_konflux_namespace must be a non-empty string when using Konflux configuration',
+        ),
+        # Empty namespace
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            '/path/to/ca.crt',
+            '',
+            'iib_konflux_namespace must be a non-empty string when using Konflux configuration',
+        ),
+        # Whitespace-only namespace
+        (
+            'https://api.example.com:6443',
+            'test-token',
+            '/path/to/ca.crt',
+            '   ',
+            'iib_konflux_namespace must be a non-empty string when using Konflux configuration',
+        ),
+    ],
+)
+def test_validate_konflux_config_failure_scenarios(url, token, ca_cert, namespace, expected_error):
+    """Test Konflux configuration validation failure scenarios."""
+    conf = mock.Mock()
+    conf.get.side_effect = lambda key: {
+        'iib_konflux_cluster_url': url,
+        'iib_konflux_cluster_token': token,
+        'iib_konflux_cluster_ca_cert': ca_cert,
+        'iib_konflux_namespace': namespace,
+    }.get(key)
+
+    with pytest.raises(ConfigError, match=expected_error):
+        _validate_konflux_config(conf)
+
+
+def test_validate_konflux_config_valid_config():
+    """Test validation with valid configuration."""
+    conf = mock.Mock()
+    conf.get.side_effect = lambda key: {
+        'iib_konflux_cluster_url': 'https://api.example.com:6443',
+        'iib_konflux_cluster_token': 'test-token',
+        'iib_konflux_cluster_ca_cert': '/path/to/ca.crt',
+        'iib_konflux_namespace': 'iib-tenant',
+    }.get(key)
+
+    # Should not raise any error with valid config
+    _validate_konflux_config(conf)

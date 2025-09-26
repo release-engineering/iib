@@ -17,6 +17,7 @@ setup(
         'flask-migrate',
         'flask-sqlalchemy',
         'importlib-resources',
+        'kubernetes',
         'operator-manifest==0.0.5',
         'psycopg2-binary',
         'python-memcached ',
