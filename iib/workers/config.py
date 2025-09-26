@@ -127,6 +127,12 @@ class Config(object):
     # The minimal version of OPM which requires setting the --migrate-level flag for migrate
     iib_opm_new_migrate_version = "v1.46.0"
 
+    # Konflux configuration for cross-cluster access
+    iib_konflux_cluster_url: Optional[str] = None
+    iib_konflux_cluster_token: Optional[str] = None
+    iib_konflux_cluster_ca_cert: Optional[str] = None
+    iib_konflux_namespace: str = 'iib-tenant'
+
 
 class ProductionConfig(Config):
     """The production IIB Celery configuration."""
@@ -326,6 +332,7 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
 
     _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
+    _validate_konflux_config(conf)
 
     if conf.get('iib_aws_s3_bucket_name'):
         if not isinstance(conf['iib_aws_s3_bucket_name'], str):
@@ -479,6 +486,46 @@ def _validate_iib_org_customizations(
                             f'The value of iib_organization_customizations.{org}'
                             f'[{org_config.index(customization)}].{valid_key} must be a string'
                         )
+
+
+def _validate_konflux_config(conf: app.utils.Settings) -> None:
+    """
+    Validate Konflux configuration variables.
+
+    :param celery.app.utils.Settings conf: the Celery application configuration to validate
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
+    """
+    # Check if any Konflux configuration is provided
+    konflux_url = conf.get('iib_konflux_cluster_url')
+    konflux_token = conf.get('iib_konflux_cluster_token')
+    konflux_ca_cert = conf.get('iib_konflux_cluster_ca_cert')
+
+    # If any Konflux config is provided, all required fields must be set
+    if any([konflux_url, konflux_token, konflux_ca_cert]):
+        if not konflux_url:
+            raise ConfigError(
+                'iib_konflux_cluster_url must be set when using Konflux configuration'
+            )
+        if not konflux_token:
+            raise ConfigError(
+                'iib_konflux_cluster_token must be set when using Konflux configuration'
+            )
+        if not konflux_ca_cert:
+            raise ConfigError(
+                'iib_konflux_cluster_ca_cert must be set when using Konflux configuration'
+            )
+
+        # Validate URL format
+        if not isinstance(konflux_url, str) or not konflux_url.startswith('https://'):
+            raise ConfigError('iib_konflux_cluster_url must be a valid HTTPS URL')
+
+        # Validate token is a string
+        if not isinstance(konflux_token, str):
+            raise ConfigError('iib_konflux_cluster_token must be a string')
+
+        # Validate CA cert is a string
+        if not isinstance(konflux_ca_cert, str):
+            raise ConfigError('iib_konflux_cluster_ca_cert must be a string')
 
 
 def get_worker_config() -> app.utils.Settings:

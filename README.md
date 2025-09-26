@@ -446,6 +446,15 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_ocp_opm_mapping` - the dictionary mapping of OCP version to OPM version
 indicating the OPM version to be used for the corresponding OCP version like
 `{"v4.15": "opm-v1.28.0"}`
+* `iib_konflux_cluster_url` - the URL of the Konflux OpenShift cluster to access for Tekton PipelineRuns
+  (e.g. `https://api.konflux.example.com:6443`). This is required for cross-cluster access to Konflux.
+* `iib_konflux_cluster_token` - the authentication token for accessing the Konflux OpenShift cluster.
+  This should be a service account token with appropriate permissions to access Tekton PipelineRuns.
+* `iib_konflux_cluster_ca_cert` - the CA certificate for the Konflux OpenShift cluster. This can be
+  either a file path to the certificate or the certificate content as a string. This is required
+  for secure cross-cluster access.
+* `iib_konflux_namespace` - the namespace in the Konflux cluster where Tekton PipelineRuns are located.
+  This defaults to `iib-tenant`.
 
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
