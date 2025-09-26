@@ -7,6 +7,8 @@ import stat
 import tempfile
 from typing import List, Optional, Tuple
 
+import semver
+
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
 from iib.workers.config import get_worker_config
@@ -403,6 +405,12 @@ def handle_merge_request(
             ]
 
         if deprecation_bundles:
+            # We need to sort the deprecation bundles by semver in order to avoid
+            # failures on "opm deprecatetruncate" by having versions already removed before
+            # by a higher bundle version.
+            all_bundles = source_index_bundles + target_index_bundles
+            deprecation_bundles = sort_bundles_by_semver(deprecation_bundles, all_bundles)
+
             # we can check if source index is FBC or not because intermediate_image
             # will be always the same type because it is built
             # from source index image in _add_bundles_missing_in_source()
@@ -582,3 +590,32 @@ def is_bundle_version_valid(
         )
 
     return False
+
+
+def sort_bundles_by_semver(bundles: List[str], bundle_images: List[BundleImage]) -> List[str]:
+    """Sort all bundles pullspecs by their versions via semver.
+
+    It uses the ``bundle_images`` to retrieve the version to be ordered from.
+
+    It's expected for ``bundles`` to be a subset of ``bundle_images``, otherwise
+    an IIBError will be raised due to missing bundles.
+
+    :param list bundles: the bundles to be sorted by versions via semver
+    :param list bundle_images: the BundleImage list containing all bundles
+        pullspecs and versions. It's used to map the pullspecs from ``bundles``
+        into their versions for sorting.
+    :return: list with bundles pullspecs sorted by version (semver).
+    :rtype: list
+    :raises IIBError: if ``bundles`` contains a pullspec not present in ``bundle_images``.
+    """
+    bundle_versions = [
+        (bi["version"], bi["bundlePath"]) for bi in bundle_images if bi["bundlePath"] in bundles
+    ]
+
+    if len(bundle_versions) != len(bundles):
+        uniq_verions = [x[1] for x in bundle_versions]
+        diff = set(bundles) - set(uniq_verions)
+        raise IIBError(f"Failed to sort bundles by semver, missing bundle images: {diff}")
+
+    sorted_bundles = sorted(bundle_versions, key=lambda x: semver.VersionInfo.parse(x[0]))
+    return [x[1] for x in sorted_bundles]
