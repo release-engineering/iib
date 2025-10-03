@@ -127,6 +127,13 @@ class Config(object):
     # The minimal version of OPM which requires setting the --migrate-level flag for migrate
     iib_opm_new_migrate_version = "v1.46.0"
 
+    # Konflux configuration for cross-cluster access
+    iib_konflux_cluster_url: Optional[str] = None
+    iib_konflux_cluster_token: Optional[str] = None
+    iib_konflux_cluster_ca_cert: Optional[str] = None
+    iib_konflux_namespace: Optional[str] = None
+    iib_konflux_pipeline_timeout: int = 1800
+
 
 class ProductionConfig(Config):
     """The production IIB Celery configuration."""
@@ -326,6 +333,7 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
 
     _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
+    _validate_konflux_config(conf)
 
     if conf.get('iib_aws_s3_bucket_name'):
         if not isinstance(conf['iib_aws_s3_bucket_name'], str):
@@ -479,6 +487,63 @@ def _validate_iib_org_customizations(
                             f'The value of iib_organization_customizations.{org}'
                             f'[{org_config.index(customization)}].{valid_key} must be a string'
                         )
+
+
+def _validate_konflux_config(conf: app.utils.Settings) -> None:
+    """
+    Validate Konflux configuration variables.
+
+    :param celery.app.utils.Settings conf: the Celery application configuration to validate
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
+    """
+    konflux_url = conf.get('iib_konflux_cluster_url')
+    konflux_token = conf.get('iib_konflux_cluster_token')
+    konflux_ca_cert = conf.get('iib_konflux_cluster_ca_cert')
+    konflux_namespace = conf.get('iib_konflux_namespace')
+
+    if any([konflux_url, konflux_token, konflux_ca_cert, konflux_namespace]):
+        _validate_konflux_fields(konflux_url, konflux_token, konflux_ca_cert, konflux_namespace)
+
+
+def _validate_konflux_fields(
+    konflux_url: Optional[str],
+    konflux_token: Optional[str],
+    konflux_ca_cert: Optional[str],
+    konflux_namespace: Optional[str],
+) -> None:
+    """
+    Validate Konflux configuration fields for presence, types, and formats.
+
+    :param str konflux_url: The Kubernetes cluster API URL
+    :param str konflux_token: The authentication token for the cluster
+    :param str konflux_ca_cert: The CA certificate for SSL verification
+    :param str konflux_namespace: The namespace for Konflux operations
+    :raises iib.exceptions.ConfigError: if the configuration is invalid
+    """
+    if (
+        not konflux_url
+        or not isinstance(konflux_url, str)
+        or not konflux_url.startswith('https://')
+    ):
+        raise ConfigError(
+            'iib_konflux_cluster_url must be a valid HTTPS URL when using Konflux configuration'
+        )
+    if not konflux_token or not isinstance(konflux_token, str):
+        raise ConfigError(
+            'iib_konflux_cluster_token must be a string when using Konflux configuration'
+        )
+    if not konflux_ca_cert or not isinstance(konflux_ca_cert, str):
+        raise ConfigError(
+            'iib_konflux_cluster_ca_cert must be a string when using Konflux configuration'
+        )
+    if (
+        not konflux_namespace
+        or not isinstance(konflux_namespace, str)
+        or not konflux_namespace.strip()
+    ):
+        raise ConfigError(
+            'iib_konflux_namespace must be a non-empty string when using Konflux configuration'
+        )
 
 
 def get_worker_config() -> app.utils.Settings:
