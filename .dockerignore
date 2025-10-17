@@ -1,0 +1,6 @@
+# List of directories to exclude from the container image copy
+.github
+.tox
+htmlcov
+iib.egg-info
+iib_data
