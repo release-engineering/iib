@@ -6,6 +6,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.4.3
+
+* chore(deps): update dependency click to v8.3.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1168
+* chore(deps): update dependency billiard to v4.2.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1171
+* chore(deps): update dependency botocore to v1.40.35 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1170
+* chore(deps): update dependency coverage to v7.10.7 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1172
+* chore(deps): update dependency boto3 to v1.40.35 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1169
+* chore(deps): update dependency wcwidth to v0.2.14 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1174
+* merge-index: filter out pure fbc operators by @JAVGan in https://github.com/release-engineering/iib/pull/1175
+* chore(deps): update dependency botocore to v1.40.39 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1177
+* chore(deps): update dependency boto3 to v1.40.39 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1176
+* chore(deps): update dependency grpcio to v1.75.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1183
+* chore(deps): update postgres docker tag to v18 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1182
+* chore(deps): update dependency botocore to v1.40.40 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1184
+* chore(deps): update dependency boto3 to v1.40.40 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1185
+* suggestion: add black-format to tox by @JAVGan in https://github.com/release-engineering/iib/pull/1179
+* chore(deps): update dependency markupsafe to v3.0.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1186
+* chore(deps): update dependency botocore to v1.40.41 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1188
+* chore(deps): update dependency boto3 to v1.40.41 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1187
+* merge_index_image: latest bundles for deprecation by @JAVGan in https://github.com/release-engineering/iib/pull/1180
+* Adding helper functions for index.db caching by @lipoja in https://github.com/release-engineering/iib/pull/1162
+* iib: bump dependencies by @JAVGan in https://github.com/release-engineering/iib/pull/1189
+* chore(deps): update dependency botocore to v1.40.42 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1191
+* chore(deps): update dependency boto3 to v1.40.42 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1190
+* chore(deps): update dependency cryptography to v46.0.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1192
+* chore(deps): update dependency botocore to v1.40.44 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1194
+* Add konflux_utils module to monitor Konflux Pipelineruns by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1181
+* chore(deps): update python docker tag to v3.14.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1198
+* chore(deps): update dependency certifi to v2025.10.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1197
+* chore(deps): update dependency websocket-client to v1.9.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1200
+* chore(deps): update dependency botocore to v1.40.48 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1196
+* chore(deps): update dependency gssapi to v1.10.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1195
+* chore(deps): update dependency boto3 to v1.40.48 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1193
+* chore(deps): update dependency botocore to v1.40.49 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1202
+* chore(deps): update dependency boto3 to v1.40.49 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1201
+* chore(deps): update dependency sqlalchemy to v2.0.44 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1204
+* chore(deps): update dependency alembic to v1.17.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1207
+* chore(deps): update dependency cachetools to v6.2.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1208
+* chore(deps): update dependency idna to v3.11 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1210
+* chore(deps): update dependency botocore to v1.40.51 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1206
+* chore(deps): update dependency boto3 to v1.40.51 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1205
+* chore(deps): update dependency psycopg2-binary to v2.9.11 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1203
+* chore(deps): update dependency charset-normalizer to v3.4.4 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1211
+* chore(deps): update dependency cryptography to v46.0.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1216
+* chore(deps): update dependency protobuf to v6.33.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1215
+* chore(deps): update dependency coverage to v7.11.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1214
+* chore(deps): update dependency botocore to v1.40.54 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1213
+* chore(deps): update dependency boto3 to v1.40.54 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1212
+* Adding .dockerignore file by @lipoja in https://github.com/release-engineering/iib/pull/1217
+
 ## 9.4.2
 
 * bugfix: Avoid failing on git with no changes by @JAVGan in https://github.com/release-engineering/iib/pull/1165
