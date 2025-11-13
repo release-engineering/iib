@@ -42,6 +42,13 @@ class Config(object):
     }
     iib_opm_pprof_lock_required_min_version = "1.29.0"
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
+    iib_index_db_artifact_registry: str = None
+    iib_index_db_imagestream_registry: str = None
+    iib_index_db_artifact_tag_template: str = '{image_name}-{tag}'
+    iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
+    # Whether to use OpenShift ImageStream cache for index.db artifacts
+    # Requires OpenShift cluster with ImageStream configured
+    iib_use_imagestream_cache: bool = False
     iib_index_image_output_registry: Optional[str] = None
     iib_index_configs_gitlab_tokens_map: Optional[Dict[str, Dict[str, str]]] = None
     iib_log_level: str = 'INFO'
@@ -251,6 +258,8 @@ class DevelopmentConfig(Config):
         "v4.14": "opm-v1.26.4",
         "v4.15": "opm-v1.26.4",
         "v4.16": "opm-v1.40.0",
+        "v4.17": "opm-v1.40.0",
+        "v4.18": "opm-v1.40.0",
     }
 
 

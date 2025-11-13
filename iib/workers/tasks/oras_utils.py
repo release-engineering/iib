@@ -63,6 +63,7 @@ def push_oras_artifact(
     artifact_type: str = "application/vnd.sqlite",
     registry_auths: Optional[Dict[str, Any]] = None,
     annotations: Optional[Dict[str, str]] = None,
+    cwd: Optional[str] = None,
 ) -> None:
     """
     Push a local artifact to an OCI registry using ORAS.
@@ -70,18 +71,24 @@ def push_oras_artifact(
     This function is equivalent to: `oras push {artifact_ref} {local_path}:{artifact_type}`
 
     :param str artifact_ref: OCI artifact reference to push to (e.g., 'quay.io/repo/repo:tag')
-    :param str local_path: Local path to the artifact file. Can be an absolute or relative path.
-        If an absolute path is provided, the --disable-path-validation flag will be
-        automatically added.
+    :param str local_path: Local path to the artifact file. Should be a relative path.
+        When using cwd, this should be a relative path (typically just
+        the filename) relative to the cwd directory.
     :param str artifact_type: MIME type of the artifact (default: 'application/vnd.sqlite')
     :param dict registry_auths: Optional dockerconfig.json auth information for private registries
     :param dict annotations: Optional annotations to add to the artifact
+    :param str cwd: Optional working directory for the ORAS command. When provided, local_path
+        should be relative to this directory (e.g., just the filename).
     :raises IIBError: If the push operation fails
     """
     log.info('Pushing artifact from %s to %s with type %s', local_path, artifact_ref, artifact_type)
+    if cwd:
+        log.info('Using working directory: %s', cwd)
 
-    if not os.path.exists(local_path):
-        raise IIBError(f'Local artifact path does not exist: {local_path}')
+    # Construct the full path for validation
+    full_path = os.path.join(cwd, local_path) if cwd else local_path
+    if not os.path.exists(full_path):
+        raise IIBError(f'Local artifact path does not exist: {full_path}')
 
     # Build ORAS push command
     cmd = ['oras', 'push', artifact_ref, f'{local_path}:{artifact_type}']
@@ -95,10 +102,15 @@ def push_oras_artifact(
         for key, value in annotations.items():
             cmd.extend(['--annotation', f'{key}={value}'])
 
+    # Prepare parameters for run_cmd
+    params = {}
+    if cwd:
+        params['cwd'] = cwd
+
     # Use namespace-specific registry authentication if provided
     with set_registry_auths(registry_auths, use_empty_config=True):
         try:
-            run_cmd(cmd, exc_msg=f'Failed to push OCI artifact to {artifact_ref}')
+            run_cmd(cmd, params=params, exc_msg=f'Failed to push OCI artifact to {artifact_ref}')
             log.info('Successfully pushed OCI artifact to %s', artifact_ref)
         except Exception as e:
             raise IIBError(f'Failed to push OCI artifact to {artifact_ref}: {e}')
@@ -180,3 +192,41 @@ def refresh_indexdb_cache(
             ],
             exc_msg=f'Failed to refresh OCI artifact {tag}.',
         )
+
+
+def refresh_indexdb_cache_for_image(index_image_pullspec: str) -> str:
+    """
+    Refreshes the cached data for an index database, associating it with the given image
+    pull specification.
+
+    This function extracts the name and tag from the specified image pullspec,
+    and refreshes the associated index database cache.
+
+    :param str index_image_pullspec: The pull specification of the index image to cache.
+    :return: A formatted string combining the index name and tag.
+    :rtype: str
+    """
+    index_name, tag = _get_name_and_tag_from_pullspec(index_image_pullspec)
+    refresh_indexdb_cache(_get_artifact_combined_tag(index_name, tag))
+
+
+def get_imagestream_artifact_pullspec(from_index: str) -> str:
+    """
+    Get the ImageStream pullspec for the index.db artifact.
+
+    This function constructs the internal OpenShift ImageStream pullspec that can be used
+    to pull the index.db artifact from the cached ImageStream instead of directly from Quay.
+
+    :param str from_index: The from_index pullspec
+    :return: ImageStream pullspec for the artifact
+    :rtype: str
+    """
+    conf = get_worker_config()
+    image_name, tag = _get_name_and_tag_from_pullspec(from_index)
+    combined_tag = _get_artifact_combined_tag(image_name, tag)
+
+    # ImageStream pullspec format: image-registry.openshift-image-registry.svc:5000/{namespace}/index-db:{combined_tag}
+    imagestream_pullspec = conf['iib_index_db_artifact_template'].format(
+        registry=conf['iib_index_db_imagestream_registry'], tag=combined_tag
+    )
+    return imagestream_pullspec
