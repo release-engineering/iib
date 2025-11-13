@@ -1204,7 +1204,7 @@ rsa==4.9.1 \
     # via
     #   -r requirements.txt
     #   google-auth
-ruamel-yaml==0.18.15 \
+ruamel-yaml==0.18.16 \
     --hash=sha256:148f6488d698b7a5eded5ea793a025308b25eca97208181b6a026037f391f701 \
     --hash=sha256:dbfca74b018c4c3fba0b9cc9ee33e53c371194a9000e694995e620490fd40700
     # via
@@ -1510,3 +1510,6 @@ setuptools==80.9.0 \
     --hash=sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922 \
     --hash=sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c
     # via -r requirements-test.in
+ruamel.yaml==0.18.16 \
+    --hash=sha256:048f26d64245bae57a4f9ef6feb5b552a386830ef7a826f235ffb804c59efbba \
+    --hash=sha256:a6e587512f3c998b2225d68aa1f35111c29fad14aed561a26e73fab729ec5e5a
