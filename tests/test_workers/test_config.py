@@ -51,6 +51,7 @@ def test_validate_celery_config(mock_isdir, mock_isaccess):
             'iib_request_recursive_related_bundles_dir': 'some-dire',
             'iib_ocp_opm_mapping': {},
             'iib_default_opm': 'opm',
+            'iib_index_db_artifact_registry': 'registry.example.com',
         }
     )
 
@@ -62,6 +63,7 @@ def test_validate_celery_config_failure(missing_key):
         'iib_registry': 'registry',
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     conf.pop(missing_key)
     with pytest.raises(ConfigError, match=f'{missing_key} must be set'):
@@ -75,6 +77,7 @@ def test_validate_celery_config_iib_required_labels_not_dict():
         'iib_required_labels': 123,
         'iib_default_opm': 'opm',
         'iib_ocp_opm_mapping': {},
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     with pytest.raises(ConfigError, match='iib_required_labels must be a dictionary'):
         validate_celery_config(conf)
@@ -88,6 +91,7 @@ def test_validate_celery_config_iib_replace_registry_not_dict():
         'iib_default_opm': 'opm',
         'iib_ocp_opm_mapping': {},
         'iib_required_labels': {},
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     with pytest.raises(
         ConfigError, match='iib_related_image_registry_replacement must be a dictionary'
@@ -218,6 +222,7 @@ def test_validate_celery_config_invalid_organization_customizations(config, erro
         'iib_required_labels': {},
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     with pytest.raises(ConfigError, match=error):
         validate_celery_config(conf)
@@ -258,6 +263,7 @@ def test_validate_celery_config_request_logs_dir_misconfigured(tmpdir, file_type
         'iib_request_recursive_related_bundles_dir': 'some-dir',
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     error = error.format(logs_dir=iib_request_logs_dir)
     with pytest.raises(ConfigError, match=error):
@@ -292,6 +298,7 @@ def test_validate_celery_config_invalid_s3_config(config, error):
         'iib_organization_customizations': {},
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     worker_config = {**conf, **config}
     with pytest.raises(ConfigError, match=error):
@@ -311,6 +318,7 @@ def test_validate_celery_config_invalid_s3_env_vars():
         'iib_request_recursive_related_bundles_dir': 'yet-antoher-dir',
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     error = (
         '"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" and "AWS_DEFAULT_REGION" '
@@ -332,6 +340,7 @@ def test_validate_celery_config_invalid_otel_config(tmpdir):
         'iib_request_recursive_related_bundles_dir': tmpdir.join('some-dir'),
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     error = (
         '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
@@ -351,6 +360,7 @@ def test_validate_celery_config_invalid_recursive_related_bundles_config():
         'iib_organization_customizations': {},
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     error = (
         '"iib_request_recursive_related_bundles_dir" must be set when'
@@ -368,6 +378,7 @@ def test_validate_celery_config_invalid_iib_no_ocp_label_allow_list():
         'iib_no_ocp_label_allow_list': [''],
         'iib_ocp_opm_mapping': {},
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
 
     error = 'Empty string is not allowed in iib_no_ocp_label_allow_list'
@@ -382,6 +393,7 @@ def test_validate_celery_config_iib_opm_ocp_mapping_incorrect_type():
         'iib_required_labels': {},
         'iib_ocp_opm_mapping': 'incorrect_value',
         'iib_default_opm': 'opm',
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     with pytest.raises(ConfigError, match='iib_ocp_opm_mapping must be a dictionary'):
         validate_celery_config(worker_config)
@@ -398,6 +410,7 @@ def test_validate_celery_config_iib_opm_ocp_mapping_opm_not_exist(mock_pe, tmpdi
         'iib_ocp_opm_mapping': {
             'v4.14': 'opm-not-exist',
         },
+        'iib_index_db_artifact_registry': 'registry.example.com',
     }
     with pytest.raises(ConfigError, match='opm-not-exist is not installed'):
         validate_celery_config(worker_config)

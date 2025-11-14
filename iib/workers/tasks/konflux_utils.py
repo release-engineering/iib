@@ -146,7 +146,9 @@ def find_pipelinerun(commit_sha: str) -> List[Dict[str, Any]]:
         raise IIBError(error_msg)
 
 
-def wait_for_pipeline_completion(pipelinerun_name: str, timeout: Optional[int] = None) -> None:
+def wait_for_pipeline_completion(
+    pipelinerun_name: str, timeout: Optional[int] = None
+) -> dict[str, Any]:
     """
     Poll the status of a tekton Pipelinerun and wait for completion.
 
@@ -172,7 +174,7 @@ def wait_for_pipeline_completion(pipelinerun_name: str, timeout: Optional[int] =
             run = _fetch_pipelinerun_status(pipelinerun_name)
 
             if _handle_pipelinerun_completion(pipelinerun_name, run):
-                return
+                return run
 
             time.sleep(30)
 

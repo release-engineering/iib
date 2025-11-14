@@ -11,6 +11,9 @@ RUN dnf -y install \
     buildah \
     fuse-overlayfs \
     gcc \
+    curl \
+    tar \
+    gzip \
     git \
     krb5-devel \
     libffi-devel \
@@ -36,6 +39,17 @@ ADD https://github.com/fullstorydev/grpcurl/releases/download/v1.8.5/grpcurl_1.8
 RUN cd /usr/bin && tar -xf /src/grpcurl_1.8.5_linux_x86_64.tar.gz grpcurl && rm -f /src/grpcurl_1.8.5_linux_x86_64.tar.gz
 ADD https://github.com/operator-framework/operator-sdk/releases/download/v1.15.0/operator-sdk_linux_amd64 /usr/bin/operator-sdk
 RUN chmod +x /usr/bin/operator-sdk
+
+RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.10/openshift-client-linux.tar.gz" -o /tmp/oc_client.tar.gz && \
+    tar -xvzf /tmp/oc_client.tar.gz -C /usr/bin/ && \
+    rm /tmp/oc_client.tar.gz /usr/bin/README.md
+
+RUN curl -L "https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz" -o /tmp/oras.tar.gz && \
+    tar -xvzf /tmp/oras.tar.gz -C /usr/bin/ && \
+    rm /tmp/oc_client.tar.gz /usr/bin/LICENSE
+
+RUN git config --global user.email "exd-guild-hello-operator+iib-dev-env@redhat.com"
+RUN git config --global user.name "IIB dev-env"
 
 RUN update-alternatives --set python3 $(which python3.12)
 
