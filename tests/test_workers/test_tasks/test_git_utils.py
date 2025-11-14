@@ -1125,3 +1125,50 @@ def test_push_configs_to_git_removing_with_empty_repo(
         assert call_args[0][2] == PUB_GIT_REPO  # repo_url
         assert call_args[0][3] == "latest"  # branch
         mock_shutil.rmtree.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    'mock_output, expected_sha',
+    [
+        ('abc123def456789\n', 'abc123def456789'),
+        ('  1a2b3c4d5e6f7890  \n\n', '1a2b3c4d5e6f7890'),
+        ('a1b2c3d4e5f6789012345678901234567890abcd', 'a1b2c3d4e5f6789012345678901234567890abcd'),
+        ('   \n  ', ''),
+    ],
+)
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_get_last_commit_sha_success(mock_run_cmd, mock_output, expected_sha):
+    """Test successfully retrieving the last commit SHA with various outputs."""
+    local_repo_path = '/tmp/test-repo'
+    mock_run_cmd.return_value = mock_output
+
+    result = git_utils.get_last_commit_sha(local_repo_path)
+
+    assert result == expected_sha
+    mock_run_cmd.assert_called_once_with(
+        ['git', '-C', local_repo_path, 'rev-parse', 'HEAD'],
+        exc_msg=f'Error getting last commit for {local_repo_path}',
+    )
+
+
+@pytest.mark.parametrize(
+    'local_repo_path',
+    [
+        '/tmp/test-repo',
+        '/invalid/repo',
+        '/some/repo',
+        '/tmp/repo-with-dashes_and_underscores/sub-dir',
+    ],
+)
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_get_last_commit_sha_git_error(mock_run_cmd, local_repo_path):
+    """Test when git command fails with various repository paths."""
+    mock_run_cmd.side_effect = IIBError(f'Error getting last commit for {local_repo_path}')
+
+    with pytest.raises(IIBError, match=f'Error getting last commit for {local_repo_path}'):
+        git_utils.get_last_commit_sha(local_repo_path)
+
+    mock_run_cmd.assert_called_once_with(
+        ['git', '-C', local_repo_path, 'rev-parse', 'HEAD'],
+        exc_msg=f'Error getting last commit for {local_repo_path}',
+    )

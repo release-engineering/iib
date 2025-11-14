@@ -42,6 +42,11 @@ class Config(object):
     }
     iib_opm_pprof_lock_required_min_version = "1.29.0"
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
+    # Default registry for index.db ImageStream
+    iib_index_db_imagestream_registry: Optional[str] = None
+    iib_index_db_artifact_registry: Optional[str] = None
+    iib_index_db_artifact_tag_template: str = '{image_name}-{tag}'
+    iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
     iib_index_image_output_registry: Optional[str] = None
     iib_index_configs_gitlab_tokens_map: Optional[Dict[str, Dict[str, str]]] = None
     iib_log_level: str = 'INFO'
@@ -145,6 +150,7 @@ class DevelopmentConfig(Config):
     broker_url: str = 'amqp://iib:iib@rabbitmq:5673//'
     iib_api_url: str = 'http://iib-api:8080/api/v1/'
     iib_log_level: str = 'DEBUG'
+    iib_index_db_artifact_registry: str = 'registry:8443'
     iib_organization_customizations: iib_organization_customizations_type = {
         'company-marketplace': [
             IIBOrganizationCustomizations({'type': 'resolve_image_pullspecs'}),
@@ -259,6 +265,8 @@ class TestingConfig(DevelopmentConfig):
 
     iib_docker_config_template: str = '/home/iib-worker/.docker/config.json.template'
     iib_greenwave_url: str = 'some_url'
+    iib_index_db_artifact_registry: str = 'test-artifact-registry'
+    iib_index_db_imagestream_registry: str = 'test-imagestream-registry'
     iib_omps_url: str = 'some_url'
     iib_request_logs_dir: Optional[str] = None
     iib_request_related_bundles_dir: Optional[str] = None
@@ -318,6 +326,9 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
 
     if not conf.get('iib_api_url'):
         raise ConfigError('iib_api_url must be set')
+
+    if not conf.get('iib_index_db_artifact_registry'):
+        raise ConfigError('iib_index_db_artifact_registry must be set')
 
     if not isinstance(conf['iib_required_labels'], dict):
         raise ConfigError('iib_required_labels must be a dictionary')
