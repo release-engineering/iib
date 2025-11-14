@@ -149,9 +149,10 @@ def test_wait_for_pipeline_completion_success_cases(
     mock_client.get_namespaced_custom_object.return_value = run_status
 
     # Test
-    wait_for_pipeline_completion("test-pipelinerun")
+    result = wait_for_pipeline_completion("test-pipelinerun")
 
     # Verify
+    assert result == run_status
     mock_client.get_namespaced_custom_object.assert_called_once_with(
         group="tekton.dev",
         version="v1",
@@ -283,9 +284,10 @@ def test_wait_for_pipeline_completion_still_running(
     ]
 
     # Test
-    wait_for_pipeline_completion("test-pipelinerun")
+    result = wait_for_pipeline_completion("test-pipelinerun")
 
     # Verify
+    assert result == run_status_succeeded
     assert mock_client.get_namespaced_custom_object.call_count == 2
     mock_sleep.assert_called_once_with(30)
 

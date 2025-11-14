@@ -1121,11 +1121,12 @@ def remove_operator_deprecations(from_index_configs_dir: str, operators: List[st
 
 
 def verify_operators_exists(
-    from_index: str,
+    from_index: str | None,
     base_dir: str,
     operator_packages: List[str],
     overwrite_from_index_token: Optional[str],
-):
+    index_db_path: Optional[str] = None,
+) -> Tuple[List[str], str]:
     """
     Check if operators exists in index image.
 
@@ -1133,21 +1134,25 @@ def verify_operators_exists(
     :param str base_dir: base temp directory for IIB request
     :param list(str) operator_packages: operator_package to check
     :param str overwrite_from_index_token: token used to access the image
+    :param str index_db_path: path to the index database file
     :return: packages_in_index, index_db_path
-    :rtype: (set, str)
+    :rtype: (list(str), str)
     """
     from iib.workers.tasks.iib_static_types import BundleImage
     from iib.workers.tasks.utils import set_registry_token
 
     packages_in_index: Set[str] = set()
 
-    log.info("Verifying if operator packages %s exists in index %s", operator_packages, from_index)
+    index_name = from_index if from_index else "database"
+    log.info("Verifying if operator packages %s exists in index %s", operator_packages, index_name)
 
-    # check if operator packages exists in hidden index.db
-    # we are not checking /config dir since it contains FBC opted-in operators and to remove those
-    # fbc-operations endpoint should be used
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
-        index_db_path = get_hidden_index_database(from_index=from_index, base_dir=base_dir)
+    # When index_db_path is not provided, extract the index db from the given index image
+    if not index_db_path or not os.path.exists(index_db_path) and from_index:
+        # check if operator packages exists in hidden index.db
+        # we are not checking /config dir since it contains FBC opted-in operators
+        # and to remove thosefbc-operations endpoint should be used
+        with set_registry_token(overwrite_from_index_token, from_index, append=True):
+            index_db_path = get_hidden_index_database(from_index=str(from_index), base_dir=base_dir)
 
     present_bundles: List[BundleImage] = get_list_bundles(
         input_data=index_db_path, base_dir=base_dir
@@ -1160,7 +1165,7 @@ def verify_operators_exists(
     if packages_in_index:
         log.info("operator packages found in index_db %s:  %s", index_db_path, packages_in_index)
 
-    return packages_in_index, index_db_path
+    return list(packages_in_index), index_db_path
 
 
 @retry(
