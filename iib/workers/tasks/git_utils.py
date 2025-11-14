@@ -111,7 +111,7 @@ def push_configs_to_git(
             log.info(git_status)
 
             # Add updates
-            log.info("Commiting changes to local Git repository.")
+            log.info("Committing changes to local Git repository.")
             run_cmd(
                 ["git", "-C", local_repo_dir, "add", "."], exc_msg="Error staging changes to git"
             )
@@ -181,6 +181,23 @@ def commit_and_push(
     final_commit_message = commit_message or (
         f"IIB: Update for request id {request_id} (overwrite_from_index)"
     )
+
+    log.info("Committing changes to local Git repository.")
+    run_cmd(["git", "-C", local_repo_path, "add", "."], exc_msg="Error staging changes to git")
+    git_status = run_cmd(
+        ["git", "-C", local_repo_path, "status"], exc_msg="Error getting git status"
+    )
+    log.info(git_status)
+
+    # Check if there's anything to commit
+    changes = run_cmd(
+        ["git", "-C", local_repo_path, "diff", "--staged"], exc_msg="Error getting git diff"
+    )
+    if not changes:
+        _clean_up_local_repo(local_repo_path)
+        log.warning("No changes to commit.")
+        return
+
     commit_output = run_cmd(
         ["git", "-C", local_repo_path, "commit", "-m", final_commit_message],
         exc_msg="Error committing changes",
@@ -234,6 +251,22 @@ def get_git_token(git_repo) -> Tuple[str, str]:
         )
     token_name, token_value = splitted_token[:2]
     return token_name, token_value
+
+
+def get_last_commit_sha(local_repo_path: str) -> str:
+    """
+    Get SHA for the latest commit in the local Git repository.
+
+    :param str repo_url: Path to local Git repository
+    :return: The SHA of the last commit in the repository
+    :rtype: str
+    """
+    last_commit = run_cmd(
+        ["git", "-C", local_repo_path, "rev-parse", "HEAD"],
+        exc_msg=f"Error getting last commit for {local_repo_path}",
+    )
+
+    return last_commit.strip()
 
 
 def clone_git_repo(

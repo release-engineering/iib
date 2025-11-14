@@ -10,9 +10,11 @@ from unittest import mock
 
 import pytest
 
-from iib.exceptions import ExternalServiceError, IIBError
+from iib.exceptions import ExternalServiceError
+from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks import utils
+from iib.workers.tasks.oras_utils import get_imagestream_artifact_pullspec
 
 
 @mock.patch('iib.workers.tasks.utils.skopeo_inspect')
@@ -1564,3 +1566,149 @@ def test_set_registry_auths_use_empty_config_config_not_exists_template_not_exis
     assert mock_open.call_count == 1
     assert mock_json_dump.call_args[0][0] == registry_auths
     mock_rdc.assert_called_once_with()
+
+
+def test_change_dir_changes_and_restores(tmp_path):
+    """change_dir should change cwd inside the context and restore it afterwards."""
+    original_cwd = os.getcwd()
+    new_dir = tmp_path / "subdir"
+    new_dir.mkdir()
+
+    with utils.change_dir(str(new_dir)):
+        assert os.getcwd() == str(new_dir)
+
+    assert os.getcwd() == original_cwd
+
+
+def test_change_dir_restores_on_exception(tmp_path):
+    """change_dir should restore cwd even if an exception is raised in the block."""
+    original_cwd = os.getcwd()
+    new_dir = tmp_path / "subdir"
+    new_dir.mkdir()
+
+    with pytest.raises(RuntimeError):
+        with utils.change_dir(str(new_dir)):
+            assert os.getcwd() == str(new_dir)
+            raise RuntimeError("boom")
+
+    assert os.getcwd() == original_cwd
+
+
+def test_change_dir_invalid_directory_does_not_change_cwd(tmp_path):
+    """change_dir should raise OSError for invalid path and not change cwd."""
+    original_cwd = os.getcwd()
+    invalid_dir = tmp_path / "nonexistent"
+
+    with pytest.raises(OSError):
+        with utils.change_dir(str(invalid_dir)):
+            # Block should never be entered
+            pass
+
+    assert os.getcwd() == original_cwd
+
+
+@pytest.mark.parametrize(
+    "from_index,expected_pullspec",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "test-artifact-registry/index-db:my-image-latest",
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0",
+            "test-artifact-registry/index-db:index-image-v1.0.0",
+        ),
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
+            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
+        ),
+    ],
+)
+def test_get_indexdb_artifact_pullspec(from_index, expected_pullspec):
+    """Test constructing index DB artifact pullspecs."""
+    from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    result = get_indexdb_artifact_pullspec(from_index)
+
+    assert result == expected_pullspec
+
+
+def test_get_indexdb_artifact_pullspec_invalid():
+    """Test _get_indexdb_artifact_pullspec with invalid pullspec."""
+    from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    with pytest.raises(IIBError, match="Missing tag"):
+        get_indexdb_artifact_pullspec("registry.example.com/namespace/image")
+
+
+@pytest.mark.parametrize(
+    "from_index,expected_pullspec",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "test-imagestream-registry/index-db:iib-pub-pending-v4.17",
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "test-imagestream-registry/index-db:my-image-latest",
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0",
+            "test-imagestream-registry/index-db:index-image-v1.0.0",
+        ),
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
+            "test-imagestream-registry/index-db:iib-pub-pending-v4.17",
+        ),
+    ],
+)
+def test_get_imagestream_artifact_pullspec(from_index, expected_pullspec):
+    """Test constructing ImageStream artifact pullspecs."""
+    result = get_imagestream_artifact_pullspec(from_index)
+
+    assert result == expected_pullspec
+
+
+def test_get_imagestream_artifact_pullspec_invalid():
+    """Test get_imagestream_artifact_pullspec with invalid pullspec."""
+    with pytest.raises(IIBError, match="Missing tag"):
+        get_imagestream_artifact_pullspec("registry.example.com/namespace/image")
+
+
+@mock.patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_sync')
+@pytest.mark.parametrize(
+    "pullspec,expected_combined_tag,sync_result",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "iib-pub-pending-v4.17",
+            True,
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "my-image-latest",
+            False,
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0@sha256:abc123",
+            "index-image-v1.0.0",
+            True,
+        ),
+    ],
+)
+def test_verify_indexdb_cache_for_image(
+    mock_verify_sync, pullspec, expected_combined_tag, sync_result
+):
+    """Test verify_indexdb_cache_for_image with various pullspecs."""
+    from iib.workers.tasks.oras_utils import verify_indexdb_cache_for_image
+
+    mock_verify_sync.return_value = sync_result
+
+    result = verify_indexdb_cache_for_image(pullspec)
+
+    assert result == sync_result
+    mock_verify_sync.assert_called_once_with(expected_combined_tag)
