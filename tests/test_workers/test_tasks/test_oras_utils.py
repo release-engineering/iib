@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Basic unit tests for oras_utils."""
 import logging
+import re
+
 import pytest
 from unittest import mock
 
@@ -114,9 +116,9 @@ def test_get_oras_artifact_with_custom_base_dir(mock_run_cmd, mock_mkdtemp):
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_success(mock_run_cmd, mock_exists):
-    """Test successful artifact push."""
+    """Test successful artifact push. Updated local_path to be relative."""
     artifact_ref = 'quay.io/test/repo:latest'
-    local_path = '/tmp/test.db'
+    local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
     mock_run_cmd.return_value = 'Success'
     mock_exists.return_value = True
@@ -129,7 +131,6 @@ def test_push_oras_artifact_success(mock_run_cmd, mock_exists):
             'push',
             artifact_ref,
             f'{local_path}:{artifact_type}',
-            '--disable-path-validation',
         ],
         exc_msg=f'Failed to push OCI artifact to {artifact_ref}',
     )
@@ -139,9 +140,9 @@ def test_push_oras_artifact_success(mock_run_cmd, mock_exists):
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_with_auth(mock_run_cmd, mock_exists, mock_auth, registry_auths):
-    """Test artifact push with authentication."""
+    """Test artifact push with authentication. Updated local_path to be relative."""
     artifact_ref = 'quay.io/test/repo:latest'
-    local_path = '/tmp/test.db'
+    local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
     mock_run_cmd.return_value = 'Success'
     mock_exists.return_value = True
@@ -155,7 +156,6 @@ def test_push_oras_artifact_with_auth(mock_run_cmd, mock_exists, mock_auth, regi
             'push',
             artifact_ref,
             f'{local_path}:{artifact_type}',
-            '--disable-path-validation',
         ],
         exc_msg=f'Failed to push OCI artifact to {artifact_ref}',
     )
@@ -164,9 +164,9 @@ def test_push_oras_artifact_with_auth(mock_run_cmd, mock_exists, mock_auth, regi
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
-    """Test artifact push with annotations."""
+    """Test artifact push with annotations. Updated local_path to be relative."""
     artifact_ref = 'quay.io/test/repo:latest'
-    local_path = '/tmp/test.db'
+    local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
     annotations = {'key1': 'value1', 'key2': 'value2'}
     mock_run_cmd.return_value = 'Success'
@@ -179,7 +179,6 @@ def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
         'push',
         artifact_ref,
         f'{local_path}:{artifact_type}',
-        '--disable-path-validation',
     ]
     for key, value in annotations.items():
         expected_cmd.extend(['--annotation', f'{key}={value}'])
@@ -192,9 +191,9 @@ def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_failure(mock_run_cmd, mock_exists):
-    """Test artifact push failure."""
+    """Test artifact push failure. Updated local_path to be relative and adjusted expected exception match."""
     artifact_ref = 'quay.io/test/repo:latest'
-    local_path = '/tmp/test.db'
+    local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
     mock_run_cmd.side_effect = IIBError('Push failed')
     mock_exists.return_value = True
@@ -220,38 +219,35 @@ def test_push_oras_artifact_file_not_found(mock_exists):
     [
         (
             "quay.io/test/repo:latest",
-            "/tmp/test.db",
+            "./test.db",
             "application/vnd.sqlite",
             [
                 "oras",
                 "push",
                 "quay.io/test/repo:latest",
-                "/tmp/test.db:application/vnd.sqlite",
-                "--disable-path-validation",
+                "./test.db:application/vnd.sqlite",
             ],
         ),
         (
             "registry.example.com/myapp:v1.0",
-            "/data/config.yaml",
+            "./config.yaml",
             "application/vnd.yaml",
             [
                 "oras",
                 "push",
                 "registry.example.com/myapp:v1.0",
-                "/data/config.yaml:application/vnd.yaml",
-                "--disable-path-validation",
+                "./config.yaml:application/vnd.yaml",
             ],
         ),
         (
             "docker.io/library/nginx:latest",
-            "/etc/nginx.conf",
+            "./nginx.conf",
             "application/vnd.config",
             [
                 "oras",
                 "push",
                 "docker.io/library/nginx:latest",
-                "/etc/nginx.conf:application/vnd.config",
-                "--disable-path-validation",
+                "./nginx.conf:application/vnd.config",
             ],
         ),
     ],
@@ -261,7 +257,7 @@ def test_push_oras_artifact_file_not_found(mock_exists):
 def test_push_oras_artifact_various_types(
     mock_run_cmd, mock_exists, artifact_ref, local_path, artifact_type, expected_cmd
 ):
-    """Test artifact push with various artifact types."""
+    """Test artifact push with various artifact types. Updated local_path to be relative."""
     mock_run_cmd.return_value = 'Success'
     mock_exists.return_value = True
 
@@ -393,9 +389,7 @@ def test_verify_indexdb_cache_sync_match(mock_get_image_digest, mock_get_is_dige
     result = verify_indexdb_cache_sync(tag)
 
     assert result is True
-    mock_get_image_digest.assert_called_once_with(
-        'quay.io/exd-guild-hello-operator/example-repository:test-tag'
-    )
+    mock_get_image_digest.assert_called_once_with('test-artifact-registry/index-db:test-tag')
     mock_get_is_digest.assert_called_once_with(tag)
 
 
@@ -410,9 +404,7 @@ def test_verify_indexdb_cache_sync_no_match(mock_get_image_digest, mock_get_is_d
     result = verify_indexdb_cache_sync(tag)
 
     assert result is False
-    mock_get_image_digest.assert_called_once_with(
-        'quay.io/exd-guild-hello-operator/example-repository:test-tag'
-    )
+    mock_get_image_digest.assert_called_once_with('test-artifact-registry/index-db:test-tag')
     mock_get_is_digest.assert_called_once_with(tag)
 
 
@@ -430,7 +422,7 @@ def test_refresh_indexdb_cache_success(mock_run_cmd, mock_auth, registry_auths):
             'oc',
             'import-image',
             'index-db-cache:test-tag',
-            '--from=quay.io/exd-guild-hello-operator/example-repository:test-tag',
+            '--from=test-artifact-registry/index-db:test-tag',
             '--confirm',
         ],
         exc_msg='Failed to refresh OCI artifact test-tag.',
@@ -461,3 +453,234 @@ def test_refresh_indexdb_cache_with_empty_registry_auths(mock_run_cmd, mock_auth
 
     # Verify the oc command was executed
     mock_run_cmd.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "pullspec,expected_name,expected_tag",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "iib-pub-pending",
+            "v4.17",
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "my-image",
+            "latest",
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0",
+            "index-image",
+            "v1.0.0",
+        ),
+        (
+            "docker.io/library/nginx:1.21.0",
+            "nginx",
+            "1.21.0",
+        ),
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
+            "iib-pub-pending",
+            "v4.17",
+        ),
+        (
+            "quay.io/namespace/image-name:tag-with-dashes",
+            "image-name",
+            "tag-with-dashes",
+        ),
+        (
+            "registry.io/namespace/image:v1.0.0-rc1",
+            "image",
+            "v1.0.0-rc1",
+        ),
+    ],
+)
+def test_get_name_and_tag_from_pullspec_valid(pullspec, expected_name, expected_tag):
+    """Test parsing valid pullspec strings."""
+    from iib.workers.tasks.oras_utils import _get_name_and_tag_from_pullspec
+
+    name, tag = _get_name_and_tag_from_pullspec(pullspec)
+
+    assert name == expected_name
+    assert tag == expected_tag
+
+
+@pytest.mark.parametrize(
+    "invalid_pullspec,expected_error_msg",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending",
+            "Invalid pullspec format: 'registry.example.com/namespace/iib-pub-pending'. "
+            "Missing tag (':') delimiter.",
+        ),
+        (
+            "registry.example.com/namespace/image:",
+            "Invalid pullspec format: 'registry.example.com/namespace/image:'. "
+            "Could not parse name:tag structure.",
+        ),
+        (
+            "invalid-pullspec-format",
+            "Invalid pullspec format: 'invalid-pullspec-format'. " "Missing tag (':') delimiter.",
+        ),
+    ],
+)
+def test_get_name_and_tag_from_pullspec_invalid(invalid_pullspec, expected_error_msg):
+    """Test parsing invalid pullspec strings."""
+    from iib.workers.tasks.oras_utils import _get_name_and_tag_from_pullspec
+
+    with pytest.raises(IIBError, match=re.escape(expected_error_msg)):
+        _get_name_and_tag_from_pullspec(invalid_pullspec)
+
+
+@pytest.mark.parametrize(
+    "image_name,tag,expected_tag",
+    [
+        ("iib-pub-pending", "v4.17", "iib-pub-pending-v4.17"),
+        ("my-image", "latest", "my-image-latest"),
+        ("test-index", "v1.0.0", "test-index-v1.0.0"),
+    ],
+)
+def test_get_artifact_combined_tag(image_name, tag, expected_tag):
+    """Test generating combined artifact tags."""
+    from iib.workers.tasks.oras_utils import _get_artifact_combined_tag
+
+    result = _get_artifact_combined_tag(image_name, tag)
+
+    assert result == expected_tag
+
+
+@pytest.mark.parametrize(
+    "from_index,expected_pullspec",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "test-artifact-registry/index-db:my-image-latest",
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0",
+            "test-artifact-registry/index-db:index-image-v1.0.0",
+        ),
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
+            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
+        ),
+    ],
+)
+def test_get_indexdb_artifact_pullspec(from_index, expected_pullspec):
+    """Test constructing index DB artifact pullspecs."""
+    from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    result = get_indexdb_artifact_pullspec(from_index)
+
+    assert result == expected_pullspec
+
+
+def test_get_indexdb_artifact_pullspec_invalid():
+    """Test _get_indexdb_artifact_pullspec with invalid pullspec."""
+    from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    with pytest.raises(IIBError, match="Missing tag"):
+        get_indexdb_artifact_pullspec("registry.example.com/namespace/image")
+
+
+@mock.patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_sync')
+@pytest.mark.parametrize(
+    "pullspec,expected_combined_tag,sync_result",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "iib-pub-pending-v4.17",
+            True,
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "my-image-latest",
+            False,
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0@sha256:abc123",
+            "index-image-v1.0.0",
+            True,
+        ),
+    ],
+)
+def test_verify_indexdb_cache_for_image(
+    mock_verify_sync, pullspec, expected_combined_tag, sync_result
+):
+    """Test verify_indexdb_cache_for_image with various pullspecs."""
+    from iib.workers.tasks.oras_utils import verify_indexdb_cache_for_image
+
+    mock_verify_sync.return_value = sync_result
+
+    result = verify_indexdb_cache_for_image(pullspec)
+
+    assert result == sync_result
+    mock_verify_sync.assert_called_once_with(expected_combined_tag)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_sync')
+def test_verify_indexdb_cache_for_image_invalid_pullspec(mock_verify_sync):
+    """Test verify_indexdb_cache_for_image with invalid pullspec."""
+    from iib.workers.tasks.oras_utils import verify_indexdb_cache_for_image
+
+    with pytest.raises(IIBError, match="Missing tag"):
+        verify_indexdb_cache_for_image("registry.example.com/namespace/image")
+
+    mock_verify_sync.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache')
+@pytest.mark.parametrize(
+    "pullspec,expected_combined_tag",
+    [
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17",
+            "iib-pub-pending-v4.17",
+        ),
+        (
+            "quay.io/namespace/my-image:latest",
+            "my-image-latest",
+        ),
+        (
+            "registry.io/org/repo/index-image:v1.0.0",
+            "index-image-v1.0.0",
+        ),
+        (
+            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
+            "iib-pub-pending-v4.17",
+        ),
+    ],
+)
+def test_refresh_indexdb_cache_for_image(mock_refresh_cache, pullspec, expected_combined_tag):
+    """Test refresh_indexdb_cache_for_image with various pullspecs."""
+    from iib.workers.tasks.oras_utils import refresh_indexdb_cache_for_image
+
+    refresh_indexdb_cache_for_image(pullspec)
+
+    mock_refresh_cache.assert_called_once_with(expected_combined_tag)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache')
+def test_refresh_indexdb_cache_for_image_invalid_pullspec(mock_refresh_cache):
+    """Test refresh_indexdb_cache_for_image with invalid pullspec."""
+    from iib.workers.tasks.oras_utils import refresh_indexdb_cache_for_image
+
+    with pytest.raises(IIBError, match="Missing tag"):
+        refresh_indexdb_cache_for_image("registry.example.com/namespace/image")
+
+    mock_refresh_cache.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache')
+def test_refresh_indexdb_cache_for_image_propagates_exception(mock_refresh_cache):
+    """Test if refresh_indexdb_cache_for_image propagates exceptions from refresh_indexdb_cache."""
+    from iib.workers.tasks.oras_utils import refresh_indexdb_cache_for_image
+
+    mock_refresh_cache.side_effect = IIBError('Refresh failed')
+
+    with pytest.raises(IIBError, match='Refresh failed'):
+        refresh_indexdb_cache_for_image("registry.example.com/namespace/image:v1.0.0")
