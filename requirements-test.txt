@@ -913,9 +913,9 @@ opentelemetry-propagator-aws-xray==1.0.2 \
     # via
     #   -r requirements.txt
     #   opentelemetry-instrumentation-botocore
-opentelemetry-proto==1.37.0 \
-    --hash=sha256:30f5c494faf66f77faeaefa35ed4443c5edb3b0aa46dad073ed7210e1a789538 \
-    --hash=sha256:8ed8c066ae8828bbf0c39229979bdf583a126981142378a9cbe9d6fd5701c6e2
+opentelemetry-proto==1.38.0 \
+    --hash=sha256:88b161e89d9d372ce723da289b7da74c3a8354a8e5359992be813942969ed468 \
+    --hash=sha256:b6ebe54d3217c42e45462e2a1ae28c3e2bf2ec5a5645236a490f55f45f1a0a18
     # via
     #   -r requirements.txt
     #   opentelemetry-exporter-otlp-proto-common
