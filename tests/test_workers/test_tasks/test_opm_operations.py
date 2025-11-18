@@ -952,21 +952,21 @@ def test_opm_registry_add_fbc_fragment(
                 {"packageName": "test-operator", "version": "v1.2", "bundlePath": "bundle1"},
                 {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
             ],
-            {"test-operator"},
+            ["test-operator"],
         ),
         (
             [
                 {"packageName": "test-operator", "version": "v1.0", "bundlePath": "bundle1"},
                 {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
             ],
-            {"test-operator"},
+            ["test-operator"],
         ),
         (
             [
                 {"packageName": "package1", "version": "v1.0", "bundlePath": "bundle1"},
                 {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
             ],
-            set(),
+            [],
         ),
     ],
 )

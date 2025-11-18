@@ -58,7 +58,7 @@ def test_find_pipelinerun_success(mock_get_worker_config, mock_get_client):
 @patch('iib.workers.tasks.konflux_utils._get_kubernetes_client')
 @patch('iib.workers.tasks.konflux_utils.get_worker_config')
 def test_find_pipelinerun_empty_result(mock_get_worker_config, mock_get_client):
-    """Test pipelinerun search with empty results."""
+    """Test pipelinerun search with empty results raises IIBError for retry."""
     # Setup
     mock_client = Mock()
     mock_get_client.return_value = mock_client
@@ -70,11 +70,9 @@ def test_find_pipelinerun_empty_result(mock_get_worker_config, mock_get_client):
 
     mock_client.list_namespaced_custom_object.return_value = {"items": []}
 
-    # Test
-    result = find_pipelinerun("abc123")
-
-    # Verify
-    assert result == []
+    # Test & Verify - should raise IIBError to trigger retry decorator
+    with pytest.raises(IIBError, match="No pipelineruns found for commit abc123"):
+        find_pipelinerun("abc123")
 
 
 @pytest.mark.parametrize(

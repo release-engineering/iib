@@ -110,25 +110,7 @@ def push_configs_to_git(
             )
             log.info(git_status)
 
-            # Add updates
-            log.info("Committing changes to local Git repository.")
-            run_cmd(
-                ["git", "-C", local_repo_dir, "add", "."], exc_msg="Error staging changes to git"
-            )
-            git_status = run_cmd(
-                ["git", "-C", local_repo_dir, "status"], exc_msg="Error getting git status"
-            )
-            log.info(git_status)
-
-            # Check if there's anything to commit
-            changes = run_cmd(
-                ["git", "-C", local_repo_dir, "diff", "--staged"], exc_msg="Error getting git diff"
-            )
-            if not changes:
-                _clean_up_local_repo(local_repo_dir)
-                log.warning("No changes to commit.")
-                return
-
+            # Commit and push changes (this handles staging and checking for changes)
             commit_and_push(
                 request_id,
                 local_repo_dir,
@@ -145,6 +127,31 @@ def _clean_up_local_repo(local_repo_dir: str) -> None:
     if os.path.exists(local_repo_dir):
         shutil.rmtree(local_repo_dir)
         log.debug("Cleaned up local Git repository %s", local_repo_dir)
+
+
+def _stage_and_check_changes(local_repo_path: str) -> bool:
+    """
+    Stage changes and check if there's anything to commit.
+
+    :param str local_repo_path: Path to local Git repository.
+    :return: True if there are staged changes to commit, False otherwise.
+    :rtype: bool
+    """
+    log.info("Committing changes to local Git repository.")
+    run_cmd(["git", "-C", local_repo_path, "add", "."], exc_msg="Error staging changes to git")
+    git_status = run_cmd(
+        ["git", "-C", local_repo_path, "status"], exc_msg="Error getting git status"
+    )
+    log.info(git_status)
+
+    # Check if there's anything to commit
+    changes = run_cmd(
+        ["git", "-C", local_repo_path, "diff", "--staged"], exc_msg="Error getting git diff"
+    )
+    if not changes:
+        log.warning("No changes to commit.")
+        return False
+    return True
 
 
 def validate_git_remote_branch(repo_url: str, branch: str) -> None:
@@ -182,20 +189,9 @@ def commit_and_push(
         f"IIB: Update for request id {request_id} (overwrite_from_index)"
     )
 
-    log.info("Committing changes to local Git repository.")
-    run_cmd(["git", "-C", local_repo_path, "add", "."], exc_msg="Error staging changes to git")
-    git_status = run_cmd(
-        ["git", "-C", local_repo_path, "status"], exc_msg="Error getting git status"
-    )
-    log.info(git_status)
-
-    # Check if there's anything to commit
-    changes = run_cmd(
-        ["git", "-C", local_repo_path, "diff", "--staged"], exc_msg="Error getting git diff"
-    )
-    if not changes:
+    # Stage and check for changes
+    if not _stage_and_check_changes(local_repo_path):
         _clean_up_local_repo(local_repo_path)
-        log.warning("No changes to commit.")
         return
 
     commit_output = run_cmd(
