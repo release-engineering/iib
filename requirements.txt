@@ -24,9 +24,9 @@ boto3==1.40.54 \
     --hash=sha256:5f7dbf8539d26e0ee973baea49d0db8c1ee57707a785c5a23307241fdba04327 \
     --hash=sha256:81d32d4f09ecddc2c48aa3d0acfd5dbd2d2e3e2718c353a56cb3af59b2e22148
     # via iib (setup.py)
-botocore==1.40.54 \
-    --hash=sha256:808232d9fcbf2c295b6e7cd1897119ee2fb97e756edfb313aa6d27ba0b281c66 \
-    --hash=sha256:95a98d30c037250bc1b40ba6c5ac0c9776cf00ff526eea92ec0a334d89e4a537
+botocore==1.40.75 \
+    --hash=sha256:bf8b067209fee5a9738800d41852e113b8ebdb01bd7f1e8b4541d55ecdbdb8f3 \
+    --hash=sha256:e822004688ca8035c518108e27d5b450d3ab0e0b3a73bcb8b87b80a8e5bd1910
     # via
     #   boto3
     #   s3transfer
