@@ -687,9 +687,9 @@ jmespath==1.0.1 \
     #   -r requirements.txt
     #   boto3
     #   botocore
-kombu==5.5.4 \
-    --hash=sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363 \
-    --hash=sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8
+kombu==5.6.0 \
+    --hash=sha256:03d2d4adc5381abd200014e11c947c3ae5cb7384e676cbbaf9e7ffd8652da0c2 \
+    --hash=sha256:97280ee43e6c1b74f129ec4e5c8c52516b8104260639dec0cebe9e52c69c3246
     # via
     #   -r requirements.txt
     #   celery
