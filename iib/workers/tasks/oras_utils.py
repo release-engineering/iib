@@ -144,6 +144,7 @@ def push_oras_artifact(
     artifact_type: str = "application/vnd.sqlite",
     registry_auths: Optional[Dict[str, Any]] = None,
     annotations: Optional[Dict[str, str]] = None,
+    cwd: Optional[str] = None,
 ) -> None:
     """
     Push a local artifact to an OCI registry using ORAS.
@@ -151,18 +152,24 @@ def push_oras_artifact(
     This function is equivalent to: `oras push {artifact_ref} {local_path}:{artifact_type}`
 
     :param str artifact_ref: OCI artifact reference to push to (e.g., 'quay.io/repo/repo:tag')
-    :param str local_path: Local path to the artifact file. Can be an absolute or relative path.
-        If an absolute path is provided, the --disable-path-validation flag will be
-        automatically added.
+    :param str local_path: Local path to the artifact file. Should be a relative path.
+        When using cwd, this should be a relative path (typically just
+        the filename) relative to the cwd directory.
     :param str artifact_type: MIME type of the artifact (default: 'application/vnd.sqlite')
     :param dict registry_auths: Optional dockerconfig.json auth information for private registries
     :param dict annotations: Optional annotations to add to the artifact
+    :param str cwd: Optional working directory for the ORAS command. When provided, local_path
+        should be relative to this directory (e.g., just the filename).
     :raises IIBError: If the push operation fails
     """
     log.info('Pushing artifact from %s to %s with type %s', local_path, artifact_ref, artifact_type)
+    if cwd:
+        log.info('Using working directory: %s', cwd)
 
-    if not os.path.exists(local_path):
-        raise IIBError(f'Local artifact path does not exist: {local_path}')
+    # Construct the full path for validation
+    full_path = os.path.join(cwd, local_path) if cwd else local_path
+    if not os.path.exists(full_path):
+        raise IIBError(f'Local artifact path does not exist: {full_path}')
 
     # Build ORAS push command
     cmd = ['oras', 'push', artifact_ref, f'{local_path}:{artifact_type}']
@@ -181,7 +188,15 @@ def push_oras_artifact(
     # Use namespace-specific registry authentication if provided
     with set_registry_auths(registry_auths, use_empty_config=True):
         try:
-            run_cmd(cmd, exc_msg=f'Failed to push OCI artifact to {artifact_ref}')
+            # Only pass params if cwd is provided
+            if cwd:
+                run_cmd(
+                    cmd,
+                    params={'cwd': cwd},
+                    exc_msg=f'Failed to push OCI artifact to {artifact_ref}',
+                )
+            else:
+                run_cmd(cmd, exc_msg=f'Failed to push OCI artifact to {artifact_ref}')
             log.info('Successfully pushed OCI artifact to %s', artifact_ref)
         except Exception as e:
             raise IIBError(f'Failed to push OCI artifact to {artifact_ref}: {e}')
