@@ -191,7 +191,7 @@ def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_failure(mock_run_cmd, mock_exists):
-    """Test artifact push failure. Updated local_path to be relative and adjusted expected exception match."""
+    """Test artifact push failure."""
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'

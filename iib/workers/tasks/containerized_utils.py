@@ -6,6 +6,14 @@ import os
 from typing import Dict, Optional
 
 from iib.workers.config import get_worker_config
+from iib.workers.tasks.oras_utils import (
+    get_indexdb_artifact_pullspec,
+    get_imagestream_artifact_pullspec,
+    get_oras_artifact,
+    refresh_indexdb_cache_for_image,
+    verify_indexdb_cache_for_image,
+)
+from iib.workers.tasks.utils import run_cmd
 
 log = logging.getLogger(__name__)
 
@@ -23,20 +31,11 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
     :rtype: str
     :raises IIBError: If the pull operation fails
     """
-    from iib.workers.tasks.oras_utils import (
-        get_indexdb_artifact_pullspec,
-        get_imagestream_artifact_pullspec,
-        get_oras_artifact,
-        refresh_indexdb_cache_for_image,
-        verify_indexdb_cache_for_image,
-    )
-
     conf = get_worker_config()
     if conf.get('iib_use_imagestream_cache', False):
         # Verify index.db cache is synced. Refresh if not.
         log.info('ImageStream cache is enabled. Checking cache sync status.')
-        cache_synced = verify_indexdb_cache_for_image(from_index)
-        if cache_synced:
+        if verify_indexdb_cache_for_image(from_index):
             log.info('Index.db cache is synced. Pulling from ImageStream.')
             # Pull from ImageStream when digests match
             imagestream_ref = get_imagestream_artifact_pullspec(from_index)
@@ -162,9 +161,6 @@ def cleanup_on_failure(
     if original_index_db_digest:
         log.info("Restoring index.db artifact to original digest due to %s", reason)
         try:
-            from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
-            from iib.workers.tasks.utils import run_cmd
-
             # Get the v4.x artifact reference
             v4x_artifact_ref = get_indexdb_artifact_pullspec(from_index)
 
