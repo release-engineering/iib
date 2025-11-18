@@ -193,7 +193,6 @@ def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None
 
 
 @mock.patch("iib.workers.tasks.git_utils.tempfile")
-@mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
 @mock.patch("iib.workers.tasks.git_utils.validate_git_remote_branch")
@@ -203,7 +202,6 @@ def test_push_configs_to_git_no_changes(
     mock_validate_branch,
     mock_clone,
     mock_configure_git,
-    mock_commit_and_push,
     mock_tempfile,
     gitlab_url_mapping,
     caplog,
@@ -237,7 +235,6 @@ def test_push_configs_to_git_no_changes(
         mock_validate_branch.assert_called_once_with(PUB_GIT_REPO, "latest")
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
         mock_configure_git.assert_called_once_with(remote_repository)
-        mock_commit_and_push.assert_not_called()
 
 
 @mock.patch("iib.workers.tasks.git_utils.tempfile")

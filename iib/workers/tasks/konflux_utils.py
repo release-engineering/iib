@@ -6,11 +6,19 @@ from typing import List, Dict, Any, Optional
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    wait_chain,
+)
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
 
-__all__ = ['find_pipelinerun', 'wait_for_pipeline_completion']
+__all__ = ['find_pipelinerun', 'wait_for_pipeline_completion', 'get_pipelinerun_image_url']
 
 log = logging.getLogger(__name__)
 
@@ -104,14 +112,24 @@ def _create_kubernetes_configuration(url: str, token: str, ca_cert: str) -> clie
     return configuration
 
 
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(IIBError),
+    stop=stop_after_attempt(get_worker_config().iib_total_attempts),
+    wait=wait_chain(wait_exponential(multiplier=get_worker_config().iib_retry_multiplier)),
+)
 def find_pipelinerun(commit_sha: str) -> List[Dict[str, Any]]:
     """
     Find the Konflux pipelinerun triggered by the git commit.
 
+    This function will retry if no pipelineruns are found (empty list), as it may take
+    a few seconds for the pipelinerun to start after a commit is pushed.
+
     :param str commit_sha: The git commit SHA to search for
     :return: List of pipelinerun objects matching the commit SHA
     :rtype: List[Dict[str, Any]]
-    :raises IIBError: If there's an error fetching pipelineruns
+    :raises IIBError: If there's an error fetching pipelineruns or no pipelineruns found after retries
     """
     try:
         log.info("Searching for pipelineruns with commit SHA: %s", commit_sha)
@@ -131,8 +149,14 @@ def find_pipelinerun(commit_sha: str) -> List[Dict[str, Any]]:
         items = runs.get("items", [])
         log.info("Found %s pipelinerun(s) for commit %s", len(items), commit_sha)
 
+        if not items:
+            raise IIBError(f"No pipelineruns found for commit {commit_sha}")
+
         return items
 
+    except IIBError:
+        # Re-raise IIBError without wrapping it (needed for retry decorator)
+        raise
     except ApiException as e:
         error_msg = f"Failed to fetch pipelineruns for commit {commit_sha}: API error {e.status}"
         log.error("Kubernetes API error while fetching pipelineruns: %s - %s", e.status, e.reason)
@@ -159,6 +183,8 @@ def wait_for_pipeline_completion(
 
     :param str pipelinerun_name: Name of the pipelinerun to monitor
     :param int timeout: Maximum time to wait in seconds (default: from config)
+    :return: Dictionary containing the pipelinerun status information
+    :rtype: Dict[str, Any]
     :raises IIBError: If the pipelinerun fails, is cancelled, or times out
     """
     if timeout is None:
@@ -219,6 +245,40 @@ def _check_timeout(pipelinerun_name: str, start_time: float, timeout: int) -> No
             f"Timeout waiting for pipelinerun {pipelinerun_name} to complete "
             f"after {timeout} seconds"
         )
+
+
+def get_pipelinerun_image_url(pipelinerun_name: str, run: Dict[str, Any]) -> str:
+    """
+    Extract IMAGE_URL from a completed pipelinerun's results.
+
+    :param str pipelinerun_name: Name of the pipelinerun
+    :param Dict[str, Any] run: The pipelinerun object
+    :return: The IMAGE_URL value from the pipelinerun results
+    :rtype: str
+    :raises IIBError: If IMAGE_URL is not found in the pipelinerun results
+    """
+    status = run.get('status', {})
+
+    # Check for 'results' (Konflux format) first, then fall back to 'pipelineResults' (older Tekton)
+    pipeline_results = status.get('results', []) or status.get('pipelineResults', [])
+
+    log.info("Found %d pipeline results for %s", len(pipeline_results), pipelinerun_name)
+
+    for result in pipeline_results:
+        if result.get('name') == 'IMAGE_URL':
+            if image_url := result.get('value'):
+                # Strip whitespace (including newlines) from the URL
+                image_url = image_url.strip()
+                log.info("Extracted IMAGE_URL from pipelinerun %s: %s", pipelinerun_name, image_url)
+                return image_url
+
+    # If not found, log for debugging
+    log.error(
+        "IMAGE_URL not found in pipelinerun %s. Available results: %s",
+        pipelinerun_name,
+        [r.get('name') for r in pipeline_results],
+    )
+    raise IIBError(f"IMAGE_URL not found in pipelinerun {pipelinerun_name} results")
 
 
 def _fetch_pipelinerun_status(pipelinerun_name: str) -> Dict[str, Any]:

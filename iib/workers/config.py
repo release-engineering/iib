@@ -47,6 +47,9 @@ class Config(object):
     iib_index_db_artifact_registry: Optional[str] = None
     iib_index_db_artifact_tag_template: str = '{image_name}-{tag}'
     iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
+    # Whether to use OpenShift ImageStream cache for index.db artifacts
+    # Requires OpenShift cluster with ImageStream configured
+    iib_use_imagestream_cache: bool = False
     iib_index_image_output_registry: Optional[str] = None
     iib_index_configs_gitlab_tokens_map: Optional[Dict[str, Dict[str, str]]] = None
     iib_log_level: str = 'INFO'
