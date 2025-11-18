@@ -1147,7 +1147,7 @@ def verify_operators_exists(
     log.info("Verifying if operator packages %s exists in index %s", operator_packages, index_name)
 
     # When index_db_path is not provided, extract the index db from the given index image
-    if not index_db_path or not os.path.exists(index_db_path) and from_index:
+    if (not index_db_path or not os.path.exists(index_db_path)) and from_index:
         # check if operator packages exists in hidden index.db
         # we are not checking /config dir since it contains FBC opted-in operators
         # and to remove thosefbc-operations endpoint should be used
