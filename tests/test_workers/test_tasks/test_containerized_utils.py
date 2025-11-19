@@ -11,11 +11,11 @@ from iib.workers.tasks.containerized_utils import (
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_imagestream_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_oras_artifact')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
 def test_pull_index_db_artifact_imagestream_enabled_cache_synced(
     mock_get_oras_artifact,
     mock_get_imagestream_artifact_pullspec,
@@ -51,11 +51,11 @@ def test_pull_index_db_artifact_imagestream_enabled_cache_synced(
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_imagestream_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_oras_artifact')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
 def test_pull_index_db_artifact_imagestream_enabled_cache_not_synced(
     mock_get_oras_artifact,
     mock_get_imagestream_artifact_pullspec,
@@ -91,11 +91,11 @@ def test_pull_index_db_artifact_imagestream_enabled_cache_not_synced(
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.oras_utils.refresh_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_for_image')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_imagestream_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_oras_artifact')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
 def test_pull_index_db_artifact_imagestream_disabled(
     mock_get_oras_artifact,
     mock_get_imagestream_artifact_pullspec,
@@ -130,8 +130,8 @@ def test_pull_index_db_artifact_imagestream_disabled(
 
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.oras_utils.get_oras_artifact')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
 def test_pull_index_db_artifact_default_config_behaves_as_disabled(
     mock_get_oras_artifact,
     mock_get_indexdb_artifact_pullspec,
@@ -336,8 +336,8 @@ def test_cleanup_on_failure_no_mr_no_commit(mock_log):
     )
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @patch('iib.workers.tasks.containerized_utils.log')
 def test_cleanup_on_failure_restores_index_db_artifact(
     mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd
@@ -350,7 +350,7 @@ def test_cleanup_on_failure_restores_index_db_artifact(
     request_id = 1
     from_index = 'quay.io/ns/index:v4.19'
     index_repo_map = {}
-    original_digest = 'sha256:deadbeef'
+    original_digest = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
     v4x_artifact_ref = 'quay.io/ns/index-indexdb:v4.19'
     mock_get_indexdb_artifact_pullspec.return_value = v4x_artifact_ref
@@ -383,7 +383,7 @@ def test_cleanup_on_failure_restores_index_db_artifact(
     mock_log.info.assert_any_call("Successfully restored index.db artifact to original digest")
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 @patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
 @patch('iib.workers.tasks.containerized_utils.log')
 def test_cleanup_on_failure_restore_failure_is_logged(
@@ -401,7 +401,7 @@ def test_cleanup_on_failure_restore_failure_is_logged(
         request_id=1,
         from_index='quay.io/ns/index:v4.19',
         index_repo_map={},
-        original_index_db_digest='sha256:deadbeef',
+        original_index_db_digest='sha256:0123456789abcdef0123456789abcdef0123456789abcde',
     )
 
     mock_run_cmd.assert_called_once()
