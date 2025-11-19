@@ -129,7 +129,8 @@ def find_pipelinerun(commit_sha: str) -> List[Dict[str, Any]]:
     :param str commit_sha: The git commit SHA to search for
     :return: List of pipelinerun objects matching the commit SHA
     :rtype: List[Dict[str, Any]]
-    :raises IIBError: If there's an error fetching pipelineruns or no pipelineruns found after retries
+    :raises IIBError: If there's an error fetching pipelineruns
+        or no pipelineruns found after retries
     """
     try:
         log.info("Searching for pipelineruns with commit SHA: %s", commit_sha)
