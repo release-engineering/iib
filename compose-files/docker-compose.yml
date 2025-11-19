@@ -51,7 +51,7 @@ services:
       - 11211:11211
 
   rabbitmq:
-    image: rabbitmq:4.1-management
+    image: rabbitmq:4.2-management
     environment:
       RABBITMQ_DEFAULT_USER: iib
       RABBITMQ_DEFAULT_PASS: iib
