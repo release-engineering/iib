@@ -37,7 +37,7 @@ services:
         condition: service_completed_successfully
 
   db:
-    image: postgres:18.0
+    image: postgres:18.1
     environment:
       POSTGRES_USER: iib
       POSTGRES_PASSWORD: iib
