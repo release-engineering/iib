@@ -1164,7 +1164,7 @@ def verify_operators_exists(
             index_db_path = get_hidden_index_database(from_index=str(from_index), base_dir=base_dir)
 
     present_bundles: List[BundleImage] = get_list_bundles(
-        input_data=index_db_path, base_dir=base_dir
+        input_data=str(index_db_path), base_dir=base_dir
     )
 
     for bundle in present_bundles:
@@ -1174,7 +1174,7 @@ def verify_operators_exists(
     if packages_in_index:
         log.info("operator packages found in index_db %s:  %s", index_db_path, packages_in_index)
 
-    return list(packages_in_index), index_db_path
+    return list(packages_in_index), str(index_db_path)
 
 
 @retry(
