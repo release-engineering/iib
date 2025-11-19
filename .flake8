@@ -6,7 +6,7 @@ exclude =
     venv
 per-file-ignores =
     ./iib/workers/tasks/build_regenerate_bundle.py: E713
-    ./iib/workers/tasks/utils.py: E203,E702
+    ./iib/workers/tasks/utils.py: E203,E702,E721
     ./iib/workers/tasks/build_add_deprecations.py: E713
     ./iib/workers/tasks/opm_operations.py: E203
     ./iib/web/api_v1.py: E226
@@ -14,9 +14,10 @@ per-file-ignores =
     ./tests/*: D103
     ./tests/test_web/test_models.py: D103
     ./tests/test_web/test_s3_utils.py: D103
-    ./tests/test_web/test_api_v1.py: D103
+    ./tests/test_web/test_api_v1.py: D103,F541
     ./tests/test_workers/test_tasks/test_build.py: D103,E231
     ./tests/test_workers/test_tasks/test_build_regenerate_bundle.py: D103,E241,E222
     ./tests/test_workers/test_tasks/test_opm_operations.py: D103, E203
     ./tests/test_web/test_migrations.py: E231,D103
-extend-ignore = E231
+extend-ignore = E231, D104, D100, D105
+max-line-length = 100
