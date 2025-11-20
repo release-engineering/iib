@@ -23,6 +23,7 @@ from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
+from iib.workers.tasks.containerized_utils import get_list_of_output_pullspec
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, merge_catalogs_dirs
 from iib.workers.tasks.git_utils import push_configs_to_git, revert_last_commit
@@ -190,16 +191,8 @@ def _create_and_push_manifest_list(
     :raises IIBError: if creating or pushing the manifest list fails
     """
     buildah_manifest_cmd = ['buildah', 'manifest']
-    _tags = [str(request_id)]
-    if build_tags:
-        _tags.extend(build_tags)
-    conf = get_worker_config()
-    output_pull_specs = []
-    for tag in _tags:
-        output_pull_spec = conf['iib_image_push_template'].format(
-            registry=conf['iib_registry'], request_id=tag
-        )
-        output_pull_specs.append(output_pull_spec)
+    output_pull_specs = get_list_of_output_pullspec(request_id, build_tags)
+    for output_pull_spec in output_pull_specs:
         try:
             run_cmd(
                 buildah_manifest_cmd + ['rm', output_pull_spec],
