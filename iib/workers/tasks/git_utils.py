@@ -310,6 +310,7 @@ def configure_git_user(
     :param str user_name: User name for local Git repo.
     :param str email_address: Email address for local Git repo.
     """
+    log.info("Configuring git user.name and user.email for local Git repo %s.", local_repo_path)
     run_cmd(
         ["git", "-C", local_repo_path, "config", "--local", "user.name", str(user_name)],
         exc_msg="Error configuring git user.email",
