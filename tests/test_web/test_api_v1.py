@@ -2794,7 +2794,7 @@ def test_fbc_operations_overwrite_not_allowed(mock_smfsc, client, db):
         (None, {}),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_fbc_operation_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_fbc_operation_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_fbc_operations(
     mock_smfc,
@@ -2877,7 +2877,7 @@ def test_fbc_operations(
         (None, {}),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_fbc_operation_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_fbc_operation_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_fbc_operations_multiple_fragments(
     mock_smfc,
@@ -2960,7 +2960,7 @@ def test_fbc_operations_multiple_fragments(
         (None, {}),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_fbc_operation_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_fbc_operation_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_fbc_operations_backward_compatibility(
     mock_smfc,

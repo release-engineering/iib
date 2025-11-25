@@ -49,7 +49,9 @@ from iib.workers.tasks.build import (
     handle_rm_request,
 )
 from iib.workers.tasks.build_add_deprecations import handle_add_deprecations_request
-from iib.workers.tasks.build_fbc_operations import handle_fbc_operation_request
+from iib.workers.tasks.build_containerized_fbc_operations import (
+    handle_containerized_fbc_operation_request,
+)
 from iib.workers.tasks.build_recursive_related_bundles import (
     handle_recursive_related_bundles_request,
 )
@@ -1332,7 +1334,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
     try:
-        handle_fbc_operation_request.apply_async(
+        handle_containerized_fbc_operation_request.apply_async(
             args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
         )
     except kombu.exceptions.OperationalError:
