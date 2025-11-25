@@ -1116,6 +1116,9 @@ def get_image_label(pull_spec: str, label: str) -> str:
     :rtype: str
     """
     log.debug('Getting the label of %s from %s', label, pull_spec)
+    if "index.db" in pull_spec:
+        raise IIBError(f'Cannot get label "{label}" from {pull_spec}')
+
     return get_image_labels(pull_spec).get(label, '')
 
 
