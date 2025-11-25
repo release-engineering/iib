@@ -74,9 +74,6 @@ def push_configs_to_git(
         try:
             clone_git_repo(repo_url, branch, git_token_name, git_token, local_repo_dir)
 
-            # Configure Git user for commits
-            configure_git_user(local_repo_dir)
-
             # Overwrite local Git repo configs/
             repo_configs_dir = os.path.join(local_repo_dir, 'configs')
             log.info(
@@ -298,28 +295,6 @@ def clone_git_repo(
     log.info("Most recent commit: %s", last_commit)
 
 
-def configure_git_user(
-    local_repo_path: str,
-    user_name: Optional[str] = "IIB Worker",
-    email_address: Optional[str] = "iib-worker@redhat.com",
-):
-    """
-    Configure git user name and email displayed in commit message.
-
-    :param str local_repo_path: Path to local Git repo.
-    :param str user_name: User name for local Git repo.
-    :param str email_address: Email address for local Git repo.
-    """
-    run_cmd(
-        ["git", "-C", local_repo_path, "config", "--local", "user.name", str(user_name)],
-        exc_msg="Error configuring git user.email",
-    )
-    run_cmd(
-        ["git", "-C", local_repo_path, "config", "--local", "user.email", str(email_address)],
-        exc_msg="Error configuring git user.email",
-    )
-
-
 def revert_last_commit(
     request_id: int,
     from_index: str,
@@ -348,9 +323,6 @@ def revert_last_commit(
         log.info("Cloning repo to %s", local_repo_dir)
         try:
             clone_git_repo(repo_url, branch, git_token_name, git_token, local_repo_dir)
-
-            # Configure Git user for commits
-            configure_git_user(local_repo_dir)
 
             log.info("Reverting last commit to %s branch of %s", branch, repo_url)
             revert_output = run_cmd(

@@ -78,18 +78,6 @@ class RegexMatcher:
         return f"RegexMatcher('{self.pattern}')"
 
 
-def test_configure_git_user():
-    test_user = "IIB Test Person"
-    test_email = "iib-test-person@redhat.com"
-    with tempfile.TemporaryDirectory(prefix="test-git-repo") as test_repo:
-        run_cmd(f"git -C {test_repo} init".split(), strict=False)
-        git_utils.configure_git_user(test_repo, test_user, test_email)
-        git_user = run_cmd(f"git -C {test_repo} config --get user.name".split())
-        git_email = run_cmd(f"git -C {test_repo} config --get user.email".split())
-        assert git_user.strip() == test_user
-        assert git_email.strip() == test_email
-
-
 def test_unmapped_git_token(mock_gwc):
     repo_url = f"{GIT_BASE_URL}/some-unknown-repo.git"
     expected_error = f"Missing key '{repo_url}' in 'iib_index_configs_gitlab_tokens_map'"
@@ -193,7 +181,6 @@ def test_push_configs_to_git_aborts_without_repo_map(mock_ggt, mock_cmd) -> None
 
 
 @mock.patch("iib.workers.tasks.git_utils.tempfile")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
 @mock.patch("iib.workers.tasks.git_utils.validate_git_remote_branch")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
@@ -201,7 +188,6 @@ def test_push_configs_to_git_no_changes(
     mock_ggt,
     mock_validate_branch,
     mock_clone,
-    mock_configure_git,
     mock_tempfile,
     gitlab_url_mapping,
     caplog,
@@ -234,12 +220,10 @@ def test_push_configs_to_git_no_changes(
         assert "No changes to commit." in caplog.messages
         mock_validate_branch.assert_called_once_with(PUB_GIT_REPO, "latest")
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
-        mock_configure_git.assert_called_once_with(remote_repository)
 
 
 @mock.patch("iib.workers.tasks.git_utils.tempfile")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
 @mock.patch("iib.workers.tasks.git_utils.validate_git_remote_branch")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
@@ -247,7 +231,6 @@ def test_push_configs_to_git_untracked_files(
     mock_ggt,
     mock_validate_branch,
     mock_clone,
-    mock_configure_git,
     mock_commit_and_push,
     mock_tempfile,
     gitlab_url_mapping,
@@ -287,7 +270,6 @@ def test_push_configs_to_git_untracked_files(
         assert "No changes to commit." not in caplog.messages
         mock_validate_branch.assert_called_once_with(PUB_GIT_REPO, "latest")
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", remote_repository)
-        mock_configure_git.assert_called_once_with(remote_repository)
         mock_commit_and_push.assert_called_once_with(
             1, remote_repository, PUB_GIT_REPO, "latest", None
         )
@@ -297,13 +279,11 @@ def test_push_configs_to_git_untracked_files(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
 def test_push_configs_to_git_empty_repository(
     mock_listdir,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -315,7 +295,6 @@ def test_push_configs_to_git_empty_repository(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
 
     # Mock the listdir calls
@@ -339,8 +318,6 @@ def test_push_configs_to_git_empty_repository(
             'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
         )
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
-        # configure_git_user is called with only one argument (local_repo_dir)
-        mock_configure_git.assert_called_once_with(mock.ANY)
         mock_commit_and_push.assert_called_once()
         # commit_and_push is called with positional arguments, not keyword arguments
         call_args = mock_commit_and_push.call_args
@@ -354,13 +331,11 @@ def test_push_configs_to_git_empty_repository(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
 def test_push_configs_to_git_existing_repository(
     mock_listdir,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -372,7 +347,6 @@ def test_push_configs_to_git_existing_repository(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
 
     # Mock the listdir calls
@@ -402,8 +376,6 @@ def test_push_configs_to_git_existing_repository(
             'https://my-gitlab-instance.com/exd-guild-hello-operator-gitlab/iib-pub-index-configs.git'  # noqa: E501
         )
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
-        # configure_git_user is called with only one argument (local_repo_dir)
-        mock_configure_git.assert_called_once_with(mock.ANY)
         mock_commit_and_push.assert_called_once()
         # commit_and_push is called with positional arguments, not keyword arguments
         call_args = mock_commit_and_push.call_args
@@ -856,7 +828,6 @@ def test_close_gitlab_mr_network_errors(mock_requests_put):
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.path.exists")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
@@ -864,7 +835,6 @@ def test_push_configs_to_git_removing_content(
     mock_listdir,
     mock_path_exists,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -876,7 +846,6 @@ def test_push_configs_to_git_removing_content(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"  # Mock git ls-remote output
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
     # we don't want "finally" to be executed as it removes the temp repo
     mock_path_exists.return_value = False
@@ -914,8 +883,6 @@ def test_push_configs_to_git_removing_content(
         # Verify the function was called with correct parameters
         mock_ggt.assert_called_once_with(PUB_GIT_REPO)
         mock_clone.assert_called_once_with(PUB_GIT_REPO, "latest", "foo", "bar", mock.ANY)
-        # configure_git_user is called with only one argument (local_repo_dir)
-        mock_configure_git.assert_called_once_with(mock.ANY)
 
         # Verify that commit_and_push was called with the correct parameters
         mock_commit_and_push.assert_called_once()
@@ -938,7 +905,6 @@ def test_push_configs_to_git_removing_content(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.path.exists")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
@@ -946,7 +912,6 @@ def test_push_configs_to_git_removing_all_operators(
     mock_listdir,
     mock_path_exists,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -958,7 +923,6 @@ def test_push_configs_to_git_removing_all_operators(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
     # we don't want "finally" to be executed as it removes the temp repo
     mock_path_exists.return_value = False
@@ -1006,7 +970,6 @@ def test_push_configs_to_git_removing_all_operators(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.path.exists")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
@@ -1014,7 +977,6 @@ def test_push_configs_to_git_removing_no_operators(
     mock_listdir,
     mock_path_exists,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -1026,7 +988,6 @@ def test_push_configs_to_git_removing_no_operators(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
     # we don't want "finally" to be executed as it removes the temp repo
     mock_path_exists.return_value = False
@@ -1071,7 +1032,6 @@ def test_push_configs_to_git_removing_no_operators(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.path.exists")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
@@ -1079,7 +1039,6 @@ def test_push_configs_to_git_removing_with_empty_repo(
     mock_listdir,
     mock_path_exists,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -1091,7 +1050,6 @@ def test_push_configs_to_git_removing_with_empty_repo(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
     # we don't want "finally" to be executed as it removes the temp repo
     mock_path_exists.return_value = False
