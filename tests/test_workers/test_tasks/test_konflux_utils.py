@@ -10,6 +10,7 @@ from iib.exceptions import IIBError
 from iib.workers.tasks.konflux_utils import (
     find_pipelinerun,
     wait_for_pipeline_completion,
+    get_pipelinerun_image_url,
     _get_kubernetes_client,
     _create_kubernetes_client,
     _create_kubernetes_configuration,
@@ -66,6 +67,8 @@ def test_find_pipelinerun_empty_result(mock_get_worker_config, mock_get_client):
     mock_config = Mock()
     mock_config.iib_konflux_namespace = 'iib-tenant'
     mock_config.iib_konflux_pipeline_timeout = 1800
+    mock_config.iib_total_attempts = 3  # Reduced to make test faster
+    mock_config.iib_retry_multiplier = 1  # Reduced to make test faster
     mock_get_worker_config.return_value = mock_config
 
     mock_client.list_namespaced_custom_object.return_value = {"items": []}
@@ -594,3 +597,111 @@ def test_create_kubernetes_configuration_ca_cert_handling(
         mock_temp_file.write.assert_called_once_with(ca_cert_input)
     else:
         mock_tempfile.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "results_key,image_url,description",
+    [
+        ('results', 'quay.io/namespace/image:tag', 'Konflux format with results key'),
+        (
+            'pipelineResults',
+            'quay.io/namespace/image:tag',
+            'Older Tekton format with pipelineResults',
+        ),
+    ],
+)
+def test_get_pipelinerun_image_url_success(results_key, image_url, description):
+    """Test successful extraction of IMAGE_URL from pipelinerun."""
+    # Setup
+    run = {
+        'status': {
+            results_key: [
+                {'name': 'IMAGE_DIGEST', 'value': 'sha256:abc123'},
+                {'name': 'IMAGE_URL', 'value': image_url},
+                {'name': 'CHAINS-GIT_COMMIT', 'value': 'def456'},
+            ]
+        }
+    }
+
+    # Test
+    result = get_pipelinerun_image_url('test-pipelinerun', run)
+
+    # Verify
+    assert result == image_url
+
+
+def test_get_pipelinerun_image_url_with_whitespace():
+    """Test IMAGE_URL extraction strips whitespace."""
+    # Setup
+    run = {
+        'status': {
+            'results': [
+                {'name': 'IMAGE_URL', 'value': '  quay.io/namespace/image:tag\n  '},
+            ]
+        }
+    }
+
+    # Test
+    result = get_pipelinerun_image_url('test-pipelinerun', run)
+
+    # Verify
+    assert result == 'quay.io/namespace/image:tag'
+
+
+def test_get_pipelinerun_image_url_fallback_to_pipelineresults():
+    """Test fallback from results to pipelineResults."""
+    # Setup - 'results' is empty but 'pipelineResults' has data
+    run = {
+        'status': {
+            'results': [],
+            'pipelineResults': [
+                {'name': 'IMAGE_URL', 'value': 'quay.io/namespace/image:tag'},
+            ],
+        }
+    }
+
+    # Test
+    result = get_pipelinerun_image_url('test-pipelinerun', run)
+
+    # Verify
+    assert result == 'quay.io/namespace/image:tag'
+
+
+@pytest.mark.parametrize(
+    "run,description",
+    [
+        (
+            {
+                'status': {
+                    'results': [
+                        {'name': 'IMAGE_DIGEST', 'value': 'sha256:abc123'},
+                        {'name': 'CHAINS-GIT_COMMIT', 'value': 'def456'},
+                    ]
+                }
+            },
+            'IMAGE_URL not in results',
+        ),
+        (
+            {
+                'status': {
+                    'results': [
+                        {'name': 'IMAGE_URL', 'value': ''},
+                    ]
+                }
+            },
+            'IMAGE_URL has empty value',
+        ),
+        ({'status': {}}, 'no results key present'),
+        (
+            {'status': {'results': [], 'pipelineResults': []}},
+            'both results and pipelineResults empty',
+        ),
+    ],
+)
+def test_get_pipelinerun_image_url_error_cases(run, description):
+    """Test error cases when IMAGE_URL is not found or invalid."""
+    # Test & Verify
+    with pytest.raises(
+        IIBError, match='IMAGE_URL not found in pipelinerun test-pipelinerun results'
+    ):
+        get_pipelinerun_image_url('test-pipelinerun', run)

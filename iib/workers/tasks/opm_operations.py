@@ -1098,6 +1098,109 @@ def opm_registry_add_fbc_fragment(
     )
 
 
+def opm_registry_add_fbc_fragment_containerized(
+    request_id: int,
+    temp_dir: str,
+    from_index_configs_dir: str,
+    fbc_fragments: List[str],
+    overwrite_from_index_token: Optional[str],
+    index_db_path: Optional[str] = None,
+) -> Tuple[str, str, List[str]]:
+    """
+    Add FBC fragments to the from_index image.
+
+    This only produces the index.Dockerfile file and does not build the container image.
+    This also removes operators from index_db_path file if any are present.
+
+    :param int request_id: the id of IIB request
+    :param str temp_dir: the base directory to generate the database and index.Dockerfile in.
+    :param str from_index_configs_dir: path to the file-based catalog directory
+    :param list fbc_fragments: the list of pull specifications of fbc fragments to be added.
+    :param str overwrite_from_index_token: token used to access the image
+    :param str index_db_path: path to the index database file
+    :return: Returns paths to directories for containing file-based catalog, path to index.db,
+        and list of operators removed from index_db_path
+    :rtype: str, str, list(str)
+    """
+    set_request_state(
+        request_id,
+        'in_progress',
+        f'Extracting operator packages from {len(fbc_fragments)} fbc fragment(s)',
+    )
+
+    # Single pass: Extract all fragment paths and operators
+    fragment_data = []
+    all_fragment_operators = []
+
+    for i, fbc_fragment in enumerate(fbc_fragments):
+        # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
+        fragment_path, fragment_operators = extract_fbc_fragment(
+            temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
+        )
+        fragment_data.append((fragment_path, fragment_operators))
+        all_fragment_operators.extend(fragment_operators)
+
+    # Single verification: Check for operators that already exist in the database
+    operators_in_db, index_db_path_local = verify_operators_exists(
+        from_index=None,
+        base_dir=temp_dir,
+        operator_packages=all_fragment_operators,
+        overwrite_from_index_token=overwrite_from_index_token,
+        index_db_path=index_db_path,
+    )
+
+    # Remove existing operators if any conflicts found
+    if operators_in_db:
+        remove_operator_deprecations(
+            from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
+        )
+        log.info('Removing %s from index.db ', operators_in_db)
+        _opm_registry_rm(
+            index_db_path=index_db_path_local, operators=operators_in_db, base_dir=temp_dir
+        )
+
+        # migrated_catalog_dir path will look like /tmp/iib-**/catalog
+        migrated_catalog_dir, _ = opm_migrate(
+            index_db=index_db_path_local,
+            base_dir=temp_dir,
+            generate_cache=False,
+        )
+        log.info("Migrated catalog after removing from db at %s", migrated_catalog_dir)
+
+        # copy the content of migrated_catalog to from_index's config
+        log.info("Copying content of %s to %s", migrated_catalog_dir, from_index_configs_dir)
+        for operator_package in os.listdir(migrated_catalog_dir):
+            shutil.copytree(
+                os.path.join(migrated_catalog_dir, operator_package),
+                os.path.join(from_index_configs_dir, operator_package),
+                dirs_exist_ok=True,
+            )
+
+    # Copy operators to config directory using the collected data
+    for i, (fragment_path, fragment_operators) in enumerate(fragment_data):
+        set_request_state(
+            request_id,
+            'in_progress',
+            f'Adding package(s) {fragment_operators} from fbc fragment '
+            f'{i + 1}/{len(fbc_fragments)} to from_index',
+        )
+
+        for fragment_operator in fragment_operators:
+            # copy fragment_operator to from_index configs
+            fragment_opr_src_path = os.path.join(fragment_path, fragment_operator)
+            fragment_opr_dest_path = os.path.join(from_index_configs_dir, fragment_operator)
+            if os.path.exists(fragment_opr_dest_path):
+                shutil.rmtree(fragment_opr_dest_path)
+            log.info(
+                "Copying content of %s to %s",
+                fragment_opr_src_path,
+                fragment_opr_dest_path,
+            )
+            shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
+
+    return from_index_configs_dir, index_db_path_local, operators_in_db
+
+
 def remove_operator_deprecations(from_index_configs_dir: str, operators: List[str]) -> None:
     """
     Remove operator deprecations, if present.
@@ -1150,7 +1253,7 @@ def verify_operators_exists(
     if (not index_db_path or not os.path.exists(index_db_path)) and from_index:
         # check if operator packages exists in hidden index.db
         # we are not checking /config dir since it contains FBC opted-in operators
-        # and to remove thosefbc-operations endpoint should be used
+        # and to remove those fbc-operations endpoint should be used
         with set_registry_token(overwrite_from_index_token, from_index, append=True):
             index_db_path = get_hidden_index_database(from_index=str(from_index), base_dir=base_dir)
 
