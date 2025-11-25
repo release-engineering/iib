@@ -5,6 +5,7 @@ flask
 flask-login
 flask-migrate
 flask-sqlalchemy
+kubernetes
 opentelemetry-api
 opentelemetry-exporter-otlp
 opentelemetry-instrumentation

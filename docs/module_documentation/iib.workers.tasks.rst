@@ -29,6 +29,14 @@ iib.workers.tasks.build\_fbc\_operations module
    :undoc-members:
    :show-inheritance:
 
+iib.workers.tasks.build\_containerized\_fbc\_operations module
+--------------------------------------------------------------
+
+.. automodule:: iib.workers.tasks.build_containerized_fbc_operations
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.workers.tasks.build\_merge\_index\_image module
 ---------------------------------------------------
 
@@ -91,6 +99,30 @@ iib.workers.tasks.opm\_operations module
 ----------------------------------------
 
 .. automodule:: iib.workers.tasks.opm_operations
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+iib.workers.tasks.konflux\_utils module
+---------------------------------------
+
+.. automodule:: iib.workers.tasks.konflux_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+iib.workers.tasks.oras\_utils module
+------------------------------------
+
+.. automodule:: iib.workers.tasks.oras_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+iib.workers.tasks.git\_utils module
+-----------------------------------
+
+.. automodule:: iib.workers.tasks.git_utils
    :members:
    :undoc-members:
    :show-inheritance:
