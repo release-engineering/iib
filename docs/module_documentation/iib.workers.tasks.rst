@@ -13,6 +13,14 @@ iib.workers.tasks.build module
    :private-members:
    :show-inheritance:
 
+iib.workers.tasks.build\_containerized\_rm module
+-------------------------------------------------
+
+.. automodule:: iib.workers.tasks.build_containerized_rm
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.workers.tasks.build\_create\_empty\_index module
 ----------------------------------------------------
 
@@ -68,6 +76,14 @@ iib.workers.tasks.celery module
    :ignore-module-all:
    :members:
    :private-members:
+   :show-inheritance:
+
+iib.workers.tasks.containerized\_utils module
+---------------------------------------------
+
+.. automodule:: iib.workers.tasks.containerized_utils
+   :members:
+   :undoc-members:
    :show-inheritance:
 
 iib.workers.tasks.fbc\_utils module
