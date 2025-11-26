@@ -46,8 +46,8 @@ from botocore.response import StreamingBody
 from iib.web.utils import pagination_metadata, str_to_bool
 from iib.workers.tasks.build import (
     handle_add_request,
-    handle_rm_request,
 )
+from iib.workers.tasks.build_containerized_rm import handle_containerized_rm_request
 from iib.workers.tasks.build_add_deprecations import handle_add_deprecations_request
 from iib.workers.tasks.build_containerized_fbc_operations import (
     handle_containerized_fbc_operation_request,
@@ -854,7 +854,7 @@ def rm_operators() -> Tuple[flask.Response, int]:
     error_callback = failed_request_callback.s(request.id)
     from_index_pull_spec = request.from_index.pull_specification if request.from_index else None
     try:
-        handle_rm_request.apply_async(
+        handle_containerized_rm_request.apply_async(
             args=args,
             link_error=error_callback,
             argsrepr=repr(safe_args),
@@ -1073,7 +1073,7 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
                     queue=celery_queue,
                 )
             else:
-                handle_rm_request.apply_async(
+                handle_containerized_rm_request.apply_async(
                     args=args,
                     link_error=error_callback,
                     argsrepr=repr(safe_args),

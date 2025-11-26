@@ -1417,7 +1417,7 @@ def test_patch_request_regenerate_bundle_success(
 
 
 @pytest.mark.parametrize("binary_image", ('binary:image', 'scratch'))
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_remove_operator_success(mock_smfsc, mock_rm, binary_image, db, auth_env, client):
     data = {
@@ -1475,7 +1475,7 @@ def test_remove_operator_success(mock_smfsc, mock_rm, binary_image, db, auth_env
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, auth_env, client, db):
     token = 'username:password'
@@ -1521,7 +1521,7 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
         ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_remove_operator_custom_user_queue(
     mock_smfsc, mock_hrr, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
@@ -1808,8 +1808,9 @@ def test_regenerate_bundle_batch_invalid_input(payload, error_msg, app, auth_env
 
 
 @mock.patch('iib.web.api_v1.handle_add_request')
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
+@mock.patch.dict('iib.web.api_v1.flask.current_app.config', {'IIB_INDEX_TO_GITLAB_PUSH_MAP': {}})
 def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
     annotations = {'msdhoni': 'The best captain ever!'}
     data = {
@@ -1858,7 +1859,7 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     [],
                     None,
                     False,
-                    {},
+                    {},  # index_to_gitlab_push_map from config (empty in test)
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
@@ -1886,7 +1887,7 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     {},
                     [],
-                    {},
+                    {},  # index_to_gitlab_push_map from config (empty in test)
                 ],
                 argsrepr=(
                     "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "

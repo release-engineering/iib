@@ -48,7 +48,7 @@ def test_catch_regenerate_bundle_failure(mock_smfsc, mock_hrbr, db, auth_env, cl
     assert_testing(rv, mock_smfsc, db)
 
 
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_catch_remove_operator_failure(mock_smfsc, mock_rm, db, auth_env, client):
     mock_rm.apply_async.side_effect = OperationalError
@@ -109,7 +109,7 @@ def test_catch_regenerate_bundle_batch_failure(
 
 
 @mock.patch('iib.web.api_v1.handle_add_request')
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_add_rm_batch_add_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
     mock_har.apply_async.side_effect = OperationalError
@@ -159,7 +159,7 @@ def test_add_rm_batch_add_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_en
 
 
 @mock.patch('iib.web.api_v1.handle_add_request')
-@mock.patch('iib.web.api_v1.handle_rm_request')
+@mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_add_rm_batch_rm_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
     mock_hrr.apply_async.side_effect = OperationalError
