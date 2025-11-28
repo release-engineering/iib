@@ -86,6 +86,92 @@ def _filter_out_pure_fbc_bundles(
     return res_bundles, res_pullspec
 
 
+def get_missing_bundles_from_target_to_source(
+    source_index_bundles: List[BundleImage],
+    target_index_bundles: List[BundleImage],
+    source_from_index: str,
+    ocp_version: str,
+    target_index=None,
+    ignore_bundle_ocp_version: Optional[bool] = False,
+) -> Tuple[List[BundleImage], List[BundleImage]]:
+    """
+    Generate a list of missing bundles from the source but present in the target.
+
+    This function will not build the index image, it will only generate a list of bundles missing
+    from the source index image but present in the target index image, as well as a list of bundles
+    in the new index whose ocp_version range does not satisfy the ocp_version value of the target
+    index.
+
+    :param list source_index_bundles: bundles present in the source index image.
+    :param list target_index_bundles: bundles present in the target index image.
+    :param str source_from_index: index image, whose data will be contained in the new index image.
+    :param str ocp_version: ocp version which will be added as a label to the image.
+    :param str target_index: the pull specification of the container image
+    :param bool ignore_bundle_ocp_version: When set to `true` and image set as target_index is
+        listed in `iib_no_ocp_label_allow_list` config then bundles without
+        "com.redhat.openshift.versions" label set will be added in the result `index_image`.
+    :return: tuple where the first value is a list of bundles missing in the source and are present
+        in the target index image and the second value is a list of bundles whose ocp_version
+        range does not satisfy the ocp_version value of the target index.
+    :rtype: tuple
+    """
+    missing_bundles = []
+    # This list stores the bundles whose ocp_version range does not satisfy the ocp_version
+    # of the target index
+    invalid_bundles = []
+    source_bundle_digests = []
+    source_bundle_csv_names = []
+    target_bundle_digests = []
+
+    for bundle in source_index_bundles:
+        if '@sha256:' in bundle['bundlePath']:
+            source_bundle_digests.append(bundle['bundlePath'].split('@sha256:')[-1])
+            source_bundle_csv_names.append(bundle['csvName'])
+        else:
+            raise IIBError(
+                f'Bundle {bundle["bundlePath"]} in the source index image is not defined via digest'
+            )
+    for bundle in target_index_bundles:
+        if '@sha256:' in bundle['bundlePath']:
+            target_bundle_digests.append((bundle['bundlePath'].split('@sha256:')[-1], bundle))
+        else:
+            raise IIBError(
+                f'Bundle {bundle["bundlePath"]} in the target index image is not defined via digest'
+            )
+
+    for target_bundle_digest, bundle in target_bundle_digests:
+        if (
+            target_bundle_digest not in source_bundle_digests
+            and bundle['csvName'] not in source_bundle_csv_names
+        ):
+            missing_bundles.append(bundle)
+
+    if ignore_bundle_ocp_version:
+        target_index_tmp = '' if target_index is None else target_index
+        allow_no_ocp_version = any(
+            target_index_tmp.startswith(index) or source_from_index.startswith(index)
+            for index in get_worker_config()['iib_no_ocp_label_allow_list']
+        )
+    else:
+        allow_no_ocp_version = False
+
+    if allow_no_ocp_version:
+        log.info('Adding bundles without "com.redhat.openshift.versions" label is allowed.')
+    else:
+        log.info('Bundles without "com.redhat.openshift.versions" label will not be added.')
+
+    for bundle in itertools.chain(missing_bundles, source_index_bundles):
+        if not is_bundle_version_valid(bundle['bundlePath'], ocp_version, allow_no_ocp_version):
+            invalid_bundles.append(bundle)
+
+    if invalid_bundles:
+        log.info(
+            '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
+        )
+
+    return missing_bundles, invalid_bundles
+
+
 def _add_bundles_missing_in_source(
     source_index_bundles: List[BundleImage],
     target_index_bundles: List[BundleImage],
@@ -131,61 +217,16 @@ def _add_bundles_missing_in_source(
     """
     set_request_state(request_id, 'in_progress', 'Adding bundles missing in source index image')
     log.info('Adding bundles from target index image which are missing from source index image')
-    missing_bundles = []
-    missing_bundle_paths = []
-    # This list stores the bundles whose ocp_version range does not satisfy the ocp_version
-    # of the target index
-    invalid_bundles = []
-    source_bundle_digests = []
-    source_bundle_csv_names = []
-    target_bundle_digests = []
 
-    for bundle in source_index_bundles:
-        if '@sha256:' in bundle['bundlePath']:
-            source_bundle_digests.append(bundle['bundlePath'].split('@sha256:')[-1])
-            source_bundle_csv_names.append(bundle['csvName'])
-        else:
-            raise IIBError(
-                f'Bundle {bundle["bundlePath"]} in the source index image is not defined via digest'
-            )
-    for bundle in target_index_bundles:
-        if '@sha256:' in bundle['bundlePath']:
-            target_bundle_digests.append((bundle['bundlePath'].split('@sha256:')[-1], bundle))
-        else:
-            raise IIBError(
-                f'Bundle {bundle["bundlePath"]} in the target index image is not defined via digest'
-            )
-
-    for target_bundle_digest, bundle in target_bundle_digests:
-        if (
-            target_bundle_digest not in source_bundle_digests
-            and bundle['csvName'] not in source_bundle_csv_names
-        ):
-            missing_bundles.append(bundle)
-            missing_bundle_paths.append(bundle['bundlePath'])
-
-    if ignore_bundle_ocp_version:
-        target_index_tmp = '' if target_index is None else target_index
-        allow_no_ocp_version = any(
-            target_index_tmp.startswith(index) or source_from_index.startswith(index)
-            for index in get_worker_config()['iib_no_ocp_label_allow_list']
-        )
-    else:
-        allow_no_ocp_version = False
-
-    if allow_no_ocp_version:
-        log.info('Adding bundles without "com.redhat.openshift.versions" label is allowed.')
-    else:
-        log.info('Bundles without "com.redhat.openshift.versions" label will not be added.')
-
-    for bundle in itertools.chain(missing_bundles, source_index_bundles):
-        if not is_bundle_version_valid(bundle['bundlePath'], ocp_version, allow_no_ocp_version):
-            invalid_bundles.append(bundle)
-
-    if invalid_bundles:
-        log.info(
-            '%s bundles have invalid version label and will be deprecated.', len(invalid_bundles)
-        )
+    missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
+        source_index_bundles=source_index_bundles,
+        target_index_bundles=target_index_bundles,
+        source_from_index=source_from_index,
+        ocp_version=ocp_version,
+        target_index=target_index,
+        ignore_bundle_ocp_version=ignore_bundle_ocp_version,
+    )
+    missing_bundle_paths = [bundle['bundlePath'] for bundle in missing_bundles]
 
     with set_registry_token(overwrite_target_index_token, target_index, append=True):
         is_source_fbc = is_image_fbc(source_from_index)
