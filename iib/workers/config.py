@@ -96,6 +96,7 @@ class Config(object):
         'iib.workers.tasks.build_add_deprecations',
         'iib.workers.tasks.build_containerized_fbc_operations',
         'iib.workers.tasks.build_containerized_rm',
+        'iib.workers.tasks.build_containerized_merge',
         'iib.workers.tasks.general',
     ]
     # Path to hidden location of SQLite database
