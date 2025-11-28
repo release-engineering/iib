@@ -103,10 +103,15 @@ def test_cleanup(mock_rdc, mock_run_cmd):
     mock_rdc.assert_called_once_with()
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.build.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build.run_cmd')
 @mock.patch('iib.workers.tasks.build.open')
-def test_create_and_push_manifest_list(mock_open, mock_run_cmd, mock_td, tmp_path):
+def test_create_and_push_manifest_list(mock_open, mock_run_cmd, mock_td, mock_gwc, tmp_path):
+    mock_gwc.return_value = {
+        'iib_registry': 'registry:8443',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
     mock_td.return_value.__enter__.return_value = tmp_path
     mock_run_cmd.side_effect = [
         IIBError('Manifest list not found locally.'),

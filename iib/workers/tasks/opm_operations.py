@@ -500,6 +500,33 @@ def opm_registry_deprecatetruncate(base_dir: str, index_db: str, bundles: List[s
     run_cmd(cmd, {'cwd': base_dir}, exc_msg=f'Failed to deprecate the bundles on {index_db}')
 
 
+def deprecate_bundles_db(
+    base_dir: str,
+    index_db_file: str,
+    bundles: List[str],
+) -> None:
+    """
+    Deprecate the specified bundles from the index.db file.
+
+    :param str base_dir: base directory where operation files will be located.
+    :param str index_db_file: path to index.db file used with opm registry deprecatetruncate.
+    :param list bundles: pull specifications of bundles to deprecate.
+    """
+    conf = get_worker_config()
+
+    # Break the bundles into chunks of at max iib_deprecate_bundles_limit bundles
+    for i in range(
+        0,
+        len(bundles),
+        conf.iib_deprecate_bundles_limit,
+    ):  # Determine position i in the bundles array
+        opm_registry_deprecatetruncate(
+            base_dir=base_dir,
+            index_db=index_db_file,
+            bundles=bundles[i : i + conf.iib_deprecate_bundles_limit],  # Pass a chunk starting at i
+        )
+
+
 def deprecate_bundles_fbc(
     bundles: List[str],
     base_dir: str,
@@ -516,20 +543,9 @@ def deprecate_bundles_fbc(
     :param str binary_image: binary image to be used by the new index image.
     :param str from_index: index image, from which the bundles will be deprecated.
     """
-    conf = get_worker_config()
     index_db_file = _get_or_create_temp_index_db_file(base_dir=base_dir, from_index=from_index)
 
-    # Break the bundles into chunks of at max iib_deprecate_bundles_limit bundles
-    for i in range(
-        0,
-        len(bundles),
-        conf.iib_deprecate_bundles_limit,
-    ):  # Determine position i in the bundles array
-        opm_registry_deprecatetruncate(
-            base_dir=base_dir,
-            index_db=index_db_file,
-            bundles=bundles[i : i + conf.iib_deprecate_bundles_limit],  # Pass a chunk starting at i
-        )
+    deprecate_bundles_db(base_dir=base_dir, index_db_file=index_db_file, bundles=bundles)
 
     fbc_dir, _ = opm_migrate(index_db_file, base_dir)
     # we should keep generating Dockerfile here
