@@ -570,18 +570,32 @@ def test_get_artifact_combined_tag(image_name, tag, expected_tag):
         ),
     ],
 )
-def test_get_indexdb_artifact_pullspec(from_index, expected_pullspec):
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+def test_get_indexdb_artifact_pullspec(mock_gwc, from_index, expected_pullspec):
     """Test constructing index DB artifact pullspecs."""
     from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    mock_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'test-artifact-registry',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
+    }
 
     result = get_indexdb_artifact_pullspec(from_index)
 
     assert result == expected_pullspec
 
 
-def test_get_indexdb_artifact_pullspec_invalid():
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+def test_get_indexdb_artifact_pullspec_invalid(mock_gwc):
     """Test _get_indexdb_artifact_pullspec with invalid pullspec."""
     from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
+
+    mock_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'test-artifact-registry',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
+    }
 
     with pytest.raises(IIBError, match="Missing tag"):
         get_indexdb_artifact_pullspec("registry.example.com/namespace/image")
