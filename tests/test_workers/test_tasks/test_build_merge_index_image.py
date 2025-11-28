@@ -943,6 +943,7 @@ def test_add_bundles_missing_in_source_user_not_in_allow_list(
         ),
     ),
 )
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
 @mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
 @mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
@@ -956,10 +957,12 @@ def test_add_bundles_missing_in_source_error_tag_specified(
     mock_bi,
     mock_pi,
     mock_capml,
+    mock_gr,
     source_bundles,
     target_bundles,
     error_msg,
 ):
+    mock_gr.return_value = {'user': 'user_name'}
     with pytest.raises(IIBError, match=error_msg):
         build_merge_index_image._add_bundles_missing_in_source(
             source_bundles,
@@ -975,6 +978,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
         )
 
 
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
 @mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
 @mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
 @mock.patch('iib.workers.tasks.build_merge_index_image._create_and_push_manifest_list')
@@ -984,7 +988,7 @@ def test_add_bundles_missing_in_source_error_tag_specified(
 @mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
 def test_add_bundles_missing_in_source_none_missing(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc
+    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc, mock_gr
 ):
     source_bundles = [
         {
@@ -1028,6 +1032,7 @@ def test_add_bundles_missing_in_source_none_missing(
     ]
     mock_gil.side_effect = ['v=4.5', 'v4.8,v4.7', 'v4.5-v4.8', 'v4.5,v4.6,v4.7']
     mock_iifbc.return_value = False
+    mock_gr.return_value = {'user': 'user_name'}
     missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
         source_bundles,
         target_bundles,
