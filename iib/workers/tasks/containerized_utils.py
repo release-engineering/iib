@@ -3,10 +3,14 @@
 import json
 import logging
 import os
+import queue
+import threading
 from typing import Dict, List, Optional
 
+from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
+from iib.workers.tasks.iib_static_types import BundleImage
 from iib.workers.tasks.oras_utils import (
     _get_artifact_combined_tag,
     _get_name_and_tag_from_pullspec,
@@ -18,9 +22,83 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import run_cmd
+from iib.workers.tasks.utils import run_cmd, skopeo_inspect
 
 log = logging.getLogger(__name__)
+
+
+class ValidateBundlesThread(threading.Thread):
+    """Thread to validate whether the bundle pullspecs are present in the registry."""
+
+    def __init__(self, bundles_queue: queue.Queue) -> None:
+        """
+        Initialize the thread to validate whether the bundle pullspecs are present in the registry.
+
+        :param queue.Queue bundles_queue: the queue of bundles to validate
+        """
+        super().__init__()
+        self.bundles_queue = bundles_queue
+        self.exception: Optional[Exception] = None
+        self.bundle: Optional[str] = None
+
+    def run(self) -> None:
+        """Execute the validation of the bundle pullspecs."""
+        bundle = None
+        try:
+            while not self.bundles_queue.empty():
+                bundle = self.bundles_queue.get()
+                skopeo_inspect(f'docker://{bundle}', '--raw', return_json=False)
+        except IIBError as e:
+            self.bundle = bundle
+            log.error(f"Error validating bundle {bundle}: {e}")
+            self.exception = e
+        finally:
+            while not self.bundles_queue.empty():
+                self.bundles_queue.task_done()
+
+
+def wait_for_bundle_validation_threads(validation_threads: List[ValidateBundlesThread]) -> None:
+    """
+    Wait for all bundle validation threads to complete.
+
+    :param list threads: the list of threads to wait for
+    """
+    for t in validation_threads:
+        t.join()
+        if t.exception:
+            bundle_str = str(t.bundle) if t.bundle else "unknown"
+            log.error(f"Error validating bundle {bundle_str}: {t.exception}")
+            raise IIBError(f"Error validating bundle {bundle_str}: {t.exception}")
+
+
+def validate_bundles_in_parallel(
+    bundles: List[BundleImage], threads=5, wait=True
+) -> Optional[List[ValidateBundlesThread]]:
+    """
+    Validate bundles in parallel.
+
+    :param list bundles: the list of bundles to validate
+    :param int threads: the number of threads to use
+    :param bool wait: whether to wait for all threads to complete
+    :return: the list of threads if not waiting, None otherwise
+    :rtype: Optional[List[ValidateBundlesThread]]
+    """
+    bundles_queue: queue.Queue[BundleImage] = queue.Queue()
+
+    for bundle in bundles:
+        bundles_queue.put(bundle)
+
+    validation_threads: List[ValidateBundlesThread] = []
+    for _ in range(threads):
+        validation_thread = ValidateBundlesThread(bundles_queue)
+        validation_threads.append(validation_thread)
+        validation_thread.start()
+
+    if wait:
+        wait_for_bundle_validation_threads(validation_threads)
+    else:
+        return validation_threads
+    return None
 
 
 def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
