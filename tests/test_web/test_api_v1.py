@@ -1969,7 +1969,7 @@ def test_regenerate_add_rm_batch_invalid_input(payload, error_msg, app, auth_env
 
 @pytest.mark.parametrize("binary_image", ('binary:image', 'scratch'))
 @pytest.mark.parametrize('distribution_scope', (None, 'stage'))
-@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.handle_containerized_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_success(
     mock_smfsc, mock_merge, binary_image, app, db, auth_env, client, distribution_scope
@@ -2032,7 +2032,7 @@ def test_merge_index_image_success(
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
-@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.handle_containerized_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_overwrite_token_redacted(
     mock_smfsc, mock_merge, app, auth_env, client, db
@@ -2083,7 +2083,7 @@ def test_merge_index_image_overwrite_token_redacted(
         ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.handle_containerized_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_custom_user_queue(
     mock_smfsc,
@@ -2119,7 +2119,7 @@ def test_merge_index_image_custom_user_queue(
 
 
 @pytest.mark.parametrize('overwrite_from_index', (True, False))
-@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.handle_containerized_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_fail_on_missing_overwrite_params(
     mock_smfsc, mock_merge, app, auth_env, client, overwrite_from_index
@@ -2190,7 +2190,7 @@ def test_merge_index_image_fail_on_missing_overwrite_params(
         ),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_merge_request')
+@mock.patch('iib.web.api_v1.handle_containerized_merge_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_merge_index_image_fail_on_invalid_params(
     mock_smfsc, mock_merge, app, auth_env, client, data, error_msg
