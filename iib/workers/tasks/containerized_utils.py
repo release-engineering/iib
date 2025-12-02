@@ -5,12 +5,27 @@ import logging
 import os
 import queue
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import BundleImage
+from iib.workers.tasks.build import _skopeo_copy
+from iib.workers.tasks.git_utils import (
+    clone_git_repo,
+    close_mr,
+    commit_and_push,
+    create_mr,
+    get_git_token,
+    get_last_commit_sha,
+    resolve_git_url,
+)
+from iib.workers.tasks.konflux_utils import (
+    find_pipelinerun,
+    get_pipelinerun_image_url,
+    wait_for_pipeline_completion,
+)
 from iib.workers.tasks.oras_utils import (
     _get_artifact_combined_tag,
     _get_name_and_tag_from_pullspec,
@@ -361,3 +376,217 @@ def cleanup_on_failure(
             log.info("Successfully restored index.db artifact to original digest")
         except Exception as restore_error:
             log.error("Failed to restore index.db artifact: %s", restore_error)
+
+
+def prepare_git_repository_for_build(
+    request_id: int,
+    from_index: str,
+    temp_dir: str,
+    branch: str,
+    index_to_gitlab_push_map: Dict[str, str],
+) -> Tuple[str, str, str]:
+    """
+    Set up and clone Git repository for containerized build.
+
+    This function resolves the Git repository URL from the from_index,
+    gets the Git token, clones the repository, and verifies the configs directory exists.
+
+    :param int request_id: The IIB request ID
+    :param str from_index: The from_index pullspec
+    :param str temp_dir: Temporary directory where repository will be cloned
+    :param str branch: Git branch to clone
+    :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
+    :return: Tuple of (index_git_repo, local_git_repo_path, localized_git_catalog_path)
+    :rtype: Tuple[str, str, str]
+    :raises IIBError: If Git repository cannot be resolved or configs directory not found
+    """
+    # Get Git repository information
+    index_git_repo = resolve_git_url(from_index=from_index, index_repo_map=index_to_gitlab_push_map)
+    if not index_git_repo:
+        raise IIBError(
+            f"Git repository mapping not found for from_index: {from_index}. "
+            "index_to_gitlab_push_map is required."
+        )
+    log.info("Git repo for %s: %s", from_index, index_git_repo)
+
+    token_name, git_token = get_git_token(index_git_repo)
+
+    # Clone Git repository
+    set_request_state(request_id, 'in_progress', 'Cloning Git repository')
+    local_git_repo_path = os.path.join(temp_dir, 'git', branch)
+    os.makedirs(local_git_repo_path, exist_ok=True)
+
+    clone_git_repo(index_git_repo, branch, token_name, git_token, local_git_repo_path)
+
+    localized_git_catalog_path = os.path.join(local_git_repo_path, 'configs')
+    if not os.path.exists(localized_git_catalog_path):
+        raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
+
+    return index_git_repo, local_git_repo_path, localized_git_catalog_path
+
+
+def fetch_and_verify_index_db_artifact(
+    from_index: str,
+    temp_dir: str,
+) -> str:
+    """
+    Pull index.db artifact and verify it exists.
+
+    This function pulls the index.db artifact from the registry and verifies
+    that the file exists in the expected location.
+
+    :param str from_index: The from_index pullspec
+    :param str temp_dir: Temporary directory where artifact will be extracted
+    :return: Path to the index.db file
+    :rtype: str
+    :raises IIBError: If index.db file not found after pulling
+    """
+    artifact_dir = pull_index_db_artifact(from_index, temp_dir)
+    artifact_index_db_file = os.path.join(artifact_dir, "index.db")
+
+    log.debug("Artifact DB path %s", artifact_index_db_file)
+    if not os.path.exists(artifact_index_db_file):
+        log.error("Index.db file not found at %s", artifact_index_db_file)
+        raise IIBError(f"Index.db file not found at {artifact_index_db_file}")
+
+    return artifact_index_db_file
+
+
+def git_commit_and_create_mr_or_push(
+    request_id: int,
+    local_git_repo_path: str,
+    index_git_repo: str,
+    branch: str,
+    commit_message: str,
+    overwrite_from_index: bool = False,
+) -> Tuple[Optional[Dict[str, str]], str]:
+    """
+    Commit changes and trigger Konflux pipeline by creating MR or pushing directly.
+
+    If overwrite_from_index is False, creates a merge request (for throw-away
+    requests). Otherwise, pushes directly to the branch. Returns the merge request details
+    and last commit SHA.
+
+    :param int request_id: The IIB request ID
+    :param str local_git_repo_path: Path to local Git repository
+    :param str index_git_repo: URL of the Git repository
+    :param str branch: Git branch name
+    :param str commit_message: Commit message to use
+    :param bool overwrite_from_index: Whether to overwrite from_index (push directly vs MR)
+    :return: Tuple of (mr_details, last_commit_sha)
+    :rtype: Tuple[Optional[Dict[str, str]], str]
+    """
+    set_request_state(request_id, 'in_progress', 'Committing changes to Git repository')
+    log.info("Committing changes to Git repository. Triggering KONFLUX pipeline.")
+
+    mr_details = None
+    # Determine if this is a throw-away request (no overwrite_from_index)
+    if not overwrite_from_index:
+        # Create MR for throw-away requests
+        mr_details = create_mr(
+            request_id=request_id,
+            local_repo_path=local_git_repo_path,
+            repo_url=index_git_repo,
+            branch=branch,
+            commit_message=commit_message,
+        )
+        log.info("Created merge request: %s", mr_details.get('mr_url'))
+    else:
+        # Push directly to the branch
+        commit_and_push(
+            request_id=request_id,
+            local_repo_path=local_git_repo_path,
+            repo_url=index_git_repo,
+            branch=branch,
+            commit_message=commit_message,
+        )
+
+    # Get commit SHA before waiting for the pipeline (while the temp directory still exists)
+    last_commit_sha = get_last_commit_sha(local_repo_path=local_git_repo_path)
+
+    return mr_details, last_commit_sha
+
+
+def monitor_pipeline_and_extract_image(request_id: int, last_commit_sha: str) -> str:
+    """
+    Wait for Konflux pipeline to complete and return the built image URL.
+
+    This function finds the pipelinerun associated with the commit SHA,
+    waits for it to complete, and extracts the built image URL from the results.
+
+    :param int request_id: The IIB request ID
+    :param str last_commit_sha: SHA of the last commit that triggered the pipeline
+    :return: URL of the built image
+    :rtype: str
+    :raises IIBError: If pipelinerun not found or pipeline fails
+    """
+    # Wait for Konflux pipeline
+    set_request_state(request_id, 'in_progress', 'Waiting on KONFLUX build')
+
+    # find_pipelinerun has retry decorator to handle delays in pipelinerun creation
+    pipelines = find_pipelinerun(last_commit_sha)
+
+    # Get the first pipelinerun (should typically be only one)
+    pipelinerun = pipelines[0]
+    pipelinerun_name = pipelinerun.get('metadata', {}).get('name')
+    if not pipelinerun_name:
+        raise IIBError("Pipelinerun name not found in pipeline metadata")
+
+    run = wait_for_pipeline_completion(pipelinerun_name)
+
+    return get_pipelinerun_image_url(pipelinerun_name, run)
+
+
+def replicate_image_to_tagged_destinations(
+    request_id: int,
+    image_url: str,
+    build_tags: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Copy built index from Konflux to IIB registry with all required tags.
+
+    This function builds the list of output pull specs and copies the built
+    image from Konflux to each spec using skopeo.
+
+    :param int request_id: The IIB request ID
+    :param str image_url: URL of the built image from Konflux
+    :param Optional[List[str]] build_tags: Additional tags to apply
+    :return: List of output pull specifications that were copied to
+    :rtype: List[str]
+    """
+    set_request_state(request_id, 'in_progress', 'Copying built index to IIB registry')
+
+    output_pull_specs = get_list_of_output_pullspec(request_id, build_tags)
+
+    # Copy the built index from Konflux to all output pull specs
+    for spec in output_pull_specs:
+        _skopeo_copy(
+            source=f'docker://{image_url}',
+            destination=f'docker://{spec}',
+            copy_all=True,
+            exc_msg=f'Failed to copy built index from Konflux to {spec}',
+        )
+        log.info("Successfully copied image to %s", spec)
+
+    return output_pull_specs
+
+
+def cleanup_merge_request_if_exists(
+    mr_details: Optional[Dict[str, str]],
+    index_git_repo: Optional[str],
+) -> None:
+    """
+    Close merge request if it was created.
+
+    This function attempts to close a merge request and logs a warning
+    if the operation fails.
+
+    :param Optional[Dict[str, str]] mr_details: Details of the merge request
+    :param Optional[str] index_git_repo: URL of the Git repository
+    """
+    if mr_details and index_git_repo:
+        try:
+            close_mr(mr_details, index_git_repo)
+            log.info("Closed merge request: %s", mr_details.get('mr_url'))
+        except IIBError as e:
+            log.warning("Failed to close merge request: %s", e)
