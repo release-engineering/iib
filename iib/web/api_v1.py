@@ -56,10 +56,10 @@ from iib.workers.tasks.build_recursive_related_bundles import (
     handle_recursive_related_bundles_request,
 )
 from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
-from iib.workers.tasks.build_merge_index_image import handle_merge_request
 from iib.workers.tasks.build_containerized_create_empty_index import (
     handle_containerized_create_empty_index_request,
 )
+from iib.workers.tasks.build_containerized_merge import handle_containerized_merge_request
 from iib.workers.tasks.general import failed_request_callback
 from iib.web.iib_static_types import (
     AddDeprecationRequestPayload,
@@ -1133,7 +1133,7 @@ def merge_index_image() -> Tuple[flask.Response, int]:
 
     error_callback = failed_request_callback.s(request.id)
     try:
-        handle_merge_request.apply_async(
+        handle_containerized_merge_request.apply_async(
             args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=celery_queue
         )
     except kombu.exceptions.OperationalError:
