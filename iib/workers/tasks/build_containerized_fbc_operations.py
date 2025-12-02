@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
-import os
 import tempfile
 from typing import Dict, List, Optional, Set
 
@@ -11,29 +10,18 @@ from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _update_index_image_build_state,
     _update_index_image_pull_spec,
-    _skopeo_copy,
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.containerized_utils import (
-    pull_index_db_artifact,
-    write_build_metadata,
-    get_list_of_output_pullspec,
+    cleanup_merge_request_if_exists,
     cleanup_on_failure,
+    fetch_and_verify_index_db_artifact,
+    git_commit_and_create_mr_or_push,
+    monitor_pipeline_and_extract_image,
+    prepare_git_repository_for_build,
     push_index_db_artifact,
-)
-from iib.workers.tasks.git_utils import (
-    create_mr,
-    clone_git_repo,
-    get_git_token,
-    get_last_commit_sha,
-    resolve_git_url,
-    commit_and_push,
-    close_mr,
-)
-from iib.workers.tasks.konflux_utils import (
-    wait_for_pipeline_completion,
-    find_pipelinerun,
-    get_pipelinerun_image_url,
+    replicate_image_to_tagged_destinations,
+    write_build_metadata,
 )
 from iib.workers.tasks.opm_operations import (
     Opm,
@@ -137,43 +125,26 @@ def handle_containerized_fbc_operation_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        # Get Git repository information
-        index_git_repo = resolve_git_url(
-            from_index=from_index, index_repo_map=index_to_gitlab_push_map
-        )
-        if not index_git_repo:
-            raise IIBError(f"Cannot resolve the git repository for {from_index}")
-        log.info(
-            "Git repo for %s: %s",
-            from_index,
-            index_git_repo,
-        )
-
-        token_name, git_token = get_git_token(index_git_repo)
         branch = prebuild_info['ocp_version']
 
-        # Clone Git repository
-        set_request_state(request_id, 'in_progress', 'Cloning Git repository')
-        local_git_repo_path = os.path.join(temp_dir, 'git', branch)
-        os.makedirs(local_git_repo_path, exist_ok=True)
-
-        clone_git_repo(index_git_repo, branch, token_name, git_token, local_git_repo_path)
-
-        localized_git_catalog_path = os.path.join(local_git_repo_path, 'configs')
-        if not os.path.exists(localized_git_catalog_path):
-            raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
+        # Set up and clone Git repository
+        (
+            index_git_repo,
+            local_git_repo_path,
+            localized_git_catalog_path,
+        ) = prepare_git_repository_for_build(
+            request_id=request_id,
+            from_index=from_index,
+            temp_dir=temp_dir,
+            branch=branch,
+            index_to_gitlab_push_map=index_to_gitlab_push_map,
+        )
 
         # Pull index.db artifact (uses ImageStream cache if configured, otherwise pulls directly)
-        artifact_dir = pull_index_db_artifact(
-            from_index,
-            temp_dir,
+        artifact_index_db_file = fetch_and_verify_index_db_artifact(
+            from_index=from_index,
+            temp_dir=temp_dir,
         )
-        artifact_index_db_file = os.path.join(artifact_dir, "index.db")
-
-        log.debug("Artifact DB path %s", artifact_index_db_file)
-        if not os.path.exists(artifact_index_db_file):
-            log.error("Artifact DB file not found at %s", artifact_index_db_file)
-            raise IIBError(f"Artifact DB file not found at {artifact_index_db_file}")
 
         set_request_state(request_id, 'in_progress', 'Adding fbc fragment')
         (
@@ -201,67 +172,31 @@ def handle_containerized_fbc_operation_request(
         )
 
         try:
-            # Commit changes and create PR or push directly
-            set_request_state(request_id, 'in_progress', 'Committing changes to Git repository')
-            log.info("Committing changes to Git repository. Triggering KONFLUX pipeline.")
+            # Commit changes and create MR or push directly
+            mr_details, last_commit_sha = git_commit_and_create_mr_or_push(
+                request_id=request_id,
+                local_git_repo_path=local_git_repo_path,
+                index_git_repo=index_git_repo,
+                branch=branch,
+                commit_message=(
+                    f"IIB: Add data from FBC fragments for request {request_id}\n\n"
+                    f"FBC fragments: {', '.join(fbc_fragments)}"
+                ),
+                overwrite_from_index=overwrite_from_index,
+            )
 
-            # Determine if this is a throw-away request (no overwrite_from_index_token)
-            if not overwrite_from_index_token:
-                # Create MR for throw-away requests
-                mr_details = create_mr(
-                    request_id=request_id,
-                    local_repo_path=local_git_repo_path,
-                    repo_url=index_git_repo,
-                    branch=branch,
-                    commit_message=(
-                        f"IIB: Add data from FBC fragments for request {request_id}\n\n"
-                        f"FBC fragments: {', '.join(fbc_fragments)}"
-                    ),
-                )
-                log.info("Created merge request: %s", mr_details.get('mr_url'))
-            else:
-                # Push directly to the branch
-                commit_and_push(
-                    request_id=request_id,
-                    local_repo_path=local_git_repo_path,
-                    repo_url=index_git_repo,
-                    branch=branch,
-                    commit_message=(
-                        f"IIB: Add data from FBC fragments for request {request_id}\n\n"
-                        f"FBC fragments: {', '.join(fbc_fragments)}"
-                    ),
-                )
+            # Wait for Konflux pipeline and extract built image URL
+            image_url = monitor_pipeline_and_extract_image(
+                request_id=request_id,
+                last_commit_sha=last_commit_sha,
+            )
 
-            # Get commit SHA before waiting for the pipeline (while the temp directory still exists)
-            last_commit_sha = get_last_commit_sha(local_repo_path=local_git_repo_path)
-
-            # Wait for Konflux pipeline
-            set_request_state(request_id, 'in_progress', 'Waiting on KONFLUX build')
-
-            # find_pipelinerun has retry decorator to handle delays in pipelinerun creation
-            pipelines = find_pipelinerun(last_commit_sha)
-
-            # Get the first pipelinerun (should typically be only one)
-            pipelinerun = pipelines[0]
-            pipelinerun_name = pipelinerun.get('metadata', {}).get('name')
-            if not pipelinerun_name:
-                raise IIBError("Pipelinerun name not found in pipeline metadata")
-
-            run = wait_for_pipeline_completion(pipelinerun_name)
-
-            set_request_state(request_id, 'in_progress', 'Copying built index to IIB registry')
-            # Extract IMAGE_URL from pipelinerun results
-            image_url = get_pipelinerun_image_url(pipelinerun_name, run)
-            output_pull_specs = get_list_of_output_pullspec(request_id, build_tags)
-            # Copy the built index from Konflux to all output pull specs
-            for spec in output_pull_specs:
-                _skopeo_copy(
-                    source=f'docker://{image_url}',
-                    destination=f'docker://{spec}',
-                    copy_all=True,
-                    exc_msg=f'Failed to copy built index from Konflux to {spec}',
-                )
-                log.info("Successfully copied image to %s", spec)
+            # Copy built index to all output pull specs
+            output_pull_specs = replicate_image_to_tagged_destinations(
+                request_id=request_id,
+                image_url=image_url,
+                build_tags=build_tags,
+            )
 
             # Use the first output_pull_spec as the primary one for request updates
             output_pull_spec = output_pull_specs[0]
@@ -304,12 +239,7 @@ def handle_containerized_fbc_operation_request(
             )
 
             # Close MR if it was opened
-            if mr_details and index_git_repo:
-                try:
-                    close_mr(mr_details, index_git_repo)
-                    log.info("Closed merge request: %s", mr_details.get('mr_url'))
-                except IIBError as e:
-                    log.warning("Failed to close merge request: %s", e)
+            cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
             set_request_state(
                 request_id,
