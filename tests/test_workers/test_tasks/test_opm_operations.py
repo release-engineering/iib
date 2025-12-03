@@ -1361,3 +1361,88 @@ def test_get_operator_package_list(mock_run_cmd, mock_gidp, tmpdir):
         {'cwd': tmpdir},
         exc_msg=f'Failed to run opm render with input: {input_image}',
     )
+
+
+@pytest.mark.parametrize("operators_in_db", ([], ['op1']))
+@mock.patch('iib.workers.tasks.opm_operations.shutil.rmtree')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.os.path.exists')
+@mock.patch('iib.workers.tasks.opm_operations.os.listdir')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations._opm_registry_rm')
+@mock.patch('iib.workers.tasks.opm_operations.remove_operator_deprecations')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_registry_add_fbc_fragment_containerized(
+    mock_set_state,
+    mock_extract,
+    mock_verify,
+    mock_remove_dep,
+    mock_rm,
+    mock_migrate,
+    mock_listdir,
+    mock_exists,
+    mock_copytree,
+    mock_rmtree,
+    operators_in_db,
+):
+    request_id = 1
+    temp_dir = '/tmp/dir'
+    from_index_configs_dir = '/tmp/dir/configs'
+    fbc_fragments = ['fragment:v1']
+    overwrite_from_index_token = 'token'
+    index_db_path = '/tmp/dir/index.db'
+
+    mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
+    mock_verify.return_value = (operators_in_db, index_db_path)
+    mock_migrate.return_value = ('/tmp/migrated_catalog', None)
+    mock_listdir.return_value = ['op1']
+    mock_exists.return_value = False
+
+    ret = opm_operations.opm_registry_add_fbc_fragment_containerized(
+        request_id,
+        temp_dir,
+        from_index_configs_dir,
+        fbc_fragments,
+        overwrite_from_index_token,
+        index_db_path,
+    )
+
+    assert ret == (from_index_configs_dir, index_db_path, operators_in_db)
+
+    mock_extract.assert_called_once_with(
+        temp_dir=temp_dir, fbc_fragment=fbc_fragments[0], fragment_index=0
+    )
+
+    mock_verify.assert_called_once_with(
+        from_index=None,
+        base_dir=temp_dir,
+        operator_packages=['op2'],
+        overwrite_from_index_token=overwrite_from_index_token,
+        index_db_path=index_db_path,
+    )
+
+    if operators_in_db:
+        mock_remove_dep.assert_called_once_with(
+            from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
+        )
+        mock_rm.assert_called_once_with(
+            index_db_path=index_db_path, operators=operators_in_db, base_dir=temp_dir
+        )
+        mock_migrate.assert_called_once_with(
+            index_db=index_db_path, base_dir=temp_dir, generate_cache=False
+        )
+        mock_copytree.assert_any_call(
+            os.path.join('/tmp/migrated_catalog', 'op1'),
+            os.path.join(from_index_configs_dir, 'op1'),
+            dirs_exist_ok=True,
+        )
+    else:
+        mock_remove_dep.assert_not_called()
+        mock_rm.assert_not_called()
+        mock_migrate.assert_not_called()
+
+    mock_copytree.assert_any_call(
+        os.path.join('/tmp/fragment_path', 'op2'), os.path.join(from_index_configs_dir, 'op2')
+    )

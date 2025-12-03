@@ -397,11 +397,12 @@ def get_index_database(from_index: str, base_dir: str) -> str:
     return local_path
 
 
-def _get_present_bundles(from_index: str, base_dir: str) -> Tuple[List[BundleImage], List[str]]:
+def _get_present_bundles(input_data: str, base_dir: str) -> Tuple[List[BundleImage], List[str]]:
     """
     Get a list of bundles already present in the index image.
 
-    :param str from_index: index image to inspect.
+    :param str input_data: input data to inspect.
+        Example: catalog-image | catalog-directory | bundle-image | bundle-directory | sqlite-file
     :param str base_dir: base directory to create temporary files in.
     :return: list of unique present bundles as provided by the grpc query and a list of unique
         bundle pull_specs
@@ -411,7 +412,7 @@ def _get_present_bundles(from_index: str, base_dir: str) -> Tuple[List[BundleIma
     # Get list of bundles
     unique_present_bundles: List[BundleImage] = []
     unique_present_bundles_pull_spec: List[str] = []
-    present_bundles: List[BundleImage] = get_list_bundles(from_index, base_dir)
+    present_bundles: List[BundleImage] = get_list_bundles(input_data, base_dir)
 
     # If no data is returned there are no bundles present
     if not present_bundles:
