@@ -500,6 +500,38 @@ def opm_registry_deprecatetruncate(base_dir: str, index_db: str, bundles: List[s
     run_cmd(cmd, {'cwd': base_dir}, exc_msg=f'Failed to deprecate the bundles on {index_db}')
 
 
+def deprecate_bundles_fbc_containerized(
+    bundles: List[str],
+    base_dir: str,
+    binary_image: str,
+    index_db_file: str,
+) -> None:
+    """
+    Deprecate the specified bundles from the FBC index image.
+
+    Dockerfile is created only, no build is performed.
+
+    :param list bundles: pull specifications of bundles to deprecate.
+    :param str base_dir: base directory where operation files will be located.
+    :param str binary_image: binary image to be used by the new index image.
+    :param str index_db_file: path to SQLite index.db which should be used for deprecatetruncate.
+    """
+    conf = get_worker_config()
+
+    # Break the bundles into chunks of at max iib_deprecate_bundles_limit bundles
+    for i in range(
+        0,
+        len(bundles),
+        conf.iib_deprecate_bundles_limit,
+    ):  # Determine position i in the bundles array
+        opm_registry_deprecatetruncate(
+            base_dir=base_dir,
+            index_db=index_db_file,
+            bundles=bundles[i : i + conf.iib_deprecate_bundles_limit],  # Pass a chunk starting at i
+        )
+    fbc_dir, _ = opm_migrate(index_db_file, base_dir)
+
+
 def deprecate_bundles_fbc(
     bundles: List[str],
     base_dir: str,
