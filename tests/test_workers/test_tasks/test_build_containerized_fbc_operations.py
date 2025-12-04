@@ -397,9 +397,8 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         from_index='index:1',
         index_db_path='/tmp/d',
         operators=['op1'],
-        operators_in_db={'op1'},
         overwrite_from_index=True,
-        request_type='rm',
+        request_type='fbc_operations',
     )
 
     # Verify update call has overwrite flags
