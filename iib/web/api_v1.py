@@ -57,7 +57,9 @@ from iib.workers.tasks.build_recursive_related_bundles import (
 )
 from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
 from iib.workers.tasks.build_merge_index_image import handle_merge_request
-from iib.workers.tasks.build_create_empty_index import handle_create_empty_index_request
+from iib.workers.tasks.build_containerized_create_empty_index import (
+    handle_containerized_create_empty_index_request,
+)
 from iib.workers.tasks.general import failed_request_callback
 from iib.web.iib_static_types import (
     AddDeprecationRequestPayload,
@@ -1165,16 +1167,16 @@ def create_empty_index() -> Tuple[flask.Response, int]:
     args = [
         payload['from_index'],
         request.id,
-        payload.get('output_fbc'),
         payload.get('binary_image'),
         payload.get('labels'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
 
     try:
-        handle_create_empty_index_request.apply_async(
+        handle_containerized_create_empty_index_request.apply_async(
             args=args, link_error=error_callback, argsrepr=repr(safe_args), queue=_get_user_queue()
         )
     except kombu.exceptions.OperationalError:
