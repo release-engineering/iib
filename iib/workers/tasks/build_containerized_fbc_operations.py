@@ -233,9 +233,8 @@ def handle_containerized_fbc_operation_request(
                 from_index=from_index,
                 index_db_path=index_db_path,
                 operators=operators_in_db,
-                operators_in_db=set(operators_in_db),
                 overwrite_from_index=overwrite_from_index,
-                request_type='rm',
+                request_type='fbc_operations',
             )
 
             # Close MR if it was opened
