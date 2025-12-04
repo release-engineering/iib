@@ -513,10 +513,6 @@ def test_get_build_logs_s3_configured(
             'The "overwrite_from_index_token" parameter must be a string',
         ),
         (
-            {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'cnr_token': True},
-            '"cnr_token" must be a string',
-        ),
-        (
             {'bundles': ['some:thing'], 'binary_image': 'binary:image', 'organization': True},
             '"organization" must be a string',
         ),
@@ -587,7 +583,7 @@ def test_add_bundles_graph_update_mode_not_allowed(
 
 @pytest.mark.parametrize('from_index', ('some-common-index:v4.15', 'another-common-index:v4.15'))
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 def test_add_bundles_graph_update_mode_allowed(
     mock_har, mock_smfsc, app, client, auth_env, db, from_index
 ):
@@ -611,7 +607,7 @@ def test_add_bundles_graph_update_mode_allowed(
 @mock.patch('iib.web.api_v1.db.session')
 @mock.patch('iib.web.api_v1.flask.jsonify')
 @mock.patch('iib.web.api_v1.RequestAdd')
-@mock.patch('iib.web.api_v1.handle_add_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundles_unique_bundles(mock_smfsc, mock_har, mock_radd, mock_fj, mock_dbs, client):
     data = {
@@ -830,7 +826,7 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
         ('scratch', True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_success(
     mock_smfsc,
@@ -851,8 +847,6 @@ def test_add_bundle_success(
     data = {
         'binary_image': binary_image,
         'add_arches': ['s390x'],
-        'organization': 'org',
-        'cnr_token': 'token',
         'overwrite_from_index': overwrite_from_index,
         'overwrite_from_index_token': overwrite_from_index_token,
         'from_index': from_index,
@@ -898,7 +892,7 @@ def test_add_bundle_success(
             'expiration': '2020-02-15T17:03:00Z',
         },
         'omps_operator_version': {},
-        'organization': 'org',
+        'organization': None,
         'state_history': [
             {
                 'state': 'in_progress',
@@ -918,31 +912,12 @@ def test_add_bundle_success(
     rv_json['logs']['expiration'] = '2020-02-15T17:03:00Z'
     assert rv.status_code == 201
     assert response_json == rv_json
-    assert 'cnr_token' not in rv_json
     assert 'token' not in mock_har.apply_async.call_args[1]['argsrepr']
-    assert '*****' in mock_har.apply_async.call_args[1]['argsrepr']
     mock_har.apply_async.assert_called_once()
     mock_smfsc.assert_called_once_with(mock.ANY, new_batch_msg=True)
 
 
-@pytest.mark.parametrize('force_backport', (False, True))
-@mock.patch('iib.web.api_v1.handle_add_request')
-def test_add_bundle_force_backport(mock_har, force_backport, db, auth_env, client):
-    data = {
-        'bundles': ['some:thing'],
-        'binary_image': 'binary:image',
-        'from_index': 'index:image',
-        'force_backport': force_backport,
-    }
-
-    rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
-    assert rv.status_code == 201
-    mock_har.apply_async.assert_called_once()
-    # Eigth element in args is the force_backport parameter
-    assert mock_har.apply_async.call_args[1]['args'][7] == force_backport
-
-
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env, client, db):
     token = 'username:password'
@@ -959,13 +934,12 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
     # Tenth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-11] is True
+    assert mock_har.apply_async.call_args[1]['args'][-10] is True
     # Ninth to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-10] == token
+    assert mock_har.apply_async.call_args[1]['args'][-9] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
-    assert '*****' in mock_har.apply_async.call_args[1]['argsrepr']
 
 
 @pytest.mark.parametrize(
@@ -1002,7 +976,7 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
         ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_custom_user_queue(
     mock_smfsc, mock_har, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
@@ -1807,7 +1781,7 @@ def test_regenerate_bundle_batch_invalid_input(payload, error_msg, app, auth_env
     assert rv.json == {'error': error_msg}
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 @mock.patch.dict('iib.web.api_v1.flask.current_app.config', {'IIB_INDEX_TO_GITLAB_PUSH_MAP': {}})
@@ -1821,8 +1795,6 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                 'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                 'from_index': 'registry-proxy/rh-osbs-stage/iib:v4.5',
                 'add_arches': ['amd64'],
-                'cnr_token': 'no_tom_brady_anymore',
-                'organization': 'hello-operator',
                 'overwrite_from_index': True,
                 'overwrite_from_index_token': 'some_token',
             },
@@ -1847,12 +1819,8 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                     'registry-proxy/rh-osbs-stage/iib:v4.5',
                     ['amd64'],
-                    'no_tom_brady_anymore',
-                    'hello-operator',
-                    None,
                     True,
                     'some_token',
-                    None,
                     None,
                     {},
                     [],
@@ -1862,11 +1830,10 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     {},  # index_to_gitlab_push_map from config (empty in test)
                 ],
                 argsrepr=(
-                    "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], "
-                    "1, 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
-                    "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], '*****', "
-                    "'hello-operator', None, True, '*****', None, None, {}, [], [], None, "
-                    "False, {}]"
+                    "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], 1, "
+                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
+                    "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], True, '*****', "
+                    "None, {}, [], [], None, False, {}]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1891,8 +1858,8 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                 ],
                 argsrepr=(
                     "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "
-                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5'"
-                    ", None, False, None, None, {}, [], {}]"
+                    "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
+                    "None, False, None, None, {}, [], {}]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
