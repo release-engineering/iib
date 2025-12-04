@@ -96,6 +96,7 @@ class Config(object):
         'iib.workers.tasks.build_add_deprecations',
         'iib.workers.tasks.build_containerized_fbc_operations',
         'iib.workers.tasks.build_containerized_rm',
+        'iib.workers.tasks.build_containerized_create_empty_index',
         'iib.workers.tasks.general',
     ]
     # Path to hidden location of SQLite database
@@ -117,6 +118,8 @@ class Config(object):
     temp_index_db_path: str = 'database/index.db'
     # Path to fbc_fragment's catalog in our temp directories
     temp_fbc_fragment_path = 'fbc-fragment'
+    # Tag used to identify empty index.db artifacts in the registry
+    iib_empty_index_db_tag: str = 'empty'
     # For now, only allow a single process so that all tasks are processed serially
     worker_concurrency: int = 1
     # Before each task execution, instruct the worker to check if this task is a duplicate message.
