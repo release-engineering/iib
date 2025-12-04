@@ -232,7 +232,6 @@ def push_index_db_artifact(
     from_index: str,
     index_db_path: str,
     operators: List[str],
-    operators_in_db: set,
     overwrite_from_index: bool = False,
     request_type: str = 'rm',
 ) -> Optional[str]:
@@ -247,7 +246,6 @@ def push_index_db_artifact(
     :param str from_index: The from_index pullspec
     :param str index_db_path: Path to the index.db file to push
     :param List[str] operators: List of operators involved in the operation
-    :param set operators_in_db: Set of operators that were in the database
     :param bool overwrite_from_index: Whether to overwrite the from_index
     :param str request_type: Type of request (e.g., 'rm', 'add')
     :return: Original digest of v4.x tag if captured, None otherwise
@@ -255,7 +253,7 @@ def push_index_db_artifact(
     """
     original_index_db_digest = None
 
-    if operators_in_db and index_db_path and os.path.exists(index_db_path):
+    if index_db_path and os.path.exists(index_db_path):
         # Get directory and filename separately to push only the filename
         # This ensures ORAS extracts the file as just "index.db" without
         # directory structure
@@ -281,16 +279,20 @@ def push_index_db_artifact(
             log.info('Original index.db digest: %s', original_index_db_digest)
             artifact_refs.append(v4x_artifact_ref)
 
+        # Build annotations - only include operators if not empty
+        annotations = {
+            'request_id': str(request_id),
+            'request_type': request_type,
+        }
+        if operators:
+            annotations['operators'] = ','.join(operators)
+
         for artifact_ref in artifact_refs:
             push_oras_artifact(
                 artifact_ref=artifact_ref,
                 local_path=index_db_filename,
                 cwd=index_db_dir,
-                annotations={
-                    'request_id': str(request_id),
-                    'request_type': request_type,
-                    'operators': ','.join(operators),
-                },
+                annotations=annotations.copy(),
             )
             log.info('Pushed %s to registry', artifact_ref)
 

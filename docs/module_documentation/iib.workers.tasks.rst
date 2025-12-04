@@ -21,6 +21,14 @@ iib.workers.tasks.build\_containerized\_rm module
    :undoc-members:
    :show-inheritance:
 
+iib.workers.tasks.build\_containerized\_create\_empty\_index module
+--------------------------------------------------------------------
+
+.. automodule:: iib.workers.tasks.build_containerized_create_empty_index
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.workers.tasks.build\_create\_empty\_index module
 ----------------------------------------------------
 

@@ -288,7 +288,6 @@ def handle_containerized_rm_request(
                 from_index=from_index,
                 index_db_path=index_db_path,
                 operators=operators,
-                operators_in_db=operators_in_db,
                 overwrite_from_index=overwrite_from_index,
                 request_type='rm',
             )
