@@ -2212,7 +2212,7 @@ def test_merge_index_image_fail_on_invalid_params(
         ('some:thing', 'scratch', None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_create_empty_index_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_create_empty_index_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_create_empty_index_success(
     mock_smfsc, mock_hceir, db, auth_env, client, from_index, binary_image, labels
