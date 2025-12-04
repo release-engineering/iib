@@ -15,7 +15,7 @@ def assert_testing(rv, mock_smfsc, db):
     assert req_state.state.state == RequestStateMapping.failed.value
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_catch_add_bundle_failure(mock_smfsc, mock_har, db, auth_env, client):
     mock_har.apply_async.side_effect = OperationalError
@@ -23,10 +23,9 @@ def test_catch_add_bundle_failure(mock_smfsc, mock_har, db, auth_env, client):
         'bundles': ['some:thing'],
         'binary_image': 'binary:image',
         'add_arches': ['s390x'],
-        'organization': 'org',
-        'cnr_token': 'token',
         'overwrite_from_index': True,
         'overwrite_from_index_token': 'some_token',
+        'from_index': 'index:image',
     }
 
     rv = client.post('/api/v1/builds/add', json=data, environ_base=auth_env)
@@ -108,7 +107,7 @@ def test_catch_regenerate_bundle_batch_failure(
         assert r.state == RequestStateMapping.failed.value
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_add_rm_batch_add_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
@@ -123,8 +122,6 @@ def test_add_rm_batch_add_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_en
                 'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                 'from_index': 'registry-proxy/rh-osbs-stage/iib:v4.5',
                 'add_arches': ['amd64'],
-                'cnr_token': 'no_tom_brady_anymore',
-                'organization': 'hello-operator',
                 'overwrite_from_index': True,
                 'overwrite_from_index_token': 'some_token',
             },
@@ -158,7 +155,7 @@ def test_add_rm_batch_add_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_en
     assert req_rm.state.state == RequestStateMapping.failed.value
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_add_rm_batch_rm_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_env, client, db):
@@ -173,8 +170,6 @@ def test_add_rm_batch_rm_failure(mock_smfnbor, mock_hrr, mock_har, app, auth_env
                 'binary_image': 'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5',
                 'from_index': 'registry-proxy/rh-osbs-stage/iib:v4.5',
                 'add_arches': ['amd64'],
-                'cnr_token': 'no_tom_brady_anymore',
-                'organization': 'hello-operator',
                 'overwrite_from_index': True,
                 'overwrite_from_index_token': 'some_token',
             },
