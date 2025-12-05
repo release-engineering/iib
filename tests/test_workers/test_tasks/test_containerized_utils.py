@@ -443,7 +443,7 @@ def test_cleanup_on_failure_no_restore_when_no_original_digest(
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
 def test_validate_bundles_in_parallel_success_single_bundle(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with a single bundle successfully."""
-    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    bundles = [{"bundlePath": 'quay.io/ns/bundle1:v1.0.0'}]
     mock_skopeo_inspect.return_value = None
 
     result = validate_bundles_in_parallel(bundles, threads=1, wait=True)
@@ -458,9 +458,9 @@ def test_validate_bundles_in_parallel_success_single_bundle(mock_skopeo_inspect)
 def test_validate_bundles_in_parallel_success_multiple_bundles(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with multiple bundles successfully."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
-        'quay.io/ns/bundle3:v3.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle3:v3.0.0'},
     ]
     mock_skopeo_inspect.return_value = None
 
@@ -490,8 +490,8 @@ def test_validate_bundles_in_parallel_empty_bundles(mock_skopeo_inspect):
 def test_validate_bundles_in_parallel_custom_thread_count(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with custom thread count."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
     ]
     mock_skopeo_inspect.return_value = None
 
@@ -504,7 +504,7 @@ def test_validate_bundles_in_parallel_custom_thread_count(mock_skopeo_inspect):
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
 def test_validate_bundles_in_parallel_wait_false_returns_threads(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with wait=False returns thread list."""
-    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    bundles = [{"bundlePath": 'quay.io/ns/bundle1:v1.0.0'}]
     mock_skopeo_inspect.return_value = None
 
     result = validate_bundles_in_parallel(bundles, threads=1, wait=False)
@@ -523,7 +523,7 @@ def test_validate_bundles_in_parallel_wait_false_returns_threads(mock_skopeo_ins
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
 def test_validate_bundles_in_parallel_failure_raises_error(mock_skopeo_inspect, mock_log):
     """Test validate_bundles_in_parallel raises IIBError when bundle validation fails."""
-    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    bundles = [{"bundlePath": 'quay.io/ns/bundle1:v1.0.0'}]
     error = IIBError('Bundle not found')
     mock_skopeo_inspect.side_effect = error
 
@@ -539,11 +539,11 @@ def test_validate_bundles_in_parallel_failure_raises_error(mock_skopeo_inspect, 
 def test_validate_bundles_in_parallel_more_bundles_than_threads(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with more bundles than threads."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
-        'quay.io/ns/bundle3:v3.0.0',
-        'quay.io/ns/bundle4:v4.0.0',
-        'quay.io/ns/bundle5:v5.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle3:v3.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle4:v4.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle5:v5.0.0'},
     ]
     mock_skopeo_inspect.return_value = None
 
@@ -556,7 +556,7 @@ def test_validate_bundles_in_parallel_more_bundles_than_threads(mock_skopeo_insp
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
 def test_validate_bundles_in_parallel_default_parameters(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with default parameters."""
-    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    bundles = [{"bundlePath": 'quay.io/ns/bundle1:v1.0.0'}]
     mock_skopeo_inspect.return_value = None
 
     result = validate_bundles_in_parallel(bundles)
@@ -571,8 +571,8 @@ def test_validate_bundles_in_parallel_default_parameters(mock_skopeo_inspect):
 def test_validate_bundles_in_parallel_multiple_threads_processing_queue(mock_skopeo_inspect):
     """Test that multiple threads properly process bundles from the queue."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
     ]
     mock_skopeo_inspect.return_value = None
 
@@ -594,8 +594,8 @@ def test_validate_bundles_in_parallel_one_bundle_fails_others_succeed(
 ):
     """Test that when one bundle fails, the error is logged and raised."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
     ]
     # First bundle succeeds, second fails
     mock_skopeo_inspect.side_effect = [None, IIBError('Bundle not found')]
@@ -615,7 +615,7 @@ def test_wait_for_bundle_validation_threads_success(mock_skopeo_inspect):
     import queue
 
     bundles_queue = queue.Queue()
-    bundles_queue.put('quay.io/ns/bundle1:v1.0.0')
+    bundles_queue.put({"bundlePath": 'quay.io/ns/bundle1:v1.0.0'})
     mock_skopeo_inspect.return_value = None
 
     thread = ValidateBundlesThread(bundles_queue)
@@ -638,7 +638,7 @@ def test_wait_for_bundle_validation_threads_failure_raises_error(mock_skopeo_ins
     import queue
 
     bundles_queue = queue.Queue()
-    bundles_queue.put('quay.io/ns/bundle1:v1.0.0')
+    bundles_queue.put({"bundlePath": 'quay.io/ns/bundle1:v1.0.0'})
     error = IIBError('Bundle not found')
     mock_skopeo_inspect.side_effect = error
 
@@ -650,7 +650,7 @@ def test_wait_for_bundle_validation_threads_failure_raises_error(mock_skopeo_ins
 
     assert mock_skopeo_inspect.called
     assert thread.exception == error
-    assert thread.bundle == 'quay.io/ns/bundle1:v1.0.0'
+    assert thread.bundle == {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'}
     mock_log.error.assert_called()
 
 
@@ -664,9 +664,9 @@ def test_wait_for_bundle_validation_threads_multiple_threads_one_fails(
     import queue
 
     bundles_queue1 = queue.Queue()
-    bundles_queue1.put('quay.io/ns/bundle1:v1.0.0')
+    bundles_queue1.put({"bundlePath": 'quay.io/ns/bundle1:v1.0.0'})
     bundles_queue2 = queue.Queue()
-    bundles_queue2.put('quay.io/ns/bundle2:v2.0.0')
+    bundles_queue2.put({"bundlePath": 'quay.io/ns/bundle2:v2.0.0'})
 
     mock_skopeo_inspect.side_effect = [None, IIBError('Bundle not found')]
 
@@ -688,8 +688,8 @@ def test_wait_for_bundle_validation_threads_multiple_threads_one_fails(
 def test_validate_bundles_in_parallel_wait_false_then_wait_manually(mock_skopeo_inspect):
     """Test validate_bundles_in_parallel with wait=False and then manually waiting."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
     ]
     mock_skopeo_inspect.return_value = None
 
@@ -716,8 +716,8 @@ def test_validate_bundles_in_parallel_wait_false_then_wait_manually_with_failure
 ):
     """Test validate_bundles_in_parallel with wait=False, then manually waiting when one fails."""
     bundles = [
-        'quay.io/ns/bundle1:v1.0.0',
-        'quay.io/ns/bundle2:v2.0.0',
+        {"bundlePath": 'quay.io/ns/bundle1:v1.0.0'},
+        {"bundlePath": 'quay.io/ns/bundle2:v2.0.0'},
     ]
     mock_skopeo_inspect.side_effect = [None, IIBError('Bundle not found')]
 
@@ -751,7 +751,7 @@ def test_wait_for_bundle_validation_threads_unknown_bundle_on_error(mock_skopeo_
 
     bundles_queue = queue.Queue()
     # Add a bundle to the queue so the thread will process it
-    bundles_queue.put('quay.io/ns/bundle1:v1.0.0')
+    bundles_queue.put({"bundlePath": 'quay.io/ns/bundle1:v1.0.0'})
     error = IIBError('Bundle not found')
     mock_skopeo_inspect.side_effect = error
 
@@ -767,4 +767,196 @@ def test_wait_for_bundle_validation_threads_unknown_bundle_on_error(mock_skopeo_
 
     assert mock_skopeo_inspect.called
     assert thread.exception == error
+    mock_log.error.assert_called()
+
+
+# Tests for List[str] format (pullspec strings)
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_success_single_bundle_string(mock_skopeo_inspect):
+    """Test validate_bundles_in_parallel with a single bundle string successfully."""
+    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=1, wait=True)
+
+    assert result is None
+    mock_skopeo_inspect.assert_called_once_with(
+        'docker://quay.io/ns/bundle1:v1.0.0', '--raw', return_json=False
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_success_multiple_bundles_string(mock_skopeo_inspect):
+    """Test validate_bundles_in_parallel with multiple bundle strings successfully."""
+    bundles = [
+        'quay.io/ns/bundle1:v1.0.0',
+        'quay.io/ns/bundle2:v2.0.0',
+        'quay.io/ns/bundle3:v3.0.0',
+    ]
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=3, wait=True)
+
+    assert result is None
+    assert mock_skopeo_inspect.call_count == 3
+
+    # Check that all bundles were validated (order may vary due to threading)
+    actual_calls = [call[0] for call in mock_skopeo_inspect.call_args_list]
+    assert len(actual_calls) == 3
+    assert all('docker://quay.io/ns/bundle' in str(call[0]) for call in actual_calls)
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_custom_thread_count_string(mock_skopeo_inspect):
+    """Test validate_bundles_in_parallel with custom thread count using string bundles."""
+    bundles = [
+        'quay.io/ns/bundle1:v1.0.0',
+        'quay.io/ns/bundle2:v2.0.0',
+    ]
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=2, wait=True)
+
+    assert result is None
+    assert mock_skopeo_inspect.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_wait_false_returns_threads_string(mock_skopeo_inspect):
+    """Test validate_bundles_in_parallel with wait=False returns thread list for string bundles."""
+    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=1, wait=False)
+
+    assert result is not None
+    assert len(result) == 1
+    assert hasattr(result[0], 'join')
+    # Wait for thread to complete to verify it worked
+    result[0].join()
+    mock_skopeo_inspect.assert_called_once_with(
+        'docker://quay.io/ns/bundle1:v1.0.0', '--raw', return_json=False
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_failure_raises_error_string(mock_skopeo_inspect, mock_log):
+    """Test validate_bundles_in_parallel raises IIBError when bundle string validation fails."""
+    bundles = ['quay.io/ns/bundle1:v1.0.0']
+    error = IIBError('Bundle not found')
+    mock_skopeo_inspect.side_effect = error
+
+    with pytest.raises(IIBError, match='Error validating bundle'):
+        validate_bundles_in_parallel(bundles, threads=1, wait=True)
+
+    assert mock_skopeo_inspect.called
+    # Error should be logged in the thread
+    assert mock_log.error.called
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_more_bundles_than_threads_string(mock_skopeo_inspect):
+    """Test validate_bundles_in_parallel with more bundle strings than threads."""
+    bundles = [
+        'quay.io/ns/bundle1:v1.0.0',
+        'quay.io/ns/bundle2:v2.0.0',
+        'quay.io/ns/bundle3:v3.0.0',
+        'quay.io/ns/bundle4:v4.0.0',
+        'quay.io/ns/bundle5:v5.0.0',
+    ]
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=2, wait=True)
+
+    assert result is None
+    assert mock_skopeo_inspect.call_count == 5
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_multiple_threads_processing_queue_string(mock_skopeo_inspect):
+    """Test that multiple threads properly process bundle strings from the queue."""
+    bundles = [
+        'quay.io/ns/bundle1:v1.0.0',
+        'quay.io/ns/bundle2:v2.0.0',
+    ]
+    mock_skopeo_inspect.return_value = None
+
+    result = validate_bundles_in_parallel(bundles, threads=2, wait=True)
+
+    assert result is None
+    # Both bundles should be validated
+    assert mock_skopeo_inspect.call_count == 2
+    # Verify all bundles were processed
+    call_args = [call[0][0] for call in mock_skopeo_inspect.call_args_list]
+    assert 'docker://quay.io/ns/bundle1:v1.0.0' in call_args
+    assert 'docker://quay.io/ns/bundle2:v2.0.0' in call_args
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_validate_bundles_in_parallel_one_bundle_fails_others_succeed_string(
+    mock_skopeo_inspect, mock_log
+):
+    """Test that when one bundle string fails, the error is logged and raised."""
+    bundles = [
+        'quay.io/ns/bundle1:v1.0.0',
+        'quay.io/ns/bundle2:v2.0.0',
+    ]
+    # First bundle succeeds, second fails
+    mock_skopeo_inspect.side_effect = [None, IIBError('Bundle not found')]
+
+    with pytest.raises(IIBError, match='Error validating bundle'):
+        validate_bundles_in_parallel(bundles, threads=2, wait=True)
+
+    assert mock_skopeo_inspect.call_count >= 1
+    # Error should be logged in the thread
+    assert mock_log.error.called
+
+
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_wait_for_bundle_validation_threads_success_string(mock_skopeo_inspect):
+    """Test wait_for_bundle_validation_threads with successful validation for string bundles."""
+    from iib.workers.tasks.containerized_utils import ValidateBundlesThread
+    import queue
+
+    bundles_queue = queue.Queue()
+    bundles_queue.put('quay.io/ns/bundle1:v1.0.0')
+    mock_skopeo_inspect.return_value = None
+
+    thread = ValidateBundlesThread(bundles_queue)
+    thread.start()
+
+    # Wait for the thread using the function
+    wait_for_bundle_validation_threads([thread])
+
+    mock_skopeo_inspect.assert_called_once_with(
+        'docker://quay.io/ns/bundle1:v1.0.0', '--raw', return_json=False
+    )
+    assert thread.exception is None
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
+def test_wait_for_bundle_validation_threads_failure_raises_error_string(
+    mock_skopeo_inspect, mock_log
+):
+    """Ensure it raises IIBError when string bundle validation fails."""
+    from iib.workers.tasks.containerized_utils import ValidateBundlesThread
+    import queue
+
+    bundles_queue = queue.Queue()
+    bundles_queue.put('quay.io/ns/bundle1:v1.0.0')
+    error = IIBError('Bundle not found')
+    mock_skopeo_inspect.side_effect = error
+
+    thread = ValidateBundlesThread(bundles_queue)
+    thread.start()
+
+    with pytest.raises(IIBError, match='Error validating bundle quay.io/ns/bundle1:v1.0.0'):
+        wait_for_bundle_validation_threads([thread])
+
+    assert mock_skopeo_inspect.called
+    assert thread.exception == error
+    assert thread.bundle == 'quay.io/ns/bundle1:v1.0.0'
     mock_log.error.assert_called()
