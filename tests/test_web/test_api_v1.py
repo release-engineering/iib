@@ -587,7 +587,7 @@ def test_add_bundles_graph_update_mode_not_allowed(
 
 @pytest.mark.parametrize('from_index', ('some-common-index:v4.15', 'another-common-index:v4.15'))
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 def test_add_bundles_graph_update_mode_allowed(
     mock_har, mock_smfsc, app, client, auth_env, db, from_index
 ):
@@ -611,7 +611,7 @@ def test_add_bundles_graph_update_mode_allowed(
 @mock.patch('iib.web.api_v1.db.session')
 @mock.patch('iib.web.api_v1.flask.jsonify')
 @mock.patch('iib.web.api_v1.RequestAdd')
-@mock.patch('iib.web.api_v1.handle_add_request.apply_async')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request.apply_async')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundles_unique_bundles(mock_smfsc, mock_har, mock_radd, mock_fj, mock_dbs, client):
     data = {
@@ -830,7 +830,7 @@ def test_add_bundle_from_index_and_add_arches_missing(mock_smfsc, db, auth_env, 
         ('scratch', True, 'username:password', [], 'some:thing', 'DeV', 'semver'),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_success(
     mock_smfsc,
@@ -926,7 +926,7 @@ def test_add_bundle_success(
 
 
 @pytest.mark.parametrize('force_backport', (False, True))
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 def test_add_bundle_force_backport(mock_har, force_backport, db, auth_env, client):
     data = {
         'bundles': ['some:thing'],
@@ -942,7 +942,7 @@ def test_add_bundle_force_backport(mock_har, force_backport, db, auth_env, clien
     assert mock_har.apply_async.call_args[1]['args'][7] == force_backport
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env, client, db):
     token = 'username:password'
@@ -1002,7 +1002,7 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
         ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, True, None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_add_bundle_custom_user_queue(
     mock_smfsc, mock_har, app, auth_env, client, user_to_queue, overwrite_from_index, expected_queue
@@ -1807,7 +1807,7 @@ def test_regenerate_bundle_batch_invalid_input(payload, error_msg, app, auth_env
     assert rv.json == {'error': error_msg}
 
 
-@mock.patch('iib.web.api_v1.handle_add_request')
+@mock.patch('iib.web.api_v1.handle_containerized_add_request')
 @mock.patch('iib.web.api_v1.handle_containerized_rm_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 @mock.patch.dict('iib.web.api_v1.flask.current_app.config', {'IIB_INDEX_TO_GITLAB_PUSH_MAP': {}})
