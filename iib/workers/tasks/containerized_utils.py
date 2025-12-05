@@ -5,7 +5,7 @@ import logging
 import os
 import queue
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
@@ -62,10 +62,16 @@ class ValidateBundlesThread(threading.Thread):
         try:
             while not self.bundles_queue.empty():
                 bundle = self.bundles_queue.get()
-                skopeo_inspect(f'docker://{bundle}', '--raw', return_json=False)
+                b_path = str(bundle["bundlePath"]) if isinstance(bundle, dict) else str(bundle)
+                skopeo_inspect(f'docker://{b_path}', '--raw', return_json=False)
         except IIBError as e:
             self.bundle = bundle
-            log.error(f"Error validating bundle {bundle}: {e}")
+            bundle_str = (
+                bundle["bundlePath"]
+                if bundle and isinstance(bundle, dict) and "bundlePath" in bundle
+                else bundle
+            )
+            log.error(f"Error validating bundle {bundle_str}: {e}")
             self.exception = e
         finally:
             while not self.bundles_queue.empty():
@@ -81,24 +87,27 @@ def wait_for_bundle_validation_threads(validation_threads: List[ValidateBundlesT
     for t in validation_threads:
         t.join()
         if t.exception:
-            bundle_str = str(t.bundle) if t.bundle else "unknown"
+            if t.bundle and isinstance(t.bundle, dict) and "bundlePath" in t.bundle:
+                bundle_str = t.bundle["bundlePath"]
+            else:
+                bundle_str = str(t.bundle) if t.bundle else "unknown"
             log.error(f"Error validating bundle {bundle_str}: {t.exception}")
             raise IIBError(f"Error validating bundle {bundle_str}: {t.exception}")
 
 
 def validate_bundles_in_parallel(
-    bundles: List[BundleImage], threads=5, wait=True
+    bundles: Union[List[BundleImage], List[str]], threads=5, wait=True
 ) -> Optional[List[ValidateBundlesThread]]:
     """
     Validate bundles in parallel.
 
-    :param list bundles: the list of bundles to validate
+    :param list bundles: the list of bundles or bundle pullspecsto validate
     :param int threads: the number of threads to use
     :param bool wait: whether to wait for all threads to complete
     :return: the list of threads if not waiting, None otherwise
     :rtype: Optional[List[ValidateBundlesThread]]
     """
-    bundles_queue: queue.Queue[BundleImage] = queue.Queue()
+    bundles_queue: queue.Queue[Union[BundleImage, str]] = queue.Queue()
 
     for bundle in bundles:
         bundles_queue.put(bundle)
