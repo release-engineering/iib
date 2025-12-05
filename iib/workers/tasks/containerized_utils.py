@@ -62,10 +62,15 @@ class ValidateBundlesThread(threading.Thread):
         try:
             while not self.bundles_queue.empty():
                 bundle = self.bundles_queue.get()
-                skopeo_inspect(f'docker://{bundle}', '--raw', return_json=False)
+                skopeo_inspect(f'docker://{bundle["bundlePath"]}', '--raw', return_json=False)
         except IIBError as e:
             self.bundle = bundle
-            log.error(f"Error validating bundle {bundle}: {e}")
+            bundle_str = (
+                bundle["bundlePath"]
+                if bundle and isinstance(bundle, dict) and "bundlePath" in bundle
+                else bundle
+            )
+            log.error(f"Error validating bundle {bundle_str}: {e}")
             self.exception = e
         finally:
             while not self.bundles_queue.empty():
@@ -81,7 +86,10 @@ def wait_for_bundle_validation_threads(validation_threads: List[ValidateBundlesT
     for t in validation_threads:
         t.join()
         if t.exception:
-            bundle_str = str(t.bundle) if t.bundle else "unknown"
+            if t.bundle and isinstance(t.bundle, dict) and "bundlePath" in t.bundle:
+                bundle_str = t.bundle["bundlePath"]
+            else:
+                bundle_str = str(t.bundle) if t.bundle else "unknown"
             log.error(f"Error validating bundle {bundle_str}: {t.exception}")
             raise IIBError(f"Error validating bundle {bundle_str}: {t.exception}")
 
