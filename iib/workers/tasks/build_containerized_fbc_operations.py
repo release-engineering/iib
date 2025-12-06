@@ -169,6 +169,7 @@ def handle_containerized_fbc_operation_request(
             distribution_scope,
             binary_image_resolved,
             request_id,
+            arches,
         )
 
         try:

@@ -270,6 +270,7 @@ def handle_containerized_create_empty_index_request(
             distribution_scope,
             binary_image_resolved,
             request_id,
+            arches,
         )
 
         # Add custom labels to metadata file if provided
