@@ -169,12 +169,13 @@ def write_build_metadata(
     distribution_scope: str,
     binary_image: str,
     request_id: int,
+    arches: set,
 ) -> None:
     """
     Write build metadata file for Konflux build task.
 
     This function creates a JSON metadata file that contains information needed by the
-    Konflux build task, including OPM version, labels, binary image, and request ID.
+    Konflux build task, including OPM version, labels, binary image, request ID, and arches.
 
     :param str local_repo_path: Path to local Git repository
     :param str opm_version: OPM version string (e.g., "opm-1.40.0")
@@ -182,6 +183,7 @@ def write_build_metadata(
     :param str distribution_scope: Distribution scope (e.g., "PROD")
     :param str binary_image: Binary image pullspec
     :param int request_id: Request ID
+    :param set arches: Set of architectures (e.g., {'amd64', 's390x'})
     """
     metadata = {
         'opm_version': opm_version,
@@ -191,6 +193,7 @@ def write_build_metadata(
         },
         'binary_image': binary_image,
         'request_id': request_id,
+        'arches': sorted(list(arches)),
     }
 
     metadata_path = os.path.join(local_repo_path, '.iib-build-metadata.json')

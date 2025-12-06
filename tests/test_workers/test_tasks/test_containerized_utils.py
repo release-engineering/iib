@@ -168,6 +168,7 @@ def test_write_build_metadata_creates_expected_json(mock_log, tmp_path):
     distribution_scope = 'PROD'
     binary_image = 'quay.io/ns/binary-image:tag'
     request_id = 12345
+    arches = {'amd64', 's390x'}
 
     write_build_metadata(
         str(local_repo_path),
@@ -176,6 +177,7 @@ def test_write_build_metadata_creates_expected_json(mock_log, tmp_path):
         distribution_scope,
         binary_image,
         request_id,
+        arches,
     )
 
     metadata_path = local_repo_path / '.iib-build-metadata.json'
@@ -192,6 +194,7 @@ def test_write_build_metadata_creates_expected_json(mock_log, tmp_path):
         },
         'binary_image': binary_image,
         'request_id': request_id,
+        'arches': ['amd64', 's390x'],
     }
 
     mock_log.info.assert_called_once_with('Written build metadata to %s', str(metadata_path))
