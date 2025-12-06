@@ -969,6 +969,11 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
+@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -1018,6 +1023,11 @@ def test_handle_containerized_rm_with_build_tags(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
+    mock_gntfp,
+    mock_gact,
+    mock_giap,
+    mock_gid,
+    mock_poa,
     mock_gwc,
     mock_sc,
     mock_uiips,
@@ -1055,6 +1065,13 @@ def test_handle_containerized_rm_with_build_tags(
     mock_wfpc.return_value = {}
     mock_gpiu.return_value = 'image@sha'
 
+    # Mock ORAS-related functions
+    # (needed because push_index_db_artifact now called even with empty operators)
+    mock_gntfp.return_value = ('index', 'v4.14')
+    mock_gact.return_value = 'index-v4.14'
+    mock_giap.return_value = 'registry.io/index-db:v4.14'
+    mock_gid.return_value = 'sha256:abcdef'
+
     mock_gwc.return_value = {
         'iib_registry': 'registry.io',
         'iib_image_push_template': '{registry}/iib:{request_id}',
@@ -1075,6 +1092,10 @@ def test_handle_containerized_rm_with_build_tags(
 
     # Verify skopeo_copy was called correct number of times
     assert mock_sc.call_count == expected_tag_count
+
+    # Verify index.db was pushed
+    # (now called even with empty operators since we removed operators_in_db check)
+    assert mock_poa.call_count == 2  # request_id tag + v4.x tag (overwrite_from_index=True)
 
 
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')

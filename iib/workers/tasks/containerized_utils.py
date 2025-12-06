@@ -169,12 +169,13 @@ def write_build_metadata(
     distribution_scope: str,
     binary_image: str,
     request_id: int,
+    arches: set,
 ) -> None:
     """
     Write build metadata file for Konflux build task.
 
     This function creates a JSON metadata file that contains information needed by the
-    Konflux build task, including OPM version, labels, binary image, and request ID.
+    Konflux build task, including OPM version, labels, binary image, request ID, and arches.
 
     :param str local_repo_path: Path to local Git repository
     :param str opm_version: OPM version string (e.g., "opm-1.40.0")
@@ -182,6 +183,7 @@ def write_build_metadata(
     :param str distribution_scope: Distribution scope (e.g., "PROD")
     :param str binary_image: Binary image pullspec
     :param int request_id: Request ID
+    :param set arches: Set of architectures (e.g., {'amd64', 's390x'})
     """
     metadata = {
         'opm_version': opm_version,
@@ -191,6 +193,7 @@ def write_build_metadata(
         },
         'binary_image': binary_image,
         'request_id': request_id,
+        'arches': sorted(list(arches)),
     }
 
     metadata_path = os.path.join(local_repo_path, '.iib-build-metadata.json')
@@ -232,7 +235,6 @@ def push_index_db_artifact(
     from_index: str,
     index_db_path: str,
     operators: List[str],
-    operators_in_db: set,
     overwrite_from_index: bool = False,
     request_type: str = 'rm',
 ) -> Optional[str]:
@@ -247,7 +249,6 @@ def push_index_db_artifact(
     :param str from_index: The from_index pullspec
     :param str index_db_path: Path to the index.db file to push
     :param List[str] operators: List of operators involved in the operation
-    :param set operators_in_db: Set of operators that were in the database
     :param bool overwrite_from_index: Whether to overwrite the from_index
     :param str request_type: Type of request (e.g., 'rm', 'add')
     :return: Original digest of v4.x tag if captured, None otherwise
@@ -255,7 +256,7 @@ def push_index_db_artifact(
     """
     original_index_db_digest = None
 
-    if operators_in_db and index_db_path and os.path.exists(index_db_path):
+    if index_db_path and os.path.exists(index_db_path):
         # Get directory and filename separately to push only the filename
         # This ensures ORAS extracts the file as just "index.db" without
         # directory structure
@@ -281,16 +282,20 @@ def push_index_db_artifact(
             log.info('Original index.db digest: %s', original_index_db_digest)
             artifact_refs.append(v4x_artifact_ref)
 
+        # Build annotations - only include operators if not empty
+        annotations = {
+            'request_id': str(request_id),
+            'request_type': request_type,
+        }
+        if operators:
+            annotations['operators'] = ','.join(operators)
+
         for artifact_ref in artifact_refs:
             push_oras_artifact(
                 artifact_ref=artifact_ref,
                 local_path=index_db_filename,
                 cwd=index_db_dir,
-                annotations={
-                    'request_id': str(request_id),
-                    'request_type': request_type,
-                    'operators': ','.join(operators),
-                },
+                annotations=annotations.copy(),
             )
             log.info('Pushed %s to registry', artifact_ref)
 
