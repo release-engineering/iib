@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
 import os
+import re
 import stat
 from unittest import mock
 
@@ -1085,7 +1086,7 @@ def test_get_bundles_latest_version(bundle_images, expected):
                     'version': '1.2.34',
                 },
             ],
-            set(["operator2@sha256:1000"]),
+            ["operator2@sha256:1000"],
         ),
         (
             [
@@ -1110,16 +1111,14 @@ def test_get_bundles_latest_version(bundle_images, expected):
                     'version': '3.0.0',
                 },
             ],
-            set(
-                [
-                    "missing-operator@sha256:1234",
-                    "missing-operator@sha256:0001",
-                ]
-            ),
+            [
+                "missing-operator@sha256:0001",
+                "missing-operator@sha256:1234",
+            ],
         ),
     ],
 )
 def test_get_bundles_latest_version_missing_bundles(bundles, bundle_images, diff_bundles):
     err = f"Failed to retrieve bundles by semver, missing bundle images: {diff_bundles}"
-    with pytest.raises(IIBError, match=err):
+    with pytest.raises(IIBError, match=re.escape(err)):
         build_merge_index_image.get_bundles_latest_version(bundles, bundle_images)
