@@ -1,0 +1,160 @@
+---
+version: '3'
+services:
+  # This "service" generates the certificate for the registry. Then,
+  # it exits with status code 0.
+  minica:
+    image: registry.access.redhat.com/ubi8/go-toolset:latest
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        go install github.com/jsha/minica@latest &&
+        cd /opt/app-root/certs &&
+        namei -l /opt/app-root &&
+        /opt/app-root/src/bin/minica --domains registry
+    environment:
+      GOPATH: /opt/app-root/src
+    volumes:
+      - registry-certs-volume:/opt/app-root/certs:z
+
+  registry:
+    image: registry:2
+    ports:
+      - 8443:8443
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:8443
+      REGISTRY_HTTP_TLS_CERTIFICATE: /certs/registry/cert.pem
+      REGISTRY_HTTP_TLS_KEY: /certs/registry/key.pem
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+    volumes:
+      - ./iib_data/registry:/var/lib/registry
+      - registry-certs-volume:/certs:z
+      - ./docker/registry/auth:/auth
+
+  db:
+    image: postgres:9.6
+    environment:
+      POSTGRES_USER: iib
+      POSTGRES_PASSWORD: iib
+      POSTGRES_DB: iib
+      POSTGRES_INITDB_ARGS: "--auth='ident' --auth='trust'"
+
+  memcached:
+    image: memcached
+    ports:
+      - 11211:11211
+
+  rabbitmq:
+    image: rabbitmq:3.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: iib
+      RABBITMQ_DEFAULT_PASS: iib
+      # Avoid port conflict with ActiveMQ broker when using podman-compose.
+      # Even though the port is not exposed, podman-compose's use of a pod
+      # requires the ports to be unique across all containers within the pod.
+      RABBITMQ_NODE_PORT: 5673
+    ports:
+      # The RabbitMQ management console
+      - 8081:15672
+
+  iib-api:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-api
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        mkdir -p /etc/iib &&
+        pip3 uninstall -y iib &&
+        python3 setup.py develop --no-deps &&
+        iib wait-for-db &&
+        iib db upgrade &&
+        flask run --reload --host 0.0.0.0 --port 8080
+    environment:
+      FLASK_ENV: development
+      FLASK_APP: iib/web/wsgi.py
+      REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-bundle.crt
+      IIB_DEV: 'true'
+    volumes:
+      - ./:/src
+      - ./docker/message_broker/certs:/broker-certs
+      - request-logs-volume:/var/log/iib/requests:z
+      - request-related-bundles-volume:/var/lib/requests/related_bundles:z
+      - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
+    ports:
+      - 8080:8080
+    depends_on:
+      - db
+      - message-broker
+
+  # IIB Worker for containerized workflow (connects to external Konflux cluster)
+  iib-worker-containerized:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile-workers
+    command: >
+      bash -c "
+      mkdir -p /root/.docker &&
+      ln -sf /etc/containers/auth.json /root/.docker/config.json &&
+      echo 'Created symlink for docker config' &&
+      exec celery -A iib.workers.tasks worker --loglevel=info
+      "
+    environment:
+      IIB_DEV: 'false'
+      IIB_CELERY_CONFIG: /etc/iib/settings.py
+      REQUESTS_CA_BUNDLE: /etc/pki/tls/certs/ca-chain.crt
+      GIT_SSL_CAINFO: /etc/pki/tls/certs/ca-chain.crt
+    env_file:
+      # This file contains Konflux cluster credentials and other sensitive configuration
+      - .env.containerized
+    # Enable privileged mode for podman-in-podman support
+    privileged: true
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    cap_add:
+      - SYS_ADMIN
+      - MKNOD
+    volumes:
+      - ./:/src
+      - registry-certs-volume:/registry-certs
+      - request-logs-volume:/var/log/iib/requests:z
+      - request-related-bundles-volume:/var/lib/requests/related_bundles:z
+      - request-recursive-related-bundles-volume:/var/lib/requests/recursive_related_bundles:z
+      # Mount custom worker configuration
+      - ./docker/containerized/worker_config.py:/etc/iib/settings.py:z
+      # Mount Docker auth config for registry authentication (in a location IIB won't try to delete)
+      - ./docker/config.json:/etc/containers/auth.json:ro
+      # Mount local registry CA certificate for podman (not system-wide to avoid interfering with Git)
+      - registry-certs-volume:/tmp/registry-certs:ro
+      # Mount Konflux CA chain for GitLab SSL verification
+      - ./docker/containerized/konflux-ca.crt:/tmp/host-ca-chain.crt:ro
+    depends_on:
+      - rabbitmq
+      - registry
+      - minica
+      - memcached
+
+  # This is an external message broker used to publish messages about state changes
+  message-broker:
+    build:
+      context: .
+      dockerfile: ./docker/message_broker/Dockerfile
+    volumes:
+      - message-broker-volume:/opt/activemq/data:z
+      - ./docker/message_broker/certs:/broker-certs
+    ports:
+      - 5671:5671   # amqp+ssl
+      - 5672:5672   # amqp
+      - 8161:8161   # web console
+
+volumes:
+  registry-certs-volume:
+  message-broker-volume:
+  request-logs-volume:
+  request-recursive-related-bundles-volume:
+  request-related-bundles-volume:

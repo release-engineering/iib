@@ -46,7 +46,7 @@ RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.
 
 RUN curl -L "https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz" -o /tmp/oras.tar.gz && \
     tar -xvzf /tmp/oras.tar.gz -C /usr/bin/ && \
-    rm /tmp/oc_client.tar.gz /usr/bin/LICENSE
+    rm /tmp/oras.tar.gz /usr/bin/LICENSE
 
 RUN git config --global user.email "exd-guild-hello-operator+iib-dev-env@redhat.com"
 RUN git config --global user.name "IIB dev-env"
