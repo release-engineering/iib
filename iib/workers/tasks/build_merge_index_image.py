@@ -625,7 +625,7 @@ def get_bundles_latest_version(bundles: List[str], bundle_images: List[BundleIma
     # Validate the bundles and bundle_images lenght
     if len(bundle_version_names) != len(bundles):
         uniq_verions = [x[2] for x in bundle_version_names]
-        diff = set(bundles) - set(uniq_verions)
+        diff = sorted(set(bundles) - set(uniq_verions))
         raise IIBError(f"Failed to retrieve bundles by semver, missing bundle images: {diff}")
 
     # Retrieve the latest version of all bundle packages.
