@@ -104,6 +104,7 @@ def handle_containerized_fbc_operation_request(
     from_index_resolved = prebuild_info['from_index_resolved']
     binary_image_resolved = prebuild_info['binary_image_resolved']
     arches = prebuild_info['arches']
+    distribution_scope = prebuild_info['distribution_scope']
 
     index_to_gitlab_push_map = index_to_gitlab_push_map or {}
     # Variables mr_details, last_commit_sha and original_index_db_digest
