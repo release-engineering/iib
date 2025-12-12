@@ -44,8 +44,8 @@ from iib.web.models import (
 from iib.web.s3_utils import get_object_from_s3_bucket
 from botocore.response import StreamingBody
 from iib.web.utils import pagination_metadata, str_to_bool
-from iib.workers.tasks.build import (
-    handle_add_request,
+from iib.workers.tasks.build_containerized_add import (
+    handle_containerized_add_request,
 )
 from iib.workers.tasks.build_containerized_rm import handle_containerized_rm_request
 from iib.workers.tasks.build_add_deprecations import handle_add_deprecations_request
@@ -129,13 +129,9 @@ def _get_add_args(
         payload.get('binary_image'),
         payload.get('from_index'),
         payload.get('add_arches'),
-        payload.get('cnr_token'),
-        payload.get('organization'),
-        payload.get('force_backport'),
         overwrite_from_index,
         payload.get('overwrite_from_index_token'),
         request.distribution_scope,
-        flask.current_app.config['IIB_GREENWAVE_CONFIG'].get(celery_queue),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('deprecation_list', []),
         payload.get('build_tags', []),
@@ -621,7 +617,7 @@ def add_bundles() -> Tuple[flask.Response, int]:
         args.append(current_user.username)
 
     try:
-        handle_add_request.apply_async(
+        handle_containerized_add_request.apply_async(
             args=args,
             link_error=error_callback,
             argsrepr=repr(safe_args),
@@ -1068,7 +1064,7 @@ def add_rm_batch() -> Tuple[flask.Response, int]:
         error_callback = failed_request_callback.s(request.id)
         try:
             if isinstance(request, RequestAdd):
-                handle_add_request.apply_async(
+                handle_containerized_add_request.apply_async(
                     args=args,
                     link_error=error_callback,
                     argsrepr=repr(safe_args),
