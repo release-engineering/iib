@@ -362,6 +362,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         'binary_image_resolved': 'binary@sha256:123',
         'from_index_resolved': 'index@sha256:456',
         'ocp_version': 'v4.6',
+        'distribution_scope': 'prod',
     }
     mock_gri.return_value = 'fbc@sha256:789'
     mock_ugri.return_value = 'fbc@sha256:789'
@@ -476,6 +477,7 @@ def test_handle_containerized_fbc_operation_request_failure(
         'binary_image_resolved': 'binary@sha256:123',
         'from_index_resolved': 'index@sha256:456',
         'ocp_version': 'v4.6',
+        'distribution_scope': 'prod',
     }
     mock_gri.return_value = 'fbc@sha256:789'
     mock_ugri.return_value = 'fbc@sha256:789'
