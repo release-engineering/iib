@@ -55,7 +55,9 @@ from iib.workers.tasks.build_containerized_fbc_operations import (
 from iib.workers.tasks.build_recursive_related_bundles import (
     handle_recursive_related_bundles_request,
 )
-from iib.workers.tasks.build_regenerate_bundle import handle_regenerate_bundle_request
+from iib.workers.tasks.build_containerized_regenerate_bundle import (
+    handle_containerized_regenerate_bundle_request,
+)
 from iib.workers.tasks.build_containerized_create_empty_index import (
     handle_containerized_create_empty_index_request,
 )
@@ -897,12 +899,14 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
         request.id,
         payload.get('registry_auths'),
         payload.get('bundle_replacements', dict()),
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_REGENERATE_BUNDLE_REPO_KEY'],
     ]
     safe_args = _get_safe_args(args, payload)
 
     error_callback = failed_request_callback.s(request.id)
     try:
-        handle_regenerate_bundle_request.apply_async(
+        handle_containerized_regenerate_bundle_request.apply_async(
             args=args,
             link_error=error_callback,
             argsrepr=repr(safe_args),
@@ -965,10 +969,12 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
                 request.id,
                 build_request.get('registry_auths'),
                 build_request.get('bundle_replacements', dict()),
+                flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+                flask.current_app.config['IIB_REGENERATE_BUNDLE_REPO_KEY'],
             ]
             safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
-            handle_regenerate_bundle_request.apply_async(
+            handle_containerized_regenerate_bundle_request.apply_async(
                 args=args,
                 link_error=error_callback,
                 argsrepr=repr(safe_args),
