@@ -42,10 +42,12 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 def test_handle_containerized_rm_request_success_with_overwrite(
     mock_makedirs,
-    mock_exists,
+    mock_path_exists,
+    mock_os_exists,
     mock_copytree,
     mock_rmtree,
     mock_rename,
@@ -108,7 +110,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_ggt.return_value = ('token_name', 'git_token')
 
     # Mock file system operations
-    mock_exists.return_value = True
+    mock_path_exists.return_value = True  # For Path.exists() in containerized_utils
+    mock_os_exists.return_value = True  # For os.path.exists() in build_containerized_rm
 
     # Mock pull_index_db_artifact
     artifact_dir = os.path.join(temp_dir, 'artifact')
@@ -240,8 +243,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 def test_handle_containerized_rm_request_with_mr(
     mock_makedirs,
     mock_exists,
@@ -403,8 +406,8 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 def test_handle_containerized_rm_conditional_opm_rm(
     mock_makedirs,
     mock_exists,
@@ -578,8 +581,8 @@ def test_handle_containerized_rm_missing_git_mapping(
 @mock.patch('iib.workers.tasks.build_containerized_rm.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_rm.tempfile.TemporaryDirectory')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_missing_configs_dir(
     mock_srs_utils,
@@ -614,11 +617,8 @@ def test_handle_containerized_rm_missing_configs_dir(
     mock_opm.opm_version = 'v1.28.0'
     mock_ggt.return_value = ('token', 'value')
 
-    # Mock exists to return False for configs directory specifically
-    def exists_side_effect(path):
-        return 'configs' not in path
-
-    mock_exists.side_effect = exists_side_effect
+    # Mock exists to return False for configs directory
+    mock_exists.return_value = False
 
     # Test
     with pytest.raises(IIBError, match='Catalogs directory not found'):
@@ -645,8 +645,8 @@ def test_handle_containerized_rm_missing_configs_dir(
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_rm.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_missing_index_db(
     mock_srs_utils,
@@ -684,14 +684,8 @@ def test_handle_containerized_rm_missing_index_db(
     mock_opm.opm_version = 'v1.28.0'
     mock_ggt.return_value = ('token', 'value')
 
-    # Mock file system - configs exists but index.db doesn't
-    def exists_side_effect(path):
-        return 'index.db' not in path
-
-    mock_exists.side_effect = exists_side_effect
-
-    artifact_dir = os.path.join(temp_dir, 'artifact')
-    mock_pida.return_value = artifact_dir
+    # Mock pull_index_db_artifact to raise error about missing index.db
+    mock_pida.side_effect = IIBError('Index.db file not found')
 
     # Test
     with pytest.raises(IIBError, match='Index.db file not found'):
@@ -730,8 +724,8 @@ def test_handle_containerized_rm_missing_index_db(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_pipeline_failure(
     mock_srs_utils,
@@ -845,8 +839,8 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 def test_handle_containerized_rm_with_index_db_push(
     mock_makedirs,
     mock_exists,
@@ -995,8 +989,8 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.build_containerized_rm.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_with_build_tags(
     mock_srs_utils,
@@ -1131,8 +1125,8 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 def test_handle_containerized_rm_close_mr_failure_logged(
     mock_makedirs,
     mock_exists,
@@ -1257,8 +1251,8 @@ def test_handle_containerized_rm_close_mr_failure_logged(
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.rename')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_pipelinerun_missing_name(
     mock_srs_utils,
@@ -1360,8 +1354,8 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
 @mock.patch('iib.workers.tasks.build_containerized_rm.tempfile.TemporaryDirectory')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.rmtree')
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_rm_missing_output_pull_spec(
     mock_srs_utils,
