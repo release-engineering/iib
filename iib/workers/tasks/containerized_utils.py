@@ -2,9 +2,12 @@
 """This file contains utility functions for containerized IIB operations."""
 import json
 import logging
-import os
 import queue
+import shutil
+import tarfile
+import tempfile
 import threading
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from iib.exceptions import IIBError
@@ -20,6 +23,7 @@ from iib.workers.tasks.git_utils import (
     get_git_token,
     get_last_commit_sha,
     resolve_git_url,
+    revert_last_commit,
 )
 from iib.workers.tasks.konflux_utils import (
     find_pipelinerun,
@@ -40,6 +44,104 @@ from iib.workers.tasks.oras_utils import (
 from iib.workers.tasks.utils import run_cmd, skopeo_inspect
 
 log = logging.getLogger(__name__)
+
+
+def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path: str) -> None:
+    """
+    Extract files from container image without podman/docker runtime.
+
+    This function uses skopeo to download the image as OCI layout, then extracts
+    the requested path from the image layers. This approach works in non-privileged
+    environments without container runtime access.
+
+    :param str image: the pull specification of the container image
+    :param str src_path: the full path within the container image to copy from
+    :param str dest_path: the full path on the local host to copy into
+    :raises IIBError: if the extraction fails or src_path is not found
+    """
+    # Create temporary directory for OCI layout
+    with tempfile.TemporaryDirectory(prefix='iib-extract-') as temp_dir:
+        temp_path = Path(temp_dir)
+        oci_dir = temp_path / 'oci'
+        oci_dir.mkdir(parents=True, exist_ok=True)
+
+        # Download image as OCI layout using skopeo
+        log.info('Downloading image %s as OCI layout', image)
+        _skopeo_copy(
+            source=f'docker://{image}',
+            destination=f'oci:{oci_dir}',
+            copy_all=False,
+            exc_msg=f'Failed to download image {image} as OCI layout',
+        )
+
+        # Read OCI index to find the manifest
+        index_path = oci_dir / 'index.json'
+        if not index_path.exists():
+            raise IIBError(f'OCI index.json not found at {index_path}')
+
+        with open(index_path, 'r') as f:
+            index = json.load(f)
+
+        # Get the manifest digest from the index
+        manifests = index.get('manifests', [])
+        if not manifests:
+            raise IIBError(f'No manifests found in OCI index for image {image}')
+
+        manifest_digest = manifests[0]['digest'].replace('sha256:', '')
+        manifest_path = oci_dir / 'blobs' / 'sha256' / manifest_digest
+
+        # Read manifest to get layer information
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+
+        layers = manifest.get('layers', [])
+        if not layers:
+            raise IIBError(f'No layers found in manifest for image {image}')
+
+        # Create extraction directory to build the filesystem
+        extract_dir = temp_path / 'rootfs'
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract each layer in order to build the complete filesystem
+        log.info('Extracting %d layers from image %s', len(layers), image)
+        for layer in layers:
+            layer_digest = layer['digest'].replace('sha256:', '')
+            layer_path = oci_dir / 'blobs' / 'sha256' / layer_digest
+
+            if not layer_path.exists():
+                raise IIBError(f'Layer blob not found at {layer_path}')
+
+            # Extract layer tar.gz to build filesystem
+            try:
+                with tarfile.open(layer_path, 'r:gz') as tar:
+                    # Extract all members safely with path traversal protection
+                    tar.extractall(path=extract_dir, filter='data')
+            except Exception as e:
+                raise IIBError(f'Failed to extract layer {layer_digest}: {e}')
+
+        # Normalize src_path (remove leading slash for filesystem access)
+        normalized_src = src_path.lstrip('/')
+        source_full_path = extract_dir / normalized_src
+
+        # Verify the requested path exists in the extracted filesystem
+        if not source_full_path.exists():
+            raise IIBError(
+                f'Path {src_path} not found in image {image}. '
+                f'Looked for {source_full_path} in extracted filesystem.'
+            )
+
+        # Copy the requested path to destination
+        dest = Path(dest_path)
+        log.info('Copying %s from image to %s', src_path, dest_path)
+        if source_full_path.is_dir():
+            # If source is a directory, copy its contents
+            shutil.copytree(source_full_path, dest, dirs_exist_ok=True)
+        else:
+            # If source is a file, copy the file
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_full_path, dest)
+
+        log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
 
 
 class ValidateBundlesThread(threading.Thread):
@@ -205,11 +307,11 @@ def write_build_metadata(
         'arches': sorted(list(arches)),
     }
 
-    metadata_path = os.path.join(local_repo_path, '.iib-build-metadata.json')
+    metadata_path = Path(local_repo_path) / '.iib-build-metadata.json'
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
 
-    log.info('Written build metadata to %s', metadata_path)
+    log.info('Written build metadata to %s', str(metadata_path))
 
 
 def get_list_of_output_pullspec(
@@ -265,12 +367,13 @@ def push_index_db_artifact(
     """
     original_index_db_digest = None
 
-    if index_db_path and os.path.exists(index_db_path):
+    if index_db_path and Path(index_db_path).exists():
         # Get directory and filename separately to push only the filename
         # This ensures ORAS extracts the file as just "index.db" without
         # directory structure
-        index_db_dir = os.path.dirname(index_db_path)
-        index_db_filename = os.path.basename(index_db_path)
+        index_db_file = Path(index_db_path)
+        index_db_dir = str(index_db_file.parent)
+        index_db_filename = index_db_file.name
         log.info('Pushing from directory: %s, filename: %s', index_db_dir, index_db_filename)
 
         # Push with request_id tag irrespective of overwrite_from_index
@@ -344,8 +447,6 @@ def cleanup_on_failure(
         # If we created an MR, just close it (commit is only in feature branch)
         log.info("Closing merge request due to %s", reason)
         try:
-            from iib.workers.tasks.git_utils import close_mr
-
             close_mr(mr_details, index_git_repo)
             log.info("Closed merge request: %s", mr_details.get('mr_url'))
         except Exception as close_error:
@@ -354,8 +455,6 @@ def cleanup_on_failure(
         # If we pushed directly, revert the commit
         log.error("Reverting commit due to %s", reason)
         try:
-            from iib.workers.tasks.git_utils import revert_last_commit
-
             revert_last_commit(
                 request_id=request_id,
                 from_index=from_index,
@@ -427,16 +526,16 @@ def prepare_git_repository_for_build(
 
     # Clone Git repository
     set_request_state(request_id, 'in_progress', 'Cloning Git repository')
-    local_git_repo_path = os.path.join(temp_dir, 'git', branch)
-    os.makedirs(local_git_repo_path, exist_ok=True)
+    local_git_repo_path = Path(temp_dir) / 'git' / branch
+    local_git_repo_path.mkdir(parents=True, exist_ok=True)
 
-    clone_git_repo(index_git_repo, branch, token_name, git_token, local_git_repo_path)
+    clone_git_repo(index_git_repo, branch, token_name, git_token, str(local_git_repo_path))
 
-    localized_git_catalog_path = os.path.join(local_git_repo_path, 'configs')
-    if not os.path.exists(localized_git_catalog_path):
+    localized_git_catalog_path = local_git_repo_path / 'configs'
+    if not localized_git_catalog_path.exists():
         raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
 
-    return index_git_repo, local_git_repo_path, localized_git_catalog_path
+    return index_git_repo, str(local_git_repo_path), str(localized_git_catalog_path)
 
 
 def fetch_and_verify_index_db_artifact(
@@ -456,14 +555,14 @@ def fetch_and_verify_index_db_artifact(
     :raises IIBError: If index.db file not found after pulling
     """
     artifact_dir = pull_index_db_artifact(from_index, temp_dir)
-    artifact_index_db_file = os.path.join(artifact_dir, "index.db")
+    artifact_index_db_file = Path(artifact_dir) / "index.db"
 
     log.debug("Artifact DB path %s", artifact_index_db_file)
-    if not os.path.exists(artifact_index_db_file):
+    if not artifact_index_db_file.exists():
         log.error("Index.db file not found at %s", artifact_index_db_file)
         raise IIBError(f"Index.db file not found at {artifact_index_db_file}")
 
-    return artifact_index_db_file
+    return str(artifact_index_db_file)
 
 
 def git_commit_and_create_mr_or_push(

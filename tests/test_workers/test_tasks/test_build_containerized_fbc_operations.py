@@ -33,7 +33,7 @@ from iib.workers.tasks.utils import RequestConfigFBCOperation
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.utils.reset_docker_config')
-@mock.patch('os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request(
     mock_srs_utils,
@@ -89,7 +89,7 @@ def test_handle_containerized_fbc_operation_request(
     mock_ggt.return_value = ('token_name', 'token_value')
 
     # Mock os.path.exists for index.db check and catalogs dir check
-    with mock.patch('os.path.exists', return_value=True):
+    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         # Mock opm operation result
         mock_oraff.return_value = ('/tmp/updated_catalog_path', '/tmp/index.db', [])
 
@@ -205,7 +205,7 @@ def test_handle_containerized_fbc_operation_request(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.utils.reset_docker_config')
-@mock.patch('os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_srs_utils,
@@ -261,7 +261,7 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_rgu.return_value = index_git_repo
     mock_ggt.return_value = ('token_name', 'token_value')
 
-    with mock.patch('os.path.exists', return_value=True):
+    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         mock_oraff.return_value = ('/tmp/updated', '/tmp/db', [])
         mock_cmr.return_value = {'mr_url': 'http://mr.url'}
         mock_glcs.return_value = 'sha123'
@@ -322,11 +322,11 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.utils.reset_docker_config')
-@mock.patch('os.makedirs')  # NOVÝ MOCK pro FileNotFoundError (Test 3)
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_srs_utils,
-    mock_makedirs,  # Nově přidaný mock
+    mock_makedirs,
     mock_rdc,
     mock_srs,
     mock_gri,
@@ -370,7 +370,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_ggt.return_value = ('t', 'v')
 
     mock_docker_config = json.dumps({'auths': {}})
-    with mock.patch('os.path.exists', return_value=True):
+    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         with mock.patch('builtins.open', mock.mock_open(read_data=mock_docker_config)) as mock_file:
             mock_oraff.return_value = ('/tmp/c', '/tmp/d', ['op1'])
             mock_glcs.return_value = 'sha1'
@@ -440,7 +440,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.utils.reset_docker_config')
-@mock.patch('os.makedirs')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request_failure(
     mock_srs_utils,
@@ -489,7 +489,7 @@ def test_handle_containerized_fbc_operation_request_failure(
 
     excinfo = None
 
-    with mock.patch('os.path.exists', return_value=True):
+    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         try:
             build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
                 request_id=request_id,
