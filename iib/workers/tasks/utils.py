@@ -820,7 +820,9 @@ def run_cmd(
     if strict and response.returncode != 0:
         if set(['buildah', 'manifest', 'rm']) <= set(cmd) and 'image not known' in response.stderr:
             raise IIBError('Manifest list not found locally.')
-        log.error('The command "%s" failed with: %s', ' '.join(cmd), response.stderr)
+        log.error(
+            'The command "%s" failed with: %s', ' '.join(_sanitize_cmd_log(cmd)), response.stderr
+        )
         regex: str
         match: Optional[re.Match]
         if Path(cmd[0]).stem.startswith('opm'):
