@@ -1552,7 +1552,7 @@ def test_not_found(client):
     assert rv.json == {'error': 'The requested resource was not found'}
 
 
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_success(mock_smfsc, mock_hrbr, db, auth_env, client):
     data = {
@@ -1669,7 +1669,7 @@ def test_regenerate_bundle_missing_required_param(
         ({'not.tbrady@DOMAIN.LOCAL': 'Patriots'}, None),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_regenerate_bundle_custom_user_queue(
     mock_smfsc, mock_hrbr, app, auth_env, client, user_to_queue, expected_queue
@@ -1694,7 +1694,7 @@ def test_regenerate_bundle_custom_user_queue(
         ({}, None, {'Han Solo': 'Don\'t everybody thank me at once.'}),
     ),
 )
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_regenerate_bundle_batch_success(
     mock_smfnbor, mock_hrbr, user_to_queue, expected_queue, annotations, app, auth_env, client, db
@@ -1729,17 +1729,30 @@ def test_regenerate_bundle_batch_success(
                     1,
                     {'auths': {'registry2.example.com': {'auth': 'dummy_auth'}}},
                     {'foo': 'bar:baz'},
+                    {},
+                    'regenerate-bundle',
                 ],
                 argsrepr=(
                     "['registry.example.com/bundle-image:latest', None, 1, '*****', "
-                    "{'foo': 'bar:baz'}]"
+                    "{'foo': 'bar:baz'}, {}, 'regenerate-bundle']"
                 ),
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),
             mock.call(
-                args=['registry.example.com/bundle-image2:latest', None, 2, None, None],
-                argsrepr="['registry.example.com/bundle-image2:latest', None, 2, None, None]",
+                args=[
+                    'registry.example.com/bundle-image2:latest',
+                    None,
+                    2,
+                    None,
+                    None,
+                    {},
+                    'regenerate-bundle',
+                ],
+                argsrepr=(
+                    "['registry.example.com/bundle-image2:latest', None, 2, None, None, {}, "
+                    "'regenerate-bundle']"
+                ),
                 link_error=mock.ANY,
                 queue=expected_queue,
             ),
@@ -1755,7 +1768,7 @@ def test_regenerate_bundle_batch_success(
     assert requests_to_send_msgs_for[1].id == 2
 
 
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 def test_regenerate_bundle_batch_invalid_request_type(mock_hrbr, app, auth_env, client, db):
     data = {
         'build_requests': [
@@ -1911,7 +1924,7 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
     assert requests_to_send_msgs_for[1].id == 2
 
 
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 def test_add_rm_batch_invalid_request_type(mock_hrbr, app, auth_env, client, db):
     data = {
         'build_requests': [
