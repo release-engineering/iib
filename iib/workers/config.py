@@ -98,6 +98,7 @@ class Config(object):
         'iib.workers.tasks.build_containerized_rm',
         'iib.workers.tasks.build_containerized_create_empty_index',
         'iib.workers.tasks.build_containerized_merge',
+        'iib.workers.tasks.build_containerized_regenerate_bundle',
         'iib.workers.tasks.general',
     ]
     # Path to hidden location of SQLite database

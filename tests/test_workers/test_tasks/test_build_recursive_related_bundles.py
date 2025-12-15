@@ -13,11 +13,11 @@ yaml = build_recursive_related_bundles.yaml
 
 
 @pytest.mark.parametrize('organization', ('acme', None))
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._cleanup')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_resolved_image')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles.podman_pull')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.tempfile.TemporaryDirectory')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._copy_files_from_image')
+@mock.patch(
+    'iib.workers.tasks.build_recursive_related_bundles.extract_files_from_image_non_privileged'
+)
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles._adjust_operator_bundle')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.set_request_state')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_worker_config')
@@ -35,11 +35,9 @@ def test_handle_recusrsive_related_bundles_request(
     mock_gwc,
     mock_srs,
     mock_aob,
-    mock_cffi,
+    mock_effinp,
     mock_temp_dir,
-    mock_pp,
     mock_gri,
-    mock_cleanup,
     organization,
     tmpdir,
 ):
@@ -66,7 +64,6 @@ def test_handle_recusrsive_related_bundles_request(
     build_recursive_related_bundles.handle_recursive_related_bundles_request(
         parent_bundle_image, org, request_id
     )
-    assert mock_cleanup.call_count == 2
     assert mock_gbm.call_count == 3
     assert mock_grbi.call_count == 3
     assert mock_ur.call_count == 3
@@ -83,11 +80,11 @@ def test_handle_recusrsive_related_bundles_request(
     )
 
 
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._cleanup')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_resolved_image')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles.podman_pull')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.tempfile.TemporaryDirectory')
-@mock.patch('iib.workers.tasks.build_recursive_related_bundles._copy_files_from_image')
+@mock.patch(
+    'iib.workers.tasks.build_recursive_related_bundles.extract_files_from_image_non_privileged'
+)
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles._adjust_operator_bundle')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.set_request_state')
 @mock.patch('iib.workers.tasks.build_recursive_related_bundles.get_worker_config')
@@ -105,11 +102,9 @@ def test_handle_recusrsive_related_bundles_request_max_bundles_reached(
     mock_gwc,
     mock_srs,
     mock_aob,
-    mock_cffi,
+    mock_effinp,
     mock_temp_dir,
-    mock_pp,
     mock_gri,
-    mock_cleanup,
     tmpdir,
 ):
     parent_bundle_image = 'bundle-image:latest'
