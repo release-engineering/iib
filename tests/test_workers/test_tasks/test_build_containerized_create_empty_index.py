@@ -32,8 +32,8 @@ from iib.workers.tasks.utils import RequestConfigCreateIndexImage
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_oras_artifact')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_worker_config')
-@mock.patch('iib.workers.tasks.containerized_utils.os.makedirs')
-@mock.patch('iib.workers.tasks.containerized_utils.os.path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
 @mock.patch(
@@ -255,8 +255,8 @@ def test_handle_containerized_create_empty_index_primary_path(
 )
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_oras_artifact')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_worker_config')
-@mock.patch('iib.workers.tasks.containerized_utils.os.makedirs')
-@mock.patch('iib.workers.tasks.containerized_utils.os.path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
 @mock.patch(
@@ -442,8 +442,8 @@ def test_handle_containerized_create_empty_index_fallback(
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_oras_artifact')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_worker_config')
-@mock.patch('iib.workers.tasks.containerized_utils.os.makedirs')
-@mock.patch('iib.workers.tasks.containerized_utils.os.path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
 @mock.patch(
@@ -618,8 +618,8 @@ def test_handle_containerized_create_empty_index_missing_git_mapping(
 )
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_oras_artifact')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.get_worker_config')
-@mock.patch('iib.workers.tasks.containerized_utils.os.makedirs')
-@mock.patch('iib.workers.tasks.containerized_utils.os.path.exists')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
 @mock.patch(
