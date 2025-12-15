@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import json
+import os
+import tarfile
 from unittest.mock import patch
 
 import pytest
 
 from iib.exceptions import IIBError
 from iib.workers.tasks.containerized_utils import (
+    extract_files_from_image_non_privileged,
     pull_index_db_artifact,
     write_build_metadata,
     cleanup_on_failure,
@@ -201,7 +204,7 @@ def test_write_build_metadata_creates_expected_json(mock_log, tmp_path):
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.git_utils.close_mr')
+@patch('iib.workers.tasks.containerized_utils.close_mr')
 def test_cleanup_on_failure_closes_mr_when_mr_details_and_repo_present(mock_close_mr, mock_log):
     """If MR details and index_git_repo are provided, close_mr should be called."""
     mr_details = {'mr_url': 'https://git.example.com/mr/1'}
@@ -228,7 +231,7 @@ def test_cleanup_on_failure_closes_mr_when_mr_details_and_repo_present(mock_clos
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.git_utils.close_mr')
+@patch('iib.workers.tasks.containerized_utils.close_mr')
 def test_cleanup_on_failure_close_mr_failure_is_logged(mock_close_mr, mock_log):
     """If closing MR fails, error should be logged but function should not raise."""
     mock_close_mr.side_effect = RuntimeError("close failed")
@@ -257,7 +260,7 @@ def test_cleanup_on_failure_close_mr_failure_is_logged(mock_close_mr, mock_log):
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.git_utils.revert_last_commit')
+@patch('iib.workers.tasks.containerized_utils.revert_last_commit')
 def test_cleanup_on_failure_reverts_commit_when_overwrite_and_commit_sha_present(
     mock_revert_last_commit, mock_log
 ):
@@ -289,7 +292,7 @@ def test_cleanup_on_failure_reverts_commit_when_overwrite_and_commit_sha_present
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.git_utils.revert_last_commit')
+@patch('iib.workers.tasks.containerized_utils.revert_last_commit')
 def test_cleanup_on_failure_revert_failure_is_logged(mock_revert_last_commit, mock_log):
     """If revert_last_commit fails, error should be logged."""
     mock_revert_last_commit.side_effect = RuntimeError("revert failed")
@@ -960,3 +963,266 @@ def test_wait_for_bundle_validation_threads_failure_raises_error_string(
     assert thread.exception == error
     assert thread.bundle == 'quay.io/ns/bundle1:v1.0.0'
     mock_log.error.assert_called()
+
+
+# Tests for extract_files_from_image_non_privileged
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_success_directory(
+    mock_skopeo_copy, mock_log, tmpdir
+):
+    """Test successful extraction of a directory from container image."""
+    import os
+    import tarfile
+
+    # Setup destination directory
+    dest_dir = tmpdir.join('dest')
+
+    # Mock skopeo_copy to create proper OCI layout
+    def mock_copy(source, destination, copy_all, exc_msg):
+        # Extract OCI directory path from destination (format: oci:/path/to/oci)
+        oci_path = destination.replace('oci:', '')
+
+        # Create OCI layout structure
+        os.makedirs(oci_path, exist_ok=True)
+        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
+        os.makedirs(blobs_dir, exist_ok=True)
+
+        # Create index.json
+        index_json = {
+            'manifests': [
+                {
+                    'digest': 'sha256:abc123',
+                    'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                }
+            ]
+        }
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+        # Create manifest
+        manifest_json = {
+            'layers': [
+                {
+                    'digest': 'sha256:layer1',
+                    'mediaType': 'application/vnd.oci.image.layer.v1.tar+gzip',
+                }
+            ]
+        }
+        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
+            json.dump(manifest_json, f)
+
+        # Create layer tar.gz with /manifests directory
+        layer_path = os.path.join(blobs_dir, 'layer1')
+        with tarfile.open(layer_path, 'w:gz') as tar:
+            # Create a temporary test file
+            test_file = tmpdir.join('temp_test_manifest.yaml')
+            test_file.write('test: data')
+            # Add it to the tar with the path we expect in the image
+            tar.add(str(test_file), arcname='manifests/test_manifest.yaml')
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    # Call the function under test
+    extract_files_from_image_non_privileged('quay.io/ns/test:v1', '/manifests', str(dest_dir))
+
+    # Verify the extraction succeeded
+    assert dest_dir.check(dir=True)
+    extracted_file = dest_dir.join('test_manifest.yaml')
+    assert extracted_file.check(file=True)
+    assert extracted_file.read() == 'test: data'
+
+    # Verify skopeo was called
+    mock_skopeo_copy.assert_called_once()
+    call_args = mock_skopeo_copy.call_args
+    assert call_args[1]['source'] == 'docker://quay.io/ns/test:v1'
+    assert 'oci:' in call_args[1]['destination']
+    assert call_args[1]['copy_all'] is False
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_missing_index(mock_skopeo_copy, mock_log, tmpdir):
+    """Test extraction fails when OCI index.json is missing."""
+    # Mock skopeo_copy to create OCI dir without index.json
+    def mock_copy(source, destination, copy_all, exc_msg):
+        # Extract OCI directory path from destination
+        oci_path = destination.replace('oci:', '')
+        os.makedirs(oci_path, exist_ok=True)
+        # Don't create index.json to simulate error
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='OCI index.json not found'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_no_manifests(mock_skopeo_copy, mock_log, tmpdir):
+    """Test extraction fails when no manifests in OCI index."""
+
+    def mock_copy(source, destination, copy_all, exc_msg):
+        oci_path = destination.replace('oci:', '')
+        os.makedirs(oci_path, exist_ok=True)
+        # Create index.json with empty manifests
+        index_json = {'manifests': []}
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='No manifests found in OCI index'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_no_layers(mock_skopeo_copy, mock_log, tmpdir):
+    """Test extraction fails when no layers in manifest."""
+
+    def mock_copy(source, destination, copy_all, exc_msg):
+        oci_path = destination.replace('oci:', '')
+        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
+        os.makedirs(blobs_dir, exist_ok=True)
+
+        # Create index.json
+        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+        # Create manifest with no layers
+        manifest_json = {'layers': []}
+        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
+            json.dump(manifest_json, f)
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='No layers found in manifest'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_missing_layer_blob(
+    mock_skopeo_copy, mock_log, tmpdir
+):
+    """Test extraction fails when layer blob file is missing."""
+
+    def mock_copy(source, destination, copy_all, exc_msg):
+        oci_path = destination.replace('oci:', '')
+        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
+        os.makedirs(blobs_dir, exist_ok=True)
+
+        # Create index.json
+        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+        # Create manifest with layer reference
+        manifest_json = {'layers': [{'digest': 'sha256:missing_layer'}]}
+        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
+            json.dump(manifest_json, f)
+        # Don't create the layer blob file
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='Layer blob not found'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_path_not_found(mock_skopeo_copy, mock_log, tmpdir):
+    """Test extraction fails when requested path doesn't exist in image."""
+
+    def mock_copy(source, destination, copy_all, exc_msg):
+        oci_path = destination.replace('oci:', '')
+        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
+        os.makedirs(blobs_dir, exist_ok=True)
+
+        # Create index.json
+        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+        # Create manifest
+        manifest_json = {'layers': [{'digest': 'sha256:layer1'}]}
+        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
+            json.dump(manifest_json, f)
+
+        # Create empty layer tar.gz (no content)
+        layer_path = os.path.join(blobs_dir, 'layer1')
+        with tarfile.open(layer_path, 'w:gz'):
+            pass  # Empty tar
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='Path /manifests not found in image'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_invalid_layer_tarball(
+    mock_skopeo_copy, mock_log, tmpdir
+):
+    """Test extraction fails when layer tarball is corrupted."""
+
+    def mock_copy(source, destination, copy_all, exc_msg):
+        oci_path = destination.replace('oci:', '')
+        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
+        os.makedirs(blobs_dir, exist_ok=True)
+
+        # Create index.json
+        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
+        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
+            json.dump(index_json, f)
+
+        # Create manifest
+        manifest_json = {'layers': [{'digest': 'sha256:corrupted_layer'}]}
+        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
+            json.dump(manifest_json, f)
+
+        # Create corrupted layer (not a valid tar.gz)
+        layer_path = os.path.join(blobs_dir, 'corrupted_layer')
+        with open(layer_path, 'w') as f:
+            f.write('not a valid tar.gz file')
+
+    mock_skopeo_copy.side_effect = mock_copy
+
+    with pytest.raises(IIBError, match='Failed to extract layer'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
+def test_extract_files_from_image_non_privileged_skopeo_copy_failure(
+    mock_skopeo_copy, mock_log, tmpdir
+):
+    """Test extraction fails when skopeo copy fails."""
+    mock_skopeo_copy.side_effect = IIBError('Failed to download image')
+
+    with pytest.raises(IIBError, match='Failed to download image'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+
+    mock_skopeo_copy.assert_called_once()
+    # Verify the call was made with correct parameters
+    call_args = mock_skopeo_copy.call_args
+    assert call_args[1]['source'] == 'docker://quay.io/ns/test:v1'
+    assert 'oci:' in call_args[1]['destination']
+    assert call_args[1]['copy_all'] is False
