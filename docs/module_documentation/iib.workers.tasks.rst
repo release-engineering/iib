@@ -53,6 +53,22 @@ iib.workers.tasks.build\_containerized\_fbc\_operations module
    :undoc-members:
    :show-inheritance:
 
+iib.workers.tasks.build\_containerized\_merge module
+----------------------------------------------------
+
+.. automodule:: iib.workers.tasks.build_containerized_merge
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+iib.workers.tasks.build\_containerized\_regenerate\_bundle module
+------------------------------------------------------------------
+
+.. automodule:: iib.workers.tasks.build_containerized_regenerate_bundle
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.workers.tasks.build\_merge\_index\_image module
 ---------------------------------------------------
 
