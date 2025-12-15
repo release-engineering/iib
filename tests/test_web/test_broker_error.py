@@ -34,7 +34,7 @@ def test_catch_add_bundle_failure(mock_smfsc, mock_har, db, auth_env, client):
     assert_testing(rv, mock_smfsc, db)
 
 
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 def test_catch_regenerate_bundle_failure(mock_smfsc, mock_hrbr, db, auth_env, client):
     mock_hrbr.apply_async.side_effect = OperationalError
@@ -63,7 +63,7 @@ def test_catch_remove_operator_failure(mock_smfsc, mock_rm, db, auth_env, client
     assert_testing(rv, mock_smfsc, db)
 
 
-@mock.patch('iib.web.api_v1.handle_regenerate_bundle_request')
+@mock.patch('iib.web.api_v1.handle_containerized_regenerate_bundle_request')
 @mock.patch('iib.web.api_v1.messaging.send_message_for_state_change')
 @mock.patch('iib.web.api_v1.messaging.send_messages_for_new_batch_of_requests')
 def test_catch_regenerate_bundle_batch_failure(
