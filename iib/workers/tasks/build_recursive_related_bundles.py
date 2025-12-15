@@ -12,10 +12,6 @@ from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state, update_request
-from iib.workers.tasks.build import (
-    _cleanup,
-    _copy_files_from_image,
-)
 from iib.workers.tasks.build_regenerate_bundle import (
     _adjust_operator_bundle,
     get_related_bundle_images,
@@ -23,9 +19,9 @@ from iib.workers.tasks.build_regenerate_bundle import (
 )
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
+from iib.workers.tasks.containerized_utils import extract_files_from_image_non_privileged
 from iib.workers.tasks.utils import (
     get_resolved_image,
-    podman_pull,
     request_logger,
     set_registry_auths,
     get_bundle_metadata,
@@ -71,8 +67,6 @@ def handle_recursive_related_bundles_request(
       registries, defaults to ``None``.
     :raises IIBError: if the recursive related bundles build fails.
     """
-    _cleanup()
-
     set_request_state(request_id, 'in_progress', 'Resolving parent_bundle_image')
 
     with set_registry_auths(registry_auths):
@@ -127,7 +121,6 @@ def handle_recursive_related_bundles_request(
         'state': 'complete',
         'state_reason': 'The request completed successfully',
     }
-    _cleanup()
     update_request(request_id, payload, exc_msg='Failed setting the bundle image on the request')
 
 
@@ -145,14 +138,11 @@ def process_parent_bundle_image(
     :return: the list of all children bundles for a parent bundle image
     :raises IIBError: if fails to process the parent bundle image.
     """
-    # Pull the bundle_image to ensure steps later on don't fail due to registry timeouts
-    podman_pull(bundle_image_resolved)
-
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         manifests_path = os.path.join(temp_dir, 'manifests')
-        _copy_files_from_image(bundle_image_resolved, '/manifests', manifests_path)
+        extract_files_from_image_non_privileged(bundle_image_resolved, '/manifests', manifests_path)
         metadata_path = os.path.join(temp_dir, 'metadata')
-        _copy_files_from_image(bundle_image_resolved, '/metadata', metadata_path)
+        extract_files_from_image_non_privileged(bundle_image_resolved, '/metadata', metadata_path)
         if organization:
             _adjust_operator_bundle(
                 manifests_path,
