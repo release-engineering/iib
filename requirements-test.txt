@@ -1091,8 +1091,10 @@ python-memcached==1.62 \
     --hash=sha256:0285470599b7f593fbf3bec084daa1f483221e68c1db2cf1d846a9f7c2655103 \
     --hash=sha256:1bdd8d2393ff53e80cd5e9442d750e658e0b35c3eebb3211af137303e3b729d1
     # via -r requirements.txt
-python-qpid-proton==0.38.0 \
-    --hash=sha256:e39c6a19ceac0e721b7e2b29543b241c43378caf666b2911271611e88cabee4b
+python-qpid-proton==0.40.0 \
+    --hash=sha256:7680d607cf6e9684f97bf5b2ba16cda7d8512aab9e4ff78f98d44a4644fc819a \
+    --hash=sha256:a19d8c71c908700ceb38f6cbc1eb4a039428570f96bfc2caeeafdfec804fb94f \
+    --hash=sha256:fe56211c6dcc7ea1fb9d78a017208a4c08043cd901780b6602a74ff70f38bf1f
     # via -r requirements.txt
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
