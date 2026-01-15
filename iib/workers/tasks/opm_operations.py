@@ -256,6 +256,10 @@ def create_port_filelocks(port_purposes: List[str]) -> Callable:
                 port_purposes=port_purposes_updated,
             )
 
+            def unlock_active_lock(active_locks):
+                for active_lock in active_locks:
+                    active_lock.unlock()
+
             # Use the function to retrieve values from the generator
             while not lock_success:
                 new_locks = port_file_lock_generator.get_new_locks()
@@ -278,14 +282,19 @@ def create_port_filelocks(port_purposes: List[str]) -> Callable:
                 # Exception raised during execution of func()
                 except AddressAlreadyInUse:
                     lock_success = False
-                    for active_lock in currently_active_locks:
-                        active_lock.unlock()
+                    unlock_active_lock(currently_active_locks)
+
+                except Exception:
+                    lock_success = False
+                    # Exception raised we should remove locks.
+                    unlock_active_lock(currently_active_locks)
+                    # re-raise exception
+                    raise
 
                 finally:
                     # Exit loop after successful lock acquisition
                     if lock_success:
-                        for active_lock in currently_active_locks:
-                            active_lock.unlock()
+                        unlock_active_lock(currently_active_locks)
                         break
 
             return result
