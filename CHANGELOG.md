@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.5.0
+
+* chore(deps): update dependency google-auth to v2.43.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1229
+* chore(deps): update dependency coverage to v7.11.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1230
+* chore(deps): update dependency alembic to v1.17.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1223
+* chore(deps): update dependency certifi to v2025.11.12 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1231
+* chore(deps): update dependency googleapis-common-protos to v1.72.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1232
+* chore(deps): update dependency cachetools to v6.2.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1234
+* chore(deps): update dependency alembic to v1.17.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1237
+* chore(deps): update dependency billiard to v4.2.3 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1238
+* chore(deps): update dependency click to v8.3.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1239
+* chore(deps): update dependency grpcio to v1.76.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1233
+* chore(deps): update dependency botocore to v1.40.75 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1227
+* chore(deps): update dependency boto3 to v1.40.75 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1224
+* chore(deps): update dependency protobuf to v6.33.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1240
+* chore(deps): update dependency iniconfig to v2.3.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1243
+* chore(deps): update dependency coverage to v7.12.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1242
+* chore(deps): update dependency pytest to v9 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1251
+* chore(deps): update rabbitmq docker tag to v4.2 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1250
+* chore(deps): update postgres docker tag to v18.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1249
+* chore(deps): update dependency botocore to v1.40.76 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1248
+* chore(deps): update dependency boto3 to v1.40.76 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1247
+* chore(deps): update actions/checkout action to v6 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1256
+* chore(deps): update dependency stevedore to v5.6.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1255
+* Avoid race condition on unit-tests by @JAVGan in https://github.com/release-engineering/iib/pull/1277
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/1282
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/1286
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/1287
+* Unlock files when any Exception is raised. by @lipoja in https://github.com/release-engineering/iib/pull/1288
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/1292
+
 ## 9.4.3
 
 * chore(deps): update dependency click to v8.3.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1168
