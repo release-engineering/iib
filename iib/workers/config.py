@@ -46,6 +46,7 @@ class Config(object):
     iib_index_configs_gitlab_tokens_map: Optional[Dict[str, Dict[str, str]]] = None
     iib_log_level: str = 'INFO'
     iib_deprecate_bundles_limit = 200
+    iib_max_number_of_bundles_as_cmd_argument = 500
     iib_max_recursive_related_bundles = 15
     # list of index images to which we can add bundles without "com.redhat.openshift.versions" label
     iib_no_ocp_label_allow_list: List[str] = []
