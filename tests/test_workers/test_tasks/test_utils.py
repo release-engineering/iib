@@ -1365,11 +1365,46 @@ def test_prepare_request_for_build_no_arches(mock_gia, mock_gri, mock_srs):
 def test_prepare_request_for_build_binary_image_no_arch(mock_gia, mock_gri, mock_srs):
     mock_gia.side_effect = [{'amd64'}]
 
-    expected = 'The binary image is not available for the following arches.+'
+    expected = 'The binary image is not available for any of the following arches.+'
     with pytest.raises(IIBError, match=expected):
         utils.prepare_request_for_build(
             1, utils.RequestConfigAddRm(_binary_image='binary-image:latest', add_arches=['s390x'])
         )
+
+
+@mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.utils.get_image_arches')
+def test_prepare_request_for_build_arches_not_subset(mock_gia, mock_gri, mock_srs, caplog):
+    """When arches are not a subset of binary_image_arches but at least one is supported."""
+    # Binary image supports only amd64; request asks for amd64 and s390x (one supported, one not)
+    mock_gri.return_value = 'binary-image@sha256:abc123'
+    mock_gia.return_value = {'amd64'}
+
+    with caplog.at_level(logging.WARNING, logger='iib.workers.tasks.utils'):
+        rv = utils.prepare_request_for_build(
+            1,
+            utils.RequestConfigAddRm(
+                _binary_image='binary-image:latest',
+                add_arches=['amd64', 's390x'],
+            ),
+        )
+
+    # Warning is activated: binary image not available for some requested arches
+    expected_msg = 'The binary image is not available for the following arches: s390x'
+    assert expected_msg in caplog.text
+
+    # Message is logged as a WARNING from the expected logger
+    warning_records = [
+        r
+        for r in caplog.records
+        if r.levelname == 'WARNING' and r.name == 'iib.workers.tasks.utils'
+    ]
+    assert any(expected_msg in r.getMessage() for r in warning_records)
+
+    # Result is filtered to supported arches only
+    assert rv['arches'] == {'amd64'}
+    assert rv['binary_image_resolved'] == 'binary-image@sha256:abc123'
 
 
 @pytest.mark.parametrize(
