@@ -1236,11 +1236,19 @@ def prepare_request_for_build(
         binary_image_arches = get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):
-        raise IIBError(
+        log.warning(
             'The binary image is not available for the following arches: {}'.format(
                 ', '.join(sorted(arches - binary_image_arches))
             )
         )
+        supported_arches = set([arch for arch in arches if arch in binary_image_arches])
+        if not supported_arches:
+            raise IIBError(
+                'The binary image is not available for any of the following arches: {}'.format(
+                    ', '.join(sorted(arches))
+                )
+            )
+        arches = supported_arches
 
     arches_str = ', '.join(sorted(arches))
     log.debug('Set to build the index image for the following arches: %s', arches_str)
