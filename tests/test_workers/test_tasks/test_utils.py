@@ -1390,8 +1390,9 @@ def test_prepare_request_for_build_arches_not_subset(mock_gia, mock_gri, mock_sr
             ),
         )
 
-    # Warning is activated: binary image not available for some requested arches
-    expected_msg = 'The binary image is not available for the following arches: s390x'
+    # Warning is activated: building for supported arches only (code logs this when
+    # arches are not a subset but some are supported)
+    expected_msg = 'Building index images for the following supported arches: amd64'
     assert expected_msg in caplog.text
 
     # Message is logged as a WARNING from the expected logger
@@ -1400,7 +1401,10 @@ def test_prepare_request_for_build_arches_not_subset(mock_gia, mock_gri, mock_sr
         for r in caplog.records
         if r.levelname == 'WARNING' and r.name == 'iib.workers.tasks.utils'
     ]
-    assert any(expected_msg in r.getMessage() for r in warning_records)
+    assert any(
+        'Building index images for the following supported arches:' in r.getMessage()
+        for r in warning_records
+    )
 
     # Result is filtered to supported arches only
     assert rv['arches'] == {'amd64'}

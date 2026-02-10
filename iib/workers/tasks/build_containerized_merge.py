@@ -75,6 +75,7 @@ def handle_containerized_merge_request(
     graph_update_mode: Optional[str] = None,
     ignore_bundle_ocp_version: Optional[bool] = False,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
     parallel_threads: int = 5,
 ) -> None:
     """
@@ -121,6 +122,7 @@ def handle_containerized_merge_request(
                 target_index=target_index,
                 distribution_scope=distribution_scope,
                 binary_image_config=binary_image_config,
+                binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
             ),
         )
 
