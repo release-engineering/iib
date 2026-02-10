@@ -25,7 +25,7 @@ recommonmark
 requests
 ruamel.yaml
 semver
-setuptools
+setuptools<82
 sphinx==8.2.3
 sphinx_rtd_theme
 tenacity
