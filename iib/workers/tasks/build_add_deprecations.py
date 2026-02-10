@@ -3,7 +3,7 @@ import os
 import json
 import logging
 import tempfile
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
@@ -55,6 +55,7 @@ def handle_add_deprecations_request(
     build_tags: Optional[Set[str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     overwrite_from_index_token: Optional[str] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Add a deprecation schema to index image.
@@ -74,6 +75,8 @@ def handle_add_deprecations_request(
     :param list build_tags: List of tags which will be applied to intermediate index images.
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     """
     _cleanup()
     set_request_state(request_id, 'in_progress', 'Resolving the index images')
@@ -87,6 +90,7 @@ def handle_add_deprecations_request(
             operator_package=operator_package,
             deprecation_schema=deprecation_schema,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
 
