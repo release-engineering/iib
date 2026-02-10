@@ -9,15 +9,15 @@ from datetime import datetime
 import os
 import sys
 
-import pkg_resources
+from importlib import metadata
 
 # -- Path setup --------------------------------------------------------------
 sys.path.append(os.path.abspath('../'))
 
 # -- Project information -----------------------------------------------------
 try:
-    version = pkg_resources.get_distribution('iib').version
-except pkg_resources.DistributionNotFound:
+    version = metadata.version('iib')
+except metadata.PackageNotFoundError:
     version = 'unknown'
 project = 'IIB Image Builder Service'
 copyright = datetime.today().strftime('%Y') + ', Red Hat Inc.'
