@@ -199,6 +199,10 @@ The custom configuration options for the REST API are listed below:
   to another dictionary mapping ocp_version label to a binary image pull specification.
   This is useful in setting up customized binary image for different index image images thus
   reducing complexity for the end user. This defaults to `{}`.
+* `IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS` - an optional `list(<str>)` to specify the OPM
+  versions which are allowed to build index images with lesser arches than the configured 
+  on `iib_supported_archs`. When a certain version is set it will allow building only to the
+  available arches supported by the binary image.
 * `IIB_INDEX_TO_GITLAB_PUSH_MAP` - the mapping, `dict(<str>:<str>)`, to specify which index
   images (keys) which should have its catalog pushed into a GitLab repository (value). This defaults to {}.
 * `IIB_GRAPH_MODE_INDEX_ALLOW_LIST` - the list of index image pull specs on which using the
