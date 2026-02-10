@@ -7,8 +7,7 @@ import celery.app.task
 from iib.exceptions import IIBError, FinalStateOverwriteError
 from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.utils import request_logger
-from iib.workers.tasks.build import _cleanup
+from iib.workers.tasks.utils import request_logger, reset_docker_config
 
 __all__ = ['failed_request_callback', 'set_request_state']
 
@@ -34,11 +33,11 @@ def failed_request_callback(
         msg = str(exc)
     elif isinstance(exc, FinalStateOverwriteError):
         log.info(f"Request {request_id} is in a final state,ignoring update.")
-        _cleanup()
+        reset_docker_config()
         return
     else:
         msg = 'An unknown error occurred. See logs for details'
         log.error(msg, exc_info=exc)
 
-    _cleanup()
+    reset_docker_config()
     set_request_state(request_id, 'failed', msg)
