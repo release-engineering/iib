@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import logging
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
@@ -48,6 +48,7 @@ def handle_create_empty_index_request(
     binary_image: Optional[str] = None,
     labels: Optional[Dict[str, str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """Coordinate the the work needed to create the index image with labels.
 
@@ -60,6 +61,8 @@ def handle_create_empty_index_request(
     :param dict labels: the dict of labels required to be added to a new index image
     :param dict binary_image_config: the dict of config required to identify the appropriate
         ``binary_image`` to use.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     """
     _cleanup()
     prebuild_info: PrebuildInfo = prepare_request_for_build(
@@ -68,6 +71,7 @@ def handle_create_empty_index_request(
             _binary_image=binary_image,
             from_index=from_index,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
