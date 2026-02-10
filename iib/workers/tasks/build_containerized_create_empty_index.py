@@ -4,7 +4,7 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
@@ -122,6 +122,7 @@ def handle_containerized_create_empty_index_request(
     labels: Optional[Dict[str, str]] = None,
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Coordinate the work needed to create empty index using containerized workflow.
@@ -151,6 +152,7 @@ def handle_containerized_create_empty_index_request(
             _binary_image=binary_image,
             from_index=from_index,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
 

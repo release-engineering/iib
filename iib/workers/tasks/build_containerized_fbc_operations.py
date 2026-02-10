@@ -60,6 +60,7 @@ def handle_containerized_fbc_operation_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
     used_fbc_fragment: bool = False,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Add fbc fragments to an fbc index image.
@@ -77,6 +78,8 @@ def handle_containerized_fbc_operation_request(
         (values) in order to push their catalogs into GitLab.
     :param bool used_fbc_fragment: flag indicating if the original request used fbc_fragment
         (single) instead of fbc_fragments (array). Used for backward compatibility.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     """
     reset_docker_config()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragments')
@@ -98,6 +101,7 @@ def handle_containerized_fbc_operation_request(
             fbc_fragments=fbc_fragments,
             distribution_scope=distribution_scope,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
 

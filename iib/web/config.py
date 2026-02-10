@@ -20,6 +20,7 @@ class Config(object):
     IIB_ADDITIONAL_LOGGERS: List[str] = []
     IIB_AWS_S3_BUCKET_NAME: Optional[str] = None
     IIB_BINARY_IMAGE_CONFIG: Dict[str, Dict[str, str]] = {}
+    IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS: List[str] = []
     IIB_INDEX_TO_GITLAB_PUSH_MAP: Dict[str, str] = {}
     IIB_REGENERATE_BUNDLE_REPO_KEY: str = 'regenerate-bundle'
     IIB_GRAPH_MODE_INDEX_ALLOW_LIST: List[str] = []

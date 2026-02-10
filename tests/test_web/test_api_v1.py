@@ -946,10 +946,10 @@ def test_add_bundle_overwrite_token_redacted(mock_smfsc, mock_har, app, auth_env
     rv_json = rv.json
     assert rv.status_code == 201
     mock_har.apply_async.assert_called_once()
-    # Tenth to last element in args is the overwrite_from_index parameter
-    assert mock_har.apply_async.call_args[1]['args'][-10] is True
-    # Ninth to last element in args is the overwrite_from_index_token parameter
-    assert mock_har.apply_async.call_args[1]['args'][-9] == token
+    # With binary_image_less_arches_allowed_versions added at end,
+    # overwrite_from_index is -11, token is -10
+    assert mock_har.apply_async.call_args[1]['args'][-11] is True
+    assert mock_har.apply_async.call_args[1]['args'][-10] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_har.apply_async.call_args[1]['argsrepr']
@@ -1483,9 +1483,10 @@ def test_remove_operator_overwrite_token_redacted(mock_smfsc, mock_hrr, app, aut
     rv_json = rv.json
     assert rv.status_code == 201
     mock_hrr.apply_async.assert_called_once()
-    # Third to last element in args is the overwrite_from_index parameter
-    assert mock_hrr.apply_async.call_args[1]['args'][-6] is True
-    assert mock_hrr.apply_async.call_args[1]['args'][-5] == token
+    # With binary_image_less_arches_allowed_versions added at end,
+    # overwrite_from_index is -7, token is -6
+    assert mock_hrr.apply_async.call_args[1]['args'][-7] is True
+    assert mock_hrr.apply_async.call_args[1]['args'][-6] == token
     assert 'overwrite_from_index_token' not in rv_json
     assert token not in json.dumps(rv_json)
     assert token not in mock_hrr.apply_async.call_args[1]['argsrepr']
@@ -1723,10 +1724,11 @@ def test_regenerate_bundle_batch_success(
                     {'foo': 'bar:baz'},
                     {},
                     'regenerate-bundle',
+                    [],  # binary_image_less_arches_allowed_versions
                 ],
                 argsrepr=(
                     "['registry.example.com/bundle-image:latest', None, 1, '*****', "
-                    "{'foo': 'bar:baz'}, {}, 'regenerate-bundle']"
+                    "{'foo': 'bar:baz'}, {}, 'regenerate-bundle', []]"
                 ),
                 link_error=mock.ANY,
                 queue=expected_queue,
@@ -1740,10 +1742,11 @@ def test_regenerate_bundle_batch_success(
                     None,
                     {},
                     'regenerate-bundle',
+                    [],  # binary_image_less_arches_allowed_versions
                 ],
                 argsrepr=(
                     "['registry.example.com/bundle-image2:latest', None, 2, None, None, {}, "
-                    "'regenerate-bundle']"
+                    "'regenerate-bundle', []]"
                 ),
                 link_error=mock.ANY,
                 queue=expected_queue,
@@ -1859,12 +1862,13 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     None,
                     False,
                     {},  # index_to_gitlab_push_map from config (empty in test)
+                    [],  # binary_image_less_arches_allowed_versions
                 ],
                 argsrepr=(
                     "[['registry-proxy/rh-osbs/lgallett-bundle:v1.0-9'], 1, "
                     "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
                     "'registry-proxy/rh-osbs-stage/iib:v4.5', ['amd64'], True, '*****', "
-                    "None, {}, [], [], None, False, {}]"
+                    "None, {}, [], [], None, False, {}, []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,
@@ -1886,11 +1890,12 @@ def test_add_rm_batch_success(mock_smfnbor, mock_hrr, mock_har, app, auth_env, c
                     {},
                     [],
                     {},  # index_to_gitlab_push_map from config (empty in test)
+                    [],  # binary_image_less_arches_allowed_versions
                 ],
                 argsrepr=(
                     "[['kiali-ossm'], 2, 'registry:8443/iib-build:11', "
                     "'registry-proxy/rh-osbs/openshift-ose-operator-registry:v4.5', "
-                    "None, False, None, None, {}, [], {}]"
+                    "None, False, None, None, {}, [], {}, []]"
                 ),
                 link_error=mock.ANY,
                 queue=None,

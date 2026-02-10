@@ -63,6 +63,7 @@ def handle_containerized_rm_request(
     binary_image_config: Optional[Dict[str, Dict[str, str]]] = None,
     build_tags: Optional[List[str]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Coordinate the work needed to remove the input operators using containerized workflow.
@@ -90,6 +91,8 @@ def handle_containerized_rm_request(
     :param list build_tags: List of tags which will be applied to intermediate index images.
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to remove their catalogs from GitLab.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     :raises IIBError: if the index image build fails.
     """
     reset_docker_config()
@@ -105,6 +108,7 @@ def handle_containerized_rm_request(
             add_arches=add_arches,
             distribution_scope=distribution_scope,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
 

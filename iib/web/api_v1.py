@@ -106,6 +106,7 @@ def _get_rm_args(
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         payload.get('build_tags', []),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
 
 
@@ -140,6 +141,7 @@ def _get_add_args(
         payload.get('graph_update_mode'),
         payload.get('check_related_images', False),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
 
 
@@ -758,6 +760,7 @@ def patch_request(request_id: int) -> Tuple[flask.Response, int]:
         'source_from_index_resolved',
         'target_index_resolved',
         'index_to_gitlab_push_map',
+        'binary_image_less_arches_allowed_versions',
     )
     start_time = time.time()
     for key in image_keys:
@@ -900,6 +903,7 @@ def regenerate_bundle() -> Tuple[flask.Response, int]:
         payload.get('bundle_replacements', dict()),
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
         flask.current_app.config['IIB_REGENERATE_BUNDLE_REPO_KEY'],
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
     safe_args = _get_safe_args(args, payload)
 
@@ -970,6 +974,7 @@ def regenerate_bundle_batch() -> Tuple[flask.Response, int]:
                 build_request.get('bundle_replacements', dict()),
                 flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
                 flask.current_app.config['IIB_REGENERATE_BUNDLE_REPO_KEY'],
+                flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
             ]
             safe_args = _get_safe_args(args, build_request)
             error_callback = failed_request_callback.s(request.id)
@@ -1176,6 +1181,7 @@ def create_empty_index() -> Tuple[flask.Response, int]:
         payload.get('labels'),
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)
@@ -1337,6 +1343,7 @@ def fbc_operations() -> Tuple[flask.Response, int]:
         flask.current_app.config['IIB_BINARY_IMAGE_CONFIG'],
         flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
         request._used_fbc_fragment,  # Pass the legacy flag to the worker
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
     safe_args = _get_safe_args(args, payload)
     error_callback = failed_request_callback.s(request.id)

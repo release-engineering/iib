@@ -77,6 +77,7 @@ def handle_containerized_add_request(
     graph_update_mode: Optional[str] = None,
     check_related_images: bool = False,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
     username: Optional[str] = None,
 ) -> None:
     """
@@ -108,6 +109,8 @@ def handle_containerized_add_request(
         in the index.
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     :raises IIBError: if the index image build fails.
     """
     reset_docker_config()
@@ -134,6 +137,7 @@ def handle_containerized_add_request(
             bundles=bundles,
             distribution_scope=distribution_scope,
             binary_image_config=binary_image_config,
+            binary_image_less_arches_allowed_versions=binary_image_less_arches_allowed_versions,
         ),
     )
     from_index_resolved = prebuild_info['from_index_resolved']
