@@ -18,12 +18,12 @@ from iib.workers.tasks import general
         (FinalStateOverwriteError("can not overwite final state"), "Already in final state"),
     ),
 )
-@mock.patch('iib.workers.tasks.general._cleanup')
+@mock.patch('iib.workers.tasks.general.reset_docker_config')
 @mock.patch('iib.workers.tasks.general.set_request_state')
-def test_failed_request_callback(mock_srs, mock_cleanup, exc, expected_msg):
+def test_failed_request_callback(mock_srs, mock_reset_docker_config, exc, expected_msg):
     general.failed_request_callback(None, exc, None, 3)
     if isinstance(exc, FinalStateOverwriteError):
         mock_srs.assert_not_called()
     else:
         mock_srs.assert_called_once_with(3, 'failed', expected_msg)
-    mock_cleanup.assert_called_once()
+    mock_reset_docker_config.assert_called_once()
