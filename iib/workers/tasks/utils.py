@@ -208,6 +208,8 @@ class RequestConfig:
         to the merged index image.
     :param dict binary_image_config: the dict of config required to
         identify the appropriate ``binary_image`` to use.
+    :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
+        that are allowed to build for less arches. Defaults to ``None``.
     """
 
     # these attrs should not be printed out
@@ -218,7 +220,12 @@ class RequestConfig:
         'registry_auths',
     ]
 
-    _attrs: List[str] = ["_binary_image", "distribution_scope", "binary_image_config"]
+    _attrs: List[str] = [
+        "_binary_image",
+        "distribution_scope",
+        "binary_image_config",
+        "binary_image_less_arches_allowed_versions",
+    ]
     __slots__ = _attrs
     if TYPE_CHECKING:
         _binary_image: str
@@ -226,6 +233,7 @@ class RequestConfig:
         binary_image_config: Dict[str, Dict[str, str]]
         overwrite_from_index_token: str
         overwrite_target_index_token: str
+        binary_image_less_arches_allowed_versions: List[str]
 
     def __init__(self, **kwargs):
         """
@@ -1236,11 +1244,15 @@ def prepare_request_for_build(
         binary_image_arches = get_image_arches(binary_image_resolved)
 
     if not arches.issubset(binary_image_arches):
-        log.warning(
-            'The binary image is not available for the following arches: {}'.format(
-                ', '.join(sorted(arches - binary_image_arches))
-            )
-        )
+        # The support for less arches is limited to the binary image versions that are allowed
+        # to build for less arches.
+        if build_request_config.binary_image_less_arches_allowed_versions:
+            if binary_image not in build_request_config.binary_image_less_arches_allowed_versions:
+                raise IIBError(
+                    'The binary image is not available for the following arches: {}'.format(
+                        ', '.join(sorted(arches - binary_image_arches))
+                    )
+                )
         supported_arches = set([arch for arch in arches if arch in binary_image_arches])
         if not supported_arches:
             raise IIBError(
@@ -1248,6 +1260,11 @@ def prepare_request_for_build(
                     ', '.join(sorted(arches))
                 )
             )
+        log.warning(
+            "Building index images for the following supported arches: {}".format(
+                ', '.join(sorted(supported_arches))
+            )
+        )
         arches = supported_arches
 
     arches_str = ', '.join(sorted(arches))
