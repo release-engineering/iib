@@ -40,6 +40,28 @@ class Config(object):
         "opm_port": (50051, 50151),
         "opm_pprof_port": (50151, 50251),
     }
+    iib_ocp_opm_mapping: Dict[str, str] = {
+        # keep v0.0, v4.5 for iib-api-tests
+        "v0.0": "opm-v1.28.0",
+        "v4.5": "opm-v1.26.4",
+        "v4.6": "opm-v1.26.4",
+        "v4.7": "opm-v1.26.4",
+        "v4.8": "opm-v1.26.4",
+        "v4.9": "opm-v1.26.4",
+        "v4.10": "opm-v1.26.4",
+        "v4.11": "opm-v1.26.4",
+        "v4.12": "opm-v1.26.4",
+        "v4.13": "opm-v1.26.4",
+        "v4.14": "opm-v1.26.4",
+        "v4.15": "opm-v1.26.4",
+        "v4.16": "opm-v1.26.4",
+        "v4.17": "opm-v1.40.0",
+        "v4.18": "opm-v1.44.0",
+        "v4.19": "opm-v1.48.0",
+        "v4.20": "opm-v1.50.0",
+        "v4.21": "opm-v1.50.0",
+        "v4.22": "opm-v1.61.0",
+    }
     iib_opm_pprof_lock_required_min_version = "1.29.0"
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
     # Default registry for index.db ImageStream
