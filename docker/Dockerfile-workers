@@ -28,17 +28,29 @@ RUN dnf -y install \
     && dnf update -y \
     && dnf clean all
 
-ADD https://github.com/operator-framework/operator-registry/releases/download/v1.26.4/linux-amd64-opm /usr/bin/opm-v1.26.4
-RUN chmod +x /usr/bin/opm-v1.26.4
-ADD https://github.com/operator-framework/operator-registry/releases/download/v1.40.0/linux-amd64-opm /usr/bin/opm-v1.40.0
-RUN chmod +x /usr/bin/opm-v1.40.0
-# Create a link for default opm
-RUN ln -s /usr/bin/opm-v1.26.4 /usr/bin/opm
-RUN chmod +x /usr/bin/opm
+# Install all opm variants,
+# then expose the default opm via symlink.
+RUN set -eux; \
+    install_binary() { \
+      local name="$1"; local url="$2"; local sha="$3"; \
+      curl -fsSL "$url" -o "/usr/local/bin/${name}"; \
+      echo "${sha}  /usr/local/bin/${name}" | sha256sum -c -; \
+      chmod 0555 "/usr/local/bin/${name}"; \
+    }; \
+    install_binary "opm-v1.26.4" "https://github.com/operator-framework/operator-registry/releases/download/v1.26.4/linux-amd64-opm" "cf94e9dbd58c338e1eed03ca50af847d24724b99b40980812abbe540e8c7ff8e"; \
+    install_binary "opm-v1.28.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.28.0/linux-amd64-opm" "e18e5abc8febb63c9dc76db0f33475553d98495465bd2dca81c39dcdbc875c08"; \
+    install_binary "opm-v1.40.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.40.0/linux-amd64-opm" "33eb929264a69f31895e1973248b7e97e3b6a862d7ca27f6892e158f79ad6aeb"; \
+    install_binary "opm-v1.44.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.44.0/linux-amd64-opm" "21f0a423dfbfcddcffdde98266307a08d87b4db980be859b9e252a5a24df51bf"; \
+    install_binary "opm-v1.48.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.48.0/linux-amd64-opm" "0a301826baff730489162caff13e04f7dc16c1a79072cbcbdfc5379d95caef40"; \
+    install_binary "opm-v1.50.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.50.0/linux-amd64-opm" "d9bfdc08dd9640c1d9085d191f10f884f2ef29370db1ac097a73a0e23e803f95"; \
+    install_binary "opm-v1.57.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.57.0/linux-amd64-opm" "8d2f51f166f47f76eb6906c4de9af90462b7163cbacef6c932bda4829ec086c7"; \
+    install_binary "opm-v1.61.0" "https://github.com/operator-framework/operator-registry/releases/download/v1.61.0/linux-amd64-opm" "c5701ef59e12c930337a9a9363cd44c2a4d9f64f6d4f96513d3511a36f81cf5d"; \
+    install_binary "operator-sdk" "https://github.com/operator-framework/operator-sdk/releases/download/v1.15.0/operator-sdk_linux_amd64" "d2065f1f7a0d03643ad71e396776dac0ee809ef33195e0f542773b377bab1b2a"; \
+    # set default opm \
+    ln -sfn /usr/local/bin/opm-v1.26.4 /usr/local/bin/opm
+
 ADD https://github.com/fullstorydev/grpcurl/releases/download/v1.8.5/grpcurl_1.8.5_linux_x86_64.tar.gz /src/grpcurl_1.8.5_linux_x86_64.tar.gz
 RUN cd /usr/bin && tar -xf /src/grpcurl_1.8.5_linux_x86_64.tar.gz grpcurl && rm -f /src/grpcurl_1.8.5_linux_x86_64.tar.gz
-ADD https://github.com/operator-framework/operator-sdk/releases/download/v1.15.0/operator-sdk_linux_amd64 /usr/bin/operator-sdk
-RUN chmod +x /usr/bin/operator-sdk
 
 RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.10/openshift-client-linux.tar.gz" -o /tmp/oc_client.tar.gz && \
     tar -xvzf /tmp/oc_client.tar.gz -C /usr/bin/ && \
@@ -59,9 +71,16 @@ COPY docker/libpod.conf /usr/share/containers/libpod.conf
 
 COPY . .
 
+# Prepare writable HOME for OpenShift random UID runtime.
+RUN mkdir -p /home/iib-worker/.docker \
+    && chgrp -R 0 /home/iib-worker \
+    && chmod -R g=u /home/iib-worker
+ENV HOME=/home/iib-worker
+ENV KRB5CCNAME=FILE:/home/iib-worker/krb5cc_iib_worker
+
 # default python3-pip version for rhel8 python3.6 is 9.0.3 and it can't be updated by dnf
 # we have to update it by pip to version above 21.0.0
 RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt --no-deps --require-hashes
 RUN pip3 install . --no-deps
-CMD ["/bin/celery-3", "-A", "iib.workers.tasks", "worker", "--loglevel=info"]
+CMD ["/usr/local/bin/celery", "-A", "iib.workers.tasks", "worker", "--loglevel=debug"]
