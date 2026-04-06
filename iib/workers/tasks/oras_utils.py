@@ -94,6 +94,35 @@ def get_indexdb_artifact_pullspec(from_index: str) -> str:
     )
 
 
+def _get_oras_registry_auths() -> Optional[Dict[str, Any]]:
+    """
+    Get the registry authentication for ORAS.
+
+    It reads the secret from the worker configuration and returns the authentication data.
+    :return: The registry authentication for ORAS in the format of a dictionary when available.
+    :rtype: dict
+    """
+    conf = get_worker_config()
+    if not (conf['iib_index_db_artifact_registry'] and conf['iib_index_db_oras_auth_secret']):
+        log.debug(
+            'No exclusive registry authentication for ORAS is set, '
+            'using the default Docker config.json for all registries.'
+        )
+        return None
+
+    log.debug(
+        'Using the configured registry authentication for ORAS: %s',
+        conf['iib_index_db_artifact_registry'],
+    )
+    return {
+        'auths': {
+            conf['iib_index_db_artifact_registry']: {
+                'auth': conf['iib_index_db_oras_auth_secret'],
+            },
+        },
+    }
+
+
 @instrument_tracing(span_name="workers.tasks.oras_utils.get_oras_artifact")
 def get_oras_artifact(
     artifact_ref: str,
@@ -110,7 +139,10 @@ def get_oras_artifact(
     :param str base_dir: Base directory where the temporary subdirectory will be created.
         Can be an absolute or relative path. If relative, the directory must exist.
         The function always returns an absolute path regardless of the base_dir type.
-    :param dict registry_auths: Optional dockerconfig.json auth information for private registries
+    :param dict registry_auths: Optional dockerconfig.json auth information for private registries.
+        If not provided, the function will use the secret from the worker configuration when both
+        ``iib_index_db_artifact_registry`` and ``iib_index_db_oras_auth_secret`` are set; otherwise,
+        the default Docker ``config.json`` will be used.
     :param str temp_dir_prefix: Prefix for the temporary directory name
     :return: Path to the temporary directory containing the artifact (always absolute)
     :rtype: str
@@ -121,7 +153,12 @@ def get_oras_artifact(
     # Create a subdirectory within the provided base_dir
     temp_dir = tempfile.mkdtemp(prefix=temp_dir_prefix, dir=base_dir)
 
-    # Use namespace-specific registry authentication if provided
+    # If no registry_auths are provided, use the secret from the worker configuration
+    if registry_auths is None:
+        registry_auths = _get_oras_registry_auths()
+
+    # Use namespace-specific registry authentication if provided or the secret from the
+    # worker configuration by default.
     with set_registry_auths(registry_auths, use_empty_config=True):
         try:
             run_cmd(
@@ -156,7 +193,10 @@ def push_oras_artifact(
         When using cwd, this should be a relative path (typically just
         the filename) relative to the cwd directory.
     :param str artifact_type: MIME type of the artifact (default: 'application/vnd.sqlite')
-    :param dict registry_auths: Optional dockerconfig.json auth information for private registries
+    :param dict registry_auths: Optional dockerconfig.json auth information for private registries.
+        If not provided, the function will use the secret from the worker configuration when both
+        ``iib_index_db_artifact_registry`` and ``iib_index_db_oras_auth_secret`` are set; otherwise,
+        the default Docker ``config.json`` will be used.
     :param dict annotations: Optional annotations to add to the artifact
     :param str cwd: Optional working directory for the ORAS command. When provided, local_path
         should be relative to this directory (e.g., just the filename).
@@ -185,7 +225,12 @@ def push_oras_artifact(
         for key, value in annotations.items():
             cmd.extend(['--annotation', f'{key}={value}'])
 
-    # Use namespace-specific registry authentication if provided
+    # If no registry_auths are provided, use the secret from the worker configuration by default.
+    if registry_auths is None:
+        registry_auths = _get_oras_registry_auths()
+
+    # Use namespace-specific registry authentication if provided or the secret from the
+    # worker configuration by default.
     with set_registry_auths(registry_auths, use_empty_config=True):
         try:
             # Only pass params if cwd is provided
