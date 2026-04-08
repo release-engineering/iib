@@ -562,8 +562,18 @@ def test_handle_merge_request_no_deprecate(
 @mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
 @mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
 @mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
 def test_add_bundles_missing_in_source(
-    mock_srs, mock_oia, mock_aolti, mock_bi, mock_pi, mock_capml, mock_gil, mock_iifbc, mock_gwc
+    mock_gr,
+    mock_srs,
+    mock_oia,
+    mock_aolti,
+    mock_bi,
+    mock_pi,
+    mock_capml,
+    mock_gil,
+    mock_iifbc,
+    mock_gwc,
 ):
     source_bundles = [
         {
@@ -695,6 +705,169 @@ def test_add_bundles_missing_in_source(
     mock_bi.assert_called_once()
     mock_pi.assert_called_once()
     mock_capml.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+def test_add_bundles_missing_in_source_user_in_allow_list(
+    mock_gr,
+    mock_srs,
+    mock_oia,
+    mock_aolti,
+    mock_bi,
+    mock_pi,
+    mock_gil,
+    mock_iifbc,
+    mock_gwc,
+):
+    source_bundles = [
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+    ]
+    target_bundles = [
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
+
+    mock_gwc.return_value = {
+        'iib_no_ocp_label_allow_list': ['allowed_user'],
+    }
+    mock_gr.return_value = {'user': 'allowed_user'}
+
+    # side_effect order matches itertools.chain(missing_bundles, source_index_bundles)
+    # bundle2 (missing) gets '' (empty label), bundle1 (source) gets '=v4.6' (valid)
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+    missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
+        source_bundles,
+        target_bundles,
+        'some_dir',
+        'binary-image:4.5',
+        'index-image:4.6',
+        1,
+        'amd64',
+        '4.6',
+        'dev',
+        'replaces',
+        ignore_bundle_ocp_version=True,
+    )
+    assert missing_bundles == [
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
+    # bundle2 has empty ocp version label but is allowed because user is in allow list
+    assert invalid_bundles == []
+    mock_gr.assert_called_once_with(1)
+
+
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image._push_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._build_image')
+@mock.patch('iib.workers.tasks.build_merge_index_image._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_merge_index_image.opm_index_add')
+@mock.patch('iib.workers.tasks.build_merge_index_image.set_request_state')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+def test_add_bundles_missing_in_source_user_not_in_allow_list(
+    mock_gr,
+    mock_srs,
+    mock_oia,
+    mock_aolti,
+    mock_bi,
+    mock_pi,
+    mock_gil,
+    mock_iifbc,
+    mock_gwc,
+):
+    source_bundles = [
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+    ]
+    target_bundles = [
+        {
+            'packageName': 'bundle1',
+            'version': '1.0',
+            'bundlePath': 'quay.io/bundle1@sha256:123456',
+            'csvName': 'bundle1-1.0',
+        },
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
+
+    mock_gwc.return_value = {
+        'iib_no_ocp_label_allow_list': ['allowed_user'],
+    }
+    mock_gr.return_value = {'user': 'unauthorized_user'}
+
+    # side_effect order matches itertools.chain(missing_bundles, source_index_bundles)
+    # bundle2 (missing) gets '' (empty label), bundle1 (source) gets '=v4.6' (valid)
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+    missing_bundles, invalid_bundles = build_merge_index_image._add_bundles_missing_in_source(
+        source_bundles,
+        target_bundles,
+        'some_dir',
+        'binary-image:4.5',
+        'index-image:4.6',
+        1,
+        'amd64',
+        '4.6',
+        'dev',
+        'replaces',
+        ignore_bundle_ocp_version=True,
+    )
+    assert missing_bundles == [
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
+    # bundle2 has empty ocp version label and user is NOT in allow list, so it's invalid
+    assert invalid_bundles == [
+        {
+            'packageName': 'bundle2',
+            'version': '2.0',
+            'bundlePath': 'quay.io/bundle2@sha256:234567',
+            'csvName': 'bundle2-2.0',
+        },
+    ]
+    mock_gr.assert_called_once_with(1)
 
 
 @pytest.mark.parametrize(
