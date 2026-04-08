@@ -25,7 +25,7 @@ from iib.workers.tasks.opm_operations import (
 from packaging.version import Version
 
 from iib.exceptions import IIBError
-from iib.workers.api_utils import set_request_state
+from iib.workers.api_utils import set_request_state, get_request
 from iib.workers.tasks.build import (
     _add_label_to_index,
     _build_image,
@@ -166,9 +166,12 @@ def _add_bundles_missing_in_source(
 
     if ignore_bundle_ocp_version:
         target_index_tmp = '' if target_index is None else target_index
+        user = get_request(request_id)['user']
         allow_no_ocp_version = any(
-            target_index_tmp.startswith(index) or source_from_index.startswith(index)
-            for index in get_worker_config()['iib_no_ocp_label_allow_list']
+            target_index_tmp.startswith(entry)
+            or source_from_index.startswith(entry)
+            or user == entry
+            for entry in get_worker_config()['iib_no_ocp_label_allow_list']
         )
     else:
         allow_no_ocp_version = False
