@@ -9,15 +9,15 @@ from datetime import datetime
 import os
 import sys
 
-import pkg_resources
+from importlib.metadata import PackageNotFoundError, version as get_version
 
 # -- Path setup --------------------------------------------------------------
 sys.path.append(os.path.abspath('../'))
 
 # -- Project information -----------------------------------------------------
 try:
-    version = pkg_resources.get_distribution('iib').version
-except pkg_resources.DistributionNotFound:
+    version = get_version('iib')
+except PackageNotFoundError:
     version = 'unknown'
 project = 'IIB Image Builder Service'
 copyright = datetime.today().strftime('%Y') + ', Red Hat Inc.'
@@ -44,7 +44,7 @@ htmlhelp_basename = 'IIBdoc'
 
 # -- Extension configuration -------------------------------------------------
 # This must be mocked because Read the Docs doesn't have krb5-devel installed
-autodoc_mock_imports = ["requests_kerberos"]
+autodoc_mock_imports = ["requests_kerberos", "operator_manifest"]
 
 # -- Options for intersphinx extension ---------------------------------------
 # Example configuration for intersphinx: refer to the Python standard library.
