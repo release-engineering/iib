@@ -8,7 +8,6 @@ from unittest import mock
 
 from iib.exceptions import IIBError
 from iib.workers.tasks.oras_utils import (
-    _get_oras_registry_auths,
     get_oras_artifact,
     push_oras_artifact,
     verify_indexdb_cache_sync,
@@ -22,40 +21,18 @@ def registry_auths():
     return {'auths': {'quay.io': {'auth': 'dXNlcjpwYXNz'}}}  # base64 encoded user:pass
 
 
-@pytest.mark.parametrize(
-    'artifact_registry,oras_secret,expected',
-    [
-        (
-            'registry.example.com',
-            'dXNlcjpwYXNz',
-            {'auths': {'registry.example.com': {'auth': 'dXNlcjpwYXNz'}}},
-        ),
-        (
-            'quay.io/org',
-            'YmFzZTY0LXNlY3JldA==',
-            {'auths': {'quay.io/org': {'auth': 'YmFzZTY0LXNlY3JldA=='}}},
-        ),
-        (None, 'dXNlcjpwYXNz', None),
-        ('registry.example.com', None, None),
-        ('', 'dXNlcjpwYXNz', None),
-        ('registry.example.com', '', None),
-    ],
-)
+def _oras_worker_config_minimal(**extra):
+    cfg = {'iib_index_db_oras_auth_path': ''}
+    cfg.update(extra)
+    return cfg
+
+
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-def test_get_oras_registry_auths(mock_gwc, artifact_registry, oras_secret, expected):
-    """_get_oras_registry_auths returns dockerconfig-shaped auths or None when incomplete."""
-    mock_gwc.return_value = {
-        'iib_index_db_artifact_registry': artifact_registry,
-        'iib_index_db_oras_auth_secret': oras_secret,
-    }
-
-    assert _get_oras_registry_auths() == expected
-
-
 @mock.patch('tempfile.mkdtemp')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_get_oras_artifact_success(mock_run_cmd, mock_mkdtemp):
+def test_get_oras_artifact_success(mock_run_cmd, mock_mkdtemp, mock_gwc):
     """Test successful artifact pull."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     base_dir = '/tmp/base'
     mock_run_cmd.return_value = 'Success'
@@ -72,16 +49,20 @@ def test_get_oras_artifact_success(mock_run_cmd, mock_mkdtemp):
 
 
 @mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('tempfile.mkdtemp')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_get_oras_artifact_with_auth(mock_run_cmd, mock_mkdtemp, mock_auth, registry_auths):
-    """Test artifact pull with authentication."""
+def test_get_oras_artifact_with_auth(
+    mock_run_cmd, mock_mkdtemp, mock_gwc, mock_auth, registry_auths
+):
+    """Explicit registry_auths are passed through to set_registry_auths."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     base_dir = '/tmp/base'
     mock_run_cmd.return_value = 'Success'
     mock_mkdtemp.return_value = '/tmp/test-dir'
 
-    result = get_oras_artifact(artifact_ref, base_dir, registry_auths)
+    result = get_oras_artifact(artifact_ref, base_dir, registry_auths=registry_auths)
 
     assert result == '/tmp/test-dir'
     mock_auth.assert_called_once_with(registry_auths, use_empty_config=True)
@@ -92,44 +73,14 @@ def test_get_oras_artifact_with_auth(mock_run_cmd, mock_mkdtemp, mock_auth, regi
     )
 
 
-@mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-@mock.patch('tempfile.mkdtemp')
-@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_get_oras_artifact_uses_config_oras_auth_when_not_provided(
-    mock_run_cmd, mock_mkdtemp, mock_gwc, mock_auth
-):
-    """When registry_auths is omitted and worker config has ORAS keys, use that auth."""
-    artifact_ref = 'quay.io/test/repo:latest'
-    base_dir = '/tmp/base'
-    expected_auths = {
-        'auths': {
-            'my-artifact-registry.example.com': {'auth': 'Y29uZmlnLXNlY3JldA=='},
-        },
-    }
-    mock_gwc.return_value = {
-        'iib_index_db_artifact_registry': 'my-artifact-registry.example.com',
-        'iib_index_db_oras_auth_secret': 'Y29uZmlnLXNlY3JldA==',
-    }
-    mock_run_cmd.return_value = 'Success'
-    mock_mkdtemp.return_value = '/tmp/test-dir'
-
-    result = get_oras_artifact(artifact_ref, base_dir, registry_auths=None)
-
-    assert result == '/tmp/test-dir'
-    mock_auth.assert_called_once_with(expected_auths, use_empty_config=True)
-    mock_run_cmd.assert_called_once_with(
-        ['oras', 'pull', artifact_ref, '-o', '/tmp/test-dir'],
-        exc_msg=f'Failed to pull OCI artifact {artifact_ref}',
-    )
-
-
 @mock.patch('os.path.exists')
 @mock.patch('tempfile.mkdtemp')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 @mock.patch('shutil.rmtree')
-def test_get_oras_artifact_failure(mock_rmtree, mock_run_cmd, mock_mkdtemp, mock_exists):
+def test_get_oras_artifact_failure(mock_rmtree, mock_run_cmd, mock_mkdtemp, mock_exists, mock_gwc):
     """Test artifact pull failure."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     base_dir = '/tmp/base'
     mock_run_cmd.side_effect = IIBError('Pull failed')
@@ -141,10 +92,12 @@ def test_get_oras_artifact_failure(mock_rmtree, mock_run_cmd, mock_mkdtemp, mock
     mock_rmtree.assert_called_once_with('/tmp/test-dir')
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('tempfile.mkdtemp')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_get_oras_artifact_custom_prefix(mock_run_cmd, mock_mkdtemp):
+def test_get_oras_artifact_custom_prefix(mock_run_cmd, mock_mkdtemp, mock_gwc):
     """Test artifact pull with custom temp directory prefix."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     base_dir = '/tmp/base'
     custom_prefix = 'custom-prefix-'
@@ -157,10 +110,12 @@ def test_get_oras_artifact_custom_prefix(mock_run_cmd, mock_mkdtemp):
     mock_mkdtemp.assert_called_once_with(prefix=custom_prefix, dir=base_dir)
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('tempfile.mkdtemp')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_get_oras_artifact_with_custom_base_dir(mock_run_cmd, mock_mkdtemp):
+def test_get_oras_artifact_with_custom_base_dir(mock_run_cmd, mock_mkdtemp, mock_gwc):
     """Test artifact pull with custom base directory."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     base_dir = '/tmp/iib-123'
     mock_run_cmd.return_value = 'Success'
@@ -176,10 +131,12 @@ def test_get_oras_artifact_with_custom_base_dir(mock_run_cmd, mock_mkdtemp):
     )
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_success(mock_run_cmd, mock_exists):
+def test_push_oras_artifact_success(mock_run_cmd, mock_exists, mock_gwc):
     """Test successful artifact push. Updated local_path to be relative."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
@@ -200,17 +157,21 @@ def test_push_oras_artifact_success(mock_run_cmd, mock_exists):
 
 
 @mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_with_auth(mock_run_cmd, mock_exists, mock_auth, registry_auths):
-    """Test artifact push with authentication. Updated local_path to be relative."""
+def test_push_oras_artifact_with_auth(
+    mock_run_cmd, mock_exists, mock_gwc, mock_auth, registry_auths
+):
+    """Explicit registry_auths are passed through to set_registry_auths."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
     mock_run_cmd.return_value = 'Success'
     mock_exists.return_value = True
 
-    push_oras_artifact(artifact_ref, local_path, artifact_type, registry_auths)
+    push_oras_artifact(artifact_ref, local_path, artifact_type, registry_auths=registry_auths)
 
     mock_auth.assert_called_once_with(registry_auths, use_empty_config=True)
     mock_run_cmd.assert_called_once_with(
@@ -224,47 +185,12 @@ def test_push_oras_artifact_with_auth(mock_run_cmd, mock_exists, mock_auth, regi
     )
 
 
-@mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_uses_config_oras_auth_when_not_provided(
-    mock_run_cmd, mock_exists, mock_gwc, mock_auth
-):
-    """When registry_auths is omitted and worker config has ORAS keys, use that auth."""
-    artifact_ref = 'quay.io/test/repo:latest'
-    local_path = './test.db'
-    artifact_type = 'application/vnd.sqlite'
-    expected_auths = {
-        'auths': {
-            'push-registry.internal': {'auth': 'cHVzaC1zZWNyZXQ='},
-        },
-    }
-    mock_gwc.return_value = {
-        'iib_index_db_artifact_registry': 'push-registry.internal',
-        'iib_index_db_oras_auth_secret': 'cHVzaC1zZWNyZXQ=',
-    }
-    mock_run_cmd.return_value = 'Success'
-    mock_exists.return_value = True
-
-    push_oras_artifact(artifact_ref, local_path, artifact_type, registry_auths=None)
-
-    mock_auth.assert_called_once_with(expected_auths, use_empty_config=True)
-    mock_run_cmd.assert_called_once_with(
-        [
-            'oras',
-            'push',
-            artifact_ref,
-            f'{local_path}:{artifact_type}',
-        ],
-        exc_msg=f'Failed to push OCI artifact to {artifact_ref}',
-    )
-
-
-@mock.patch('os.path.exists')
-@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
+def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists, mock_gwc):
     """Test artifact push with annotations. Updated local_path to be relative."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
@@ -288,10 +214,12 @@ def test_push_oras_artifact_with_annotations(mock_run_cmd, mock_exists):
     )
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_failure(mock_run_cmd, mock_exists):
+def test_push_oras_artifact_failure(mock_run_cmd, mock_exists, mock_gwc):
     """Test artifact push failure."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'
     artifact_type = 'application/vnd.sqlite'
@@ -352,12 +280,14 @@ def test_push_oras_artifact_file_not_found(mock_exists):
         ),
     ],
 )
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
 def test_push_oras_artifact_various_types(
-    mock_run_cmd, mock_exists, artifact_ref, local_path, artifact_type, expected_cmd
+    mock_run_cmd, mock_exists, mock_gwc, artifact_ref, local_path, artifact_type, expected_cmd
 ):
     """Test artifact push with various artifact types. Updated local_path to be relative."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     mock_run_cmd.return_value = 'Success'
     mock_exists.return_value = True
 
@@ -368,10 +298,12 @@ def test_push_oras_artifact_various_types(
     )
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('os.path.exists')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_push_oras_artifact_with_relative_path(mock_run_cmd, mock_exists):
+def test_push_oras_artifact_with_relative_path(mock_run_cmd, mock_exists, mock_gwc):
     """Test artifact push with relative path (should not add --disable-path-validation)."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
     artifact_ref = 'quay.io/test/repo:latest'
     local_path = './test.db'  # Relative path
     artifact_type = 'application/vnd.sqlite'
@@ -386,18 +318,37 @@ def test_push_oras_artifact_with_relative_path(mock_run_cmd, mock_exists):
     )
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+@mock.patch('os.path.exists')
+def test_push_oras_artifact_rejects_absolute_local_path(mock_exists, mock_gwc):
+    """Absolute local_path is rejected after existence check (ORAS path collision avoidance)."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
+    mock_exists.return_value = True
+
+    with pytest.raises(IIBError, match='Local artifact path must be relative: /abs/test.db'):
+        push_oras_artifact('quay.io/test/repo:latest', '/abs/test.db', 'application/vnd.sqlite')
+
+
 @mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('tempfile.mkdtemp')
 @mock.patch("iib.workers.tasks.utils.subprocess")
 def test_get_oras_artifact_with_base_dir_wont_leak_credentials(
-    mock_subprocess, mock_mkdtemp, mock_auth, registry_auths, caplog
+    mock_subprocess,
+    mock_mkdtemp,
+    mock_gwc,
+    mock_auth,
+    registry_auths,
+    caplog,
 ):
-    """Ensure the get_oras_artifact with base_dir won't leak credentials in logs."""
+    """Ensure get_oras_artifact with base_dir won't leak credentials in logs."""
     # Setting the logging level via caplog.set_level is not sufficient. The flask
     # related settings from previous tests interfere with this.
     oras_logger = logging.getLogger('iib.workers.tasks.utils')
     oras_logger.disabled = False
     oras_logger.setLevel(logging.DEBUG)
+
+    mock_gwc.return_value = _oras_worker_config_minimal()
 
     # Prepare the subprocess mock
     mock_run_result = mock.MagicMock()
@@ -414,8 +365,9 @@ def test_get_oras_artifact_with_base_dir_wont_leak_credentials(
     base_dir = '/tmp/iib-123'
     mock_mkdtemp.return_value = '/tmp/iib-123/iib-oras-abc123'
 
-    get_oras_artifact(artifact_ref, base_dir, registry_auths)
+    get_oras_artifact(artifact_ref, base_dir, registry_auths=registry_auths)
 
+    mock_auth.assert_called_once_with(registry_auths, use_empty_config=True)
     mock_subprocess.run.assert_called_with(
         ['oras', 'pull', artifact_ref, '-o', '/tmp/iib-123/iib-oras-abc123'],
         **default_run_cmd_args,
@@ -544,19 +496,29 @@ def test_refresh_indexdb_cache_success(mock_run_cmd, mock_auth, mock_gwc, regist
     )
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd', side_effect=IIBError('refresh failed'))
-def test_refresh_indexdb_cache_failure(mock_run_cmd):
+def test_refresh_indexdb_cache_failure(mock_run_cmd, mock_gwc):
     """Test cache refresh failure."""
+    mock_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'test-artifact-registry',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
     tag = 'test-tag'
 
     with pytest.raises(IIBError, match='refresh failed'):
         refresh_indexdb_cache(tag)
 
 
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.oras_utils.set_registry_auths')
 @mock.patch('iib.workers.tasks.oras_utils.run_cmd')
-def test_refresh_indexdb_cache_with_empty_registry_auths(mock_run_cmd, mock_auth):
+def test_refresh_indexdb_cache_with_empty_registry_auths(mock_run_cmd, mock_auth, mock_gwc):
     """Test that refresh_indexdb_cache works correctly when registry_auths is an empty dict."""
+    mock_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'test-artifact-registry',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
     tag = 'v4.15'
     empty_auths = {}
 
@@ -655,9 +617,12 @@ def test_get_name_and_tag_from_pullspec_invalid(invalid_pullspec, expected_error
         ("test-index", "v1.0.0", "test-index-v1.0.0"),
     ],
 )
-def test_get_artifact_combined_tag(image_name, tag, expected_tag):
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+def test_get_artifact_combined_tag(mock_gwc, image_name, tag, expected_tag):
     """Test generating combined artifact tags."""
     from iib.workers.tasks.oras_utils import _get_artifact_combined_tag
+
+    mock_gwc.return_value = {'iib_index_db_artifact_tag_template': '{image_name}-{tag}'}
 
     result = _get_artifact_combined_tag(image_name, tag)
 
