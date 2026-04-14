@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Dict, Optional, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
@@ -94,35 +94,6 @@ def get_indexdb_artifact_pullspec(from_index: str) -> str:
     )
 
 
-def _get_oras_registry_auths() -> Optional[Dict[str, Any]]:
-    """
-    Get the registry authentication for ORAS.
-
-    It reads the secret from the worker configuration and returns the authentication data.
-    :return: The registry authentication for ORAS in the format of a dictionary when available.
-    :rtype: dict
-    """
-    conf = get_worker_config()
-    if not (conf['iib_index_db_artifact_registry'] and conf['iib_index_db_oras_auth_secret']):
-        log.debug(
-            'No exclusive registry authentication for ORAS is set, '
-            'using the default Docker config.json for all registries.'
-        )
-        return None
-
-    log.debug(
-        'Using the configured registry authentication for ORAS: %s',
-        conf['iib_index_db_artifact_registry'],
-    )
-    return {
-        'auths': {
-            conf['iib_index_db_artifact_registry']: {
-                'auth': conf['iib_index_db_oras_auth_secret'],
-            },
-        },
-    }
-
-
 @instrument_tracing(span_name="workers.tasks.oras_utils.get_oras_artifact")
 def get_oras_artifact(
     artifact_ref: str,
@@ -139,10 +110,7 @@ def get_oras_artifact(
     :param str base_dir: Base directory where the temporary subdirectory will be created.
         Can be an absolute or relative path. If relative, the directory must exist.
         The function always returns an absolute path regardless of the base_dir type.
-    :param dict registry_auths: Optional dockerconfig.json auth information for private registries.
-        If not provided, the function will use the secret from the worker configuration when both
-        ``iib_index_db_artifact_registry`` and ``iib_index_db_oras_auth_secret`` are set; otherwise,
-        the default Docker ``config.json`` will be used.
+    :param dict registry_auths: Optional dockerconfig.json auth information for private registries
     :param str temp_dir_prefix: Prefix for the temporary directory name
     :return: Path to the temporary directory containing the artifact (always absolute)
     :rtype: str
@@ -153,16 +121,21 @@ def get_oras_artifact(
     # Create a subdirectory within the provided base_dir
     temp_dir = tempfile.mkdtemp(prefix=temp_dir_prefix, dir=base_dir)
 
-    # If no registry_auths are provided, use the secret from the worker configuration
-    if registry_auths is None:
-        registry_auths = _get_oras_registry_auths()
-
-    # Use namespace-specific registry authentication if provided or the secret from the
-    # worker configuration by default.
+    # Use exclusive registry authentication file or the provided/default Docker config.json
     with set_registry_auths(registry_auths, use_empty_config=True):
+        conf = get_worker_config()
+        oras_exclusive_auth_path = conf['iib_index_db_oras_auth_path']
+        cmd_args = []
+        if oras_exclusive_auth_path and os.path.exists(oras_exclusive_auth_path):
+            cmd_args = ['--registry-config', oras_exclusive_auth_path]
+            log.debug('Using ORAS registry configuration file: %s', oras_exclusive_auth_path)
+        else:
+            log.warning(
+                'No ORAS registry configuration file found, using default Docker config.json'
+            )
         try:
             run_cmd(
-                ['oras', 'pull', artifact_ref, '-o', temp_dir],
+                ['oras', 'pull', *cmd_args, artifact_ref, '-o', temp_dir],
                 exc_msg=f'Failed to pull OCI artifact {artifact_ref}',
             )
             log.info('Successfully pulled OCI artifact %s to %s', artifact_ref, temp_dir)
@@ -193,10 +166,7 @@ def push_oras_artifact(
         When using cwd, this should be a relative path (typically just
         the filename) relative to the cwd directory.
     :param str artifact_type: MIME type of the artifact (default: 'application/vnd.sqlite')
-    :param dict registry_auths: Optional dockerconfig.json auth information for private registries.
-        If not provided, the function will use the secret from the worker configuration when both
-        ``iib_index_db_artifact_registry`` and ``iib_index_db_oras_auth_secret`` are set; otherwise,
-        the default Docker ``config.json`` will be used.
+    :param dict registry_auths: Optional dockerconfig.json auth information for private registries
     :param dict annotations: Optional annotations to add to the artifact
     :param str cwd: Optional working directory for the ORAS command. When provided, local_path
         should be relative to this directory (e.g., just the filename).
@@ -211,27 +181,33 @@ def push_oras_artifact(
     if not os.path.exists(full_path):
         raise IIBError(f'Local artifact path does not exist: {full_path}')
 
-    # Build ORAS push command
-    cmd = ['oras', 'push', artifact_ref, f'{local_path}:{artifact_type}']
-
-    # Do not allow absolute paths.
-    # Absolute paths are extracted to the same place (full path) which might cause collisions.
-    if os.path.isabs(local_path):
-        log.error('Local artifact path must be relative: %s', local_path)
-        raise IIBError(f'Local artifact path must be relative: {local_path}')
-
-    # Add annotations if provided
-    if annotations:
-        for key, value in annotations.items():
-            cmd.extend(['--annotation', f'{key}={value}'])
-
-    # If no registry_auths are provided, use the secret from the worker configuration by default.
-    if registry_auths is None:
-        registry_auths = _get_oras_registry_auths()
-
-    # Use namespace-specific registry authentication if provided or the secret from the
-    # worker configuration by default.
+    # Use exclusive registry authentication file or the provided/default Docker config.json
     with set_registry_auths(registry_auths, use_empty_config=True):
+        conf = get_worker_config()
+        oras_exclusive_auth_path = conf['iib_index_db_oras_auth_path']
+        cmd_args = []
+        if oras_exclusive_auth_path and os.path.exists(oras_exclusive_auth_path):
+            cmd_args = ['--registry-config', oras_exclusive_auth_path]
+            log.debug('Using ORAS registry configuration file: %s', oras_exclusive_auth_path)
+        else:
+            log.warning(
+                'No ORAS registry configuration file found, using default Docker config.json'
+            )
+
+        # Build ORAS push command
+        cmd = ['oras', 'push', *cmd_args, artifact_ref, f'{local_path}:{artifact_type}']
+
+        # Do not allow absolute paths.
+        # Absolute paths are extracted to the same place (full path) which might cause collisions.
+        if os.path.isabs(local_path):
+            log.error('Local artifact path must be relative: %s', local_path)
+            raise IIBError(f'Local artifact path must be relative: {local_path}')
+
+        # Add annotations if provided
+        if annotations:
+            for key, value in annotations.items():
+                cmd.extend(['--annotation', f'{key}={value}'])
+
         try:
             # Only pass params if cwd is provided
             if cwd:
