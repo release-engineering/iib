@@ -67,7 +67,9 @@ class Config(object):
     # Default registry for index.db ImageStream
     iib_index_db_imagestream_registry: Optional[str] = None
     iib_index_db_artifact_registry: Optional[str] = None
-    iib_index_db_oras_auth_path: Optional[str] = None
+    iib_index_db_oras_auth_path: str = os.path.join(
+        os.path.expanduser('~'), '.docker', 'oras', 'config.json'
+    )
     iib_index_db_artifact_tag_template: str = '{image_name}-{tag}'
     iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
     # Whether to use OpenShift ImageStream cache for index.db artifacts
