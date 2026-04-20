@@ -67,7 +67,9 @@ class Config(object):
     # Default registry for index.db ImageStream
     iib_index_db_imagestream_registry: Optional[str] = None
     iib_index_db_artifact_registry: Optional[str] = None
-    iib_index_db_oras_auth_path: Optional[str] = None
+    iib_index_db_oras_auth_path: str = os.path.join(
+        os.path.expanduser('~'), '.docker', 'oras', 'config.json'
+    )
     iib_index_db_artifact_tag_template: str = '{image_name}-{tag}'
     iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
     # Whether to use OpenShift ImageStream cache for index.db artifacts
@@ -275,9 +277,9 @@ class DevelopmentConfig(Config):
     iib_registry: str = 'registry:8443'
     iib_request_logs_dir: Optional[str] = '/var/log/iib/requests'
     iib_request_related_bundles_dir: Optional[str] = '/var/lib/requests/related_bundles'
-    iib_request_recursive_related_bundles_dir: Optional[
-        str
-    ] = '/var/lib/requests/recursive_related_bundles'
+    iib_request_recursive_related_bundles_dir: Optional[str] = (
+        '/var/lib/requests/recursive_related_bundles'
+    )
     iib_dogpile_backend: str = 'dogpile.cache.memcached'
     iib_ocp_opm_mapping: dict = {
         "v4.6": "opm-v1.26.4",
