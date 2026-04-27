@@ -1550,9 +1550,9 @@ def test_get_no_present_bundles(
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
 @mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.extract_directory_from_image_non_privileged')
 @mock.patch('iib.workers.tasks.build.get_image_label')
-def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir):
+def test_inspect_related_images(mock_gil, mock_edi, mock_fd, mock_gbd, mock_si, tmpdir):
     bundles = ['quay.io/repo/image@sha256:123', 'quay.io/repo2/image2@sha256:456']
     request_id = 5
     mock_gil.return_value = '/manifests'
@@ -1595,10 +1595,10 @@ def test_inspect_related_images(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si,
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
 @mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.extract_directory_from_image_non_privileged')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_inspect_related_images_stage_bundle(
-    mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir
+    mock_gil, mock_edi, mock_fd, mock_gbd, mock_si, tmpdir
 ):
     bundles = ['quay.stage.io/repo/bundleimage@sha256:123']
     request_id = 5
@@ -1635,10 +1635,10 @@ def test_inspect_related_images_stage_bundle(
 @mock.patch('iib.workers.tasks.build.skopeo_inspect')
 @mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.extract_directory_from_image_non_privileged')
 @mock.patch('iib.workers.tasks.build.get_image_label')
 def test_inspect_related_images_stage_bundle_without_registry_replacement(
-    mock_gil, mock_cffi, mock_fd, mock_gbd, mock_si, tmpdir
+    mock_gil, mock_edi, mock_fd, mock_gbd, mock_si, tmpdir
 ):
     bundles = ['quay.stage.io/repo/bundleimage@sha256:123']
     request_id = 5
@@ -1675,9 +1675,9 @@ def test_inspect_related_images_stage_bundle_without_registry_replacement(
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 @mock.patch('iib.workers.tasks.build.get_bundle_metadata')
 @mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
+@mock.patch('iib.workers.tasks.build.extract_directory_from_image_non_privileged')
 @mock.patch('iib.workers.tasks.build.get_image_label')
-def test_inspect_related_images_fail(mock_gil, mock_cffi, mock_fd, mock_gbd, mock_rc, tmpdir):
+def test_inspect_related_images_fail(mock_gil, mock_edi, mock_fd, mock_gbd, mock_rc, tmpdir):
     bundles = ['quay.io/repo/image@sha256:123']
     request_id = 5
     mock_gil.return_value = '/manifests'
