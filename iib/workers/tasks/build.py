@@ -1166,7 +1166,7 @@ def handle_rm_request(
                 fbc_dir, _ = opm_registry_rm_fbc(
                     base_dir=temp_dir,
                     from_index=from_index_resolved,
-                    operators=operators,
+                    operators=operators_in_db,
                     index_db_path=index_db_path,
                 )
 
