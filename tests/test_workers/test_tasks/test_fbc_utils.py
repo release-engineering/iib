@@ -15,6 +15,7 @@ from iib.workers.tasks.fbc_utils import (
     is_image_fbc,
     merge_catalogs_dirs,
     enforce_json_config_dir,
+    extract_directory_from_image_non_privileged,
     extract_fbc_fragment,
     _serialize_datetime,
 )
@@ -209,8 +210,8 @@ def test_enforce_json_config_dir_multiple_chunks_input(tmpdir):
 
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2'], []])
 @mock.patch('os.listdir')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
-def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
+@mock.patch('iib.workers.tasks.fbc_utils.extract_directory_from_image_non_privileged')
+def test_extract_fbc_fragment(mock_extract_dir, mock_osldr, ldr_output, tmpdir):
     test_fbc_fragment = "example.com/test/fbc_fragment:latest"
     mock_osldr.return_value = ldr_output
     # The function now adds -0 suffix by default when fragment_index is not provided
@@ -221,16 +222,18 @@ def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
             extract_fbc_fragment(tmpdir, test_fbc_fragment)
     else:
         extract_fbc_fragment(tmpdir, test_fbc_fragment)
-        mock_cffi.assert_called_once_with(
-            test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+        mock_extract_dir.assert_called_once_with(
+            image=test_fbc_fragment,
+            src_path=get_worker_config()['fbc_fragment_catalog_path'],
+            dest_path=fbc_fragment_path,
         )
         mock_osldr.assert_called_once_with(fbc_fragment_path)
 
 
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2']])
 @mock.patch('os.listdir')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
-def test_extract_fbc_fragment_with_index(mock_cffi, mock_osldr, ldr_output, tmpdir):
+@mock.patch('iib.workers.tasks.fbc_utils.extract_directory_from_image_non_privileged')
+def test_extract_fbc_fragment_with_index(mock_extract_dir, mock_osldr, ldr_output, tmpdir):
     """Test extract_fbc_fragment with non-zero fragment_index values."""
     test_fbc_fragment = "example.com/test/fbc_fragment:latest"
     mock_osldr.return_value = ldr_output
@@ -251,15 +254,17 @@ def test_extract_fbc_fragment_with_index(mock_cffi, mock_osldr, ldr_output, tmpd
     assert result_operators == ldr_output
 
     # Verify the function was called with the correct path
-    mock_cffi.assert_called_once_with(
-        test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+    mock_extract_dir.assert_called_once_with(
+        image=test_fbc_fragment,
+        src_path=get_worker_config()['fbc_fragment_catalog_path'],
+        dest_path=fbc_fragment_path,
     )
     mock_osldr.assert_called_once_with(fbc_fragment_path)
 
 
 @mock.patch('os.listdir')
-@mock.patch('iib.workers.tasks.build._copy_files_from_image')
-def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
+@mock.patch('iib.workers.tasks.fbc_utils.extract_directory_from_image_non_privileged')
+def test_extract_fbc_fragment_isolation(mock_extract_dir, mock_osldr, tmpdir):
     """Test that multiple fragments with different indices create isolated directories."""
     test_fbc_fragment1 = "example.com/test/fbc_fragment1:latest"
     test_fbc_fragment2 = "example.com/test/fbc_fragment2:latest"
@@ -283,12 +288,94 @@ def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
     assert operators2 == ['operator2']
     assert operators1 != operators2
 
-    # Verify _copy_files_from_image was called with different paths
     expected_calls = [
-        mock.call(test_fbc_fragment1, get_worker_config()['fbc_fragment_catalog_path'], path1),
-        mock.call(test_fbc_fragment2, get_worker_config()['fbc_fragment_catalog_path'], path2),
+        mock.call(
+            image=test_fbc_fragment1,
+            src_path=get_worker_config()['fbc_fragment_catalog_path'],
+            dest_path=path1,
+        ),
+        mock.call(
+            image=test_fbc_fragment2,
+            src_path=get_worker_config()['fbc_fragment_catalog_path'],
+            dest_path=path2,
+        ),
     ]
-    mock_cffi.assert_has_calls(expected_calls, any_order=True)
+    mock_extract_dir.assert_has_calls(expected_calls, any_order=True)
+
+
+def test_extract_directory_from_image_non_privileged_rejects_relative_src(tmp_path):
+    """Reject ``src_path`` without a leading ``/`` (not a valid absolute path in the image)."""
+    dest = tmp_path / 'dest'
+    dest.mkdir()
+    with pytest.raises(IIBError, match='absolute image path'):
+        extract_directory_from_image_non_privileged(
+            image='quay.io/ns/img@sha256:abc', src_path='configs', dest_path=str(dest)
+        )
+
+
+def test_extract_directory_from_image_non_privileged_rejects_slash_only(tmp_path):
+    """Reject ``src_path`` that is only ``/`` (no named directory segment after normalization)."""
+    dest = tmp_path / 'dest'
+    dest.mkdir()
+    with pytest.raises(IIBError, match='directory under /'):
+        extract_directory_from_image_non_privileged(
+            image='quay.io/ns/img@sha256:abc', src_path='/', dest_path=str(dest)
+        )
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_directory_from_image_non_privileged_oc_command(mock_run_cmd, tmp_path):
+    """Test build with the expected parameters."""
+    dest = tmp_path / 'dest'
+    dest.mkdir()
+    image = 'quay.io/exd/hello@sha256:deadbeef'
+    extract_directory_from_image_non_privileged(
+        image=image, src_path='/configs', dest_path=str(dest)
+    )
+
+    mock_run_cmd.assert_called_once()
+    (cmd,) = mock_run_cmd.call_args[0]
+    assert cmd[:3] == ['oc', 'image', 'extract']
+    assert cmd[3] == '--confirm'
+    assert cmd[4].startswith('--path=/configs/*:')
+    assert str(dest / 'configs') in cmd[4]
+    assert cmd[5] == image
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_directory_from_image_non_privileged_trailing_slash_on_src(mock_run_cmd, tmp_path):
+    """Test trailing slash on ``src_path`` is stripped."""
+    dest = tmp_path / 'dest'
+    dest.mkdir()
+    extract_directory_from_image_non_privileged(
+        image='quay.io/exd/hello@sha256:beef', src_path='/configs/', dest_path=str(dest)
+    )
+    path_arg = mock_run_cmd.call_args[0][0][4]
+    assert path_arg.startswith('--path=/configs/*:')
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_directory_from_image_non_privileged_normpath_in_oc_path(mock_run_cmd, tmp_path):
+    """Test redundant segments in paths; uses the normalized directory."""
+    dest = tmp_path / 'dest'
+    dest.mkdir()
+    extract_directory_from_image_non_privileged(
+        image='quay.io/ns/i@sha256:1', src_path='/configs/./foo', dest_path=str(dest)
+    )
+    path_arg = mock_run_cmd.call_args[0][0][4]
+    assert path_arg.startswith('--path=/configs/foo/*:')
+
+
+@mock.patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_directory_from_image_non_privileged_creates_dest(mock_run_cmd, tmp_path):
+    """If ``dest_path`` is missing, it is created before ``oc`` runs."""
+    dest = tmp_path / 'newdest'
+    assert not dest.exists()
+    extract_directory_from_image_non_privileged(
+        image='quay.io/ns/i@sha256:1', src_path='/manifests', dest_path=str(dest)
+    )
+    assert dest.is_dir()
+    mock_run_cmd.assert_called_once()
 
 
 def test__serialize_datetime():

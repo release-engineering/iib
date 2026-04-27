@@ -102,6 +102,83 @@ def merge_catalogs_dirs(src_config: str, dest_config: str):
     opm_validate(conf_dir)
 
 
+def extract_directory_from_image_non_privileged(image: str, src_path: str, dest_path: str) -> None:
+    """
+    Extract a directory from an image using 'oc image extract'.
+
+    'dest_path' is a directory path on the host to extract the contents to.
+    Non-existing directory will be created. A subdirectory named like
+    the last segment of 'src_path' (e.g. '/configs' -> 'configs') is created
+    under 'dest_path' and the image contents under 'src_path' are extracted there
+    via ``--path=<src_path>/*:<that_subdir>``.
+
+    :param str image: the pull specification of the container image
+    :param str src_path: absolute directory path inside the image; trailing slashes
+        and redundant '.' / '..' segments are normalized with :class:`pathlib.Path`
+        ('resolve(strict=False)'; logged when the result differs from the input).
+    :param str dest_path: directory path on the host to extract the contents to.
+        If the directory does not exist, it will be created.
+    :raises IIBError: if paths are invalid, 'dest_path' is missing, or 'oc' fails
+    """
+    from iib.workers.tasks.utils import run_cmd
+
+    # Image paths are POSIX-style absolute paths inside the container rootfs.
+    if not src_path.startswith('/'):
+        error_msg = f'src_path must be an absolute image path, got {src_path!r}'
+        log.error(error_msg)
+        raise IIBError(error_msg)
+
+    original_src_path = src_path
+
+    # 'oc' glob is '<dir>/*'; strip trailing slashes so we do not end up with '//' in paths.
+    stripped = src_path.rstrip('/')
+    if not stripped:
+        error_msg = f'src_path must name a directory under /, got {original_src_path!r}'
+        log.error(error_msg)
+        raise IIBError(error_msg)
+
+    # Collapse '.', '..', and repeated slashes
+    normalized_path = Path(stripped).resolve(strict=False)
+    normalized = normalized_path.as_posix()
+
+    if normalized != original_src_path.rstrip('/'):
+        log.info(
+            'Normalized src_path for oc image extract: %r -> %r',
+            original_src_path,
+            normalized,
+        )
+
+    # Host layout: 'dest_path/<basename(normalized)>/' receives image tree under 'normalized/'.
+    inner = normalized_path.name
+    if not inner:
+        error_msg = f'src_path must name a directory under /, got {original_src_path!r}'
+        log.error(error_msg)
+        raise IIBError(error_msg)
+
+    dest = Path(dest_path)
+    if not dest.exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        log.info(f'dest_path did not exist, created {dest_path!r}')
+    elif not dest.is_dir():
+        raise IIBError(f'dest_path exists but is not a directory: {dest_path!r}')
+
+    target = dest / inner
+    target.mkdir(parents=True, exist_ok=True)
+    target_abs = target.resolve(strict=False).as_posix()
+
+    # '--path=<image_dir>/*:<abs_host_dir>' unpacks direct children of 'normalized' into target.
+    path_arg = f'{normalized}/*:{target_abs}'
+    cmd = ['oc', 'image', 'extract', '--confirm', f'--path={path_arg}', image]
+
+    log.info(
+        'Extracting image directory %s into %s (under existing %s)',
+        normalized,
+        target_abs,
+        str(dest),
+    )
+    run_cmd(cmd, exc_msg=f'Failed to extract {normalized} from {image}')
+
+
 def extract_fbc_fragment(
     temp_dir: str, fbc_fragment: str, fragment_index: int = 0
 ) -> Tuple[str, List[str]]:
@@ -115,15 +192,15 @@ def extract_fbc_fragment(
     :return: fbc_fragment path, fbc_operator_packages.
     :rtype: tuple
     """
-    from iib.workers.tasks.build import _copy_files_from_image
-
     log.info("Extracting the fbc_fragment's catalog from  %s", fbc_fragment)
     # store the fbc_fragment at /tmp/iib-**/fbc-fragment-{index} to prevent
     # cross-contamination
     conf = get_worker_config()
     fbc_fragment_path = os.path.join(temp_dir, f"{conf['temp_fbc_fragment_path']}-{fragment_index}")
     # Copy fbc_fragment's catalog to /tmp/iib-**/fbc-fragment-{index}
-    _copy_files_from_image(fbc_fragment, conf['fbc_fragment_catalog_path'], fbc_fragment_path)
+    extract_directory_from_image_non_privileged(
+        image=fbc_fragment, src_path=conf['fbc_fragment_catalog_path'], dest_path=fbc_fragment_path
+    )
 
     log.info("fbc_fragment extracted at %s", fbc_fragment_path)
     operator_packages = os.listdir(fbc_fragment_path)
