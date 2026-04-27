@@ -1256,6 +1256,10 @@ def test_handle_rm_request_fbc(
     tmpdir,
 ):
     configs_dir = tmpdir.mkdir('configs')
+    operators = ['hive-operator', 'some-operator']
+    hive_catalog = configs_dir.mkdir('hive-operator')
+    some_catalog = configs_dir.mkdir('some-operator')
+
     deprecations_dir = configs_dir.mkdir(worker_config['operator_deprecations_dir'])
     operator_deprecation_dir = deprecations_dir.mkdir('some-operator')
     deprecation_template = textwrap.dedent(
@@ -1278,7 +1282,7 @@ def test_handle_rm_request_fbc(
     deprecation_file = operator_deprecation_dir.join('some-operator.json')
     deprecation_file.write(deprecation_template)
 
-    mock_voe.return_value = ['some-operator'], '/tmp/xyz/database/index.db'
+    mock_voe.return_value = {'some-operator'}, '/tmp/xyz/database/index.db'
     mock_govn.return_value = '0.9.0'
     mock_iifbc.return_value = True
     from_index_resolved = 'from-index@sha256:bcdefg'
@@ -1300,7 +1304,7 @@ def test_handle_rm_request_fbc(
     assert os.path.exists(deprecation_file)
 
     build.handle_rm_request(
-        operators=['some-operator'],
+        operators=operators,
         request_id=5,
         from_index='from-index:latest',
         binary_image='binary-image:latest',
@@ -1323,7 +1327,14 @@ def test_handle_rm_request_fbc(
     mock_gcd.assert_called_once()
     mock_gcl.assert_called_once()
     mock_mcd.assert_called_once_with(mock.ANY, configs_dir)
+    mock_voe.assert_called_once_with(
+        from_index='from-index:latest',
+        base_dir=mock.ANY,
+        operator_packages=operators,
+        overwrite_from_index_token='token',
+    )
     mock_orrf.assert_called_once()
+    assert mock_orrf.call_args.kwargs['operators'] == {'some-operator'}
     mock_opmvalidate.assert_called_once()
     assert mock_alti.call_count == 2
     assert mock_bi.call_count == 2
@@ -1342,7 +1353,7 @@ def test_handle_rm_request_fbc(
         add_or_rm=True,
         is_image_fbc=True,
         index_repo_map={},
-        rm_operators=['some-operator'],
+        rm_operators=operators,
     )
     assert mock_srs.call_args[0][1] == 'complete'
 
