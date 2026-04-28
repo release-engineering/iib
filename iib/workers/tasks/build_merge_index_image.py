@@ -91,7 +91,7 @@ def get_missing_bundles_from_target_to_source(
     target_index_bundles: List[BundleImage],
     source_from_index: str,
     ocp_version: str,
-    request_user: str,
+    request_id: int,
     target_index=None,
     ignore_bundle_ocp_version: Optional[bool] = False,
 ) -> Tuple[List[BundleImage], List[BundleImage]]:
@@ -107,7 +107,7 @@ def get_missing_bundles_from_target_to_source(
     :param list target_index_bundles: bundles present in the target index image.
     :param str source_from_index: index image, whose data will be contained in the new index image.
     :param str ocp_version: ocp version which will be added as a label to the image.
-    :param str request_user: username of a requestor
+    :param str request_id: the ID of the IIB build request.
     :param str target_index: the pull specification of the container image
     :param bool ignore_bundle_ocp_version: When set to `true` and image set as target_index is
         listed in `iib_no_ocp_label_allow_list` config then bundles without
@@ -151,10 +151,11 @@ def get_missing_bundles_from_target_to_source(
 
     if ignore_bundle_ocp_version:
         target_index_tmp = '' if target_index is None else target_index
+        user = get_request(request_id)['user']
         allow_no_ocp_version = any(
             target_index_tmp.startswith(entry)
             or source_from_index.startswith(entry)
-            or request_user == entry
+            or user == entry
             for entry in get_worker_config()['iib_no_ocp_label_allow_list']
         )
     else:
@@ -223,13 +224,12 @@ def _add_bundles_missing_in_source(
     set_request_state(request_id, 'in_progress', 'Adding bundles missing in source index image')
     log.info('Adding bundles from target index image which are missing from source index image')
 
-    user = get_request(request_id)['user']
     missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
         source_index_bundles=source_index_bundles,
         target_index_bundles=target_index_bundles,
         source_from_index=source_from_index,
         ocp_version=ocp_version,
-        request_user=user,
+        request_id=request_id,
         target_index=target_index,
         ignore_bundle_ocp_version=ignore_bundle_ocp_version,
     )

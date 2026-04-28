@@ -203,7 +203,7 @@ def handle_containerized_merge_request(
             target_index_bundles=target_index_bundles,
             source_from_index=source_from_index_resolved,
             ocp_version=prebuild_info['target_ocp_version'],
-            request_user=user,
+            request_id=request_id,
             target_index=target_index_resolved,
             ignore_bundle_ocp_version=ignore_bundle_ocp_version,
         )
