@@ -49,7 +49,6 @@ def _mock_set_for_bundles(iterable=None):
     return _original_set(iterable)
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -77,6 +76,7 @@ def _mock_set_for_bundles(iterable=None):
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -95,6 +95,7 @@ def test_handle_containerized_merge_request_success(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -121,7 +122,6 @@ def test_handle_containerized_merge_request_success(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test successful merge request with all operations."""
     # Setup
@@ -275,6 +275,9 @@ def test_handle_containerized_merge_request_success(
 
     # Verify missing bundles were identified
     mock_gmbfts.assert_called_once()
+    gmbfts_kwargs = mock_gmbfts.call_args[1]
+    assert gmbfts_kwargs['request_id'] == request_id
+    assert gmbfts_kwargs['ignore_bundle_ocp_version'] is False
 
     # Verify missing bundles were added
     mock_ora.assert_called_once()
@@ -316,7 +319,6 @@ def test_handle_containerized_merge_request_success(
     assert mock_rdc.call_count >= 1
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -344,6 +346,7 @@ def test_handle_containerized_merge_request_success(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -362,6 +365,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -388,7 +392,6 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test successful merge request with deprecations executed correctly."""
     # Setup
@@ -613,7 +616,6 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     assert mock_rdc.call_count >= 1
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -641,6 +643,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -659,6 +662,7 @@ def test_handle_containerized_merge_request_with_mr(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -685,7 +689,6 @@ def test_handle_containerized_merge_request_with_mr(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test merge request that creates and closes MR."""
     request_id = 2
@@ -780,7 +783,6 @@ def test_handle_containerized_merge_request_with_mr(
     assert final_call[0][1] == 'complete'
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -808,6 +810,7 @@ def test_handle_containerized_merge_request_with_mr(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -826,6 +829,7 @@ def test_handle_containerized_merge_request_no_missing_bundles(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -852,7 +856,6 @@ def test_handle_containerized_merge_request_no_missing_bundles(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test merge request when no bundles are missing."""
     request_id = 3
@@ -939,7 +942,6 @@ def test_handle_containerized_merge_request_no_missing_bundles(
     assert mock_ora.call_args[0][2] == []
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -967,6 +969,7 @@ def test_handle_containerized_merge_request_no_missing_bundles(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -985,6 +988,7 @@ def test_handle_containerized_merge_request_with_deprecation(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1011,7 +1015,6 @@ def test_handle_containerized_merge_request_with_deprecation(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test merge request with deprecation list."""
     request_id = 4
@@ -1104,7 +1107,6 @@ def test_handle_containerized_merge_request_with_deprecation(
     mock_dbd.assert_called_once()
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
@@ -1128,6 +1130,7 @@ def test_handle_containerized_merge_request_with_deprecation(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -1146,6 +1149,7 @@ def test_handle_containerized_merge_request_pipeline_failure(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1168,7 +1172,6 @@ def test_handle_containerized_merge_request_pipeline_failure(
     mock_mpaei,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test that pipeline failure triggers cleanup."""
     request_id = 5
@@ -1249,7 +1252,6 @@ def test_handle_containerized_merge_request_pipeline_failure(
     assert 'Pipeline not found' in cleanup_call[1]['reason']
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
@@ -1274,6 +1276,7 @@ def test_handle_containerized_merge_request_pipeline_failure(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -1292,6 +1295,7 @@ def test_handle_containerized_merge_request_missing_output_pull_spec(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1315,7 +1319,6 @@ def test_handle_containerized_merge_request_missing_output_pull_spec(
     mock_ritd,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test error when output_pull_spec is not set."""
     request_id = 6
@@ -1404,7 +1407,6 @@ def test_handle_containerized_merge_request_missing_output_pull_spec(
         (['latest', 'v4.14'], 3),  # request_id + latest + v4.14
     ],
 )
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -1432,6 +1434,7 @@ def test_handle_containerized_merge_request_missing_output_pull_spec(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -1450,6 +1453,7 @@ def test_handle_containerized_merge_request_with_build_tags(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1476,7 +1480,6 @@ def test_handle_containerized_merge_request_with_build_tags(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
     build_tags,
     expected_tag_count,
 ):
@@ -1564,7 +1567,6 @@ def test_handle_containerized_merge_request_with_build_tags(
     assert mock_ritd.call_args[1]['build_tags'] == build_tags
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -1592,6 +1594,7 @@ def test_handle_containerized_merge_request_with_build_tags(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -1610,6 +1613,7 @@ def test_handle_containerized_merge_request_with_invalid_bundles(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1636,7 +1640,6 @@ def test_handle_containerized_merge_request_with_invalid_bundles(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test merge request with invalid bundles (OCP version mismatch)."""
     request_id = 8
@@ -1735,7 +1738,140 @@ def test_handle_containerized_merge_request_with_invalid_bundles(
     assert 'bundle2@sha256:222' in deprecation_bundles
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.get_request')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+def test_get_missing_bundles_user_in_allow_list(
+    mock_iifbc,
+    mock_gil,
+    mock_gr,
+    mock_gwc,
+):
+    """Test get_missing_bundles_from_target_to_source with user in allow list.
+
+    When ignore_bundle_ocp_version=True and user is in iib_no_ocp_label_allow_list,
+    bundles without OCP version label should NOT be reported as invalid.
+    """
+    source_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+    ]
+    target_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+
+    mock_gwc.return_value = {'iib_no_ocp_label_allow_list': ['random_user', 'allowed_user']}
+    mock_gr.return_value = {'user': 'allowed_user'}
+    # bundle2 (missing) has empty label, bundle1 (source) has valid label
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+
+    from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
+
+    missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
+        source_index_bundles=source_bundles,
+        target_index_bundles=target_bundles,
+        source_from_index='quay.io/source-index:v4.6',
+        ocp_version='4.6',
+        request_id=1,
+        target_index='quay.io/target-index:v4.6',
+        ignore_bundle_ocp_version=True,
+    )
+
+    assert missing_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    assert invalid_bundles == []
+    mock_gr.assert_called_once_with(1)
+
+
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+def test_get_missing_bundles_user_not_in_allow_list(
+    mock_iifbc,
+    mock_gil,
+    mock_gr,
+    mock_gwc,
+):
+    """Test get_missing_bundles_from_target_to_source with user NOT in allow list.
+
+    When ignore_bundle_ocp_version=True but user is not in iib_no_ocp_label_allow_list,
+    bundles without OCP version label should be reported as invalid.
+    """
+    source_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+    ]
+    target_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+
+    mock_gwc.return_value = {'iib_no_ocp_label_allow_list': ['allowed_user']}
+    mock_gr.return_value = {'user': 'unauthorized_user'}
+    # bundle2 (missing) has empty label, bundle1 (source) has valid label
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+
+    from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
+
+    missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
+        source_index_bundles=source_bundles,
+        target_index_bundles=target_bundles,
+        source_from_index='quay.io/source-index:v4.6',
+        ocp_version='4.6',
+        request_id=1,
+        target_index='quay.io/target-index:v4.6',
+        ignore_bundle_ocp_version=True,
+    )
+
+    assert missing_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    assert invalid_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    mock_gr.assert_called_once_with(1)
+
+
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -1763,6 +1899,7 @@ def test_handle_containerized_merge_request_with_invalid_bundles(
 @mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
 @mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
@@ -1781,6 +1918,7 @@ def test_handle_containerized_merge_request_without_target_index(
     mock_set_registry_token,
     mock_srs,
     mock_srs_api,
+    mock_get_request,
     mock_prfb,
     mock_opm,
     mock_uiibs,
@@ -1807,7 +1945,6 @@ def test_handle_containerized_merge_request_without_target_index(
     mock_cmrif,
     mock_cof,
     mock_rdc,
-    mock_get_request,
 ):
     """Test merge request when target_index is None."""
     request_id = 10
