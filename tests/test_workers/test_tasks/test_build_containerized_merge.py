@@ -266,6 +266,9 @@ def test_handle_containerized_merge_request_success(
 
     # Verify missing bundles were identified
     mock_gmbfts.assert_called_once()
+    gmbfts_kwargs = mock_gmbfts.call_args[1]
+    assert gmbfts_kwargs['request_id'] == request_id
+    assert gmbfts_kwargs['ignore_bundle_ocp_version'] is False
 
     # Verify missing bundles were added
     mock_ora.assert_called_once()
@@ -1684,6 +1687,140 @@ def test_handle_containerized_merge_request_with_invalid_bundles(
     mock_dbd.assert_called_once()
     deprecation_bundles = mock_dbd.call_args[1]['bundles']
     assert 'bundle2@sha256:222' in deprecation_bundles
+
+
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+def test_get_missing_bundles_user_in_allow_list(
+    mock_iifbc,
+    mock_gil,
+    mock_gr,
+    mock_gwc,
+):
+    """Test get_missing_bundles_from_target_to_source with user in allow list.
+
+    When ignore_bundle_ocp_version=True and user is in iib_no_ocp_label_allow_list,
+    bundles without OCP version label should NOT be reported as invalid.
+    """
+    source_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+    ]
+    target_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+
+    mock_gwc.return_value = {'iib_no_ocp_label_allow_list': ['random_user', 'allowed_user']}
+    mock_gr.return_value = {'user': 'allowed_user'}
+    # bundle2 (missing) has empty label, bundle1 (source) has valid label
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+
+    from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
+
+    missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
+        source_index_bundles=source_bundles,
+        target_index_bundles=target_bundles,
+        source_from_index='quay.io/source-index:v4.6',
+        ocp_version='4.6',
+        request_id=1,
+        target_index='quay.io/target-index:v4.6',
+        ignore_bundle_ocp_version=True,
+    )
+
+    assert missing_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    assert invalid_bundles == []
+    mock_gr.assert_called_once_with(1)
+
+
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_worker_config')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_request')
+@mock.patch('iib.workers.tasks.build_merge_index_image.get_image_label')
+@mock.patch('iib.workers.tasks.build_merge_index_image.is_image_fbc')
+def test_get_missing_bundles_user_not_in_allow_list(
+    mock_iifbc,
+    mock_gil,
+    mock_gr,
+    mock_gwc,
+):
+    """Test get_missing_bundles_from_target_to_source with user NOT in allow list.
+
+    When ignore_bundle_ocp_version=True but user is not in iib_no_ocp_label_allow_list,
+    bundles without OCP version label should be reported as invalid.
+    """
+    source_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+    ]
+    target_bundles = [
+        {
+            'bundlePath': 'quay.io/bundle1@sha256:111',
+            'csvName': 'bundle1-1.0',
+            'packageName': 'bundle1',
+        },
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+
+    mock_gwc.return_value = {'iib_no_ocp_label_allow_list': ['allowed_user']}
+    mock_gr.return_value = {'user': 'unauthorized_user'}
+    # bundle2 (missing) has empty label, bundle1 (source) has valid label
+    mock_gil.side_effect = ['', '=v4.6']
+    mock_iifbc.return_value = False
+
+    from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
+
+    missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
+        source_index_bundles=source_bundles,
+        target_index_bundles=target_bundles,
+        source_from_index='quay.io/source-index:v4.6',
+        ocp_version='4.6',
+        request_id=1,
+        target_index='quay.io/target-index:v4.6',
+        ignore_bundle_ocp_version=True,
+    )
+
+    assert missing_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    assert invalid_bundles == [
+        {
+            'bundlePath': 'quay.io/bundle2@sha256:222',
+            'csvName': 'bundle2-2.0',
+            'packageName': 'bundle2',
+        },
+    ]
+    mock_gr.assert_called_once_with(1)
 
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
