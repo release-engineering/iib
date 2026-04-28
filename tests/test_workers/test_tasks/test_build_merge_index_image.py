@@ -628,9 +628,8 @@ def test_add_bundles_missing_in_source(
         },
     ]
 
-    mock_gwc.iib_api_url.return_value = {
-        'iib_no_ocp_label_allow_list': ['quay.io/bundle'],
-    }
+    mock_gwc.return_value = {}
+    mock_gr.return_value = {'user': 'some_user'}
 
     mock_gil.side_effect = ['=v4.5', '=v4.6', 'v4.7', 'v4.5-v4.7', 'v4.5,v4.6', '']
     mock_iifbc.return_value = False
