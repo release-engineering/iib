@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
-from iib.workers.api_utils import set_request_state, get_request
+from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _update_index_image_build_state,
     _get_present_bundles,
@@ -197,13 +197,12 @@ def handle_containerized_merge_request(
         set_request_state(request_id, 'in_progress', 'Adding bundles missing in source index image')
         log.info('Adding bundles from target index image which are missing from source index image')
 
-        user = get_request(request_id)['user']
         missing_bundles, invalid_bundles = get_missing_bundles_from_target_to_source(
             source_index_bundles=source_index_bundles,
             target_index_bundles=target_index_bundles,
             source_from_index=source_from_index_resolved,
             ocp_version=prebuild_info['target_ocp_version'],
-            request_user=user,
+            request_id=request_id,
             target_index=target_index_resolved,
             ignore_bundle_ocp_version=ignore_bundle_ocp_version,
         )
