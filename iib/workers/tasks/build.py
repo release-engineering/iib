@@ -24,7 +24,12 @@ from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
-from iib.workers.tasks.fbc_utils import is_image_fbc, get_catalog_dir, merge_catalogs_dirs
+from iib.workers.tasks.fbc_utils import (
+    is_image_fbc,
+    get_catalog_dir,
+    merge_catalogs_dirs,
+    extract_directory_from_image_non_privileged,
+)
 from iib.workers.tasks.git_utils import push_configs_to_git, revert_last_commit
 from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc,
@@ -733,7 +738,7 @@ def inspect_related_images(
             bundle, "operators.operatorframework.io.bundle.manifests.v1"
         )
         with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-            _copy_files_from_image(bundle, manifest_location, temp_dir)
+            extract_directory_from_image_non_privileged(bundle, manifest_location, temp_dir)
             manifest_path = os.path.join(temp_dir, manifest_location)
             try:
                 operator_manifest = OperatorManifest.from_directory(manifest_path)
