@@ -68,7 +68,7 @@ services:
     container_name: jaeger
     ports:
       - 4318:4318
-      - 16686:16686 # web
+      - 16686:16686  # web
     environment:
       - COLLECTOR_OTLP_ENABLED=true
 
