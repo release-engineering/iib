@@ -1,0 +1,27 @@
+---
+name: Check AGENTS.md line count
+
+on:
+  pull_request:
+    paths:
+      - "AGENTS.md"
+  push:
+    branches:
+      - "main"
+    paths:
+      - "AGENTS.md"
+  workflow_dispatch:
+
+jobs:
+  check-line-count:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+      - name: Verify AGENTS.md is at most 60 lines
+        run: |
+          line_count=$(wc -l < AGENTS.md)
+          echo "AGENTS.md has ${line_count} lines"
+          if [ "${line_count}" -gt 60 ]; then
+            echo "::error::AGENTS.md has ${line_count} lines, which exceeds the 60-line limit"
+            exit 1
+          fi
