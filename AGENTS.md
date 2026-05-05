@@ -10,7 +10,8 @@ Request types (each a `POST /builds/<type>` endpoint + celery task in `iib/worke
 
 ## Build
 Production: API and Worker images are built from Dockerfiles in `docker/containerized/` and deployed in OpenShift pods.
-Local dev: `make up` / `make down` (docker-compose) spins up api, worker, db, rabbitmq, memcached, registry (TLS), jaeger.
+Local dev: (containerized workflow): See `docker/containerized/README.md` for full setup. Requires Konflux cluster credentials and GitLab tokens.
+Legacy local dev: `make up` / `make down` (docker-compose) spins up api, worker, db, rabbitmq, memcached, registry (TLS), jaeger.
 Entry points: WSGI `iib/web/wsgi.py`, CLI `iib` (e.g. `iib db upgrade`), worker `celery -A iib.workers.tasks worker`.
 Stack: Python 3.12+, Flask, SQLAlchemy, Celery, PostgreSQL, RabbitMQ, Konflux, OPM, ORAS, OpenTelemetry, boto3, Kerberos auth.
 Flask config: `IIB_DEV` / `IIB_TESTING` boolean env vars set to `True` for Development and Testing. If not set, ProductionConfig will be used and config file is expected at `/etc/iib/settings.py`.
