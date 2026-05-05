@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.5.1
+
+* Check for user in iib_no_ocp_label_allow_list by @MichalZelenak in https://github.com/release-engineering/iib/pull/1304
+* Update requirements by @lipoja in https://github.com/release-engineering/iib/pull/1314
+* CLOUDDST-32368 : Fix FBC remove by only passing  DB-backed packages to opm registry rm by @ashwgit in https://github.com/release-engineering/iib/pull/1312
+
 ## 9.5.0
 
 * chore(deps): update dependency google-auth to v2.43.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1229
