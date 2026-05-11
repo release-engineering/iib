@@ -113,6 +113,10 @@ Setting the `IIB_COMPOSE_ENGINE` variable will update compose targets to point t
 file inside the `compose-files` directory. Any changes made to the compose files should be submitted to
 all files in the directory.
 
+## AI Agent Skills
+
+IIB includes agent skills in `.agents/skills/` for AI coding assistants (Claude Code, Cursor, VS Code Copilot). These are symlinked from `.claude/skills/` and are available automatically after cloning. If you add a new skill, run `bash .agents/setup-skills.sh` to create its symlink.
+
 ## Dependency Management
 
 To manage dependencies, this project uses [pip-tools](https://github.com/jazzband/pip-tools) so that
