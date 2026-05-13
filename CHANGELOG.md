@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.5.2
+
+* Update dependency urllib3 to v2.7.0 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1324
+* Update dependency mako to v1.3.12 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1323
+* Update dependency python-qpid-proton to v0.40.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1318
+* Update python Docker tag to v3.14.5 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1271
+* Update dependency coverage to v7.14.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1326
+* Update dependency googleapis-common-protos to v1.75.0 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1327
+* Update dependency requests to v2.34.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1329
+* Update dependency idna to v3.15 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1328
+
 ## 9.5.1
 
 * Check for user in iib_no_ocp_label_allow_list by @MichalZelenak in https://github.com/release-engineering/iib/pull/1304
