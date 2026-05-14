@@ -1,0 +1,20 @@
+excluded_attributes:
+  # Not applicable to this Python API service
+  - dbt_project_config
+  - dbt_model_documentation
+  - dbt_data_tests
+  - dbt_project_structure
+  - container_setup
+  - progressive_disclosure
+  # Requires GitHub API integration — cannot be assessed from repo contents
+  - branch_protection
+  # False positive: pip-compile --generate-hashes format misread as unpinned deps
+  - lock_files
+  # False positive: tox-based quality gates (black, flake8, mypy, pytest) not
+  # recognised by agentready's keyword pattern matching on CI job names
+  - ci_quality_gates
+  # Blocked: AGENTS.md is CI-enforced to ≤60 lines; single-file commands cannot
+  # be added without breaching that limit
+  - single_file_verification
+  # External optional tool; not a meaningful quality gate for this project
+  - repomix_config
