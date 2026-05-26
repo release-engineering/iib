@@ -196,19 +196,35 @@ def extract_fbc_fragment(
     # store the fbc_fragment at /tmp/iib-**/fbc-fragment-{index} to prevent
     # cross-contamination
     conf = get_worker_config()
-    fbc_fragment_path = os.path.join(temp_dir, f"{conf['temp_fbc_fragment_path']}-{fragment_index}")
+    fbc_fragment_base_path = os.path.join(
+        temp_dir, f"{conf['temp_fbc_fragment_path']}-{fragment_index}"
+    )
     # Copy fbc_fragment's catalog to /tmp/iib-**/fbc-fragment-{index}
     extract_directory_from_image_non_privileged(
-        image=fbc_fragment, src_path=conf['fbc_fragment_catalog_path'], dest_path=fbc_fragment_path
+        image=fbc_fragment,
+        src_path=conf['fbc_fragment_catalog_path'],
+        dest_path=fbc_fragment_base_path,
     )
 
-    log.info("fbc_fragment extracted at %s", fbc_fragment_path)
-    operator_packages = os.listdir(fbc_fragment_path)
+    # extract_directory_from_image_non_privileged creates dest_path/<basename(src_path)>/,
+    # e.g. /tmp/iib-**/fbc-fragment-0/configs/example-operator. Match get_catalog_dir().
+    fbc_fragment_catalog_dir = os.path.join(
+        fbc_fragment_base_path,
+        os.path.basename(conf['fbc_fragment_catalog_path'].rstrip('/')),
+    )
+    if not os.path.isdir(fbc_fragment_catalog_dir):
+        raise IIBError(
+            f"FBC fragment catalog directory not found at {fbc_fragment_catalog_dir} "
+            f"after extracting {fbc_fragment}"
+        )
+
+    log.info("fbc_fragment extracted at %s", fbc_fragment_catalog_dir)
+    operator_packages = os.listdir(fbc_fragment_catalog_dir)
     log.info("fbc_fragment contains packages %s", operator_packages)
     if not operator_packages:
         raise IIBError("No operator packages in fbc_fragment %s", fbc_fragment)
 
-    return fbc_fragment_path, operator_packages
+    return fbc_fragment_catalog_dir, operator_packages
 
 
 def _serialize_datetime(obj: datetime) -> str:
