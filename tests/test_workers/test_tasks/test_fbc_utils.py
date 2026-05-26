@@ -214,17 +214,27 @@ def test_extract_fbc_fragment(mock_cffi, mock_osldr, ldr_output, tmpdir):
     test_fbc_fragment = "example.com/test/fbc_fragment:latest"
     mock_osldr.return_value = ldr_output
     # The function now adds -0 suffix by default when fragment_index is not provided
-    fbc_fragment_path = os.path.join(tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-0")
+    fbc_fragment_base_path = os.path.join(
+        tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-0"
+    )
+    fbc_fragment_catalog_dir = os.path.join(
+        fbc_fragment_base_path, os.path.basename(get_worker_config()['fbc_fragment_catalog_path'])
+    )
+    os.makedirs(fbc_fragment_catalog_dir)
 
     if not ldr_output:
         with pytest.raises(IIBError):
             extract_fbc_fragment(tmpdir, test_fbc_fragment)
     else:
-        extract_fbc_fragment(tmpdir, test_fbc_fragment)
+        result_path, result_operators = extract_fbc_fragment(tmpdir, test_fbc_fragment)
+        assert result_path == fbc_fragment_catalog_dir
+        assert result_operators == ldr_output
         mock_cffi.assert_called_once_with(
-            test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+            test_fbc_fragment,
+            get_worker_config()['fbc_fragment_catalog_path'],
+            fbc_fragment_base_path,
         )
-        mock_osldr.assert_called_once_with(fbc_fragment_path)
+        mock_osldr.assert_called_once_with(fbc_fragment_catalog_dir)
 
 
 @pytest.mark.parametrize('ldr_output', [['testoperator'], ['test1', 'test2']])
@@ -237,24 +247,30 @@ def test_extract_fbc_fragment_with_index(mock_cffi, mock_osldr, ldr_output, tmpd
 
     # Test with fragment_index = 2
     fragment_index = 2
-    fbc_fragment_path = os.path.join(
+    fbc_fragment_base_path = os.path.join(
         tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-{fragment_index}"
     )
+    fbc_fragment_catalog_dir = os.path.join(
+        fbc_fragment_base_path, os.path.basename(get_worker_config()['fbc_fragment_catalog_path'])
+    )
+    os.makedirs(fbc_fragment_catalog_dir)
 
     result_path, result_operators = extract_fbc_fragment(
         tmpdir, test_fbc_fragment, fragment_index=fragment_index
     )
 
-    # Verify the path includes the correct index
-    assert result_path == fbc_fragment_path
-    assert result_path.endswith(f"-{fragment_index}")
+    # Verify the path includes the correct index and catalog directory
+    assert result_path == fbc_fragment_catalog_dir
+    assert result_path.endswith(f"fbc-fragment-{fragment_index}/configs")
     assert result_operators == ldr_output
 
     # Verify the function was called with the correct path
     mock_cffi.assert_called_once_with(
-        test_fbc_fragment, get_worker_config()['fbc_fragment_catalog_path'], fbc_fragment_path
+        test_fbc_fragment,
+        get_worker_config()['fbc_fragment_catalog_path'],
+        fbc_fragment_base_path,
     )
-    mock_osldr.assert_called_once_with(fbc_fragment_path)
+    mock_osldr.assert_called_once_with(fbc_fragment_catalog_dir)
 
 
 @mock.patch('os.listdir')
@@ -267,6 +283,25 @@ def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
     # Mock different outputs for each fragment
     mock_osldr.side_effect = [['operator1'], ['operator2']]
 
+    fbc_fragment_base_path_0 = os.path.join(
+        tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-0"
+    )
+    fbc_fragment_base_path_1 = os.path.join(
+        tmpdir, f"{get_worker_config()['temp_fbc_fragment_path']}-1"
+    )
+    os.makedirs(
+        os.path.join(
+            fbc_fragment_base_path_0,
+            os.path.basename(get_worker_config()['fbc_fragment_catalog_path']),
+        )
+    )
+    os.makedirs(
+        os.path.join(
+            fbc_fragment_base_path_1,
+            os.path.basename(get_worker_config()['fbc_fragment_catalog_path']),
+        )
+    )
+
     # Extract first fragment with index 0
     path1, operators1 = extract_fbc_fragment(tmpdir, test_fbc_fragment1, fragment_index=0)
 
@@ -275,8 +310,8 @@ def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
 
     # Verify paths are different and include correct indices
     assert path1 != path2
-    assert path1.endswith("-0")
-    assert path2.endswith("-1")
+    assert path1.endswith("fbc-fragment-0/configs")
+    assert path2.endswith("fbc-fragment-1/configs")
 
     # Verify operators are different (no cross-contamination)
     assert operators1 == ['operator1']
@@ -285,8 +320,16 @@ def test_extract_fbc_fragment_isolation(mock_cffi, mock_osldr, tmpdir):
 
     # Verify _copy_files_from_image was called with different paths
     expected_calls = [
-        mock.call(test_fbc_fragment1, get_worker_config()['fbc_fragment_catalog_path'], path1),
-        mock.call(test_fbc_fragment2, get_worker_config()['fbc_fragment_catalog_path'], path2),
+        mock.call(
+            test_fbc_fragment1,
+            get_worker_config()['fbc_fragment_catalog_path'],
+            fbc_fragment_base_path_0,
+        ),
+        mock.call(
+            test_fbc_fragment2,
+            get_worker_config()['fbc_fragment_catalog_path'],
+            fbc_fragment_base_path_1,
+        ),
     ]
     mock_cffi.assert_has_calls(expected_calls, any_order=True)
 
