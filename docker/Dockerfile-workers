@@ -11,7 +11,6 @@ RUN dnf -y install \
     buildah \
     fuse-overlayfs \
     gcc \
-    curl \
     tar \
     gzip \
     git \
