@@ -22,7 +22,10 @@ RUN dnf -y install \
     python3.12-setuptools \
     && dnf update -y \
     && dnf clean all
-RUN update-alternatives --set python3 $(which python3.12)
+
+# UBI9 doesn't come with alternatives installed for python3 by default, so we need to set it manually
+RUN update-alternatives --install /usr/bin/python3 python3 $(which python3.12) 1
+RUN update-alternatives --install /usr/bin/pip3 pip3 $(which pip3.12) 1
 
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
