@@ -1,5 +1,5 @@
 # Based from https://github.com/rmohr/docker-activemq
-FROM registry.access.redhat.com/ubi8/ubi:latest
+FROM registry.access.redhat.com/ubi9/ubi:latest
 
 ENV ACTIVEMQ_VERSION 5.15.12
 ENV ACTIVEMQ_HOME /opt/activemq
