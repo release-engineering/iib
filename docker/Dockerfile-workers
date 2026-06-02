@@ -62,7 +62,9 @@ RUN curl -L "https://github.com/oras-project/oras/releases/download/v1.3.0/oras_
 RUN git config --global user.email "exd-guild-hello-operator+iib-dev-env@redhat.com"
 RUN git config --global user.name "IIB dev-env"
 
-RUN update-alternatives --set python3 $(which python3.12)
+# UBI9 doesn't come with alternatives installed for python3 by default, so we need to set it manually
+RUN update-alternatives --install /usr/bin/python3 python3 $(which python3.12) 1
+RUN update-alternatives --install /usr/bin/pip3 pip3 $(which pip3.12) 1
 
 # Adjust storage.conf to enable Fuse storage.
 RUN sed -i -e 's|^#mount_program|mount_program|g' /etc/containers/storage.conf
