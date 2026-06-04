@@ -537,7 +537,9 @@ def _overwrite_from_index(
                     f'docker://{output_pull_spec}', new_index_src, copy_all=True, exc_msg=exc_msg
                 )
 
-        if is_image_fbc:
+        if is_image_fbc and index_repo_map:
+            # When the index_repo_map is empty, we should skip this step because it is called
+            # from the containerized version of IIB and the push was done earlier in the process.
             # Push the /configs to the Gitlab, then skopeo_copy the result.
             with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-configs-') as tmpdir:
                 # Push the /configs to the Gitlab, then skopeo_copy the result.
