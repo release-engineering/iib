@@ -401,6 +401,15 @@ def test_get_local_pull_spec(request_id, arch):
             True,
             {"quay.io/ns/repo:1": "https://fake.url.git"},
         ),
+        (
+            'quay.io/ns/repo:1',
+            'docker.io/user_ns/repo:v1',
+            'quay.io/user_ns/repo:abcdef',
+            'user:pass',
+            False,
+            True,
+            {},
+        ),
     ),
 )
 @mock.patch('iib.workers.tasks.build.set_request_state')
@@ -459,7 +468,7 @@ def test_overwrite_from_index(
     )
 
     # Verify catalog config handling
-    if is_image_fbc:
+    if is_image_fbc and url_repo_map:
         mock_gcd.assert_called_once_with(
             from_index=output_pull_spec,
             base_dir=mock_temp_dir_2,
@@ -480,6 +489,7 @@ def test_overwrite_from_index(
         )
     else:
         mock_gcd.assert_not_called()
+        mock_pcg.assert_not_called()
 
     if oci_export_expected:
         oci_pull_spec = f'oci:{mock_temp_dir_1.name}'
