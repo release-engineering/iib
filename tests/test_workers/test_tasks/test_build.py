@@ -1285,7 +1285,8 @@ def test_handle_rm_request_fbc(
     mock_voe.return_value = {'some-operator'}, '/tmp/xyz/database/index.db'
     mock_govn.return_value = '0.9.0'
     mock_iifbc.return_value = True
-    from_index_resolved = 'from-index@sha256:bcdefg'
+    from_index = 'quay.io/iib/from-index:latest'
+    from_index_resolved = 'quay.io/iib/from-index@sha256:bcdefg'
     mock_prfb.return_value = {
         'arches': {'amd64', 's390x'},
         'binary_image': 'binary-image:latest',
@@ -1306,7 +1307,7 @@ def test_handle_rm_request_fbc(
     build.handle_rm_request(
         operators=operators,
         request_id=5,
-        from_index='from-index:latest',
+        from_index=from_index,
         binary_image='binary-image:latest',
         binary_image_config={'prod': {'v4.6': 'some_image'}},
         overwrite_from_index=True,
@@ -1316,7 +1317,7 @@ def test_handle_rm_request_fbc(
         5,
         RequestConfigAddRm(
             _binary_image='binary-image:latest',
-            from_index='from-index:latest',
+            from_index=from_index,
             overwrite_from_index_token=None,
             add_arches=None,
             binary_image_config={'prod': {'v4.6': 'some_image'}},
@@ -1328,7 +1329,7 @@ def test_handle_rm_request_fbc(
     mock_gcl.assert_called_once()
     mock_mcd.assert_called_once_with(mock.ANY, configs_dir)
     mock_voe.assert_called_once_with(
-        from_index='from-index:latest',
+        from_index=from_index,
         base_dir=mock.ANY,
         operator_packages=operators,
         overwrite_from_index_token='token',
@@ -1346,7 +1347,7 @@ def test_handle_rm_request_fbc(
         output_pull_spec=mock_capml.return_value,
         request_id=5,
         arches={'amd64', 's390x'},
-        from_index='from-index:latest',
+        from_index=from_index,
         overwrite_from_index=True,
         overwrite_from_index_token="token",
         resolved_prebuild_from_index=from_index_resolved,

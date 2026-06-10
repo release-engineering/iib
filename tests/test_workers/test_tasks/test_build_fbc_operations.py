@@ -272,13 +272,16 @@ def test_handle_fbc_operation_request_with_overwrite_token(
 ):
     """Test FBC operation with overwrite_from_index_token."""
     request_id = 10
-    from_index = 'from-index:latest'
+    from_index = 'quay.io/iib/from-index:latest'
     binary_image = 'binary-image:latest'
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
-    fbc_fragments = ['fbc-fragment1:latest', 'fbc-fragment2:latest']
+    fbc_fragments = [
+        'quay.io/iib/fbc-fragment1:latest',
+        'quay.io/iib/fbc-fragment2:latest',
+    ]
     overwrite_from_index_token = 'user:password'
     arches = {'amd64', 's390x'}
-    from_index_resolved = 'from-index@sha256:bcdefg'
+    from_index_resolved = 'quay.io/iib/from-index@sha256:bcdefg'
 
     mock_prfb.return_value = {
         'arches': arches,
