@@ -316,7 +316,7 @@ The custom configuration options for the Celery workers are listed below:
 * `iib_docker_config_template` - the path to the Docker config.json file for IIB to use as a
   template. IIB will symlink this file to `~/.docker/config.json` at the beginning of every request.
   Additionally, it will use this file as a base and set the `overwrite_from_index_token` for the
-  registry of the `from_index` container image when applicable. IIB will never directly modify this
+  specific repository of the `from_index` container image when applicable. IIB will never directly modify this
   file though. This defaults to `~/.docker/config.json.template`.
 *  `iib_dogpile_backend` - the configuration for the dogpile.cache backend. The default value is
    `'dogpile.cache.null'`. In case you want to enable caching, set this to `'dogpile.cache.memcached'`.

@@ -574,23 +574,65 @@ def reset_docker_config() -> None:
         os.symlink(conf.iib_docker_config_template, docker_config_path)
 
 
+def _docker_auth_key_for_image(container_image: str) -> str:
+    """
+    Return the docker config ``auths`` key for ``container_image``.
+
+    Uses ``registry/namespace/repo`` when a namespace is present, since that is the most
+    specific key container runtimes reliably match. Without a namespace, only registry-level
+    keys are used because ``registry/repo`` matching is not consistent across runtimes.
+
+    :param str container_image: the pull specification of the container image
+    :return: the docker config ``auths`` key for ``container_image``
+    :rtype: str
+    :raises IIBError: if the pull specification does not contain a resolvable registry.
+    """
+    image_name = ImageName.parse(container_image)
+    registry = image_name.registry
+    if image_name.namespace and registry:
+        return f'{registry}/{image_name.namespace}/{image_name.repo}'
+    if registry:
+        return registry
+    raise IIBError(
+        f'Unable to determine the registry from the pull specification {container_image!r} '
+        'for Docker authentication'
+    )
+
+
 @contextmanager
 def set_registry_token(
     token: Optional[str], container_image: Optional[str], append: bool = False
 ) -> Generator:
     """
-    Configure authentication to the registry that ``container_image`` is from.
+    Configure authentication for the image identified by ``container_image``.
 
-    This context manager will reset the authentication to the way it was after it exits. If
-    ``token`` is falsy, this context manager will do nothing.
+    The token is written to ``~/.docker/config.json`` under the most specific ``auths`` key that
+    container runtimes reliably match for that pull specification:
+
+    * ``registry/namespace/repo`` when ``container_image`` includes a namespace
+    * ``registry`` when the image has no namespace (for example, ``localhost:5000/myimage:tag``)
+
+    If the pull specification does not contain a resolvable registry, :exc:`IIBError` is raised.
+
+    Broader credentials already present in the Docker configuration, such as registry- or
+    namespace-level entries for the same host, are not modified. Only the scoped ``auths`` key
+    derived from ``container_image`` is set or overwritten.
+
+    On exit, the Docker configuration is reset to its pre-request state via
+    :func:`reset_docker_config`. If ``token`` or ``container_image`` is falsy, this context
+    manager does nothing.
 
     :param str token: the token in the format of ``username:password``
-    :param str container_image: the pull specification of the container image to parse to determine
-        the registry this token is for.
-    :param bool append: When enabled new token is appended to current configuration.
-        Old token for the same registry is overwritten.
+    :param str container_image: the pull specification of the image to authenticate to. Used to
+        determine which ``auths`` entry receives ``token``.
+    :param bool append: when ``True``, start from the current ``~/.docker/config.json`` (if it
+        exists) before applying the scoped token. This preserves unrelated ``auths`` entries and
+        is the preferred mode for ``overwrite_from_index`` callers that must override credentials
+        for a single index image without disturbing other registry configuration. When ``False``,
+        only the scoped ``auths`` entry and the worker template are merged.
     :return: None
     :rtype: None
+    :raises IIBError: if the pull specification does not contain a resolvable registry.
     """
     if not token:
         log.debug(
@@ -606,8 +648,10 @@ def set_registry_token(
 
         return
 
-    registry = ImageName.parse(container_image).registry
     encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
+    auth_entry = {'auth': encoded_token}
+    auth_key = _docker_auth_key_for_image(container_image)
+
     registry_auths: Dict[str, Any] = {'auths': {}}
     if append:
         docker_config_path = os.path.join(os.path.expanduser('~'), '.docker', 'config.json')
@@ -621,8 +665,8 @@ def set_registry_token(
 
                 log.debug('Docker config will be updated')
 
-    log.debug('Setting the override token for the registry %s ', registry)
-    registry_auths['auths'].update({registry: {'auth': encoded_token}})
+    log.debug('Setting the override token for the image %s', auth_key)
+    registry_auths['auths'].update({auth_key: auth_entry})
 
     with set_registry_auths(registry_auths):
         yield

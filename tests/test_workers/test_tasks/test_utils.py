@@ -96,17 +96,108 @@ def test_set_registry_token(
                         '4gU2ltcHNvbgo='
                     )
                 },
-                'registry.redhat.io': {'auth': 'dXNlcjpwYXNz'},
+                'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'},
             }
         }
     else:
         mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
         assert mock_open.call_count == 1
         assert mock_json_dump.call_args[0][0] == {
-            'auths': {'registry.redhat.io': {'auth': 'dXNlcjpwYXNz'}}
+            'auths': {'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'}}
         }
 
     mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.remove')
+@mock.patch('os.path.exists', return_value=True)
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_token_registry_only_auth_key(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_remove,
+    mock_expanduser,
+):
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_open.side_effect = mock.mock_open(
+        read_data=r'{"auths": {"quay.io": {"auth": "cXVheV90b2tlbg=="}}}'
+    )
+
+    with utils.set_registry_token('user:pass', 'localhost:5000/myimage:tag'):
+        pass
+
+    assert mock_json_dump.call_args[0][0]['auths'] == {
+        'quay.io': {'auth': 'cXVheV90b2tlbg=='},
+        'localhost:5000': {'auth': 'dXNlcjpwYXNz'},
+    }
+    mock_rdc.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    'container_image, expected_auth_key',
+    (
+        pytest.param(
+            'registry.redhat.io/ns/repo:latest',
+            'registry.redhat.io/ns/repo',
+            id='namespaced-with-tag',
+        ),
+        pytest.param(
+            'registry.redhat.io/ns/repo@sha256:abc123deadbeef',
+            'registry.redhat.io/ns/repo',
+            id='namespaced-with-digest',
+        ),
+        pytest.param(
+            'quay.io/org/index@sha256:deadbeef',
+            'quay.io/org/index',
+            id='namespaced-digest-only',
+        ),
+        pytest.param(
+            'localhost:5000/myimage:tag',
+            'localhost:5000',
+            id='registry-without-namespace-tag',
+        ),
+        pytest.param(
+            'localhost:5000/myimage@sha256:abc123',
+            'localhost:5000',
+            id='registry-without-namespace-digest',
+        ),
+        pytest.param(
+            'myregistry.io:5000/',
+            'myregistry.io:5000',
+            id='registry-only',
+        ),
+    ),
+)
+def test_docker_auth_key_for_image(container_image, expected_auth_key):
+    assert utils._docker_auth_key_for_image(container_image) == expected_auth_key
+
+
+@pytest.mark.parametrize(
+    'container_image',
+    (
+        pytest.param('ubuntu:latest', id='short-name-with-tag'),
+        pytest.param('ubuntu', id='short-name-no-tag'),
+        pytest.param('registry.redhat.io', id='bare-registry-host'),
+        pytest.param('from-index:latest', id='test-short-name-with-tag'),
+        pytest.param('from-index@sha256:bcdefg', id='test-short-name-with-digest'),
+    ),
+)
+def test_docker_auth_key_for_image_unresolvable_registry(container_image):
+    with pytest.raises(IIBError, match='Unable to determine the registry'):
+        utils._docker_auth_key_for_image(container_image)
+
+
+@mock.patch('iib.workers.tasks.utils.ImageName.parse')
+def test_docker_auth_key_for_image_namespace_without_registry(mock_parse):
+    mock_parse.return_value = mock.Mock(registry=None, namespace='ns', repo='repo')
+
+    with pytest.raises(IIBError, match='Unable to determine the registry'):
+        utils._docker_auth_key_for_image('ns/repo:latest')
 
 
 @pytest.mark.parametrize('config_exists', (True, False))
@@ -176,6 +267,40 @@ def test_set_registry_auths(
         assert mock_open.call_count == 1
         assert mock_json_dump.call_args[0][0] == registry_auths
 
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.path.exists', return_value=True)
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_token_append_overwrites_repo_auth(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_expanduser,
+):
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"registry.redhat.io": {"auth": "cmVnaXN0cnlfdG9rZW4="}, '
+            r'"registry.redhat.io/ns": {"auth": "bmFtZXNwYWNlX3Rva2Vu"}, '
+            r'"registry.redhat.io/ns/repo": {"auth": "b2xkX3Rva2Vu"}, '
+            r'"quay.io": {"auth": "cXVheV90b2tlbg=="}}}'
+        )
+    )
+
+    with utils.set_registry_token('user:pass', 'registry.redhat.io/ns/repo:latest', append=True):
+        pass
+
+    assert mock_json_dump.call_args[0][0]['auths'] == {
+        'quay.io': {'auth': 'cXVheV90b2tlbg=='},
+        'registry.redhat.io': {'auth': 'cmVnaXN0cnlfdG9rZW4='},
+        'registry.redhat.io/ns': {'auth': 'bmFtZXNwYWNlX3Rva2Vu'},
+        'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'},
+    }
     mock_rdc.assert_called_once_with()
 
 
