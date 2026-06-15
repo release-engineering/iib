@@ -1138,6 +1138,8 @@ def merge_index_image() -> Tuple[flask.Response, int]:
         payload.get('build_tags', []),
         payload.get('graph_update_mode'),
         payload.get('ignore_bundle_ocp_version'),
+        flask.current_app.config['IIB_INDEX_TO_GITLAB_PUSH_MAP'],
+        flask.current_app.config['IIB_BINARY_IMAGE_LESS_ARCHES_ALLOWED_VERSIONS'],
     ]
     safe_args = _get_safe_args(args, payload)
 
