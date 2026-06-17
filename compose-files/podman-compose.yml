@@ -109,10 +109,20 @@ services:
       - message-broker
       - jaeger
 
+  # Build-only service: shared worker base image (opm, buildah, podman, etc.).
+  # iib-worker builds FROM this image locally; run `make build` to build it first.
+  iib-base-image:
+    build:
+      context: ..
+      dockerfile: ./docker/Dockerfile-base-image
+    image: iib-base-image:local
+
   iib-worker:
     build:
       context: ..
       dockerfile: ./docker/Dockerfile-workers
+      args:
+        BASE_IMAGE: iib-base-image:local
     # Override the default command so that Celery auto-reloads on code changes.
     # This also adds the self-signed CA that was used to sign the Docker registry's certificate
     # to the trusted CA bundle. This will make podman trust the local Docker registry's certificate.

@@ -83,6 +83,35 @@ development environment. This will automatically run the following containers:
 It's recommended to use the wrapper targets in the `Makefile` for pre-requisites. Simply run `make`
 to view available targets.
 
+### Container Images
+
+The worker image uses a two-stage Dockerfile layout. See **[docker/README.md](docker/README.md)**
+for the full architecture (registry dependencies, CI build order, and local vs production
+workflows).
+
+Summary:
+* **`docker/Dockerfile-base-image`** — shared tooling layer (opm, buildah, podman, oras, oc
+  client, Red Hat CA certificates, etc.). Published to Quay as
+  `quay.io/exd-guild-hello-operator/iib-base-image:latest` by CI when the file changes on merge
+  to `main`.
+* **`docker/Dockerfile-workers`** — worker-specific setup and Python dependencies. Starts from the
+  base image above (overridable via the `BASE_IMAGE` build argument).
+* **`docker/Dockerfile-api`** — standalone image built directly from UBI9; it does not use the
+  worker base image.
+
+For local development, `docker-compose` / `podman-compose` build the base image as
+`iib-base-image:local` and pass it to the worker build. Run `make build` before `make up` — the
+`build` target builds `iib-base-image` first, then the application images. Re-run `make build`
+after changing `docker/Dockerfile-base-image`.
+
+To build the worker against the Quay base image instead (e.g. when you have not changed the base
+Dockerfile locally), override the build argument:
+
+```bash
+docker compose -f compose-files/docker-compose.yml build \
+  --build-arg BASE_IMAGE=quay.io/exd-guild-hello-operator/iib-base-image:latest iib-worker
+```
+
 The Flask application will automatically reload if there is a change in the codebase. If invalid
 syntax is added in the code, the `iib-api` container may shutdown. The Celery worker will
 automatically restart if there is a change under the `iib/workers` directory.
