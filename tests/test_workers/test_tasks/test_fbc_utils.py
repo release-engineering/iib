@@ -300,3 +300,53 @@ def test__serialize_datetime():
 def test__serialize_datetime_raise():
     with pytest.raises(TypeError, match="Type <class 'int'> is not serializable."):
         _serialize_datetime(2025)
+
+
+def test_enforce_json_config_dir_skips_empty_yaml_documents(tmpdir):
+    yaml_with_empty_doc = """\
+    ---
+    foo: bar
+    ---
+    ---
+    another: data
+    """
+
+    expected_result = '{"foo": "bar"}{"another": "data"}'
+
+    input_file = os.path.join(tmpdir, "test_file.yaml")
+    output_file = os.path.join(tmpdir, "test_file.json")
+    with open(input_file, 'w') as w:
+        w.write(dedent(yaml_with_empty_doc))
+
+    enforce_json_config_dir(tmpdir)
+
+    with open(output_file, 'r') as f:
+        assert f.read() == expected_result
+
+
+def test_enforce_json_config_dir_raises_on_empty_yaml(tmpdir):
+    """Ensure a 0-byte YAML file raises a IIBError."""
+    empty_yaml = os.path.join(tmpdir, "empty.yaml")
+
+    # Create a 0-byte file
+    open(empty_yaml, 'w').close()
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Empty YAML file found" in str(exc_info.value)
+    assert "empty.yaml" in str(exc_info.value)
+
+
+def test_enforce_json_config_dir_handles_yml_extension(tmpdir):
+    """Ensure files with the .yml extension are also processed."""
+    input_file = os.path.join(tmpdir, "test_file.yml")
+    output_file = os.path.join(tmpdir, "test_file.json")
+
+    with open(input_file, 'w') as w:
+        w.write("key: value")
+
+    enforce_json_config_dir(str(tmpdir))
+
+    assert os.path.exists(output_file)
+    assert not os.path.exists(input_file)
