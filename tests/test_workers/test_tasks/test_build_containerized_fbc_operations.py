@@ -382,8 +382,8 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
 
             build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
                 request_id=request_id,
-                fbc_fragments=['fbc:1'],
-                from_index='index:1',
+                fbc_fragments=['quay.io/iib/fbc-fragment1:latest'],
+                from_index='quay.io/iib/from-index:latest',
                 overwrite_from_index=True,
                 overwrite_from_index_token=overwrite_token,
             )
@@ -395,7 +395,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     # Verify DB artifacts pushed
     mock_pida_push.assert_called_once_with(
         request_id=request_id,
-        from_index='index:1',
+        from_index='quay.io/iib/from-index:latest',
         index_db_path='/tmp/d',
         operators=['op1'],
         overwrite_from_index=True,
@@ -407,7 +407,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         output_pull_spec='out:1',
         request_id=request_id,
         arches={'amd64'},
-        from_index='index:1',
+        from_index='quay.io/iib/from-index:latest',
         overwrite_from_index=True,
         overwrite_from_index_token=overwrite_token,
         resolved_prebuild_from_index='index@sha256:456',
@@ -495,8 +495,8 @@ def test_handle_containerized_fbc_operation_request_failure(
         try:
             build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
                 request_id=request_id,
-                fbc_fragments=['fbc:1'],
-                from_index='index:1',
+                fbc_fragments=['quay.io/iib/fbc-fragment1:latest'],
+                from_index='quay.io/iib/from-index:latest',
             )
             pytest.fail("IIBError was not raised as expected.")
         except IIBError as e:
