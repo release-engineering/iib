@@ -1740,6 +1740,33 @@ def test_inspect_related_images_fail(mock_gil, mock_edi, mock_fd, mock_gbd, mock
     ]
 
 
+@mock.patch('iib.workers.tasks.build.skopeo_inspect')
+@mock.patch('iib.workers.tasks.build.get_bundle_metadata')
+@mock.patch('iib.workers.tasks.build.OperatorManifest.from_directory')
+@mock.patch('iib.workers.tasks.build.extract_directory_from_image_non_privileged')
+@mock.patch('iib.workers.tasks.build.get_image_label')
+def test_inspect_related_images_relative_manifest_path(
+    mock_gil, mock_edi, mock_fd, mock_gbd, mock_si, tmpdir
+):
+    bundles = ['quay.io/repo/image@sha256:123']
+    request_id = 5
+    mock_gil.return_value = 'manifests/'
+    mock_fd.return_value = mock.ANY
+
+    mock_gbd.return_value = {
+        'found_pullspecs': set(
+            [
+                ImageName.parse('quay.io/related/image@sha256:1'),
+            ]
+        )
+    }
+    build.inspect_related_images(bundles=bundles, request_id=request_id)
+
+    mock_edi.assert_called_once()
+    call_kwargs = mock_edi.call_args
+    assert call_kwargs[1]['src_path'] == '/manifests/'
+
+
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.set_request_state')
 @mock.patch('iib.workers.tasks.build.get_resolved_bundles')

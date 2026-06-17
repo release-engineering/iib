@@ -742,11 +742,13 @@ def inspect_related_images(
         manifest_location = get_image_label(
             bundle, "operators.operatorframework.io.bundle.manifests.v1"
         )
+        if not manifest_location.startswith('/'):
+            manifest_location = f'/{manifest_location}'
         with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
             extract_directory_from_image_non_privileged(
                 image=bundle, src_path=manifest_location, dest_path=temp_dir
             )
-            manifest_path = os.path.join(temp_dir, manifest_location)
+            manifest_path = os.path.join(temp_dir, os.path.basename(manifest_location.rstrip('/')))
             try:
                 operator_manifest = OperatorManifest.from_directory(manifest_path)
             except (ruamel.yaml.YAMLError, ruamel.yaml.constructor.DuplicateKeyError) as e:
