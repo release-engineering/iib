@@ -683,6 +683,18 @@ def test_skopeo_copy(mock_run_cmd, copy_all):
     mock_run_cmd.assert_called_once()
 
 
+@pytest.mark.parametrize('copy_all', (False, True))
+@mock.patch('iib.workers.tasks.build.run_cmd')
+def test_skopeo_copy_to_oci_removes_signatures(mock_run_cmd, copy_all):
+    source = 'docker://registry.example.com/image:latest'
+    destination = 'oci:/tmp/some-oci-dir'
+    build._skopeo_copy(source, destination, copy_all=copy_all)
+    skopeo_args = mock_run_cmd.mock_calls[0][1][0]
+    assert '--remove-signatures' in skopeo_args
+    assert skopeo_args.index('--remove-signatures') < skopeo_args.index(source)
+    mock_run_cmd.assert_called_once()
+
+
 @mock.patch('iib.workers.tasks.build.run_cmd')
 def test_skopeo_copy_fail_max_retries(mock_run_cmd):
     match_str = 'Something went wrong'

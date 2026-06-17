@@ -68,8 +68,8 @@ def handle_containerized_regenerate_bundle_request(
     registry_auths: Optional[Dict[str, Any]] = None,
     bundle_replacements: Optional[Dict[str, str]] = None,
     index_to_gitlab_push_map: Optional[Dict[str, str]] = None,
-    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
     regenerate_bundle_repo_key: str = 'regenerate-bundle',
+    binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
     Coordinate the work needed to regenerate the operator bundle image using containerized workflow.
@@ -86,7 +86,7 @@ def handle_containerized_regenerate_bundle_request(
     :param str regenerate_bundle_repo_key: the key to look up the actual repo URL from
       index_to_gitlab_push_map, defaults to ``regenerate-bundle``.
     :param list binary_image_less_arches_allowed_versions: list of versions of the binary image
-        that are allowed to build for less arches. Defaults to ``None``.
+      that are allowed to build for less arches. Defaults to ``None``.
     :raises IIBError: if the regenerate bundle image build fails.
     """
     bundle_replacements = bundle_replacements or {}
