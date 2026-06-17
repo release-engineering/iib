@@ -9,7 +9,7 @@ Two components connected by RabbitMQ:
 Request types (each a `POST /builds/<type>` endpoint + celery task in `iib/workers/tasks/build_containerized*.py`): add, rm, merge-index-image, regenerate-bundle, fbc-operations, create-empty-index.
 
 ## Build
-Production: API and Worker images are built from Dockerfiles in `docker/containerized/` and deployed in OpenShift pods.
+Production images: `docker/Dockerfile-api`, `docker/Dockerfile-workers` (two-stage; base in `docker/Dockerfile-base-image`, published to Quay — see `docker/README.md`). Deployed in OpenShift pods.
 Local dev: (containerized workflow): See `docker/containerized/README.md` for full setup. Requires Konflux cluster credentials and GitLab tokens.
 Legacy local dev: `make up` / `make down` (docker-compose) spins up api, worker, db, rabbitmq, memcached, registry (TLS), jaeger.
 Entry points: WSGI `iib/web/wsgi.py`, CLI `iib` (e.g. `iib db upgrade`), worker `celery -A iib.workers.tasks worker`.

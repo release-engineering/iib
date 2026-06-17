@@ -45,7 +45,8 @@ down:
 
 build:
 	@echo "Building the container images for the local development instance..."
-	${IIB_COMPOSE_RUNNER} build
+	${IIB_COMPOSE_RUNNER} build iib-base-image
+	${IIB_COMPOSE_RUNNER} build iib-worker iib-api message-broker
 
 test:
 	@tox
