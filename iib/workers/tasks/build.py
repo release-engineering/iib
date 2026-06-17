@@ -693,6 +693,9 @@ def _skopeo_copy(
     cmd = ['skopeo', '--command-timeout', skopeo_timeout, 'copy', '--format', 'v2s2']
     if copy_all:
         cmd.append('--all')
+    # OCI layout does not support signatures
+    if destination.startswith('oci:'):
+        cmd.append('--remove-signatures')
     cmd.extend([source, destination])
 
     run_cmd(cmd, exc_msg=exc_msg or f'Failed to copy {source} to {destination}')
