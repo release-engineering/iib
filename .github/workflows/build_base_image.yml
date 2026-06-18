@@ -1,0 +1,54 @@
+---
+# Reusable workflow: build and push iib-base-image to Quay.
+#
+# Invoked by:
+#   - build_on_main.yml when docker/Dockerfile-base-image changed on merge to main
+#   - workflow_dispatch for manual rebuilds and one-time bootstrap (see docker/README.md)
+#
+# Bootstrap: run this workflow manually via workflow_dispatch BEFORE the first merge to main
+# that triggers build_on_main.yml, so iib-base-image:latest exists on Quay when Dockerfile-workers
+# is built. Without it, the worker build fails on FROM quay.io/.../iib-base-image:latest.
+#
+# Not triggered directly on push (orchestrated via build_on_main.yml to avoid racing
+# iib-worker against a stale base image on Quay).
+name: Build base image and push to quay.io
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    secrets:
+      REGISTRY_QUAY_IO_USER:
+        required: true
+      REGISTRY_QUAY_IO_PASSWORD:
+        required: true
+  workflow_dispatch:
+
+jobs:
+  deployments:
+    name: Build and Push iib-base-image to quay.io
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build iib-base-image
+        id: build-iib-base-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: iib-base-image
+          tags: latest
+          dockerfiles: |
+            ./docker/Dockerfile-base-image
+
+      - name: Push iib-base-image to quay.io
+        id: push-iib-base-image
+        uses: redhat-actions/push-to-registry@v2.7.1
+        with:
+          image: ${{ steps.build-iib-base-image.outputs.image }}
+          tags: ${{ steps.build-iib-base-image.outputs.tags }}
+          registry: quay.io/exd-guild-hello-operator
+          username: ${{ secrets.REGISTRY_QUAY_IO_USER }}
+          password: ${{ secrets.REGISTRY_QUAY_IO_PASSWORD }}
