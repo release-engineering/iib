@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.5.3
+
+* Update dependency wcwidth to v0.8.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1333
+* Refactor set_registry_token to support repository-specific auth by @chandwanitulsi in https://github.com/release-engineering/iib/pull/1343
+
 ## 9.5.2
 
 * Update dependency urllib3 to v2.7.0 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1324
