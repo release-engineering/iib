@@ -191,6 +191,7 @@ def handle_containerized_regenerate_bundle_request(
             # Write build metadata (without distribution_scope, ocp_version, and opm_version)
             set_request_state(request_id, 'in_progress', 'Writing build metadata')
             metadata = {
+                'request_type': 'regenerate-bundle',
                 'request_id': request_id,
                 'arches': sorted(list(arches)),
                 'organization': organization,
