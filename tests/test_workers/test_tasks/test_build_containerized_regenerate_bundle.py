@@ -167,6 +167,7 @@ def test_handle_containerized_regenerate_bundle_request(
     metadata_file = tmpdir.join('git', 'regenerate-bundle', '.iib-build-metadata.json')
     assert metadata_file.check()
     metadata_content = json.loads(metadata_file.read())
+    assert metadata_content['request_type'] == 'regenerate-bundle'
     assert metadata_content['request_id'] == request_id
     assert metadata_content['arches'] == sorted(list(arches))
     assert metadata_content['organization'] == organization
