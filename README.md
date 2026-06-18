@@ -85,7 +85,8 @@ to view available targets.
 
 ### Container Images
 
-The worker image uses a two-stage Dockerfile layout. See **[docker/README.md](docker/README.md)**
+The worker image uses a two-stage Dockerfile layout. See
+**[docker/README.md](https://github.com/release-engineering/iib/blob/main/docker/README.md)**
 for the full architecture (registry dependencies, CI build order, and local vs production
 workflows).
 
@@ -103,6 +104,12 @@ For local development, `docker-compose` / `podman-compose` build the base image 
 `iib-base-image:local` and pass it to the worker build. Run `make build` before `make up` — the
 `build` target builds `iib-base-image` first, then the application images. Re-run `make build`
 after changing `docker/Dockerfile-base-image`.
+
+**CI bootstrap:** before the first merge to `main` that uses the two-stage worker build, run
+the [Build base image and push to quay.io](https://github.com/release-engineering/iib/actions/workflows/build_base_image.yml)
+workflow manually via GitHub Actions `workflow_dispatch` so `iib-base-image:latest` exists on Quay.
+Details in
+[docker/README.md#bootstrap-first-time-setup](https://github.com/release-engineering/iib/blob/main/docker/README.md#bootstrap-first-time-setup).
 
 To build the worker against the Quay base image instead (e.g. when you have not changed the base
 Dockerfile locally), override the build argument:
