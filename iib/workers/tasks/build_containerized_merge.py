@@ -144,7 +144,7 @@ def handle_containerized_merge_request(
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Setup and clone Git repository
-        branch = prebuild_info['ocp_version']
+        branch = prebuild_info['target_ocp_version']
         (
             index_git_repo,
             local_git_repo_path,
@@ -331,7 +331,7 @@ def handle_containerized_merge_request(
                 overwrite_from_index=overwrite_target_index,
                 overwrite_from_index_token=overwrite_target_index_token,
                 resolved_prebuild_from_index=source_from_index_resolved,
-                add_or_rm=True,
+                add_or_rm=False,
                 is_image_fbc=True,
                 # Passing an empty index_repo_map is intentional. In IIB 1.0, if
                 # the overwrite_from_index token is given, we push to git by default
