@@ -361,7 +361,7 @@ def handle_containerized_merge_request(
                 request_id,
                 'complete',
                 f"The operator(s) {operators_in_db} were successfully merged "
-                "from the target index image into the source index image",
+                "from the source index image into the target index image",
             )
         except Exception as e:
             cleanup_on_failure(
