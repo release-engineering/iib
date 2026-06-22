@@ -81,9 +81,3 @@ RUN update-alternatives --install /usr/bin/pip3 pip3 $(which pip3.12) 1
 # Adjust storage.conf to enable Fuse storage.
 RUN sed -i -e 's|^#mount_program|mount_program|g' /etc/containers/storage.conf
 COPY docker/libpod.conf /usr/share/containers/libpod.conf
-
-RUN set -eux; \
-    curl -fsSL "https://certs.corp.redhat.com/certs/2022-IT-Root-CA.pem" \
-      -o /etc/pki/ca-trust/source/anchors/2022-IT-Root-CA.pem; \
-    echo "e9713aed04b4ef3003edd10fc9c4f8ab875436e4a44195f0cbafcdf95e9bad2c  /etc/pki/ca-trust/source/anchors/2022-IT-Root-CA.pem" | sha256sum -c -; \
-    update-ca-trust
