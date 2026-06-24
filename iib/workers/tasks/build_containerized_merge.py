@@ -111,6 +111,12 @@ def handle_containerized_merge_request(
     reset_docker_config()
     set_request_state(request_id, 'in_progress', 'Preparing request for merge')
 
+    if (overwrite_target_index or overwrite_target_index_token) and not target_index:
+        raise IIBError(
+            "Parameter 'target_index' must be set when 'overwrite_target_index' "
+            "or 'overwrite_target_index_token' is provided"
+        )
+
     # Prepare request
     with set_registry_token(overwrite_target_index_token, target_index, append=True):
         prebuild_info = prepare_request_for_build(
@@ -129,8 +135,19 @@ def handle_containerized_merge_request(
     source_from_index_resolved = prebuild_info['source_from_index_resolved']
     target_index_resolved = prebuild_info['target_index_resolved']
 
+    # Decide what image will be used for function calls.
+    # If target_index is not set, then source_from_index will be used
+    # along with the correct ocp version
+    effective_index_image = target_index if target_index else source_from_index
+    effective_index_image_resolved = (
+        target_index_resolved if target_index else source_from_index_resolved
+    )
+    effective_ocp_version = (
+        prebuild_info['target_ocp_version'] if target_index else prebuild_info['source_ocp_version']
+    )
+
     # Set OPM version
-    Opm.set_opm_version(target_index_resolved)
+    Opm.set_opm_version(effective_index_image_resolved)
     opm_version = Opm.opm_version
 
     _update_index_image_build_state(request_id, prebuild_info)
@@ -144,14 +161,14 @@ def handle_containerized_merge_request(
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Setup and clone Git repository
-        branch = prebuild_info['target_ocp_version']
+        branch = effective_ocp_version
         (
             index_git_repo,
             local_git_repo_path,
             localized_git_catalog_path,
         ) = prepare_git_repository_for_build(
             request_id=request_id,
-            from_index=source_from_index,
+            from_index=effective_index_image,
             temp_dir=temp_dir,
             branch=branch,
             index_to_gitlab_push_map=index_to_gitlab_push_map or {},
@@ -201,7 +218,7 @@ def handle_containerized_merge_request(
             source_index_bundles=source_index_bundles,
             target_index_bundles=target_index_bundles,
             source_from_index=source_from_index_resolved,
-            ocp_version=prebuild_info['target_ocp_version'],
+            ocp_version=effective_ocp_version,
             request_id=request_id,
             target_index=target_index_resolved,
             ignore_bundle_ocp_version=ignore_bundle_ocp_version,
@@ -280,7 +297,7 @@ def handle_containerized_merge_request(
         write_build_metadata(
             local_git_repo_path,
             opm_version,
-            prebuild_info['target_ocp_version'],
+            effective_ocp_version,
             prebuild_info['distribution_scope'],
             prebuild_info['binary_image_resolved'],
             request_id,
@@ -327,10 +344,10 @@ def handle_containerized_merge_request(
                 output_pull_spec=output_pull_spec,
                 request_id=request_id,
                 arches=prebuild_info['arches'],
-                from_index=source_from_index,
+                from_index=effective_index_image,
                 overwrite_from_index=overwrite_target_index,
                 overwrite_from_index_token=overwrite_target_index_token,
-                resolved_prebuild_from_index=source_from_index_resolved,
+                resolved_prebuild_from_index=effective_index_image_resolved,
                 add_or_rm=False,
                 is_image_fbc=True,
                 # Passing an empty index_repo_map is intentional. In IIB 1.0, if
@@ -346,7 +363,7 @@ def handle_containerized_merge_request(
             # index.db file if the pipeline fails.
             original_index_db_digest = push_index_db_artifact(
                 request_id=request_id,
-                from_index=source_from_index,
+                from_index=effective_index_image,
                 index_db_path=source_index_db_path,
                 operators=operators_in_db,
                 overwrite_from_index=overwrite_target_index,
@@ -370,7 +387,7 @@ def handle_containerized_merge_request(
                 index_git_repo=index_git_repo,
                 overwrite_from_index=overwrite_target_index,
                 request_id=request_id,
-                from_index=source_from_index,
+                from_index=effective_index_image,
                 index_repo_map={},
                 original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
