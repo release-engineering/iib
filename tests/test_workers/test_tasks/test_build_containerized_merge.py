@@ -249,11 +249,14 @@ def test_handle_containerized_merge_request_success(
         ),
     )
 
-    # Verify OPM version was set
+    # Verify OPM version was set with effective_index_image_resolved (target when provided)
     mock_opm.set_opm_version.assert_called_once_with(prebuild_info['target_index_resolved'])
 
-    # Verify git repository was prepared
+    # Verify git repository was prepared with effective values
     mock_pgrfb.assert_called_once()
+    pgrfb_kwargs = mock_pgrfb.call_args[1]
+    assert pgrfb_kwargs['from_index'] == target_index
+    assert pgrfb_kwargs['branch'] == prebuild_info['target_ocp_version']
 
     # Verify index.db artifacts were fetched
     assert mock_favida.call_count == 2
@@ -273,11 +276,12 @@ def test_handle_containerized_merge_request_success(
     expected_bundles = set(source_bundles_pull_spec + target_bundles_pull_spec)
     assert set(bundles_arg) == expected_bundles
 
-    # Verify missing bundles were identified
+    # Verify missing bundles were identified with effective ocp_version
     mock_gmbfts.assert_called_once()
     gmbfts_kwargs = mock_gmbfts.call_args[1]
     assert gmbfts_kwargs['request_id'] == request_id
     assert gmbfts_kwargs['ignore_bundle_ocp_version'] is False
+    assert gmbfts_kwargs['ocp_version'] == prebuild_info['target_ocp_version']
 
     # Verify missing bundles were added
     mock_ora.assert_called_once()
@@ -294,8 +298,10 @@ def test_handle_containerized_merge_request_success(
     # Verify FBC validation
     mock_ov.assert_called_once()
 
-    # Verify build metadata was written
+    # Verify build metadata was written with effective ocp_version
     mock_wbm.assert_called_once()
+    wbm_args = mock_wbm.call_args[0]
+    assert wbm_args[2] == prebuild_info['target_ocp_version']
 
     # Verify git commit/push
     mock_gccmop.assert_called_once()
@@ -306,8 +312,16 @@ def test_handle_containerized_merge_request_success(
     # Verify image replication
     mock_ritd.assert_called_once()
 
-    # Verify index.db push
+    # Verify _update_index_image_pull_spec with effective values
+    mock_uiips.assert_called_once()
+    uiips_kwargs = mock_uiips.call_args[1]
+    assert uiips_kwargs['from_index'] == target_index
+    assert uiips_kwargs['resolved_prebuild_from_index'] == prebuild_info['target_index_resolved']
+
+    # Verify index.db push with effective from_index
     mock_pida.assert_called_once()
+    pida_kwargs = mock_pida.call_args[1]
+    assert pida_kwargs['from_index'] == target_index
 
     # Verify final state
     final_call = mock_srs.call_args_list[-1]
@@ -523,7 +537,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
         ),
     )
 
-    # Verify OPM version was set
+    # Verify OPM version was set with effective_index_image_resolved (target when provided)
     mock_opm.set_opm_version.assert_called_once_with(prebuild_info['target_index_resolved'])
 
     # Verify git repository was prepared
@@ -1963,7 +1977,7 @@ def test_handle_containerized_merge_request_without_target_index(
         'source_from_index_resolved': 'quay.io/namespace/source-index@sha256:def',
         'target_index_resolved': None,  # Should be None when target_index is None
         'ocp_version': 'v4.14',
-        'target_ocp_version': 'v4.14',  # Should default to source version
+        'target_ocp_version': 'v4.15',
         'source_ocp_version': 'v4.14',
         'distribution_scope': 'prod',
     }
@@ -2028,6 +2042,15 @@ def test_handle_containerized_merge_request_without_target_index(
         index_to_gitlab_push_map={'quay.io/namespace/source-index': index_git_repo},
     )
 
+    # Verify OPM version was set with source_from_index_resolved (fallback when no target)
+    mock_opm.set_opm_version.assert_called_once_with(prebuild_info['source_from_index_resolved'])
+
+    # Verify git repository was prepared with source_from_index and source_ocp_version
+    mock_pgrfb.assert_called_once()
+    pgrfb_kwargs = mock_pgrfb.call_args[1]
+    assert pgrfb_kwargs['from_index'] == source_from_index
+    assert pgrfb_kwargs['branch'] == prebuild_info['source_ocp_version']
+
     # Verify only source index.db was fetched (not target)
     assert mock_favida.call_count == 1
     mock_favida.assert_called_once_with(source_from_index, temp_dir)
@@ -2045,12 +2068,14 @@ def test_handle_containerized_merge_request_without_target_index(
     # Should only contain source bundles
     assert set(bundles_arg) == set(source_bundles_pull_spec)
 
-    # Verify get_missing_bundles_from_target_to_source was called with empty target bundles
+    # Verify get_missing_bundles_from_target_to_source was called with
+    # empty target bundles and source ocp_version
     mock_gmbfts.assert_called_once()
     gmbfts_call_args = mock_gmbfts.call_args
     assert gmbfts_call_args[1]['target_index_bundles'] == []
+    assert gmbfts_call_args[1]['ocp_version'] == prebuild_info['source_ocp_version']
 
-    # Verify _opm_registry_add was called with empty list (no missing bundles)
+    # Verify _opm_registry_add was not called (no missing bundles, no target_index_db_path)
     mock_ora.assert_not_called()
 
     # Verify deprecation was processed
@@ -2058,8 +2083,201 @@ def test_handle_containerized_merge_request_without_target_index(
     mock_gblv.assert_called_once()
     mock_dbd.assert_called_once()
 
+    # Verify build metadata was written with source_ocp_version
+    mock_wbm.assert_called_once()
+    wbm_args = mock_wbm.call_args[0]
+    assert wbm_args[2] == prebuild_info['source_ocp_version']
+
+    # Verify _update_index_image_pull_spec was called with source values
+    mock_uiips.assert_called_once()
+    uiips_kwargs = mock_uiips.call_args[1]
+    assert uiips_kwargs['from_index'] == source_from_index
+    assert (
+        uiips_kwargs['resolved_prebuild_from_index'] == prebuild_info['source_from_index_resolved']
+    )
+
+    # Verify index.db push was called with source_from_index
+    mock_pida.assert_called_once()
+    pida_kwargs = mock_pida.call_args[1]
+    assert pida_kwargs['from_index'] == source_from_index
+
     # Verify final state
     final_call = mock_srs.call_args_list[-1]
     assert final_call[0][0] == request_id
     assert final_call[0][1] == 'complete'
     assert 'successfully merged' in final_call[0][2]
+
+
+@pytest.mark.parametrize(
+    'overwrite_target_index, overwrite_target_index_token',
+    [
+        (True, None),
+        (False, 'user:token'),
+        (True, 'user:token'),
+    ],
+)
+@mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
+def test_handle_containerized_merge_request_overwrite_without_target_index(
+    mock_srs,
+    mock_get_request,
+    mock_srs_api,
+    mock_rdc,
+    overwrite_target_index,
+    overwrite_target_index_token,
+):
+    """Test that overwrite_target_index or token without target_index raises IIBError."""
+    mock_get_request.return_value = {'user': 'test-user'}
+
+    with pytest.raises(
+        IIBError,
+        match="Parameter 'target_index' must be set when 'overwrite_target_index' "
+        "or 'overwrite_target_index_token' is provided",
+    ):
+        build_containerized_merge.handle_containerized_merge_request(
+            source_from_index='quay.io/namespace/source-index:v4.14',
+            deprecation_list=[],
+            request_id=1,
+            target_index=None,
+            overwrite_target_index=overwrite_target_index,
+            overwrite_target_index_token=overwrite_target_index_token,
+        )
+
+
+@mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr_or_push')
+@mock.patch('iib.workers.tasks.build_containerized_merge.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_validate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_list_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_latest_version')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_merge._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_missing_bundles_from_target_to_source')
+@mock.patch('iib.workers.tasks.build_containerized_merge.validate_bundles_in_parallel')
+@mock.patch('iib.workers.tasks.build_containerized_merge._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_git_repository_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.rename')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.rmtree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.move')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.path.exists')
+@mock.patch('builtins.set', side_effect=_mock_set_for_bundles)
+def test_handle_containerized_merge_request_without_target_index_failure_uses_source(
+    mock_set,
+    mock_exists,
+    mock_move,
+    mock_rmtree,
+    mock_rename,
+    mock_tempdir,
+    mock_set_registry_token,
+    mock_srs,
+    mock_srs_api,
+    mock_get_request,
+    mock_prfb,
+    mock_opm,
+    mock_uiibs,
+    mock_pgrfb,
+    mock_favida,
+    mock_gpb,
+    mock_vbip,
+    mock_gmbfts,
+    mock_ora,
+    mock_gbfdl,
+    mock_gblv,
+    mock_dbd,
+    mock_glb,
+    mock_om,
+    mock_mcd,
+    mock_copytree,
+    mock_ov,
+    mock_wbm,
+    mock_gccmop,
+    mock_mpaei,
+    mock_ritd,
+    mock_uiips,
+    mock_pida,
+    mock_cmrif,
+    mock_cof,
+    mock_rdc,
+):
+    """Test that cleanup_on_failure uses source_from_index when target_index is None."""
+    request_id = 11
+    source_from_index = 'quay.io/namespace/source-index:v4.14'
+
+    temp_dir = '/tmp/iib-11-test'
+    mock_tempdir.return_value.__enter__.return_value = temp_dir
+    mock_get_request.return_value = {'user': 'test-user'}
+
+    prebuild_info = {
+        'arches': {'amd64'},
+        'binary_image_resolved': 'registry.io/binary@sha256:abc',
+        'source_from_index_resolved': 'quay.io/namespace/source-index@sha256:def',
+        'target_index_resolved': None,
+        'ocp_version': 'v4.14',
+        'target_ocp_version': 'v4.15',
+        'source_ocp_version': 'v4.14',
+        'distribution_scope': 'prod',
+    }
+    mock_prfb.return_value = prebuild_info
+    mock_opm.opm_version = 'v1.28.0'
+
+    index_git_repo = 'https://gitlab.com/repo'
+    local_git_repo_path = os.path.join(temp_dir, 'git_repo')
+    localized_git_catalog_path = os.path.join(local_git_repo_path, 'catalogs')
+    mock_pgrfb.return_value = (index_git_repo, local_git_repo_path, localized_git_catalog_path)
+
+    source_index_db_path = os.path.join(temp_dir, 'source_index.db')
+    mock_favida.return_value = source_index_db_path
+
+    source_bundles = [
+        {'bundlePath': 'bundle1@sha256:111', 'csvName': 'bundle1-1.0', 'packageName': 'bundle1'},
+    ]
+    mock_gpb.return_value = (source_bundles, ['bundle1@sha256:111'])
+    mock_gmbfts.return_value = ([], [])
+    mock_gbfdl.return_value = []
+
+    bundles_in_db = [{'bundlePath': 'bundle1@sha256:111', 'packageName': 'bundle1'}]
+    mock_glb.return_value = bundles_in_db
+
+    fbc_dir = os.path.join(temp_dir, 'fbc_catalog')
+    mock_om.return_value = (fbc_dir, None)
+    mock_exists.return_value = True
+
+    mock_gccmop.return_value = (None, 'commit_sha')
+
+    # Pipeline fails
+    mock_mpaei.side_effect = IIBError('Pipeline failed')
+
+    with pytest.raises(IIBError, match='Failed to merge operators'):
+        build_containerized_merge.handle_containerized_merge_request(
+            source_from_index=source_from_index,
+            deprecation_list=[],
+            request_id=request_id,
+            target_index=None,
+        )
+
+    # Verify cleanup_on_failure was called with source_from_index
+    mock_cof.assert_called_once()
+    cof_kwargs = mock_cof.call_args[1]
+    assert cof_kwargs['from_index'] == source_from_index
+    assert 'Pipeline failed' in cof_kwargs['reason']
