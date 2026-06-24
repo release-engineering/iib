@@ -1964,6 +1964,7 @@ def test_handle_containerized_merge_request_without_target_index(
         'target_index_resolved': None,  # Should be None when target_index is None
         'ocp_version': 'v4.14',
         'target_ocp_version': 'v4.14',  # Should default to source version
+        'source_ocp_version': 'v4.14',
         'distribution_scope': 'prod',
     }
     mock_prfb.return_value = prebuild_info
