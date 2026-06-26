@@ -242,33 +242,35 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
     """
     conf = get_worker_config()
     if conf.get('iib_use_imagestream_cache', False):
-        # Verify index.db cache is synced. Refresh if not.
         log.info('ImageStream cache is enabled. Checking cache sync status.')
-        if verify_indexdb_cache_for_image(from_index):
-            log.info('Index.db cache is synced. Pulling from ImageStream.')
-            # Pull from ImageStream when digests match
-            imagestream_ref = get_imagestream_artifact_pullspec(from_index)
-            artifact_dir = get_oras_artifact(
-                imagestream_ref,
-                temp_dir,
-            )
-        else:
-            log.info('Index.db cache is not synced. Refreshing and pulling from Quay.')
-            refresh_indexdb_cache_for_image(from_index)
-            # Pull directly from Quay after triggering refresh
-            artifact_ref = get_indexdb_artifact_pullspec(from_index)
-            artifact_dir = get_oras_artifact(
-                artifact_ref,
-                temp_dir,
-            )
+        # Only ImageStream-specific operations are inside the try/except.
+        # If the ImageStream pull succeeds, return early. Otherwise fall
+        # through to the Quay pull below so that Quay failures are never
+        # masked as ImageStream cache errors.
+        try:
+            if verify_indexdb_cache_for_image(from_index):
+                log.info('Index.db cache is synced. Pulling from ImageStream.')
+                imagestream_ref = get_imagestream_artifact_pullspec(from_index)
+                artifact_dir = get_oras_artifact(
+                    imagestream_ref,
+                    temp_dir,
+                )
+                return artifact_dir
+            else:
+                # Cache is stale — refresh it for future requests
+                log.info('Index.db cache is not synced. Refreshing cache.')
+                refresh_indexdb_cache_for_image(from_index)
+        except IIBError as e:
+            log.warning('ImageStream cache access failed, falling back to Quay: %s', e)
     else:
-        # Pull directly from Quay without ImageStream cache
         log.info('ImageStream cache is disabled. Pulling index.db artifact directly from registry.')
-        artifact_ref = get_indexdb_artifact_pullspec(from_index)
-        artifact_dir = get_oras_artifact(
-            artifact_ref,
-            temp_dir,
-        )
+
+    # Pull directly from Quay — either cache is disabled, stale, or unavailable
+    artifact_ref = get_indexdb_artifact_pullspec(from_index)
+    artifact_dir = get_oras_artifact(
+        artifact_ref,
+        temp_dir,
+    )
 
     return artifact_dir
 
