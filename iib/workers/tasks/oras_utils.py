@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """This file contains functions for ORAS (OCI Registry As Storage) operations."""
+import json
 import logging
 import os
 import re
@@ -10,7 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest
+from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -265,7 +266,16 @@ def verify_indexdb_cache_sync(tag: str) -> bool:
         registry=conf['iib_index_db_artifact_registry'], tag=tag
     )
 
-    quay_digest = get_image_digest(artifact_pullspec)
+    oras_exclusive_auth_path = conf['iib_index_db_oras_auth_path']
+    cmd_args = []
+    if oras_exclusive_auth_path and os.path.exists(oras_exclusive_auth_path):
+        cmd_args = ['--registry-config', oras_exclusive_auth_path]
+
+    descriptor = run_cmd(
+        ['oras', 'manifest', 'fetch', '--descriptor', *cmd_args, artifact_pullspec],
+        exc_msg=f'Failed to fetch manifest descriptor for {artifact_pullspec}',
+    )
+    quay_digest = json.loads(descriptor)['digest']
     is_digest = get_image_stream_digest(tag)
 
     return quay_digest == is_digest
