@@ -94,7 +94,7 @@ def test_pull_index_db_artifact_imagestream_enabled_cache_not_synced(
     mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
     mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
     mock_log.info.assert_any_call('ImageStream cache is enabled. Checking cache sync status.')
-    mock_log.info.assert_any_call('Index.db cache is not synced. Refreshing and pulling from Quay.')
+    mock_log.info.assert_any_call('Index.db cache is not synced. Refreshing cache.')
 
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -160,6 +160,126 @@ def test_pull_index_db_artifact_default_config_behaves_as_disabled(
     assert result == artifact_dir
     mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
     mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
+
+
+@patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+def test_pull_index_db_artifact_verify_cache_fails_falls_back_to_quay(
+    mock_get_oras_artifact,
+    mock_get_imagestream_artifact_pullspec,
+    mock_get_indexdb_artifact_pullspec,
+    mock_verify_cache,
+    mock_refresh_cache,
+    mock_log,
+    mock_get_worker_config,
+):
+    """When ImageStream verify raises IIBError, fall back to Quay."""
+    mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
+    error = IIBError('imagestreams.image.openshift.io not found')
+    mock_verify_cache.side_effect = error
+
+    from_index = 'quay.io/ns/index-image@sha256:abc'
+    temp_dir = '/tmp/some-dir'
+    artifact_ref = 'quay.io/ns/index-image-indexdb:v4.19'
+    artifact_dir = '/tmp/artifact-dir'
+
+    mock_get_indexdb_artifact_pullspec.return_value = artifact_ref
+    mock_get_oras_artifact.return_value = artifact_dir
+
+    result = pull_index_db_artifact(from_index, temp_dir)
+
+    assert result == artifact_dir
+    mock_verify_cache.assert_called_once_with(from_index)
+    mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
+    mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
+    mock_log.warning.assert_called_once_with(
+        'ImageStream cache access failed, falling back to Quay: %s', error
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+def test_pull_index_db_artifact_imagestream_pull_fails_falls_back_to_quay(
+    mock_get_oras_artifact,
+    mock_get_imagestream_artifact_pullspec,
+    mock_get_indexdb_artifact_pullspec,
+    mock_verify_cache,
+    mock_refresh_cache,
+    mock_log,
+    mock_get_worker_config,
+):
+    """When ImageStream pull raises IIBError, fall back to Quay."""
+    mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
+    mock_verify_cache.return_value = True
+    mock_get_imagestream_artifact_pullspec.return_value = 'imagestream-ref'
+    error = IIBError('Failed to pull from ImageStream registry')
+    artifact_ref = 'quay.io/ns/index-image-indexdb:v4.19'
+    artifact_dir = '/tmp/artifact-dir'
+    mock_get_oras_artifact.side_effect = [error, artifact_dir]
+    mock_get_indexdb_artifact_pullspec.return_value = artifact_ref
+
+    from_index = 'quay.io/ns/index-image@sha256:abc'
+    temp_dir = '/tmp/some-dir'
+
+    result = pull_index_db_artifact(from_index, temp_dir)
+
+    assert result == artifact_dir
+    mock_get_oras_artifact.assert_any_call('imagestream-ref', temp_dir)
+    mock_get_oras_artifact.assert_any_call(artifact_ref, temp_dir)
+    mock_log.warning.assert_called_once_with(
+        'ImageStream cache access failed, falling back to Quay: %s', error
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@patch('iib.workers.tasks.containerized_utils.log')
+@patch('iib.workers.tasks.containerized_utils.refresh_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.verify_indexdb_cache_for_image')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
+    mock_get_oras_artifact,
+    mock_get_imagestream_artifact_pullspec,
+    mock_get_indexdb_artifact_pullspec,
+    mock_verify_cache,
+    mock_refresh_cache,
+    mock_log,
+    mock_get_worker_config,
+):
+    """When cache refresh raises IIBError, fall back to Quay."""
+    mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
+    mock_verify_cache.return_value = False
+    error = IIBError('oc import-image failed')
+    mock_refresh_cache.side_effect = error
+
+    from_index = 'quay.io/ns/index-image@sha256:abc'
+    temp_dir = '/tmp/some-dir'
+    artifact_ref = 'quay.io/ns/index-image-indexdb:v4.19'
+    artifact_dir = '/tmp/artifact-dir'
+
+    mock_get_indexdb_artifact_pullspec.return_value = artifact_ref
+    mock_get_oras_artifact.return_value = artifact_dir
+
+    result = pull_index_db_artifact(from_index, temp_dir)
+
+    assert result == artifact_dir
+    mock_refresh_cache.assert_called_once_with(from_index)
+    mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
+    mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
+    mock_log.warning.assert_called_once_with(
+        'ImageStream cache access failed, falling back to Quay: %s', error
+    )
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
