@@ -432,42 +432,85 @@ def test_get_image_stream_digest_failure(mock_run_cmd):
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.oras_utils.get_image_stream_digest')
-@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
-def test_verify_indexdb_cache_sync_match(mock_get_image_digest, mock_get_is_digest, mock_gwc):
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_verify_indexdb_cache_sync_match(mock_run_cmd, mock_get_is_digest, mock_gwc):
     """Test successful verification when digests match."""
     mock_gwc.return_value = {
         'iib_index_db_artifact_registry': 'test-artifact-registry',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_oras_auth_path': '',
     }
-    mock_get_image_digest.return_value = 'sha256:abc'
+    mock_run_cmd.return_value = '{"digest": "sha256:abc"}'
     mock_get_is_digest.return_value = 'sha256:abc'
     tag = 'test-tag'
 
     result = verify_indexdb_cache_sync(tag)
 
     assert result is True
-    mock_get_image_digest.assert_called_once_with('test-artifact-registry/index-db:test-tag')
+    mock_run_cmd.assert_called_once_with(
+        ['oras', 'manifest', 'fetch', '--descriptor', 'test-artifact-registry/index-db:test-tag'],
+        exc_msg='Failed to fetch manifest descriptor for test-artifact-registry/index-db:test-tag',
+    )
     mock_get_is_digest.assert_called_once_with(tag)
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.oras_utils.get_image_stream_digest')
-@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
-def test_verify_indexdb_cache_sync_no_match(mock_get_image_digest, mock_get_is_digest, mock_gwc):
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_verify_indexdb_cache_sync_no_match(mock_run_cmd, mock_get_is_digest, mock_gwc):
     """Test successful verification when digests don't match."""
     mock_gwc.return_value = {
         'iib_index_db_artifact_registry': 'test-artifact-registry',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_oras_auth_path': '',
     }
-    mock_get_image_digest.return_value = 'sha256:abc'
+    mock_run_cmd.return_value = '{"digest": "sha256:abc"}'
     mock_get_is_digest.return_value = 'sha256:xyz'
     tag = 'test-tag'
 
     result = verify_indexdb_cache_sync(tag)
 
     assert result is False
-    mock_get_image_digest.assert_called_once_with('test-artifact-registry/index-db:test-tag')
+    mock_run_cmd.assert_called_once_with(
+        ['oras', 'manifest', 'fetch', '--descriptor', 'test-artifact-registry/index-db:test-tag'],
+        exc_msg='Failed to fetch manifest descriptor for test-artifact-registry/index-db:test-tag',
+    )
     mock_get_is_digest.assert_called_once_with(tag)
+
+
+@mock.patch('os.path.exists')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.oras_utils.get_image_stream_digest')
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+def test_verify_indexdb_cache_sync_with_oras_auth(
+    mock_run_cmd, mock_get_is_digest, mock_gwc, mock_exists
+):
+    """Test that --registry-config is passed when oras auth path exists."""
+    mock_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'test-artifact-registry',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_oras_auth_path': '/path/to/oras/config.json',
+    }
+    mock_exists.return_value = True
+    mock_run_cmd.return_value = '{"digest": "sha256:abc"}'
+    mock_get_is_digest.return_value = 'sha256:abc'
+    tag = 'test-tag'
+
+    result = verify_indexdb_cache_sync(tag)
+
+    assert result is True
+    mock_run_cmd.assert_called_once_with(
+        [
+            'oras',
+            'manifest',
+            'fetch',
+            '--descriptor',
+            '--registry-config',
+            '/path/to/oras/config.json',
+            'test-artifact-registry/index-db:test-tag',
+        ],
+        exc_msg='Failed to fetch manifest descriptor for test-artifact-registry/index-db:test-tag',
+    )
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
