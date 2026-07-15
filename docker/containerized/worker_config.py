@@ -26,6 +26,7 @@ class ContainerizedConfig(DevelopmentConfig):
     )
     iib_konflux_namespace: Optional[str] = os.getenv('IIB_KONFLUX_NAMESPACE')
     iib_konflux_pipeline_timeout: int = int(os.getenv('IIB_KONFLUX_PIPELINE_TIMEOUT', '1800'))
+    iib_environment_name: Optional[str] = os.getenv('IIB_ENVIRONMENT_NAME')
 
     # ===================================================================
     # GitLab Configuration
@@ -100,6 +101,7 @@ class ContainerizedConfig(DevelopmentConfig):
             'iib_konflux_cluster_token': cls.iib_konflux_cluster_token,
             'iib_konflux_cluster_ca_cert': cls.iib_konflux_cluster_ca_cert,
             'iib_konflux_namespace': cls.iib_konflux_namespace,
+            'iib_environment_name': cls.iib_environment_name,
         }
 
         missing = [name for name, value in required_configs.items() if not value]
