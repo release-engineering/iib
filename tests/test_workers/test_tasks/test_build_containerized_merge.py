@@ -49,6 +49,7 @@ def _mock_set_for_bundles(iterable=None):
     return _original_set(iterable)
 
 
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -122,6 +123,7 @@ def test_handle_containerized_merge_request_success(
     mock_cmrif,
     mock_cof,
     mock_rdc,
+    mock_merge_mr,
 ):
     """Test successful merge request with all operations."""
     # Setup
@@ -207,7 +209,7 @@ def test_handle_containerized_merge_request_success(
     mock_exists.return_value = True
 
     # Mock git commit
-    mr_details = None
+    mr_details = {'mr_id': '1', 'mr_url': 'https://gitlab.com/repo/-/merge_requests/1', 'source_branch': 'iib-request-1-v4.15'}
     last_commit_sha = 'abc123commit'
     mock_gccmop.return_value = (mr_details, last_commit_sha)
 
@@ -306,6 +308,9 @@ def test_handle_containerized_merge_request_success(
     # Verify git commit/push
     mock_gccmop.assert_called_once()
 
+    # Verify MR merge for overwrite flow
+    mock_merge_mr.assert_called_once_with(mr_details, index_git_repo)
+
     # Verify pipeline monitoring
     mock_mpaei.assert_called_once()
 
@@ -333,6 +338,7 @@ def test_handle_containerized_merge_request_success(
     assert mock_rdc.call_count >= 1
 
 
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
@@ -406,6 +412,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_cmrif,
     mock_cof,
     mock_rdc,
+    mock_merge_mr,
 ):
     """Test successful merge request with deprecations executed correctly."""
     # Setup
@@ -495,7 +502,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_exists.return_value = True
 
     # Mock git commit
-    mr_details = None
+    mr_details = {'mr_id': '9', 'mr_url': 'https://gitlab.com/repo/-/merge_requests/9', 'source_branch': 'iib-request-9-v4.15'}
     last_commit_sha = 'abc123commit'
     mock_gccmop.return_value = (mr_details, last_commit_sha)
 
@@ -610,6 +617,9 @@ def test_handle_containerized_merge_request_success_with_deprecations(
 
     # Verify git commit/push
     mock_gccmop.assert_called_once()
+
+    # Verify MR merge for overwrite flow
+    mock_merge_mr.assert_called_once_with(mr_details, index_git_repo)
 
     # Verify pipeline monitoring
     mock_mpaei.assert_called_once()

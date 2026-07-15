@@ -27,6 +27,7 @@ from iib.workers.tasks.containerized_utils import (
     git_commit_and_create_mr_or_push,
     monitor_pipeline_and_extract_image,
     replicate_image_to_tagged_destinations,
+    merge_mr_after_build,
 )
 from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
 from iib.workers.tasks.build_merge_index_image import get_bundles_latest_version
@@ -324,6 +325,10 @@ def handle_containerized_merge_request(
                 last_commit_sha=last_commit_sha,
             )
 
+            # Merge MR if this is an overwrite request (source of truth update)
+            if overwrite_target_index:
+                merge_mr_after_build(mr_details, index_git_repo)
+
             # Copy built index to all output pull specs
             output_pull_specs = replicate_image_to_tagged_destinations(
                 request_id=request_id,
@@ -370,8 +375,9 @@ def handle_containerized_merge_request(
                 request_type='merge',
             )
 
-            # Close MR if it was opened
-            cleanup_merge_request_if_exists(mr_details, index_git_repo)
+            # Close MR for throw-away requests (overwrite MRs were already merged)
+            if not overwrite_target_index:
+                cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
             # Update request with final output
             set_request_state(

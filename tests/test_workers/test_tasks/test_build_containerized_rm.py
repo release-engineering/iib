@@ -23,7 +23,7 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -44,7 +44,9 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 def test_handle_containerized_rm_request_success_with_overwrite(
+    mock_merge_mr,
     mock_makedirs,
     mock_path_exists,
     mock_os_exists,
@@ -65,7 +67,7 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -124,7 +126,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
-    # Mock git commit
+    # Mock MR creation and git commit
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-1-v4.14'}
     mock_glcs.return_value = 'abc123commit'
 
     # Mock Konflux pipeline
@@ -184,15 +187,18 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_mcd.assert_called_once()
     mock_ov.assert_called_once()
 
-    # Verify commit was pushed (not MR since overwrite_from_index_token is provided)
-    mock_cap.assert_called_once()
-    commit_msg = mock_cap.call_args[1]['commit_message']
+    # Verify MR was created
+    mock_cmr.assert_called_once()
+    commit_msg = mock_cmr.call_args[1]['commit_message']
     assert f'IIB: Remove operators for request {request_id}' in commit_msg
     assert 'Operators: operator1, operator2' in commit_msg
 
     # Verify Konflux pipeline was triggered and waited on
     mock_fpr.assert_called_once_with('abc123commit')
     mock_wfpc.assert_called_once_with('pipelinerun-123')
+
+    # Verify MR was merged after build (overwrite flow)
+    mock_merge_mr.assert_called_once()
 
     # Verify image was copied
     assert mock_sc.call_count >= 1
@@ -388,7 +394,7 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -408,7 +414,9 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 def test_handle_containerized_rm_conditional_opm_rm(
+    mock_merge_mr,
     mock_makedirs,
     mock_exists,
     mock_copytree,
@@ -428,7 +436,7 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -480,7 +488,8 @@ def test_handle_containerized_rm_conditional_opm_rm(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
-    # Mock pipeline
+    # Mock MR creation and pipeline
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-3-v4.14'}
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -706,7 +715,7 @@ def test_handle_containerized_rm_missing_index_db(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -748,7 +757,7 @@ def test_handle_containerized_rm_pipeline_failure(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -783,6 +792,7 @@ def test_handle_containerized_rm_pipeline_failure(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-7-v4.14'}
     mock_glcs.return_value = 'commit_sha'
 
     # Mock pipeline to raise error
@@ -821,7 +831,7 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -841,7 +851,9 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
+@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 def test_handle_containerized_rm_with_index_db_push(
+    mock_merge_mr,
     mock_makedirs,
     mock_exists,
     mock_copytree,
@@ -861,7 +873,7 @@ def test_handle_containerized_rm_with_index_db_push(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -909,6 +921,7 @@ def test_handle_containerized_rm_with_index_db_push(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-8-v4.14'}
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -936,6 +949,9 @@ def test_handle_containerized_rm_with_index_db_push(
         overwrite_from_index_token=overwrite_token,
         index_to_gitlab_push_map={'quay.io/namespace/index-image': 'https://gitlab.com/repo'},
     )
+
+    # Verify MR was merged after build (overwrite flow)
+    mock_merge_mr.assert_called_once()
 
     # Verify index.db was pushed (2 times: request_id tag + v4.x tag)
     assert mock_poa.call_count == 2
@@ -972,7 +988,7 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -992,7 +1008,9 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 def test_handle_containerized_rm_with_build_tags(
+    mock_merge_mr,
     mock_srs_utils,
     mock_makedirs,
     mock_exists,
@@ -1012,7 +1030,7 @@ def test_handle_containerized_rm_with_build_tags(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -1054,6 +1072,7 @@ def test_handle_containerized_rm_with_build_tags(
     mock_pida.return_value = artifact_dir
     mock_voe.return_value = (set(), os.path.join(artifact_dir, 'index.db'))
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-9-v4.14'}
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -1233,7 +1252,7 @@ def test_handle_containerized_rm_close_mr_failure_logged(
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -1275,7 +1294,7 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_cof,
@@ -1308,6 +1327,7 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-11-v4.14'}
     mock_glcs.return_value = 'commit'
 
     # Mock pipelinerun without 'name' in metadata
@@ -1337,7 +1357,7 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_rm.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_rm.opm_validate')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_catalogs_dirs')
@@ -1357,7 +1377,9 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 def test_handle_containerized_rm_missing_output_pull_spec(
+    mock_merge_mr,
     mock_srs_utils,
     mock_makedirs,
     mock_exists,
@@ -1377,7 +1399,7 @@ def test_handle_containerized_rm_missing_output_pull_spec(
     mock_mcd,
     mock_ov,
     mock_wbm,
-    mock_cap,
+    mock_cmr,
     mock_glcs,
     mock_fpr,
     mock_wfpc,
@@ -1412,6 +1434,7 @@ def test_handle_containerized_rm_missing_output_pull_spec(
     mock_pida.return_value = artifact_dir
     mock_voe.return_value = (set(), os.path.join(artifact_dir, 'index.db'))
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-12-v4.14'}
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}

@@ -16,7 +16,6 @@ from iib.workers.tasks.utils import RequestConfigFBCOperation
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
@@ -52,7 +51,6 @@ def test_handle_containerized_fbc_operation_request(
     mock_oraff,
     mock_wbm,
     mock_cmr,
-    mock_cap,
     mock_glcs,
     mock_fp,
     mock_wfpc,
@@ -147,7 +145,6 @@ def test_handle_containerized_fbc_operation_request(
 
     # Verify MR creation (since no overwrite token)
     mock_cmr.assert_called_once()
-    mock_cap.assert_not_called()
 
     # Verify Pipeline wait
     mock_fp.assert_called_once_with('sha123')
@@ -188,7 +185,6 @@ def test_handle_containerized_fbc_operation_request(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
@@ -224,7 +220,6 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_oraff,
     mock_wbm,
     mock_cmr,
-    mock_cap,
     mock_glcs,
     mock_fp,
     mock_wfpc,
@@ -305,7 +300,6 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
 @mock.patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
-@mock.patch('iib.workers.tasks.containerized_utils.commit_and_push')
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
@@ -324,7 +318,9 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.utils.reset_docker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
 def test_handle_containerized_fbc_operation_request_with_overwrite(
+    mock_merge_mr,
     mock_srs_utils,
     mock_makedirs,
     mock_rdc,
@@ -341,7 +337,6 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_oraff,
     mock_wbm,
     mock_cmr,
-    mock_cap,
     mock_glcs,
     mock_fp,
     mock_wfpc,
@@ -370,6 +365,8 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_rgu.return_value = 'http://git'
     mock_ggt.return_value = ('t', 'v')
 
+    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-10-v4.6'}
+
     mock_docker_config = json.dumps({'auths': {}})
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         with mock.patch('builtins.open', mock.mock_open(read_data=mock_docker_config)) as mock_file:
@@ -388,9 +385,9 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
                 overwrite_from_index_token=overwrite_token,
             )
 
-    # Verify commit_and_push used instead of create_mr
-    mock_cap.assert_called_once()
-    mock_cmr.assert_not_called()
+    # Verify MR creation and merge for overwrite flow
+    mock_cmr.assert_called_once()
+    mock_merge_mr.assert_called_once()
 
     # Verify DB artifacts pushed
     mock_pida_push.assert_called_once_with(
