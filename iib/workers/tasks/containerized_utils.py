@@ -22,6 +22,7 @@ from iib.workers.tasks.git_utils import (
     create_mr,
     get_git_token,
     get_last_commit_sha,
+    merge_mr,
     resolve_git_url,
     revert_last_commit,
 )
@@ -454,7 +455,10 @@ def cleanup_on_failure(
         except Exception as close_error:
             log.warning("Failed to close merge request: %s", close_error)
     elif overwrite_from_index and last_commit_sha:
-        # If we pushed directly, revert the commit
+        log.warning(
+            "Unexpected: overwrite_from_index cleanup without mr_details. "
+            "This code path should not be reached with the unified MR flow."
+        )
         log.error("Reverting commit due to %s", reason)
         try:
             revert_last_commit(
@@ -574,49 +578,39 @@ def git_commit_and_create_mr_or_push(
     branch: str,
     commit_message: str,
     overwrite_from_index: bool = False,
-) -> Tuple[Optional[Dict[str, str]], str]:
+) -> Tuple[Dict[str, str], str]:
     """
-    Commit changes and trigger Konflux pipeline by creating MR or pushing directly.
+    Commit changes and trigger Konflux pipeline by creating an MR.
 
-    If overwrite_from_index is False, creates a merge request (for throw-away
-    requests). Otherwise, pushes directly to the branch. Returns the merge request details
-    and last commit SHA.
+    All requests (both overwrite and throw-away) go through the MR path.
+    The environment name from worker config is used to prefix the source branch,
+    enabling PaC CEL expression routing to the correct Konflux tenant.
 
     :param int request_id: The IIB request ID
     :param str local_git_repo_path: Path to local Git repository
     :param str index_git_repo: URL of the Git repository
     :param str branch: Git branch name
     :param str commit_message: Commit message to use
-    :param bool overwrite_from_index: Whether to overwrite from_index (push directly vs MR)
+    :param bool overwrite_from_index: Whether to overwrite from_index (kept for API compat)
     :return: Tuple of (mr_details, last_commit_sha)
-    :rtype: Tuple[Optional[Dict[str, str]], str]
+    :rtype: Tuple[Dict[str, str], str]
     """
     set_request_state(request_id, 'in_progress', 'Committing changes to Git repository')
     log.info("Committing changes to Git repository. Triggering KONFLUX pipeline.")
 
-    mr_details = None
-    # Determine if this is a throw-away request (no overwrite_from_index)
-    if not overwrite_from_index:
-        # Create MR for throw-away requests
-        mr_details = create_mr(
-            request_id=request_id,
-            local_repo_path=local_git_repo_path,
-            repo_url=index_git_repo,
-            branch=branch,
-            commit_message=commit_message,
-        )
-        log.info("Created merge request: %s", mr_details.get('mr_url'))
-    else:
-        # Push directly to the branch
-        commit_and_push(
-            request_id=request_id,
-            local_repo_path=local_git_repo_path,
-            repo_url=index_git_repo,
-            branch=branch,
-            commit_message=commit_message,
-        )
+    conf = get_worker_config()
+    environment_name = conf.get('iib_environment_name')
 
-    # Get commit SHA before waiting for the pipeline (while the temp directory still exists)
+    mr_details = create_mr(
+        request_id=request_id,
+        local_repo_path=local_git_repo_path,
+        repo_url=index_git_repo,
+        branch=branch,
+        commit_message=commit_message,
+        environment_name=environment_name,
+    )
+    log.info("Created merge request: %s", mr_details.get('mr_url'))
+
     last_commit_sha = get_last_commit_sha(local_repo_path=local_git_repo_path)
 
     return mr_details, last_commit_sha
@@ -705,3 +699,33 @@ def cleanup_merge_request_if_exists(
             log.info("Closed merge request: %s", mr_details.get('mr_url'))
         except IIBError as e:
             log.warning("Failed to close merge request: %s", e)
+
+
+def merge_mr_after_build(
+    mr_details: Dict[str, str],
+    index_git_repo: str,
+) -> str:
+    """
+    Merge the MR after a successful Konflux build (overwrite flow).
+
+    On merge failure, closes the MR and raises IIBError so the request
+    is marked as failed.
+
+    :param Dict[str, str] mr_details: Details of the merge request
+    :param str index_git_repo: URL of the Git repository
+    :return: The merge commit SHA
+    :rtype: str
+    :raises IIBError: If the merge fails
+    """
+    try:
+        merge_commit_sha = merge_mr(mr_details, index_git_repo)
+        log.info("Successfully merged MR %s, commit: %s", mr_details.get('mr_id'), merge_commit_sha)
+        return merge_commit_sha
+    except IIBError as e:
+        log.error("Failed to merge MR %s after build: %s", mr_details.get('mr_id'), e)
+        try:
+            close_mr(mr_details, index_git_repo)
+            log.info("Closed MR %s after merge failure", mr_details.get('mr_id'))
+        except Exception as close_error:
+            log.warning("Failed to close MR after merge failure: %s", close_error)
+        raise IIBError(f"Failed to merge MR after successful build: {e}")
