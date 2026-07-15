@@ -529,7 +529,77 @@ def test_validate_konflux_config_valid_config():
         'iib_konflux_cluster_token': 'test-token',
         'iib_konflux_cluster_ca_cert': '/path/to/ca.crt',
         'iib_konflux_namespace': 'iib-tenant',
+        'iib_environment_name': 'qe',
     }.get(key)
 
     # Should not raise any error with valid config
+    _validate_konflux_config(conf)
+
+
+@pytest.mark.parametrize(
+    'env_name,expected_error',
+    [
+        (
+            None,
+            'iib_environment_name must be set when using Konflux configuration',
+        ),
+        (
+            '',
+            'iib_environment_name must be set when using Konflux configuration',
+        ),
+        (
+            123,
+            'iib_environment_name must be a non-empty string containing only',
+        ),
+        (
+            'invalid name!',
+            'iib_environment_name must be a non-empty string containing only',
+        ),
+        (
+            'has spaces',
+            'iib_environment_name must be a non-empty string containing only',
+        ),
+    ],
+)
+def test_validate_konflux_config_invalid_environment_name(env_name, expected_error):
+    """Test Konflux config validation rejects invalid environment names."""
+    conf = mock.Mock()
+    conf.get.side_effect = lambda key: {
+        'iib_konflux_cluster_url': 'https://api.example.com:6443',
+        'iib_konflux_cluster_token': 'test-token',
+        'iib_konflux_cluster_ca_cert': '/path/to/ca.crt',
+        'iib_konflux_namespace': 'iib-tenant',
+        'iib_environment_name': env_name,
+    }.get(key)
+
+    with pytest.raises(ConfigError, match=expected_error):
+        _validate_konflux_config(conf)
+
+
+def test_validate_konflux_config_valid_environment_name():
+    """Test Konflux config validation accepts valid environment names."""
+    conf = mock.Mock()
+    conf.get.side_effect = lambda key: {
+        'iib_konflux_cluster_url': 'https://api.example.com:6443',
+        'iib_konflux_cluster_token': 'test-token',
+        'iib_konflux_cluster_ca_cert': '/path/to/ca.crt',
+        'iib_konflux_namespace': 'iib-tenant',
+        'iib_environment_name': 'qe',
+    }.get(key)
+
+    _validate_konflux_config(conf)
+
+
+@pytest.mark.parametrize('env_name', ['qe', 'stage', 'prod', 'my-env-1'])
+def test_validate_konflux_config_valid_environment_name_variants(env_name):
+    """Test that alphanumeric and hyphenated environment names are accepted."""
+    conf = mock.Mock()
+    conf.get.side_effect = lambda key: {
+        'iib_konflux_cluster_url': 'https://api.example.com:6443',
+        'iib_konflux_cluster_token': 'test-token',
+        'iib_konflux_cluster_ca_cert': '/path/to/ca.crt',
+        'iib_konflux_namespace': 'iib-tenant',
+        'iib_environment_name': env_name,
+    }.get(key)
+
     _validate_konflux_config(conf)
