@@ -209,7 +209,11 @@ def test_handle_containerized_merge_request_success(
     mock_exists.return_value = True
 
     # Mock git commit
-    mr_details = {'mr_id': '1', 'mr_url': 'https://gitlab.com/repo/-/merge_requests/1', 'source_branch': 'iib-request-1-v4.15'}
+    mr_details = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/repo/-/merge_requests/1',
+        'source_branch': 'iib-request-1-v4.15',
+    }
     last_commit_sha = 'abc123commit'
     mock_gccmop.return_value = (mr_details, last_commit_sha)
 
@@ -502,7 +506,11 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_exists.return_value = True
 
     # Mock git commit
-    mr_details = {'mr_id': '9', 'mr_url': 'https://gitlab.com/repo/-/merge_requests/9', 'source_branch': 'iib-request-9-v4.15'}
+    mr_details = {
+        'mr_id': '9',
+        'mr_url': 'https://gitlab.com/repo/-/merge_requests/9',
+        'source_branch': 'iib-request-9-v4.15',
+    }
     last_commit_sha = 'abc123commit'
     mock_gccmop.return_value = (mr_details, last_commit_sha)
 

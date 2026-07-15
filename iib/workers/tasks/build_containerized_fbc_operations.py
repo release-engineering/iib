@@ -189,7 +189,6 @@ def handle_containerized_fbc_operation_request(
                     f"IIB: Add data from FBC fragments for request {request_id}\n\n"
                     f"FBC fragments: {', '.join(fbc_fragments)}"
                 ),
-                overwrite_from_index=overwrite_from_index,
             )
 
             # Wait for Konflux pipeline and extract built image URL

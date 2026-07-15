@@ -215,7 +215,6 @@ def handle_containerized_regenerate_bundle_request(
                         f"Organization: {organization}\n"
                         f"Package: {package_name}"
                     ),
-                    overwrite_from_index=False,  # Always use MR for bundle regeneration
                 )
 
                 # Wait for Konflux pipeline and extract built image URL

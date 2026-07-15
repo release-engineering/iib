@@ -365,7 +365,11 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_rgu.return_value = 'http://git'
     mock_ggt.return_value = ('t', 'v')
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-10-v4.6'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-10-v4.6',
+    }
 
     mock_docker_config = json.dumps({'auths': {}})
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):

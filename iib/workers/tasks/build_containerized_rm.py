@@ -240,7 +240,6 @@ def handle_containerized_rm_request(
                     f"IIB: Remove operators for request {request_id}\n\n"
                     f"Operators: {operators_str}"
                 ),
-                overwrite_from_index=overwrite_from_index,
             )
 
             # Wait for Konflux pipeline and extract built image URL

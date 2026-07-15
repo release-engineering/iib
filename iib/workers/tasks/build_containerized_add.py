@@ -295,7 +295,6 @@ def handle_containerized_add_request(
                     f"IIB: Add bundles for request {request_id}\n\n"
                     f"Bundles: {', '.join(bundles)}"
                 ),
-                overwrite_from_index=overwrite_from_index,
             )
 
             # Wait for Konflux pipeline and extract built image URL

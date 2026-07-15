@@ -127,7 +127,11 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_orrf.return_value = (fbc_dir, None)
 
     # Mock MR creation and git commit
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-1-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-1-v4.14',
+    }
     mock_glcs.return_value = 'abc123commit'
 
     # Mock Konflux pipeline
@@ -489,7 +493,11 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_orrf.return_value = (fbc_dir, None)
 
     # Mock MR creation and pipeline
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-3-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-3-v4.14',
+    }
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -792,7 +800,11 @@ def test_handle_containerized_rm_pipeline_failure(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-7-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-7-v4.14',
+    }
     mock_glcs.return_value = 'commit_sha'
 
     # Mock pipeline to raise error
@@ -921,7 +933,11 @@ def test_handle_containerized_rm_with_index_db_push(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-8-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-8-v4.14',
+    }
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -1072,7 +1088,11 @@ def test_handle_containerized_rm_with_build_tags(
     mock_pida.return_value = artifact_dir
     mock_voe.return_value = (set(), os.path.join(artifact_dir, 'index.db'))
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-9-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-9-v4.14',
+    }
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
@@ -1327,7 +1347,11 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
     fbc_dir = os.path.join(temp_dir, 'fbc')
     mock_orrf.return_value = (fbc_dir, None)
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-11-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-11-v4.14',
+    }
     mock_glcs.return_value = 'commit'
 
     # Mock pipelinerun without 'name' in metadata
@@ -1434,7 +1458,11 @@ def test_handle_containerized_rm_missing_output_pull_spec(
     mock_pida.return_value = artifact_dir
     mock_voe.return_value = (set(), os.path.join(artifact_dir, 'index.db'))
 
-    mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-request-12-v4.14'}
+    mock_cmr.return_value = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-12-v4.14',
+    }
     mock_glcs.return_value = 'commit'
     mock_fpr.return_value = [{'metadata': {'name': 'pr'}}]
     mock_wfpc.return_value = {}
