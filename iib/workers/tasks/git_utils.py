@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import shutil
+import time
 from typing import Dict, Optional, Tuple, List
 
 from operator_manifest.operator import ImageName
@@ -351,6 +352,7 @@ def create_mr(
     repo_url: str,
     branch: str,
     commit_message: Optional[str] = None,
+    environment_name: Optional[str] = None,
 ) -> Dict[str, str]:
     """
     Create a merge request on GitLab repository.
@@ -360,6 +362,7 @@ def create_mr(
     :param str repo_url: Git repository URL.
     :param str branch: Branch name corresponding to OCP version, like "v4.19".
     :param str commit_message: Custom commit message. If None, a default message is used.
+    :param str environment_name: Environment name to prefix the branch (e.g., "qe", "stage").
     :return: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :rtype: Dict[str, str]
     :raises IIBError: If a Git operation or GitLab API call fails.
@@ -368,7 +371,10 @@ def create_mr(
     _, git_token = get_git_token(repo_url)
 
     # Create a feature branch for the MR
-    feature_branch = f"iib-request-{request_id}-{branch}"
+    if environment_name:
+        feature_branch = f"iib-{environment_name}-request-{request_id}-{branch}"
+    else:
+        feature_branch = f"iib-request-{request_id}-{branch}"
 
     # Create and switch to feature branch
     log.info("Creating feature branch %s", feature_branch)
@@ -541,3 +547,98 @@ def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
     except requests.RequestException as e:
         log.exception("Error closing merge request via GitLab API")
         raise IIBError(f'GitLab API request failed: {str(e)}')
+
+
+@instrument_tracing(span_name="workers.tasks.git_utils.merge_mr")
+def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
+    """
+    Merge a merge request on GitLab repository.
+
+    :param dict mr_details: Dictionary containing MR details (mr_id, mr_url, source_branch).
+    :param str repo_url: Git repository URL.
+    :return: The merge commit SHA.
+    :rtype: str
+    :raises IIBError: If GitLab API call fails.
+    """
+    mr_id = mr_details.get('mr_id')
+    if not mr_id:
+        raise IIBError("Missing mr_id in mr_details")
+
+    _, git_token = get_git_token(repo_url)
+
+    return _merge_gitlab_mr(repo_url, git_token, mr_id)
+
+
+def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int = 3) -> str:
+    """
+    Merge a merge request using GitLab API with retry for transient failures.
+
+    Retryable status codes: 409 (merge in progress), 500, 502, 503, 504.
+    Non-retryable: 401, 403, 405 (cannot be merged, e.g., conflict).
+
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str mr_id: Merge request ID.
+    :param int max_retries: Maximum number of retry attempts for transient failures.
+    :return: The merge commit SHA.
+    :rtype: str
+    :raises IIBError: If GitLab API call fails permanently.
+    """
+    api_url, project_path = _extract_gitlab_info(repo_url)
+
+    merge_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests/{mr_id}/merge"
+
+    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {git_token}'}
+
+    payload = {'squash': True}
+
+    retryable_codes = {409, 500, 502, 503, 504}
+
+    for attempt in range(max_retries + 1):
+        try:
+            log.info("Merging merge request %s via GitLab API (attempt %d)", mr_id, attempt + 1)
+            response = requests_session.put(merge_url, headers=headers, json=payload, timeout=30)
+
+            if response.ok:
+                mr_data = response.json()
+                merge_commit_sha = mr_data.get('merge_commit_sha', '')
+                log.info(
+                    "Successfully merged merge request %s, commit: %s", mr_id, merge_commit_sha
+                )
+                return merge_commit_sha
+
+            if response.status_code in retryable_codes and attempt < max_retries:
+                wait_time = 5 * (attempt + 1)
+                log.warning(
+                    'Transient error merging MR %s (HTTP %d). Retrying in %ds...',
+                    mr_id,
+                    response.status_code,
+                    wait_time,
+                )
+                time.sleep(wait_time)
+                continue
+
+            log.error(
+                'Failed to merge merge request. Status: %d, Response: %s',
+                response.status_code,
+                response.text,
+            )
+            raise IIBError(
+                f'Failed to merge merge request {mr_id}: HTTP {response.status_code}'
+            )
+
+        except requests.RequestException as e:
+            if attempt < max_retries:
+                wait_time = 5 * (attempt + 1)
+                log.warning(
+                    'Network error merging MR %s: %s. Retrying in %ds...',
+                    mr_id,
+                    e,
+                    wait_time,
+                )
+                time.sleep(wait_time)
+                continue
+            log.exception("Error merging merge request via GitLab API")
+            raise IIBError(f'GitLab API request failed: {str(e)}')
+
+    raise IIBError(f'Failed to merge merge request {mr_id} after {max_retries + 1} attempts')
