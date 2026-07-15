@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
 import logging
+import re
 import shutil
 import types
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
@@ -560,8 +561,6 @@ def _validate_konflux_config(conf: app.utils.Settings) -> None:
                 'iib_environment_name must be a non-empty string containing only '
                 'alphanumeric characters and hyphens when using Konflux configuration'
             )
-        import re
-
         if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$', env_name):
             raise ConfigError(
                 'iib_environment_name must be a non-empty string containing only '

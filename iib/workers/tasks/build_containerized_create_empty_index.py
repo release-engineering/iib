@@ -354,7 +354,8 @@ def handle_containerized_create_empty_index_request(
                 request_type='create_empty_index',
             )
 
-            # Close MR if it was opened
+            # Always close the MR — create_empty_index is always throw-away (no overwrite).
+            # If overwrite is ever added, this should use merge_mr_after_build instead.
             cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
             set_request_state(
