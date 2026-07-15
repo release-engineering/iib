@@ -573,7 +573,7 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
     """
     Merge a merge request using GitLab API with retry for transient failures.
 
-    Retryable status codes: 409 (merge in progress), 500, 502, 503, 504.
+    Retryable status codes: 406 (not yet ready), 409 (merge in progress), 500, 502, 503, 504.
     Non-retryable: 401, 403, 405 (cannot be merged, e.g., conflict).
 
     :param str repo_url: Git repository URL.
