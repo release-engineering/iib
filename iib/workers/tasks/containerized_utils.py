@@ -570,7 +570,7 @@ def fetch_and_verify_index_db_artifact(
     return str(artifact_index_db_file)
 
 
-def git_commit_and_create_mr_or_push(
+def git_commit_and_create_mr(
     request_id: int,
     local_git_repo_path: str,
     index_git_repo: str,

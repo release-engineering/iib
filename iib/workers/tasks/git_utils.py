@@ -592,7 +592,7 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
 
     payload = {'squash': True}
 
-    retryable_codes = {409, 500, 502, 503, 504}
+    retryable_codes = {406, 409, 500, 502, 503, 504}
 
     for attempt in range(max_retries + 1):
         try:

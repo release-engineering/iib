@@ -20,7 +20,7 @@ from iib.workers.tasks.containerized_utils import (
     cleanup_merge_request_if_exists,
     cleanup_on_failure,
     fetch_and_verify_index_db_artifact,
-    git_commit_and_create_mr_or_push,
+    git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
     prepare_git_repository_for_build,
     push_index_db_artifact,
@@ -294,7 +294,7 @@ def handle_containerized_create_empty_index_request(
         try:
             # Commit changes and create MR or push directly
             # For create_empty_index, overwrite_from_index is always False (throw-away request)
-            mr_details, last_commit_sha = git_commit_and_create_mr_or_push(
+            mr_details, last_commit_sha = git_commit_and_create_mr(
                 request_id=request_id,
                 local_git_repo_path=local_git_repo_path,
                 index_git_repo=index_git_repo,

@@ -24,7 +24,7 @@ from iib.workers.tasks.containerized_utils import (
     validate_bundles_in_parallel,
     fetch_and_verify_index_db_artifact,
     prepare_git_repository_for_build,
-    git_commit_and_create_mr_or_push,
+    git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
     replicate_image_to_tagged_destinations,
     merge_mr_after_build,
@@ -307,7 +307,7 @@ def handle_containerized_merge_request(
 
         try:
             # Commit changes and create PR or push directly
-            mr_details, last_commit_sha = git_commit_and_create_mr_or_push(
+            mr_details, last_commit_sha = git_commit_and_create_mr(
                 request_id=request_id,
                 local_git_repo_path=local_git_repo_path,
                 index_git_repo=index_git_repo,
@@ -327,6 +327,8 @@ def handle_containerized_merge_request(
             # Merge MR if this is an overwrite request (source of truth update)
             if overwrite_target_index:
                 merge_mr_after_build(mr_details, index_git_repo)
+                # Prevent cleanup_on_failure from trying to close an already-merged MR
+                mr_details = None
 
             # Copy built index to all output pull specs
             output_pull_specs = replicate_image_to_tagged_destinations(
