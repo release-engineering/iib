@@ -324,12 +324,6 @@ def handle_containerized_merge_request(
                 last_commit_sha=last_commit_sha,
             )
 
-            # Merge MR if this is an overwrite request (source of truth update)
-            if overwrite_target_index:
-                merge_mr_after_build(mr_details, index_git_repo)
-                # Prevent cleanup_on_failure from trying to close an already-merged MR
-                mr_details = None
-
             # Copy built index to all output pull specs
             output_pull_specs = replicate_image_to_tagged_destinations(
                 request_id=request_id,
@@ -363,10 +357,9 @@ def handle_containerized_merge_request(
                 index_repo_map={},
             )
 
-            # Push updated index.db if overwrite_target_index_token is provided
-            # We can push it directly from temp_dir since we're still inside the
-            # context manager. Do it as the last step to avoid rolling back the
-            # index.db file if the pipeline fails.
+            # Push updated index.db before merging the MR so that on failure both
+            # git and the index.db artifact remain consistent (MR stays open,
+            # cleanup_on_failure closes it and rolls back the artifact).
             original_index_db_digest = push_index_db_artifact(
                 request_id=request_id,
                 from_index=effective_index_image,
@@ -376,8 +369,14 @@ def handle_containerized_merge_request(
                 request_type='merge',
             )
 
-            # Close MR for throw-away requests (overwrite MRs were already merged)
-            if not overwrite_target_index:
+            # Merge or close the MR as the final step so that all side effects
+            # (replication, metadata, index.db push) have succeeded before git
+            # is advanced. This prevents git/index.db divergence on partial failure.
+            if overwrite_target_index:
+                merge_mr_after_build(mr_details, index_git_repo)
+                # Prevent cleanup_on_failure from trying to close an already-merged MR
+                mr_details = None
+            else:
                 cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
             # Update request with final output
