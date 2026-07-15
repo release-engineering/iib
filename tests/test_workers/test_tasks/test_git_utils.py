@@ -1127,3 +1127,149 @@ def test_get_last_commit_sha_git_error(mock_run_cmd, local_repo_path):
         ['git', '-C', local_repo_path, 'rev-parse', 'HEAD'],
         exc_msg=f'Error getting last commit for {local_repo_path}',
     )
+
+
+@mock.patch('iib.workers.tasks.git_utils._create_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+@mock.patch('iib.workers.tasks.git_utils.commit_and_push')
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_create_mr_with_environment_name(
+    mock_run_cmd, mock_commit_and_push, mock_get_git_token, mock_create_gitlab_mr
+):
+    """Test that create_mr uses environment-prefixed branch names."""
+    mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
+    mock_run_cmd.return_value = "Success"
+    mock_commit_and_push.return_value = None
+    mock_create_gitlab_mr.return_value = {
+        'mr_id': '123',
+        'mr_url': 'https://my-gitlab-instance.com/project/merge_requests/123',
+        'source_branch': 'iib-qe-request-456-v4.19',
+    }
+
+    with tempfile.TemporaryDirectory(prefix="test-git-repo") as test_repo:
+        run_cmd(f"git -C {test_repo} init".split(), strict=False)
+        run_cmd(f"git -C {test_repo} config user.name 'Test'".split(), strict=False)
+        run_cmd(f"git -C {test_repo} config user.email 'test@example.com'".split(), strict=False)
+
+        with open(f"{test_repo}/test.txt", "w") as f:
+            f.write("test content")
+
+        run_cmd(f"git -C {test_repo} add test.txt".split(), strict=False)
+
+        result = git_utils.create_mr(
+            request_id=456,
+            local_repo_path=test_repo,
+            repo_url=PUB_GIT_REPO,
+            branch="v4.19",
+            commit_message="Test commit",
+            environment_name="qe",
+        )
+
+        mock_run_cmd.assert_any_call(
+            ["git", "-C", test_repo, "checkout", "-b", "iib-qe-request-456-v4.19"],
+            exc_msg="Error creating feature branch",
+        )
+
+        mock_commit_and_push.assert_called_once_with(
+            request_id=456,
+            local_repo_path=test_repo,
+            repo_url=PUB_GIT_REPO,
+            branch="iib-qe-request-456-v4.19",
+            commit_message="Test commit",
+        )
+
+        mock_create_gitlab_mr.assert_called_once_with(
+            PUB_GIT_REPO, PUB_TOKEN_VALUE, "iib-qe-request-456-v4.19", "v4.19", 456
+        )
+
+
+@mock.patch('iib.workers.tasks.git_utils._merge_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+def test_merge_mr_success(mock_get_git_token, mock_merge_gitlab_mr):
+    """Test successful merging of merge request."""
+    mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
+    mock_merge_gitlab_mr.return_value = 'abc123def456'
+
+    mr_details = {
+        'mr_id': '123',
+        'mr_url': 'https://my-gitlab-instance.com/project/merge_requests/123',
+        'source_branch': 'iib-qe-request-456-v4.19',
+    }
+
+    result = git_utils.merge_mr(mr_details, PUB_GIT_REPO)
+
+    assert result == 'abc123def456'
+    mock_merge_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
+@mock.patch('iib.workers.tasks.git_utils._merge_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+def test_merge_mr_missing_mr_id(mock_get_git_token, mock_merge_gitlab_mr):
+    """Test merge_mr raises when mr_id is missing."""
+    mr_details = {'mr_url': 'https://example.com/merge_requests/123'}
+
+    with pytest.raises(IIBError, match="Missing mr_id"):
+        git_utils.merge_mr(mr_details, PUB_GIT_REPO)
+
+    mock_merge_gitlab_mr.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session')
+@mock.patch('iib.workers.tasks.git_utils._extract_gitlab_info')
+def test_merge_gitlab_mr_success(mock_extract, mock_session):
+    """Test successful GitLab merge API call."""
+    mock_extract.return_value = ('https://gitlab.example.com/api/v4', 'group/project')
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.json.return_value = {
+        'merge_commit_sha': 'abc123def456',
+    }
+    mock_session.put.return_value = mock_response
+
+    result = git_utils._merge_gitlab_mr(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+    assert result == 'abc123def456'
+    mock_session.put.assert_called_once()
+    call_args = mock_session.put.call_args
+    assert 'merge_requests/123/merge' in call_args[0][0]
+    assert call_args[1]['json']['squash'] is True
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session')
+@mock.patch('iib.workers.tasks.git_utils._extract_gitlab_info')
+def test_merge_gitlab_mr_conflict(mock_extract, mock_session):
+    """Test GitLab merge API returns 405 (cannot be merged)."""
+    mock_extract.return_value = ('https://gitlab.example.com/api/v4', 'group/project')
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 405
+    mock_response.text = 'Method Not Allowed'
+    mock_session.put.return_value = mock_response
+
+    with pytest.raises(IIBError, match="Failed to merge"):
+        git_utils._merge_gitlab_mr(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
+@mock.patch('iib.workers.tasks.git_utils.time.sleep')
+@mock.patch('iib.workers.tasks.git_utils.requests_session')
+@mock.patch('iib.workers.tasks.git_utils._extract_gitlab_info')
+def test_merge_gitlab_mr_retries_on_transient_failure(mock_extract, mock_session, mock_sleep):
+    """Test GitLab merge API retries on 5xx and 409 errors."""
+    mock_extract.return_value = ('https://gitlab.example.com/api/v4', 'group/project')
+
+    transient_response = mock.Mock()
+    transient_response.ok = False
+    transient_response.status_code = 500
+    transient_response.text = 'Internal Server Error'
+
+    success_response = mock.Mock()
+    success_response.ok = True
+    success_response.json.return_value = {'merge_commit_sha': 'abc123'}
+
+    mock_session.put.side_effect = [transient_response, success_response]
+
+    result = git_utils._merge_gitlab_mr(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+    assert result == 'abc123'
+    assert mock_session.put.call_count == 2
+    mock_sleep.assert_called_once()
