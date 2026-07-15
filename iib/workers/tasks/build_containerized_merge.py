@@ -316,7 +316,6 @@ def handle_containerized_merge_request(
                     f"IIB: Merge operators for request {request_id}\n\n"
                     f"Missing bundles: {', '.join(missing_bundle_paths)}"
                 ),
-                overwrite_from_index=overwrite_target_index,
             )
 
             # Wait for Konflux pipeline and extract built image UR

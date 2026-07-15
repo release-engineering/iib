@@ -1156,7 +1156,7 @@ def test_create_mr_with_environment_name(
 
         run_cmd(f"git -C {test_repo} add test.txt".split(), strict=False)
 
-        result = git_utils.create_mr(
+        git_utils.create_mr(
             request_id=456,
             local_repo_path=test_repo,
             repo_url=PUB_GIT_REPO,
