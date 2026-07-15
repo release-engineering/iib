@@ -27,9 +27,7 @@ from iib.workers.tasks import build_containerized_regenerate_bundle
 @mock.patch(
     'iib.workers.tasks.build_containerized_regenerate_bundle.monitor_pipeline_and_extract_image'
 )
-@mock.patch(
-    'iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr_or_push'
-)
+@mock.patch('iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr')
 @mock.patch(
     'iib.workers.tasks.build_containerized_regenerate_bundle.'
     'extract_files_from_image_non_privileged'
@@ -175,9 +173,7 @@ def test_handle_containerized_regenerate_bundle_request(
 
 
 @mock.patch('iib.workers.tasks.build_containerized_regenerate_bundle.cleanup_on_failure')
-@mock.patch(
-    'iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr_or_push'
-)
+@mock.patch('iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr')
 @mock.patch(
     'iib.workers.tasks.build_containerized_regenerate_bundle.'
     'extract_files_from_image_non_privileged'
@@ -370,9 +366,7 @@ def test_handle_containerized_regenerate_bundle_request_no_repo_key(
 @mock.patch(
     'iib.workers.tasks.build_containerized_regenerate_bundle.monitor_pipeline_and_extract_image'
 )
-@mock.patch(
-    'iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr_or_push'
-)
+@mock.patch('iib.workers.tasks.build_containerized_regenerate_bundle.git_commit_and_create_mr')
 @mock.patch(
     'iib.workers.tasks.build_containerized_regenerate_bundle.'
     'extract_files_from_image_non_privileged'

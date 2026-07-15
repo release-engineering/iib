@@ -20,7 +20,7 @@ from iib.workers.tasks.build_regenerate_bundle import (
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.containerized_utils import (
     extract_files_from_image_non_privileged,
-    git_commit_and_create_mr_or_push,
+    git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
     replicate_image_to_tagged_destinations,
     cleanup_on_failure,
@@ -205,7 +205,7 @@ def handle_containerized_regenerate_bundle_request(
             try:
                 # Commit changes and create MR to trigger Konflux pipeline
                 # Bundle regeneration is always a throw-away request (no overwrite)
-                mr_details, last_commit_sha = git_commit_and_create_mr_or_push(
+                mr_details, last_commit_sha = git_commit_and_create_mr(
                     request_id=request_id,
                     local_git_repo_path=str(local_git_repo_path),
                     index_git_repo=bundle_git_repo,

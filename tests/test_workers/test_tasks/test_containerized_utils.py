@@ -14,7 +14,7 @@ from iib.workers.tasks.containerized_utils import (
     cleanup_on_failure,
     validate_bundles_in_parallel,
     wait_for_bundle_validation_threads,
-    git_commit_and_create_mr_or_push,
+    git_commit_and_create_mr,
     merge_mr_after_build,
 )
 
@@ -1357,7 +1357,7 @@ def test_extract_files_from_image_non_privileged_skopeo_copy_failure(
 def test_git_commit_always_creates_mr_for_overwrite(
     mock_config, mock_set_state, mock_create_mr, mock_get_sha
 ):
-    """Test that git_commit_and_create_mr_or_push always creates MR."""
+    """Test that git_commit_and_create_mr always creates MR."""
     mock_config.return_value = type(
         'obj', (object,), {'get': lambda self, key: 'qe' if key == 'iib_environment_name' else None}
     )()
@@ -1368,7 +1368,7 @@ def test_git_commit_always_creates_mr_for_overwrite(
     }
     mock_get_sha.return_value = 'abc123'
 
-    mr_details, sha = git_commit_and_create_mr_or_push(
+    mr_details, sha = git_commit_and_create_mr(
         request_id=1,
         local_git_repo_path='/tmp/repo',
         index_git_repo='https://gitlab.example.com/project',
