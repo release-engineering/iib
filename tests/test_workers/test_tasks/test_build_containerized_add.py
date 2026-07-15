@@ -405,3 +405,148 @@ def test_handle_containerized_add_request_failure(
 
     # Verify successful path wasn't completed
     mock_push_index_db.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build_containerized_add.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_add.Path.mkdir')
+@mock.patch('iib.workers.tasks.build_containerized_add.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_add.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_add.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_add.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_add._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_add.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_add.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_add.git_commit_and_create_mr_or_push')
+@mock.patch('iib.workers.tasks.build_containerized_add.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_add.chmod_recursively')
+@mock.patch('iib.workers.tasks.build_containerized_add.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build_containerized_add.shutil.rmtree')
+@mock.patch('iib.workers.tasks.build_containerized_add.Path.is_dir')
+@mock.patch('iib.workers.tasks.build_containerized_add.get_image_label')
+@mock.patch('iib.workers.tasks.build_containerized_add.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_add.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_add.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_add._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_add._get_missing_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_add.prepare_git_repository_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_add.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_add._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_add.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_add.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_add.inspect_related_images')
+@mock.patch('iib.workers.tasks.build_containerized_add.verify_labels')
+@mock.patch('iib.workers.tasks.build_containerized_add.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_add.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_add.merge_mr_after_build')
+def test_handle_containerized_add_request_overwrite(
+    mock_merge_mr,
+    mock_reset_docker,
+    mock_set_token,
+    mock_get_resolved,
+    mock_verify_labels,
+    mock_inspect,
+    mock_prepare_req,
+    mock_opm,
+    mock_update_build_state,
+    mock_td,
+    mock_prepare_git,
+    mock_fetch_index_db,
+    mock_get_present,
+    mock_get_missing,
+    mock_opm_add,
+    mock_get_deprecations,
+    mock_deprecate,
+    mock_opm_migrate,
+    mock_get_image_label,
+    mock_path_isdir,
+    mock_rmtree,
+    mock_merge,
+    mock_chmod,
+    mock_write_meta,
+    mock_git_commit,
+    mock_monitor,
+    mock_replicate,
+    mock_update_pull_spec,
+    mock_push_index_db,
+    mock_cleanup_mr,
+    mock_set_state,
+    mock_cleanup_failure,
+    mock_makedirs,
+    mock_copytree,
+    tmpdir,
+):
+    """Test overwrite flow: merge_mr_after_build IS called, cleanup IS NOT."""
+    bundles = ['some-bundle:latest']
+    request_id = 456
+    binary_image = 'binary-image:latest'
+    resolved_bundles = ['some-bundle@sha256:123456']
+    index_db_path = '/tmp/index.db'
+    temp_dir_path = '/tmp/iib-456-temp'
+    from_index = 'index:latest'
+
+    mock_get_resolved.return_value = resolved_bundles
+    mock_td.return_value.__enter__.return_value = temp_dir_path
+
+    prebuild_info = {
+        'from_index_resolved': 'from-index@sha256:abcdef',
+        'binary_image_resolved': 'binary-image@sha256:fedcba',
+        'arches': {'amd64'},
+        'bundle_mapping': {'some-operator': resolved_bundles},
+        'ocp_version': 'v4.12',
+        'distribution_scope': 'prod',
+        'binary_image': binary_image,
+    }
+    mock_prepare_req.return_value = prebuild_info
+
+    index_git_repo = mock.Mock()
+    local_git_repo_path = Path(tmpdir) / 'git_repo'
+    localized_git_catalog_path = Path(local_git_repo_path) / "configs"
+    local_git_repo_path.mkdir(parents=True)
+    mock_prepare_git.return_value = (
+        index_git_repo,
+        local_git_repo_path,
+        localized_git_catalog_path,
+    )
+
+    mock_fetch_index_db.return_value = index_db_path
+    mock_path_isdir.return_value = True
+    mock_get_present.return_value = ([], [])
+    mock_get_missing.return_value = resolved_bundles
+    mock_get_deprecations.return_value = []
+
+    catalog_from_db = '/tmp/from_db'
+    mock_opm_migrate.return_value = (catalog_from_db, None)
+
+    # Mock commit returns mr_details (always creates MR now)
+    mr_details = {'mr_id': 1, 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-456-v4.12'}
+    mock_git_commit.return_value = (mr_details, 'commit_sha_456')
+
+    image_url = 'registry.example.com/output-image:tag'
+    mock_monitor.return_value = image_url
+
+    output_pull_specs = ['registry.example.com/final-image:456']
+    mock_replicate.return_value = output_pull_specs
+
+    mock_push_index_db.return_value = 'sha256:index_db_digest'
+
+    build_containerized_add.handle_containerized_add_request(
+        bundles=bundles,
+        request_id=request_id,
+        binary_image=binary_image,
+        from_index=from_index,
+        overwrite_from_index=True,
+        overwrite_from_index_token="user:pass",
+    )
+
+    # Overwrite flow: merge_mr_after_build IS called
+    mock_merge_mr.assert_called_once_with(mr_details, index_git_repo)
+
+    # Overwrite flow: cleanup IS NOT called (MR was already merged)
+    mock_cleanup_mr.assert_not_called()
+
+    # Verify the handler completed successfully
+    mock_push_index_db.assert_called_once()
+    mock_cleanup_failure.assert_not_called()
