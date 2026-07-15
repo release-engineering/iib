@@ -14,6 +14,8 @@ from iib.workers.tasks.containerized_utils import (
     cleanup_on_failure,
     validate_bundles_in_parallel,
     wait_for_bundle_validation_threads,
+    git_commit_and_create_mr_or_push,
+    merge_mr_after_build,
 )
 
 
@@ -1346,3 +1348,69 @@ def test_extract_files_from_image_non_privileged_skopeo_copy_failure(
     assert call_args[1]['source'] == 'docker://quay.io/ns/test:v1'
     assert 'oci:' in call_args[1]['destination']
     assert call_args[1]['copy_all'] is False
+
+
+@patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
+@patch('iib.workers.tasks.containerized_utils.create_mr')
+@patch('iib.workers.tasks.containerized_utils.set_request_state')
+@patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_git_commit_always_creates_mr_for_overwrite(
+    mock_config, mock_set_state, mock_create_mr, mock_get_sha
+):
+    """Test that git_commit_and_create_mr_or_push always creates MR even with overwrite=True."""
+    mock_config.return_value = type('obj', (object,), {
+        'get': lambda self, key: 'qe' if key == 'iib_environment_name' else None
+    })()
+    mock_create_mr.return_value = {
+        'mr_id': '123',
+        'mr_url': 'https://gitlab.example.com/merge_requests/123',
+        'source_branch': 'iib-qe-request-1-v4.14',
+    }
+    mock_get_sha.return_value = 'abc123'
+
+    mr_details, sha = git_commit_and_create_mr_or_push(
+        request_id=1,
+        local_git_repo_path='/tmp/repo',
+        index_git_repo='https://gitlab.example.com/project',
+        branch='v4.14',
+        commit_message='test',
+        overwrite_from_index=True,
+    )
+
+    assert mr_details is not None
+    assert mr_details['mr_id'] == '123'
+    mock_create_mr.assert_called_once_with(
+        request_id=1,
+        local_repo_path='/tmp/repo',
+        repo_url='https://gitlab.example.com/project',
+        branch='v4.14',
+        commit_message='test',
+        environment_name='qe',
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.close_mr')
+@patch('iib.workers.tasks.containerized_utils.merge_mr')
+def test_merge_mr_after_build_success(mock_merge_mr, mock_close_mr):
+    """Test successful MR merge after build."""
+    mock_merge_mr.return_value = 'merge_sha_123'
+    mr_details = {'mr_id': '123', 'mr_url': 'https://example.com/mr/123'}
+
+    result = merge_mr_after_build(mr_details, 'https://gitlab.example.com/project')
+
+    assert result == 'merge_sha_123'
+    mock_merge_mr.assert_called_once_with(mr_details, 'https://gitlab.example.com/project')
+    mock_close_mr.assert_not_called()
+
+
+@patch('iib.workers.tasks.containerized_utils.close_mr')
+@patch('iib.workers.tasks.containerized_utils.merge_mr')
+def test_merge_mr_after_build_failure_closes_mr(mock_merge_mr, mock_close_mr):
+    """Test that merge failure closes the MR and raises IIBError."""
+    mock_merge_mr.side_effect = IIBError("Failed to merge")
+    mr_details = {'mr_id': '123', 'mr_url': 'https://example.com/mr/123'}
+
+    with pytest.raises(IIBError, match="Failed to merge MR after successful build"):
+        merge_mr_after_build(mr_details, 'https://gitlab.example.com/project')
+
+    mock_close_mr.assert_called_once_with(mr_details, 'https://gitlab.example.com/project')
