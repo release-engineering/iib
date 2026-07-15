@@ -303,7 +303,6 @@ def handle_containerized_create_empty_index_request(
                     f"IIB: Create empty index for request {request_id}\n\n"
                     f"Creating empty index image from {from_index}"
                 ),
-                overwrite_from_index=False,  # Always False for create_empty_index
             )
 
             # Wait for Konflux pipeline and extract built image URL

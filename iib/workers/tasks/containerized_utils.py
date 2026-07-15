@@ -18,7 +18,6 @@ from iib.workers.tasks.build import _skopeo_copy
 from iib.workers.tasks.git_utils import (
     clone_git_repo,
     close_mr,
-    commit_and_push,
     create_mr,
     get_git_token,
     get_last_commit_sha,
@@ -577,7 +576,6 @@ def git_commit_and_create_mr_or_push(
     index_git_repo: str,
     branch: str,
     commit_message: str,
-    overwrite_from_index: bool = False,
 ) -> Tuple[Dict[str, str], str]:
     """
     Commit changes and trigger Konflux pipeline by creating an MR.
@@ -591,7 +589,6 @@ def git_commit_and_create_mr_or_push(
     :param str index_git_repo: URL of the Git repository
     :param str branch: Git branch name
     :param str commit_message: Commit message to use
-    :param bool overwrite_from_index: Whether to overwrite from_index (kept for API compat)
     :return: Tuple of (mr_details, last_commit_sha)
     :rtype: Tuple[Dict[str, str], str]
     """

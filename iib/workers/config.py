@@ -554,15 +554,14 @@ def _validate_konflux_config(conf: app.utils.Settings) -> None:
 
         env_name = conf.get('iib_environment_name')
         if not env_name:
-            raise ConfigError(
-                'iib_environment_name must be set when using Konflux configuration'
-            )
+            raise ConfigError('iib_environment_name must be set when using Konflux configuration')
         if not isinstance(env_name, str):
             raise ConfigError(
                 'iib_environment_name must be a non-empty string containing only '
                 'alphanumeric characters and hyphens when using Konflux configuration'
             )
         import re
+
         if not re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$', env_name):
             raise ConfigError(
                 'iib_environment_name must be a non-empty string containing only '

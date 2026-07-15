@@ -623,9 +623,7 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
                 response.status_code,
                 response.text,
             )
-            raise IIBError(
-                f'Failed to merge merge request {mr_id}: HTTP {response.status_code}'
-            )
+            raise IIBError(f'Failed to merge merge request {mr_id}: HTTP {response.status_code}')
 
         except requests.RequestException as e:
             if attempt < max_retries:

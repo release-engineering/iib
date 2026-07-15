@@ -1357,10 +1357,10 @@ def test_extract_files_from_image_non_privileged_skopeo_copy_failure(
 def test_git_commit_always_creates_mr_for_overwrite(
     mock_config, mock_set_state, mock_create_mr, mock_get_sha
 ):
-    """Test that git_commit_and_create_mr_or_push always creates MR even with overwrite=True."""
-    mock_config.return_value = type('obj', (object,), {
-        'get': lambda self, key: 'qe' if key == 'iib_environment_name' else None
-    })()
+    """Test that git_commit_and_create_mr_or_push always creates MR."""
+    mock_config.return_value = type(
+        'obj', (object,), {'get': lambda self, key: 'qe' if key == 'iib_environment_name' else None}
+    )()
     mock_create_mr.return_value = {
         'mr_id': '123',
         'mr_url': 'https://gitlab.example.com/merge_requests/123',
@@ -1374,7 +1374,6 @@ def test_git_commit_always_creates_mr_for_overwrite(
         index_git_repo='https://gitlab.example.com/project',
         branch='v4.14',
         commit_message='test',
-        overwrite_from_index=True,
     )
 
     assert mr_details is not None
