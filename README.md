@@ -525,6 +525,9 @@ indicating the OPM version to be used for the corresponding OCP version like
   This is required when using Konflux configuration.
 * `iib_konflux_pipeline_timeout` - the timeout in seconds for monitoring Konflux PipelineRuns.
   This defaults to `1800` seconds (30 minutes).
+* `iib_environment_name` - the environment identifier (e.g., ``qe``, ``stage``, ``prod``) used to
+  prefix MR source branches for PaC CEL routing to the correct Konflux tenant. Must contain only
+  alphanumeric characters and hyphens. This is required when using Konflux configuration.
 
 
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
