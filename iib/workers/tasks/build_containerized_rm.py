@@ -24,6 +24,7 @@ from iib.workers.tasks.containerized_utils import (
     push_index_db_artifact,
     replicate_image_to_tagged_destinations,
     write_build_metadata,
+    merge_mr_after_build,
 )
 from iib.workers.tasks.fbc_utils import merge_catalogs_dirs
 from iib.workers.tasks.opm_operations import (
@@ -248,6 +249,10 @@ def handle_containerized_rm_request(
                 last_commit_sha=last_commit_sha,
             )
 
+            # Merge MR if this is an overwrite request (source of truth update)
+            if overwrite_from_index:
+                merge_mr_after_build(mr_details, index_git_repo)
+
             # Copy built index to all output pull specs
             output_pull_specs = replicate_image_to_tagged_destinations(
                 request_id=request_id,
@@ -297,8 +302,9 @@ def handle_containerized_rm_request(
                 request_type='rm',
             )
 
-            # Close MR if it was opened
-            cleanup_merge_request_if_exists(mr_details, index_git_repo)
+            # Close MR for throw-away requests (overwrite MRs were already merged)
+            if not overwrite_from_index:
+                cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
             operators_str = ', '.join(operators)
             set_request_state(
