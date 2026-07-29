@@ -599,40 +599,170 @@ def _docker_auth_key_for_image(container_image: str) -> str:
     )
 
 
+def _docker_auth_keys_covering_image(container_image: str) -> List[str]:
+    """
+    Return docker config ``auths`` keys that can authenticate ``container_image``.
+
+    Keys are ordered from most specific to least specific:
+    ``registry/namespace/repo``, ``registry/namespace``, then ``registry``.
+    """
+    image_name = ImageName.parse(container_image)
+    registry = image_name.registry
+    if not registry:
+        return []
+
+    keys: List[str] = []
+    if image_name.namespace:
+        keys.append(f'{registry}/{image_name.namespace}/{image_name.repo}')
+        keys.append(f'{registry}/{image_name.namespace}')
+    keys.append(registry)
+    return keys
+
+
+def _load_docker_config_auths() -> Dict[str, Any]:
+    """
+    Load ``auths`` from the worker Docker config.
+
+    Prefers the active ``~/.docker/config.json`` (often a symlink to the template after
+    :func:`reset_docker_config`), then falls back to ``iib_docker_config_template``.
+    """
+    conf = get_worker_config()
+    candidate_paths = [
+        os.path.join(os.path.expanduser('~'), '.docker', 'config.json'),
+        conf.iib_docker_config_template,
+    ]
+    for path in candidate_paths:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, 'r') as f:
+                return json.load(f).get('auths', {}) or {}
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning('Failed to read Docker config auths from %s: %s', path, e)
+    return {}
+
+
+def docker_config_has_auth_for_image(
+    container_image: str, auths: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Return True if Docker config ``auths`` already covers ``container_image``.
+
+    A covering key is any of registry/namespace/repo, registry/namespace, or registry.
+    """
+    if auths is None:
+        auths = _load_docker_config_auths()
+    return any(key in auths for key in _docker_auth_keys_covering_image(container_image))
+
+
+def docker_config_has_path_auth_for_image(
+    container_image: str, auths: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Return True if Docker config has namespace- or repository-scoped auth for ``container_image``.
+
+    Registry-only keys (for example ``quay.io``) are ignored. Those often exist in the worker
+    template but do not grant access to a private ``from_index``; treating them as covering
+    would skip the namespace fallback that makes ``overwrite_from_index_token`` usable.
+    """
+    if auths is None:
+        auths = _load_docker_config_auths()
+    keys = _docker_auth_keys_covering_image(container_image)
+    # keys are [repo, namespace, registry] when namespaced; drop the registry-only key.
+    path_keys = keys[:-1] if len(keys) > 1 else []
+    return any(key in auths for key in path_keys)
+
+
+def get_images_needing_overwrite_token(
+    from_index: Optional[str], images: List[str]
+) -> List[str]:
+    """
+    Return images that should receive ``overwrite_from_index_token`` during resolve/pull.
+
+    An image is included only when:
+
+    * it shares a resolvable registry with ``from_index``,
+    * it shares a namespace with ``from_index`` when either image has a namespace
+      (avoids applying a write-only index token to unrelated public repos on the
+      same registry), and
+    * the worker Docker config has no namespace- or repository-scoped auth for that image
+      (registry-only keys such as ``quay.io`` do not count; they often cannot pull private
+      images and must not suppress the overwrite token)
+
+    This avoids overriding broader template credentials (for example ``quay.io/namespace``)
+    with a write-only index token, while still allowing the overwrite token to pull private
+    same-namespace images (bundles or FBC fragments) when no other credentials exist.
+    """
+    if not from_index or not images:
+        return []
+
+    from_index_image = ImageName.parse(from_index)
+    from_index_registry = from_index_image.registry
+    if not from_index_registry:
+        return []
+
+    auths = _load_docker_config_auths()
+    images_needing_token: List[str] = []
+    for image in images:
+        image_name = ImageName.parse(image)
+        if image_name.registry != from_index_registry:
+            continue
+        # When namespaces are present, require a match so public images under other
+        # namespaces on the same registry keep anonymous/template auth.
+        if from_index_image.namespace or image_name.namespace:
+            if from_index_image.namespace != image_name.namespace:
+                continue
+        if docker_config_has_path_auth_for_image(image, auths):
+            log.debug(
+                'Not applying overwrite_from_index_token to %s; Docker config already has '
+                'path-scoped credentials',
+                image,
+            )
+            continue
+        images_needing_token.append(image)
+
+    return images_needing_token
+
+
 @contextmanager
 def set_registry_token(
-    token: Optional[str], container_image: Optional[str], append: bool = False
+    token: Optional[str],
+    container_image: Optional[Union[str, List[str]]],
+    append: bool = False,
 ) -> Generator:
     """
-    Configure authentication for the image identified by ``container_image``.
+    Configure authentication for the image(s) identified by ``container_image``.
 
     The token is written to ``~/.docker/config.json`` under the most specific ``auths`` key that
-    container runtimes reliably match for that pull specification:
+    container runtimes reliably match for each pull specification:
 
-    * ``registry/namespace/repo`` when ``container_image`` includes a namespace
+    * ``registry/namespace/repo`` when the image includes a namespace
     * ``registry`` when the image has no namespace (for example, ``localhost:5000/myimage:tag``)
 
-    If the pull specification does not contain a resolvable registry, :exc:`IIBError` is raised.
+    If a pull specification does not contain a resolvable registry, :exc:`IIBError` is raised.
 
     Broader credentials already present in the Docker configuration, such as registry- or
     namespace-level entries for the same host, are not modified. Only the scoped ``auths`` key
-    derived from ``container_image`` is set or overwritten.
+    derived from each image is set or overwritten. When the worker config has no
+    namespace/repository-scoped auth for an image (registry-only keys do not count), the
+    namespace key is also set so private images that are only reachable via
+    ``overwrite_from_index_token`` can be pulled without stamping registry-level credentials.
 
     On exit, the Docker configuration is reset to its pre-request state via
     :func:`reset_docker_config`. If ``token`` or ``container_image`` is falsy, this context
     manager does nothing.
 
     :param str token: the token in the format of ``username:password``
-    :param str container_image: the pull specification of the image to authenticate to. Used to
-        determine which ``auths`` entry receives ``token``.
+    :param container_image: the pull specification of the image to authenticate to, or a list of
+        pull specifications. Each value determines which ``auths`` entry receives ``token``.
     :param bool append: when ``True``, start from the current ``~/.docker/config.json`` (if it
         exists) before applying the scoped token. This preserves unrelated ``auths`` entries and
         is the preferred mode for ``overwrite_from_index`` callers that must override credentials
-        for a single index image without disturbing other registry configuration. When ``False``,
-        only the scoped ``auths`` entry and the worker template are merged.
+        for one or more images without disturbing other registry configuration. When ``False``,
+        only the scoped ``auths`` entries and the worker template are merged.
     :return: None
     :rtype: None
-    :raises IIBError: if the pull specification does not contain a resolvable registry.
+    :raises IIBError: if a pull specification does not contain a resolvable registry.
     """
     if not token:
         log.debug(
@@ -643,14 +773,20 @@ def set_registry_token(
         return
 
     if not container_image:
-        log.debug('Not changing the Docker configuration since no from_index was provided')
+        log.debug('Not changing the Docker configuration since no container image was provided')
+        yield
+
+        return
+
+    images = [container_image] if isinstance(container_image, str) else list(container_image)
+    if not images:
+        log.debug('Not changing the Docker configuration since no container image was provided')
         yield
 
         return
 
     encoded_token = base64.b64encode(token.encode('utf-8')).decode('utf-8')
     auth_entry = {'auth': encoded_token}
-    auth_key = _docker_auth_key_for_image(container_image)
 
     registry_auths: Dict[str, Any] = {'auths': {}}
     if append:
@@ -665,8 +801,32 @@ def set_registry_token(
 
                 log.debug('Docker config will be updated')
 
-    log.debug('Setting the override token for the image %s', auth_key)
-    registry_auths['auths'].update({auth_key: auth_entry})
+    # Snapshot worker/template auths before we add overwrite keys. Used to decide whether a
+    # namespace-level fallback is needed when no path-scoped credentials exist yet.
+    existing_auths = _load_docker_config_auths()
+
+    for image in images:
+        auth_key = _docker_auth_key_for_image(image)
+        log.debug('Setting the override token for the image %s', auth_key)
+        registry_auths.setdefault('auths', {}).update({auth_key: auth_entry})
+
+        # When from_index (or another image) is only reachable via overwrite_from_index_token
+        # and docker config has no namespace/repo auth, also set the namespace key. Repo-only
+        # auth is not always matched reliably; namespace fallback makes the token usable
+        # without stamping registry-level creds that would override other namespace entries.
+        # Registry-only template keys (e.g. quay.io) do not count — they often cannot pull a
+        # private from_index (case: overwrite token is the only usable credential).
+        if not docker_config_has_path_auth_for_image(image, existing_auths):
+            image_name = ImageName.parse(image)
+            if image_name.registry and image_name.namespace:
+                namespace_key = f'{image_name.registry}/{image_name.namespace}'
+                if namespace_key != auth_key:
+                    log.debug(
+                        'No path-scoped Docker auth for %s; also setting overwrite token for %s',
+                        image,
+                        namespace_key,
+                    )
+                    registry_auths['auths'].update({namespace_key: auth_entry})
 
     with set_registry_auths(registry_auths):
         yield
@@ -1097,7 +1257,7 @@ def get_index_image_info(
     if not from_index:
         return result
 
-    with set_registry_token(overwrite_from_index_token, from_index):
+    with set_registry_token(overwrite_from_index_token, from_index, append=True):
         from_index_resolved = get_resolved_image(from_index)
         result['arches'] = get_image_arches(from_index_resolved)
         result['ocp_version'] = (

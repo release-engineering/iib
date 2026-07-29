@@ -839,14 +839,32 @@ def opm_registry_add_fbc(
         ignore_existing=True,
     )
 
-    _opm_registry_add(
-        base_dir=base_dir,
-        index_db=index_db_file,
-        bundles=bundles,
-        overwrite_csv=overwrite_csv,
-        container_tool=container_tool,
-        graph_update_mode=graph_update_mode,
-    )
+    from iib.workers.tasks.utils import get_images_needing_overwrite_token, set_registry_token
+
+    # opm registry add pulls bundle images; apply overwrite token for same-namespace
+    # bundles not already covered by worker Docker config (mirrors opm_index_add).
+    bundles_needing_token = get_images_needing_overwrite_token(from_index, bundles)
+    if bundles_needing_token:
+        with set_registry_token(
+            overwrite_from_index_token, bundles_needing_token, append=True
+        ):
+            _opm_registry_add(
+                base_dir=base_dir,
+                index_db=index_db_file,
+                bundles=bundles,
+                overwrite_csv=overwrite_csv,
+                container_tool=container_tool,
+                graph_update_mode=graph_update_mode,
+            )
+    else:
+        _opm_registry_add(
+            base_dir=base_dir,
+            index_db=index_db_file,
+            bundles=bundles,
+            overwrite_csv=overwrite_csv,
+            container_tool=container_tool,
+            graph_update_mode=graph_update_mode,
+        )
 
     fbc_dir, _ = opm_migrate(index_db=index_db_file, base_dir=base_dir)
     # we should keep generating Dockerfile here
@@ -1020,22 +1038,42 @@ def opm_registry_add_fbc_fragment(
         f'Extracting operator packages from {len(fbc_fragments)} fbc fragment(s)',
     )
 
+    from iib.workers.tasks.utils import get_images_needing_overwrite_token, set_registry_token
+
     # the dir where all the configs from from_index are stored
     # this will look like /tmp/iib-**/configs
-    from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
+    if overwrite_from_index_token:
+        with set_registry_token(overwrite_from_index_token, from_index, append=True):
+            from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
+    else:
+        from_index_configs_dir = get_catalog_dir(from_index=from_index, base_dir=temp_dir)
     log.info("The content of from_index configs located at %s", from_index_configs_dir)
 
-    # Single pass: Extract all fragment paths and operators
+    # Single pass: Extract all fragment paths and operators. Re-apply overwrite token for
+    # same-namespace fragments that are not covered by worker Docker config, matching resolve.
     fragment_data = []
     all_fragment_operators = []
+    fragments_needing_token = get_images_needing_overwrite_token(from_index, fbc_fragments)
 
-    for i, fbc_fragment in enumerate(fbc_fragments):
-        # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
-        fragment_path, fragment_operators = extract_fbc_fragment(
-            temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
-        )
-        fragment_data.append((fragment_path, fragment_operators))
-        all_fragment_operators.extend(fragment_operators)
+    if fragments_needing_token:
+        with set_registry_token(
+            overwrite_from_index_token, fragments_needing_token, append=True
+        ):
+            for i, fbc_fragment in enumerate(fbc_fragments):
+                # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
+                fragment_path, fragment_operators = extract_fbc_fragment(
+                    temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
+                )
+                fragment_data.append((fragment_path, fragment_operators))
+                all_fragment_operators.extend(fragment_operators)
+    else:
+        for i, fbc_fragment in enumerate(fbc_fragments):
+            # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
+            fragment_path, fragment_operators = extract_fbc_fragment(
+                temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
+            )
+            fragment_data.append((fragment_path, fragment_operators))
+            all_fragment_operators.extend(fragment_operators)
 
     # Single verification: Check for operators that already exist in the database
     operators_in_db, index_db_path = verify_operators_exists(
@@ -1213,7 +1251,11 @@ def opm_index_add(
     # The bundles are not resolved since these are stable tags, and references
     # to a bundle image using a digest fails when using the opm command.
 
-    from iib.workers.tasks.utils import run_cmd, set_registry_token
+    from iib.workers.tasks.utils import (
+        get_images_needing_overwrite_token,
+        run_cmd,
+        set_registry_token,
+    )
 
     bundle_str = ','.join(bundles) or '""'
     cmd = [
@@ -1248,7 +1290,19 @@ def opm_index_add(
         log.info('Using force to add bundle(s) to index')
         cmd.extend(['--overwrite-latest'])
 
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+    # Authenticate to from_index and to same-namespace bundles that are not already covered
+    # by worker Docker config (needed when opm pulls those bundles after resolve).
+    token_images: List[str] = []
+    if from_index:
+        token_images.append(from_index)
+        for bundle in get_images_needing_overwrite_token(from_index, bundles):
+            if bundle not in token_images:
+                token_images.append(bundle)
+
+    if token_images:
+        with set_registry_token(overwrite_from_index_token, token_images, append=True):
+            run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
+    else:
         run_cmd(cmd, {'cwd': base_dir}, exc_msg='Failed to add the bundles to the index image')
 
 

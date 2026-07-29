@@ -96,6 +96,7 @@ def test_set_registry_token(
                         '4gU2ltcHNvbgo='
                     )
                 },
+                'registry.redhat.io/ns': {'auth': 'dXNlcjpwYXNz'},
                 'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'},
             }
         }
@@ -103,7 +104,10 @@ def test_set_registry_token(
         mock_open.assert_called_once_with('/home/iib-worker/.docker/config.json', 'w')
         assert mock_open.call_count == 1
         assert mock_json_dump.call_args[0][0] == {
-            'auths': {'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'}}
+            'auths': {
+                'registry.redhat.io/ns': {'auth': 'dXNlcjpwYXNz'},
+                'registry.redhat.io/ns/repo': {'auth': 'dXNlcjpwYXNz'},
+            }
         }
 
     mock_rdc.assert_called_once_with()
@@ -304,6 +308,221 @@ def test_set_registry_token_append_overwrites_repo_auth(
     mock_rdc.assert_called_once_with()
 
 
+@mock.patch('os.path.expanduser')
+@mock.patch('os.path.exists', return_value=True)
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_token_namespace_fallback_when_no_path_auth(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_expanduser,
+):
+    """When from_index has no namespace/repo auth, also set namespace key (case 4)."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    # Registry-only quay.io must not suppress namespace fallback — it often cannot pull a
+    # private from_index that is only reachable via overwrite_from_index_token.
+    mock_open.side_effect = mock.mock_open(
+        read_data=r'{"auths": {"quay.io": {"auth": "cXVheabcdef"}}}'
+    )
+
+    with utils.set_registry_token(
+        'user:pass',
+        'quay.io/ns/certified-index:v4.14',
+        append=True,
+    ):
+        pass
+
+    assert mock_json_dump.call_args[0][0]['auths'] == {
+        'quay.io': {'auth': 'cXVheabcdef'},
+        'quay.io/ns': {'auth': 'dXNlcjpwYXNz'},
+        'quay.io/ns/certified-index': {'auth': 'dXNlcjpwYXNz'},
+    }
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.path.exists', return_value=True)
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_token_no_namespace_fallback_when_namespace_auth_exists(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_expanduser,
+):
+    """Namespace template auth must be preserved (case 3) — do not overwrite it."""
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_open.side_effect = mock.mock_open(
+        read_data=(
+            r'{"auths": {"quay.io/ns": {"auth": "bmFtZXNqwertyui"}, '
+            r'"quay.io": {"auth": "cXVheabcdef"}}}'
+        )
+    )
+
+    with utils.set_registry_token(
+        'user:pass',
+        'quay.io/ns/community-index:v4.13',
+        append=True,
+    ):
+        pass
+
+    assert mock_json_dump.call_args[0][0]['auths'] == {
+        'quay.io': {'auth': 'cXVheabcdef'},
+        'quay.io/ns': {'auth': 'bmFtZXNqwertyui'},
+        'quay.io/ns/community-index': {'auth': 'dXNlcjpwYXNz'},
+    }
+    mock_rdc.assert_called_once_with()
+
+
+@mock.patch('os.path.expanduser')
+@mock.patch('os.path.exists', return_value=True)
+@mock.patch('iib.workers.tasks.utils.open')
+@mock.patch('iib.workers.tasks.utils.json.dump')
+@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+def test_set_registry_token_multiple_images(
+    mock_rdc,
+    mock_json_dump,
+    mock_open,
+    mock_exists,
+    mock_expanduser,
+):
+    mock_expanduser.return_value = '/home/iib-worker'
+    mock_open.side_effect = mock.mock_open(
+        read_data=r'{"auths": {"quay.io": {"auth": "cXVheabcdef"}}}'
+    )
+
+    with utils.set_registry_token(
+        'user:pass',
+        [
+            'quay.io/ns/bundle-a:1.0',
+            'quay.io/ns/bundle-b:2.0',
+        ],
+        append=True,
+    ):
+        pass
+
+    # Registry-only covering does not suppress namespace fallback for either image.
+    assert mock_json_dump.call_args[0][0]['auths'] == {
+        'quay.io': {'auth': 'cXVheabcdef'},
+        'quay.io/ns': {'auth': 'dXNlcjpwYXNz'},
+        'quay.io/ns/bundle-a': {'auth': 'dXNlcjpwYXNz'},
+        'quay.io/ns/bundle-b': {'auth': 'dXNlcjpwYXNz'},
+    }
+    mock_rdc.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    'container_image, expected_keys',
+    (
+        pytest.param(
+            'quay.io/ns/ack-controller:1.10.2',
+            [
+                'quay.io/ns/ack-controller',
+                'quay.io/ns',
+                'quay.io',
+            ],
+            id='namespaced-repo',
+        ),
+        pytest.param(
+            'localhost:5000/myimage:tag',
+            ['localhost:5000'],
+            id='registry-without-namespace',
+        ),
+    ),
+)
+def test_docker_auth_keys_covering_image(container_image, expected_keys):
+    assert utils._docker_auth_keys_covering_image(container_image) == expected_keys
+
+
+@pytest.mark.parametrize(
+    'auths, container_image, expected',
+    (
+        pytest.param(
+            {'quay.io/ns': {'auth': 'abc'}},
+            'quay.io/ns/ack-controller:1.10.2',
+            True,
+            id='namespace-covers-bundle',
+        ),
+        pytest.param(
+            {'quay.io': {'auth': 'abc'}},
+            'quay.io/ns/ack-controller:1.10.2',
+            True,
+            id='registry-covers-bundle',
+        ),
+        pytest.param(
+            {'quay.io/ns/comm-pending413': {'auth': 'abc'}},
+            'quay.io/ns/ack-controller:1.10.2',
+            False,
+            id='other-repo-does-not-cover',
+        ),
+        pytest.param(
+            {},
+            'quay.io/ns/ack-controller:1.10.2',
+            False,
+            id='empty-auths',
+        ),
+    ),
+)
+def test_docker_config_has_auth_for_image(auths, container_image, expected):
+    assert utils.docker_config_has_auth_for_image(container_image, auths) is expected
+
+
+@mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
+def test_get_images_needing_overwrite_token(mock_load_auths):
+    from_index = 'quay.io/ns/comm-pending413:v4.13'
+    covered_image = 'quay.io/ns/ack-controller:1.10.2'
+    uncovered_image = 'quay.io/ns/other-bundle:1.0'
+    other_namespace_image = 'quay.io/public/bundle:1.0'
+    other_registry_image = 'registry.redhat.io/org/bundle:1.0'
+
+    # Repo-level auth covers only one image
+    mock_load_auths.return_value = {
+        'quay.io/ns/ack-controller': {'auth': 'repo_token'},
+    }
+
+    assert utils.get_images_needing_overwrite_token(
+        from_index,
+        [covered_image, uncovered_image, other_namespace_image, other_registry_image],
+    ) == [uncovered_image]
+
+    # Namespace-level auth covers all images under quay.io/ns
+    mock_load_auths.return_value = {
+        'quay.io/ns': {'auth': 'namespace_token'},
+    }
+    assert (
+        utils.get_images_needing_overwrite_token(
+            from_index,
+            [covered_image, uncovered_image, other_namespace_image, other_registry_image],
+        )
+        == []
+    )
+
+    # Registry-only auth does not cover namespaced images (case 3 / overwrite token path)
+    mock_load_auths.return_value = {
+        'quay.io': {'auth': 'registry_token'},
+    }
+    assert utils.get_images_needing_overwrite_token(
+        from_index,
+        [covered_image, uncovered_image, other_namespace_image, other_registry_image],
+    ) == [covered_image, uncovered_image]
+
+    # No covering auth: only same-namespace images need the overwrite token
+    # (not other namespaces on the same registry — avoids breaking public pulls)
+    mock_load_auths.return_value = {}
+    assert utils.get_images_needing_overwrite_token(
+        from_index,
+        [covered_image, uncovered_image, other_namespace_image, other_registry_image],
+    ) == [covered_image, uncovered_image]
+
+    assert utils.get_images_needing_overwrite_token(None, [covered_image]) == []
+    assert utils.get_images_needing_overwrite_token(from_index, []) == []
+
+
 @mock.patch('os.remove')
 def test_set_registry_token_null_token(mock_remove):
     with utils.set_registry_token(None, 'quay.io/ns/repo:latest'):
@@ -315,6 +534,14 @@ def test_set_registry_token_null_token(mock_remove):
 @mock.patch('os.remove')
 def test_set_container_image_null(mock_remove):
     with utils.set_registry_token('token_username:token_pass', None):
+        pass
+
+    mock_remove.assert_not_called()
+
+
+@mock.patch('os.remove')
+def test_set_registry_token_empty_image_list(mock_remove):
+    with utils.set_registry_token('token_username:token_pass', []):
         pass
 
     mock_remove.assert_not_called()
