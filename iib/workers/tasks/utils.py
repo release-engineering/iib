@@ -447,6 +447,62 @@ def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List
     return deprecate_bundles
 
 
+def _is_safe_operator_package_name(operator_package: str) -> bool:
+    """
+    Validate that an operator package name is safe to use as a catalog directory name.
+
+    :param str operator_package: operator package name from a bundle image label
+    :return: whether the package name can be used without path traversal
+    :rtype: bool
+    """
+    if not operator_package or operator_package in {'.', '..'}:
+        return False
+
+    if '..' in operator_package:
+        return False
+
+    if operator_package != Path(operator_package).name:
+        return False
+
+    # Operator package names become catalog directory names under configs/. Restrict to
+    # lowercase alphanumerics with optional internal dots/hyphens so the name cannot
+    # contain path separators or other filesystem-unsafe characters. Must start and
+    # end with alphanumeric to reject edge cases like ".foo" or "pkg." not caught above.
+    return re.match(r'^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$', operator_package) is not None
+
+
+def get_operator_packages_from_deprecation_list(deprecation_list: List[str]) -> List[str]:
+    """
+    Get operator package names declared in the deprecation list.
+
+    :param list deprecation_list: list of deprecated bundle pull specifications
+    :return: unique operator package names from the deprecation list
+    :rtype: list
+    """
+    operator_packages: List[str] = []
+    for pull_spec in deprecation_list:
+        operator_package = get_image_label(
+            pull_spec, 'operators.operatorframework.io.bundle.package.v1'
+        )
+        if operator_package:
+            if _is_safe_operator_package_name(operator_package):
+                operator_packages.append(operator_package)
+            else:
+                log.warning(
+                    'Skipping unsafe operator package name %r from deprecated bundle %s. '
+                    'The operator directory will not be removed from the Git catalog.',
+                    operator_package,
+                    pull_spec,
+                )
+        else:
+            log.warning(
+                'Could not determine operator package name for deprecated bundle %s. '
+                'The operator directory will not be removed from the Git catalog.',
+                pull_spec,
+            )
+    return list(dict.fromkeys(operator_packages))
+
+
 def get_resolved_bundles(bundles: List[str]) -> List[str]:
     """
     Get the pull specification of the bundle images using their digests.

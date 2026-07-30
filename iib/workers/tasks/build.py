@@ -46,6 +46,7 @@ from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
     chmod_recursively,
     get_bundles_from_deprecation_list,
+    get_operator_packages_from_deprecation_list,
     get_resolved_bundles,
     get_resolved_image,
     podman_pull,
@@ -278,8 +279,8 @@ def _update_index_image_pull_spec(
     :param is_image_fbc: Set to True if the index image is an FBC (File-Based Catalog) image.
     :param dict(str) index_repo_map: The mapping between index images and git repositories. Only
         required if ``is_image_fbc`` is ``True``.
-    :param list(str) rm_operators: List of operators to remove from the index image. Only
-        required if ``add_or_rm`` is ``True`` and an RM operation is requested.
+    :param list(str) rm_operators: List of operator package names to remove from the Git
+        catalog during overwrite. Used by RM requests and ADD requests with deprecations.
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -495,8 +496,8 @@ def _overwrite_from_index(
         ``from_index`` image. If this is not set, IIB's configured credentials will be used.
     :param dict(str) index_repo_map: The mapping between index images and git repositories. Only
         required if ``is_image_fbc`` is ``True``.
-    :param list(str) rm_operators: List of operators to remove from the index image. Only
-        required if ``add_or_rm`` is ``True`` and an RM operation is requested.
+    :param list(str) rm_operators: List of operator package names to remove from the Git
+        catalog during overwrite. Used by RM requests and ADD requests with deprecations.
     :raises IIBError: if one of the skopeo commands fails or if the index image has changed
         since IIB build started.
     """
@@ -1050,6 +1051,8 @@ def handle_add_request(
     set_request_state(request_id, 'in_progress', 'Creating the manifest list')
     output_pull_spec = _create_and_push_manifest_list(request_id, arches, build_tags)
 
+    deprecated_operator_packages = get_operator_packages_from_deprecation_list(deprecation_bundles)
+
     _update_index_image_pull_spec(
         output_pull_spec=output_pull_spec,
         request_id=request_id,
@@ -1061,6 +1064,7 @@ def handle_add_request(
         add_or_rm=True,
         is_image_fbc=is_fbc,
         index_repo_map=index_to_gitlab_push_map or {},
+        rm_operators=deprecated_operator_packages or None,
     )
     _cleanup()
     set_request_state(
