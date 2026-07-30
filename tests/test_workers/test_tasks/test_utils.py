@@ -990,6 +990,21 @@ def testget_bundles_from_deprecation_list(mock_grb):
     mock_grb.assert_called_once_with(deprecation_list)
 
 
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_get_operator_packages_from_deprecation_list(mock_get_image_label):
+    mock_get_image_label.side_effect = ['safe-operator', 'unsafe/../op', '']
+    deprecation_list = [
+        'quay.io/bundle1@sha256:123',
+        'quay.io/bundle2@sha256:456',
+        'quay.io/bundle3@sha256:789',
+    ]
+
+    operator_packages = utils.get_operator_packages_from_deprecation_list(deprecation_list)
+
+    assert operator_packages == ['safe-operator']
+    assert mock_get_image_label.call_count == 3
+
+
 def test_chmod_recursiverly(tmpdir):
     # Create a directory structure like this:
     # spam-dir/

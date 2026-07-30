@@ -692,6 +692,8 @@ def test_buildah_fail_max_retries(mock_run_cmd: mock.MagicMock) -> None:
 )
 @pytest.mark.parametrize('distribution_scope', ('dev', 'stage', 'prod'))
 @pytest.mark.parametrize('deprecate_bundles', (True, False))
+@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build.get_operator_packages_from_deprecation_list')
 @mock.patch('iib.workers.tasks.utils.get_list_bundles')
 @mock.patch('iib.workers.tasks.build.deprecate_bundles')
 @mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
@@ -737,12 +739,18 @@ def test_handle_add_request(
     mock_ugrb,
     mock_dep_b,
     mock_glb,
+    mock_get_deprecated_ops,
+    mock_gwc,
     force_backport,
     binary_image,
     distribution_scope,
     deprecate_bundles,
 ):
     arches = {'amd64', 's390x'}
+    mock_gwc.return_value = {
+        'iib_registry': 'quay.io',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
     from_index_resolved = 'from-index@sha256:bcdefg'
     mock_iifbc.return_value = False
@@ -785,6 +793,7 @@ def test_handle_add_request(
         {"packageName": "test-operator", "version": "v1.2", "bundlePath": "bundle1"},
         {"packageName": "package2", "version": "v2.0", "bundlePath": "bundle2"},
     ]
+    mock_get_deprecated_ops.return_value = ['deprecated-operator'] if deprecate_bundles else []
 
     build.handle_add_request(
         bundles,
@@ -841,6 +850,16 @@ def test_handle_add_request(
         assert mock_pi.call_count == len(arches)
 
     mock_uiips.assert_called_once()
+    if deprecate_bundles:
+        expected_deprecation_bundles = [
+            'random_bundle@sha256:678',
+            'some-deprecation-bundle@sha256:456',
+        ]
+        mock_get_deprecated_ops.assert_called_once_with(expected_deprecation_bundles)
+        assert mock_uiips.call_args.kwargs['rm_operators'] == ['deprecated-operator']
+    else:
+        mock_get_deprecated_ops.assert_called_once_with([])
+        assert mock_uiips.call_args.kwargs['rm_operators'] is None
     mock_vii.assert_not_called()
     mock_sov.assert_called_once_with(from_index_resolved)
     mock_capml.assert_called_once_with(3, {'s390x', 'amd64'}, ["extra_tag1", "extra_tag2"])
@@ -850,11 +869,121 @@ def test_handle_add_request(
             bundles=['random_bundle@sha256:678', 'some-deprecation-bundle@sha256:456'],
             base_dir=mock.ANY,
             binary_image=binary_image or 'some_image',
-            from_index='registry:8443/iib-build:3-amd64',
+            from_index='quay.io/iib-build:3-amd64',
             container_tool='podman',
         )
     else:
         mock_dep_b.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build.get_worker_config')
+@mock.patch('iib.workers.tasks.build.get_operator_packages_from_deprecation_list')
+@mock.patch('iib.workers.tasks.utils.get_list_bundles')
+@mock.patch('iib.workers.tasks.build.deprecate_bundles')
+@mock.patch('iib.workers.tasks.utils.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build.opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._verify_index_image')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.utils.set_request_state')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.gate_bundles')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
+@mock.patch('iib.workers.tasks.build._get_present_bundles')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.is_image_fbc')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_add_request_passes_rm_operators_for_deprecation(
+    mock_sov,
+    mock_iifbc,
+    mock_srt,
+    mock_gpb,
+    mock_alti,
+    mock_grb,
+    mock_gb,
+    mock_capml,
+    mock_srs,
+    mock_srs2,
+    mock_uiips,
+    mock_vii,
+    mock_pi,
+    mock_bi,
+    mock_oia,
+    mock_uiibs,
+    mock_prfb,
+    mock_vl,
+    mock_cleanup,
+    mock_ugrb,
+    mock_dep_b,
+    mock_glb,
+    mock_get_deprecated_ops,
+    mock_gwc,
+):
+    arches = {'amd64'}
+    from_index_resolved = 'from-index@sha256:bcdefg'
+    deprecation_list = ['deprecated-bundle@sha256:456']
+    expected_deprecation_bundles = ['deprecated-bundle@sha256:456']
+    mock_gwc.return_value = {
+        'iib_registry': 'quay.io',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    mock_iifbc.return_value = False
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.5',
+        'distribution_scope': 'prod',
+    }
+    mock_grb.return_value = ['some-bundle@sha256:123']
+    mock_capml.return_value = 'quay.io/namespace/some-image:3'
+    mock_gpb.return_value = (
+        [{'bundlePath': 'deprecated-bundle@sha256:456'}],
+        ['deprecated-bundle@sha256:456'],
+    )
+    mock_ugrb.return_value = ['deprecated-bundle@sha256:456']
+    mock_get_deprecated_ops.return_value = ['deprecated-operator']
+    mock_glb.return_value = []
+
+    build.handle_add_request(
+        ['some-bundle:2.3-1'],
+        3,
+        'binary-image:latest',
+        'from-index:latest',
+        None,
+        'token',
+        'org',
+        False,
+        True,
+        'user:pass',
+        None,
+        {},
+        deprecation_list=deprecation_list,
+        index_to_gitlab_push_map={'from-index:latest': 'https://gitlab.example/repo.git'},
+    )
+
+    mock_get_deprecated_ops.assert_called_once_with(expected_deprecation_bundles)
+    mock_uiips.assert_called_once_with(
+        output_pull_spec=mock_capml.return_value,
+        request_id=3,
+        arches=arches,
+        from_index='from-index:latest',
+        overwrite_from_index=True,
+        overwrite_from_index_token='user:pass',
+        resolved_prebuild_from_index=from_index_resolved,
+        add_or_rm=True,
+        is_image_fbc=False,
+        index_repo_map={'from-index:latest': 'https://gitlab.example/repo.git'},
+        rm_operators=['deprecated-operator'],
+    )
 
 
 @mock.patch('iib.workers.tasks.build.update_request')
@@ -882,6 +1011,7 @@ def test_handle_add_request_raises(mock_iifbc, mock_runcmd, mock_c, mock_ur):
         )
 
 
+@mock.patch('iib.workers.tasks.build.get_operator_packages_from_deprecation_list')
 @mock.patch('iib.workers.tasks.build.get_worker_config')
 @mock.patch('iib.workers.tasks.utils.sqlite3.connect')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
@@ -931,6 +1061,7 @@ def test_handle_add_request_check_index_label_behavior(
     mock_run_cmd,
     mock_sqlite,
     mock_gwc,
+    mock_get_deprecated_ops,
 ):
     arches = {'amd64', 's390x'}
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
@@ -989,6 +1120,7 @@ def test_handle_add_request_check_index_label_behavior(
         }
     ]
     mock_sqlite.execute.return_value = 200
+    mock_get_deprecated_ops.return_value = ['deprecated-operator']
 
     build.handle_add_request(
         bundles,
