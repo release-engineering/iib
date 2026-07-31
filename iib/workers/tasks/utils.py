@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 
@@ -453,6 +454,127 @@ def get_bundles_from_deprecation_list(bundles: List[str], deprecation_list: List
             'Bundles that will be deprecated from the index image: %s', ', '.join(deprecate_bundles)
         )
     return deprecate_bundles
+
+
+# OLM package names (operators.operatorframework.io.bundle.package.v1) follow the DNS
+# subdomain rules: lowercase alphanumerics, hyphens, and periods only — no underscores
+# or uppercase. See RFC 1123 and OLM packaging docs.
+_OPERATOR_PACKAGE_NAME_PATTERN = re.compile(r'^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$')
+
+
+def _is_safe_operator_package_name(operator_package: str) -> bool:
+    """
+    Validate that an operator package name is safe to use as a catalog directory name.
+
+    Names must satisfy OLM DNS subdomain rules (lowercase alphanumerics, ``-``, ``.``)
+    in addition to path traversal checks. Underscores and uppercase are rejected because
+    they are invalid in ``operators.operatorframework.io.bundle.package.v1`` labels.
+
+    :param str operator_package: operator package name from a bundle image label
+    :return: whether the package name can be used without path traversal
+    :rtype: bool
+    """
+    if not operator_package or operator_package in {'.', '..'}:
+        return False
+
+    if '..' in operator_package:
+        return False
+
+    if operator_package != Path(operator_package).name:
+        return False
+
+    return _OPERATOR_PACKAGE_NAME_PATTERN.match(operator_package) is not None
+
+
+def _resolve_operator_catalog_dir(catalog_base: Path, operator_package: str) -> Optional[Path]:
+    """
+    Resolve the operator catalog directory and ensure it stays within the catalog base.
+
+    :param Path catalog_base: absolute path to the Git ``configs`` directory
+    :param str operator_package: validated operator package name (see
+        :func:`_is_safe_operator_package_name`)
+    :return: resolved operator catalog directory or ``None`` if resolution escapes
+        ``catalog_base`` (e.g. due to symlinks)
+    :rtype: Path | None
+    """
+    operator_catalog_dir = (catalog_base / operator_package).resolve()
+    if operator_catalog_dir == catalog_base or not operator_catalog_dir.is_relative_to(
+        catalog_base
+    ):
+        return None
+
+    return operator_catalog_dir
+
+
+def get_operator_packages_from_deprecation_list(deprecation_list: List[str]) -> List[str]:
+    """
+    Get operator package names declared in the deprecation list.
+
+    :param list deprecation_list: list of deprecated bundle pull specifications
+    :return: unique operator package names from the deprecation list
+    :rtype: list
+    """
+    operator_packages: List[str] = []
+    for pull_spec in deprecation_list:
+        operator_package = get_image_label(
+            pull_spec, 'operators.operatorframework.io.bundle.package.v1'
+        )
+        if operator_package:
+            if _is_safe_operator_package_name(operator_package):
+                operator_packages.append(operator_package)
+            else:
+                log.warning(
+                    'Skipping unsafe operator package name %r from deprecated bundle %s. '
+                    'The operator directory will not be removed from the Git catalog.',
+                    operator_package,
+                    pull_spec,
+                )
+        else:
+            log.warning(
+                'Could not determine operator package name for deprecated bundle %s. '
+                'The operator directory will not be removed from the Git catalog.',
+                pull_spec,
+            )
+    return list(dict.fromkeys(operator_packages))
+
+
+def remove_deprecated_operators_from_git_catalog(
+    localized_git_catalog_path: str, deprecated_bundle_pull_specs: List[str]
+) -> None:
+    """
+    Remove deprecated operator package directories from a Git-backed file-based catalog.
+
+    Removes the entire ``configs/<package>/`` tree for each operator package tied to a
+    deprecated bundle, not individual bundle versions. ``merge_catalogs_dirs`` uses
+    ``copytree(..., dirs_exist_ok=True)``, which overwrites files from the source but
+    does not delete extra files left in the Git catalog. Clearing the whole package
+    directory avoids stale channel or version entries. If the operator still exists in
+    ``index.db`` after deprecation, ``catalog_from_db`` (from ``opm_migrate``) restores
+    it on the subsequent merge.
+
+    :param str localized_git_catalog_path: path to the ``configs`` directory in the Git repository
+    :param list deprecated_bundle_pull_specs: bundle pull specifications deprecated in index.db
+    """
+    catalog_base = Path(localized_git_catalog_path).resolve()
+    for operator_package in get_operator_packages_from_deprecation_list(
+        deprecated_bundle_pull_specs
+    ):
+        operator_catalog_dir = _resolve_operator_catalog_dir(catalog_base, operator_package)
+        if not operator_catalog_dir:
+            log.warning(
+                'Resolved catalog path for operator package %r escapes %s; '
+                'skipping removal from the Git catalog',
+                operator_package,
+                catalog_base,
+            )
+            continue
+
+        if operator_catalog_dir.is_dir():
+            log.debug(
+                'Removing deprecated operator package directory from catalog: %s',
+                operator_package,
+            )
+            shutil.rmtree(operator_catalog_dir)
 
 
 def get_resolved_bundles(bundles: List[str]) -> List[str]:

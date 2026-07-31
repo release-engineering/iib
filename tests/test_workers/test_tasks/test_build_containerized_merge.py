@@ -49,6 +49,14 @@ def _mock_set_for_bundles(iterable=None):
     return _original_set(iterable)
 
 
+@pytest.fixture(autouse=True)
+def mock_remove_deprecated_operators_from_git_catalog():
+    with mock.patch(
+        'iib.workers.tasks.build_containerized_merge.remove_deprecated_operators_from_git_catalog'
+    ) as mock_remove:
+        yield mock_remove
+
+
 @mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
@@ -417,6 +425,7 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     mock_cof,
     mock_rdc,
     mock_merge_mr,
+    mock_remove_deprecated_operators_from_git_catalog,
 ):
     """Test successful merge request with deprecations executed correctly."""
     # Setup
@@ -611,6 +620,11 @@ def test_handle_containerized_merge_request_success_with_deprecations(
     assert 'bundle1@sha256:111' in dbd_call_args[1]['bundles']
     assert 'bundle2@sha256:222' in dbd_call_args[1]['bundles']
 
+    # Verify deprecated operator directories were removed from Git catalog before merge
+    mock_remove_deprecated_operators_from_git_catalog.assert_called_once_with(
+        localized_git_catalog_path, deprecation_bundles_latest
+    )
+
     # Verify FBC migration
     mock_om.assert_called_once()
 
@@ -646,6 +660,420 @@ def test_handle_containerized_merge_request_success_with_deprecations(
 
     # Verify reset_docker_config was called
     assert mock_rdc.call_count >= 1
+
+
+def _run_minimal_merge_handler(
+    mock_tempdir,
+    mock_get_request,
+    mock_prfb,
+    mock_opm,
+    mock_pgrfb,
+    mock_favida,
+    mock_gpb,
+    mock_gmbfts,
+    mock_gbfdl,
+    mock_gblv,
+    mock_om,
+    mock_glb,
+    mock_exists,
+    mock_gccmop,
+    mock_mpaei,
+    mock_ritd,
+    mock_pida,
+    temp_dir,
+    deprecation_list,
+    invalid_bundles=None,
+):
+    """Run merge handler with minimal mocks for focused deprecation tests."""
+    request_id = 10
+    source_from_index = 'quay.io/namespace/source-index:v4.14'
+    target_index = 'quay.io/namespace/target-index:v4.15'
+    index_git_repo = 'https://gitlab.com/repo'
+    local_git_repo_path = os.path.join(temp_dir, 'git_repo')
+    localized_git_catalog_path = os.path.join(local_git_repo_path, 'catalogs')
+
+    mock_tempdir.return_value.__enter__.return_value = temp_dir
+    mock_get_request.return_value = {'user': 'test-user'}
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image_resolved': 'registry.io/binary@sha256:abc123',
+        'source_from_index_resolved': 'quay.io/namespace/source-index@sha256:def456',
+        'target_index_resolved': 'quay.io/namespace/target-index@sha256:ghi789',
+        'ocp_version': 'v4.14',
+        'target_ocp_version': 'v4.15',
+        'distribution_scope': 'prod',
+    }
+    mock_opm.opm_version = 'v1.48.0'
+    mock_pgrfb.return_value = (index_git_repo, local_git_repo_path, localized_git_catalog_path)
+
+    source_index_db_path = os.path.join(temp_dir, 'source_index.db')
+    target_index_db_path = os.path.join(temp_dir, 'target_index.db')
+    mock_favida.side_effect = [source_index_db_path, target_index_db_path]
+
+    source_bundles = [
+        {'bundlePath': 'bundle1@sha256:111', 'csvName': 'bundle1-1.0', 'packageName': 'bundle1'},
+    ]
+    source_bundles_pull_spec = ['bundle1@sha256:111']
+    target_bundles = []
+    target_bundles_pull_spec = []
+    mock_gpb.side_effect = [
+        (source_bundles, source_bundles_pull_spec),
+        (target_bundles, target_bundles_pull_spec),
+    ]
+    mock_gmbfts.return_value = ([], invalid_bundles or [])
+    mock_gblv.side_effect = lambda bundles, all_bundles: bundles
+    mock_om.return_value = (os.path.join(temp_dir, 'fbc_catalog'), None)
+    mock_glb.return_value = [
+        {'bundlePath': 'bundle1@sha256:111', 'packageName': 'bundle1'},
+    ]
+    mock_exists.return_value = True
+    mr_details = {
+        'mr_id': str(request_id),
+        'mr_url': f'https://gitlab.com/repo/-/merge_requests/{request_id}',
+        'source_branch': f'iib-request-{request_id}-v4.15',
+    }
+    mock_gccmop.return_value = (mr_details, 'abc123commit')
+    mock_mpaei.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
+    mock_ritd.return_value = ['quay.io/iib/iib-build:10']
+    mock_pida.return_value = 'sha256:original123'
+
+    build_containerized_merge.handle_containerized_merge_request(
+        source_from_index=source_from_index,
+        deprecation_list=deprecation_list,
+        request_id=request_id,
+        binary_image='registry.io/binary:latest',
+        target_index=target_index,
+        overwrite_target_index=True,
+        overwrite_target_index_token='user:token',
+    )
+    return localized_git_catalog_path
+
+
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_merge.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_validate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_list_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_latest_version')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_merge._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_missing_bundles_from_target_to_source')
+@mock.patch('iib.workers.tasks.build_containerized_merge.validate_bundles_in_parallel')
+@mock.patch('iib.workers.tasks.build_containerized_merge._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_git_repository_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.rename')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.rmtree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.move')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.path.exists')
+@mock.patch('builtins.set', side_effect=_mock_set_for_bundles)
+def test_handle_containerized_merge_request_deduplicates_deprecation_bundles(
+    mock_set,
+    mock_exists,
+    mock_move,
+    mock_rmtree,
+    mock_rename,
+    mock_tempdir,
+    mock_set_registry_token,
+    mock_srs,
+    mock_srs_api,
+    mock_get_request,
+    mock_prfb,
+    mock_opm,
+    mock_uiibs,
+    mock_pgrfb,
+    mock_favida,
+    mock_gpb,
+    mock_vbip,
+    mock_gmbfts,
+    mock_ora,
+    mock_gbfdl,
+    mock_gblv,
+    mock_dbd,
+    mock_glb,
+    mock_om,
+    mock_mcd,
+    mock_copytree,
+    mock_ov,
+    mock_wbm,
+    mock_gccmop,
+    mock_mpaei,
+    mock_ritd,
+    mock_uiips,
+    mock_pida,
+    mock_cmrif,
+    mock_cof,
+    mock_rdc,
+    mock_merge_mr,
+    mock_remove_deprecated_operators_from_git_catalog,
+):
+    """Duplicate bundles from deprecation_list and invalid_bundles are deduplicated."""
+    duplicate_bundle = 'bundle1@sha256:111'
+    mock_gbfdl.return_value = [duplicate_bundle]
+    invalid_bundles = [
+        {'bundlePath': duplicate_bundle, 'csvName': 'bundle1-1.0', 'packageName': 'bundle1'},
+    ]
+
+    _run_minimal_merge_handler(
+        mock_tempdir,
+        mock_get_request,
+        mock_prfb,
+        mock_opm,
+        mock_pgrfb,
+        mock_favida,
+        mock_gpb,
+        mock_gmbfts,
+        mock_gbfdl,
+        mock_gblv,
+        mock_om,
+        mock_glb,
+        mock_exists,
+        mock_gccmop,
+        mock_mpaei,
+        mock_ritd,
+        mock_pida,
+        temp_dir='/tmp/iib-10-dedup',
+        deprecation_list=['bundle1:1.0'],
+        invalid_bundles=invalid_bundles,
+    )
+
+    mock_gblv.assert_called_once()
+    assert mock_gblv.call_args[0][0] == [duplicate_bundle]
+    mock_dbd.assert_called_once()
+    assert mock_dbd.call_args[1]['bundles'] == [duplicate_bundle]
+
+
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_merge.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_validate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_list_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_latest_version')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_merge._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_missing_bundles_from_target_to_source')
+@mock.patch('iib.workers.tasks.build_containerized_merge.validate_bundles_in_parallel')
+@mock.patch('iib.workers.tasks.build_containerized_merge._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_git_repository_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.rename')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.rmtree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.move')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.path.exists')
+@mock.patch('builtins.set', side_effect=_mock_set_for_bundles)
+def test_handle_containerized_merge_request_skips_git_cleanup_without_deprecation_bundles(
+    mock_set,
+    mock_exists,
+    mock_move,
+    mock_rmtree,
+    mock_rename,
+    mock_tempdir,
+    mock_set_registry_token,
+    mock_srs,
+    mock_srs_api,
+    mock_get_request,
+    mock_prfb,
+    mock_opm,
+    mock_uiibs,
+    mock_pgrfb,
+    mock_favida,
+    mock_gpb,
+    mock_vbip,
+    mock_gmbfts,
+    mock_ora,
+    mock_gbfdl,
+    mock_gblv,
+    mock_dbd,
+    mock_glb,
+    mock_om,
+    mock_mcd,
+    mock_copytree,
+    mock_ov,
+    mock_wbm,
+    mock_gccmop,
+    mock_mpaei,
+    mock_ritd,
+    mock_uiips,
+    mock_pida,
+    mock_cmrif,
+    mock_cof,
+    mock_rdc,
+    mock_merge_mr,
+    mock_remove_deprecated_operators_from_git_catalog,
+):
+    """Git catalog cleanup is skipped when no bundles were deprecated in index.db."""
+    mock_gbfdl.return_value = []
+
+    _run_minimal_merge_handler(
+        mock_tempdir,
+        mock_get_request,
+        mock_prfb,
+        mock_opm,
+        mock_pgrfb,
+        mock_favida,
+        mock_gpb,
+        mock_gmbfts,
+        mock_gbfdl,
+        mock_gblv,
+        mock_om,
+        mock_glb,
+        mock_exists,
+        mock_gccmop,
+        mock_mpaei,
+        mock_ritd,
+        mock_pida,
+        temp_dir='/tmp/iib-10-no-deprecation',
+        deprecation_list=[],
+    )
+
+    mock_remove_deprecated_operators_from_git_catalog.assert_not_called()
+    mock_dbd.assert_not_called()
+    mock_gblv.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_merge.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_validate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.merge_catalogs_dirs')
+@mock.patch('iib.workers.tasks.build_containerized_merge.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_list_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_latest_version')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_merge._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_merge.get_missing_bundles_from_target_to_source')
+@mock.patch('iib.workers.tasks.build_containerized_merge.validate_bundles_in_parallel')
+@mock.patch('iib.workers.tasks.build_containerized_merge._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_merge.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_git_repository_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_merge.prepare_request_for_build')
+@mock.patch('iib.workers.api_utils.set_request_state')
+@mock.patch('iib.workers.api_utils.get_request')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_merge.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_merge.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.rename')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.rmtree')
+@mock.patch('iib.workers.tasks.build_containerized_merge.shutil.move')
+@mock.patch('iib.workers.tasks.build_containerized_merge.os.path.exists')
+@mock.patch('builtins.set', side_effect=_mock_set_for_bundles)
+def test_handle_containerized_merge_request_git_cleanup_without_db_deprecation_match(
+    mock_set,
+    mock_exists,
+    mock_move,
+    mock_rmtree,
+    mock_rename,
+    mock_tempdir,
+    mock_set_registry_token,
+    mock_srs,
+    mock_srs_api,
+    mock_get_request,
+    mock_prfb,
+    mock_opm,
+    mock_uiibs,
+    mock_pgrfb,
+    mock_favida,
+    mock_gpb,
+    mock_vbip,
+    mock_gmbfts,
+    mock_ora,
+    mock_gbfdl,
+    mock_gblv,
+    mock_dbd,
+    mock_glb,
+    mock_om,
+    mock_mcd,
+    mock_copytree,
+    mock_ov,
+    mock_wbm,
+    mock_gccmop,
+    mock_mpaei,
+    mock_ritd,
+    mock_uiips,
+    mock_pida,
+    mock_cmrif,
+    mock_cof,
+    mock_rdc,
+    mock_merge_mr,
+    mock_remove_deprecated_operators_from_git_catalog,
+):
+    """Git cleanup is skipped when deprecation_list matches no bundles in the index."""
+    mock_gbfdl.return_value = []
+
+    _run_minimal_merge_handler(
+        mock_tempdir,
+        mock_get_request,
+        mock_prfb,
+        mock_opm,
+        mock_pgrfb,
+        mock_favida,
+        mock_gpb,
+        mock_gmbfts,
+        mock_gbfdl,
+        mock_gblv,
+        mock_om,
+        mock_glb,
+        mock_exists,
+        mock_gccmop,
+        mock_mpaei,
+        mock_ritd,
+        mock_pida,
+        temp_dir='/tmp/iib-10-git-only',
+        deprecation_list=['bundle1:1.0'],
+    )
+
+    mock_dbd.assert_not_called()
+    mock_gblv.assert_not_called()
+    mock_remove_deprecated_operators_from_git_catalog.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
