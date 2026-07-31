@@ -45,11 +45,11 @@ from iib.workers.tasks.utils import (
     chmod_recursively,
     get_bundles_from_deprecation_list,
     get_resolved_bundles,
+    remove_deprecated_operators_from_git_catalog,
     request_logger,
     reset_docker_config,
     set_registry_token,
     RequestConfigAddRm,
-    get_image_label,
     verify_labels,
     prepare_request_for_build,
 )
@@ -243,22 +243,14 @@ def handle_containerized_add_request(
             generate_cache=False,
         )
 
-        # we have to remove all `deprecation_bundles` from `localized_git_catalog_path`
-        # before merging catalogs otherwise if catalog was deprecated and
-        # removed from `index.db` it stays on FBC (from_index)
-        # Therefore we have to remove the directory before merging
-        for deprecate_bundle_pull_spec in deprecation_bundles:
-            # remove deprecated operators from FBC stored in index image
-            deprecate_bundle_package = get_image_label(
-                deprecate_bundle_pull_spec, 'operators.operatorframework.io.bundle.package.v1'
+        # Remove stale operator directories from the from_index Git catalog before merging.
+        # merge_catalogs_dirs only copies from catalog_from_db; without this step, operators
+        # removed from index.db by deprecate_bundles_db would remain under configs/<package>/.
+        # Use the same bundle list as index.db deprecation.
+        if deprecation_bundles:
+            remove_deprecated_operators_from_git_catalog(
+                localized_git_catalog_path, deprecation_bundles
             )
-            bundle_from_index = Path(localized_git_catalog_path) / deprecate_bundle_package
-            if bundle_from_index.is_dir():
-                log.debug(
-                    "Removing deprecated bundle from catalog before merging: %s",
-                    deprecate_bundle_package,
-                )
-                shutil.rmtree(bundle_from_index)
         # overwrite data in `localized_git_catalog_path` by data from `catalog_from_db`
         # this adds changes on not opted in operators to final
         merge_catalogs_dirs(catalog_from_db, localized_git_catalog_path)
