@@ -6,6 +6,7 @@ import os
 import stat
 import subprocess
 import textwrap
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -994,17 +995,103 @@ def testget_bundles_from_deprecation_list(mock_grb):
 
 @mock.patch('iib.workers.tasks.utils.get_image_label')
 def test_get_operator_packages_from_deprecation_list(mock_get_image_label):
-    mock_get_image_label.side_effect = ['safe-operator', 'unsafe/../op', '']
+    mock_get_image_label.side_effect = ['lgallett-bundle', 'serverless-operator']
     deprecation_list = [
-        'quay.io/bundle1@sha256:123',
-        'quay.io/bundle2@sha256:456',
-        'quay.io/bundle3@sha256:789',
+        'registry.example.com/lgallett-bundle@sha256:abc',
+        'registry.example.com/serverless-operator@sha256:def',
     ]
 
-    operator_packages = utils.get_operator_packages_from_deprecation_list(deprecation_list)
+    packages = utils.get_operator_packages_from_deprecation_list(deprecation_list)
 
-    assert operator_packages == ['safe-operator']
-    assert mock_get_image_label.call_count == 3
+    assert packages == ['lgallett-bundle', 'serverless-operator']
+
+
+@mock.patch('iib.workers.tasks.utils.log')
+@mock.patch('iib.workers.tasks.utils.get_image_label', return_value='')
+def test_get_operator_packages_from_deprecation_list_missing_label(mock_get_image_label, mock_log):
+    pull_spec = 'registry.example.com/unknown-bundle@sha256:abc'
+
+    packages = utils.get_operator_packages_from_deprecation_list([pull_spec])
+
+    assert packages == []
+    mock_log.warning.assert_called_once()
+    assert pull_spec in mock_log.warning.call_args[0][1]
+
+
+@mock.patch('iib.workers.tasks.utils.get_operator_packages_from_deprecation_list')
+@mock.patch('iib.workers.tasks.utils.shutil.rmtree')
+def test_remove_deprecated_operators_from_git_catalog(mock_rmtree, mock_get_packages, tmpdir):
+    catalog_path = tmpdir.mkdir('configs')
+    package_dir = catalog_path.join('lgallett-bundle')
+    package_dir.mkdir()
+    mock_get_packages.return_value = ['lgallett-bundle']
+
+    utils.remove_deprecated_operators_from_git_catalog(str(catalog_path), ['bundle@sha256:abc'])
+
+    mock_rmtree.assert_called_once_with((Path(str(catalog_path)).resolve() / 'lgallett-bundle'))
+
+
+@mock.patch('iib.workers.tasks.utils.shutil.rmtree')
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_remove_deprecated_operators_from_git_catalog_missing_package_dir(
+    mock_get_image_label, mock_rmtree, tmpdir
+):
+    catalog_path = tmpdir.mkdir('configs')
+    mock_get_image_label.return_value = 'lgallett-bundle'
+
+    utils.remove_deprecated_operators_from_git_catalog(str(catalog_path), ['bundle@sha256:abc'])
+
+    mock_rmtree.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.utils.shutil.rmtree')
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_remove_deprecated_operators_from_git_catalog_rejects_path_traversal(
+    mock_get_image_label, mock_rmtree, tmpdir
+):
+    catalog_path = tmpdir.mkdir('configs')
+    outside_dir = tmpdir.mkdir('outside')
+    mock_get_image_label.return_value = '../outside'
+
+    utils.remove_deprecated_operators_from_git_catalog(str(catalog_path), ['bundle@sha256:abc'])
+
+    mock_rmtree.assert_not_called()
+    assert outside_dir.check(dir=True)
+
+
+@pytest.mark.parametrize(
+    'operator_package, expected',
+    (
+        ('lgallett-bundle', True),
+        ('serverless-operator', True),
+        ('amq7-amq-streams', True),
+        ('a', True),
+        ('', False),
+        ('.', False),
+        ('..', False),
+        ('../outside', False),
+        ('foo/bar', False),
+        ('foo\\bar', False),
+        ('foo..bar', False),
+        ('UPPERCASE', False),
+        ('foo_bar', False),
+    ),
+)
+def test_is_safe_operator_package_name(operator_package, expected):
+    assert utils._is_safe_operator_package_name(operator_package) is expected
+
+
+@mock.patch('iib.workers.tasks.utils.log')
+@mock.patch('iib.workers.tasks.utils.get_image_label')
+def test_get_operator_packages_from_deprecation_list_rejects_unsafe_name(
+    mock_get_image_label, mock_log
+):
+    mock_get_image_label.return_value = '../outside'
+
+    packages = utils.get_operator_packages_from_deprecation_list(['bundle@sha256:abc'])
+
+    assert packages == []
+    mock_log.warning.assert_called_once()
 
 
 def test_chmod_recursiverly(tmpdir):

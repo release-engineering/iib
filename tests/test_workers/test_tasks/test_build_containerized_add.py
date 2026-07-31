@@ -40,9 +40,10 @@ from iib.workers.tasks import build_containerized_add
 @mock.patch('iib.workers.tasks.build_containerized_add.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_add.chmod_recursively')
 @mock.patch('iib.workers.tasks.build_containerized_add.merge_catalogs_dirs')
-@mock.patch('iib.workers.tasks.build_containerized_add.shutil.rmtree')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_add.remove_deprecated_operators_from_git_catalog'
+)
 @mock.patch('iib.workers.tasks.build_containerized_add.Path.is_dir')
-@mock.patch('iib.workers.tasks.build_containerized_add.get_image_label')
 @mock.patch('iib.workers.tasks.build_containerized_add.opm_migrate')
 @mock.patch('iib.workers.tasks.build_containerized_add.deprecate_bundles_db')
 @mock.patch('iib.workers.tasks.build_containerized_add.get_bundles_from_deprecation_list')
@@ -78,9 +79,8 @@ def test_handle_containerized_add_request(
     mock_get_deprecations,
     mock_deprecate,
     mock_opm_migrate,
-    mock_get_image_label,
     mock_path_isdir,
-    mock_rmtree,
+    mock_remove_deprecated,
     mock_merge,
     mock_chmod,
     mock_write_meta,
@@ -149,9 +149,6 @@ def test_handle_containerized_add_request(
     deprecation_list = ['deprecated-bundle:1.0'] if with_deprecations else None
     if with_deprecations:
         mock_get_deprecations.return_value = ['deprecated-bundle@sha256:old']
-        mock_get_image_label.return_value = 'deprecated-operator-package'
-        package = Path(localized_git_catalog_path) / 'deprecated-operator-package'
-        package.mkdir(parents=True)
     else:
         mock_get_deprecations.return_value = []
 
@@ -246,12 +243,12 @@ def test_handle_containerized_add_request(
     if with_deprecations:
         mock_get_deprecations.assert_called_once()
         mock_deprecate.assert_called_once()
-        mock_rmtree.assert_called()
-        expected_path = Path(localized_git_catalog_path) / 'deprecated-operator-package'
-        mock_rmtree.assert_any_call(expected_path)
+        mock_remove_deprecated.assert_called_once_with(
+            localized_git_catalog_path, mock_get_deprecations.return_value
+        )
     else:
         mock_deprecate.assert_not_called()
-        mock_rmtree.assert_not_called()
+        mock_remove_deprecated.assert_not_called()
 
     # Verify makedirs and migrate
     assert mock_makedirs.call_count >= 2
@@ -299,9 +296,10 @@ def test_handle_containerized_add_request(
 @mock.patch('iib.workers.tasks.build_containerized_add.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_add.chmod_recursively')
 @mock.patch('iib.workers.tasks.build_containerized_add.merge_catalogs_dirs')
-@mock.patch('iib.workers.tasks.build_containerized_add.shutil.rmtree')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_add.remove_deprecated_operators_from_git_catalog'
+)
 @mock.patch('iib.workers.tasks.build_containerized_add.Path.is_dir')
-@mock.patch('iib.workers.tasks.build_containerized_add.get_image_label')
 @mock.patch('iib.workers.tasks.build_containerized_add.opm_migrate')
 @mock.patch('iib.workers.tasks.build_containerized_add.deprecate_bundles_db')
 @mock.patch('iib.workers.tasks.build_containerized_add.get_bundles_from_deprecation_list')
@@ -337,9 +335,8 @@ def test_handle_containerized_add_request_failure(
     mock_get_deprecations,
     mock_deprecate,
     mock_opm_migrate,
-    mock_get_image_label,
     mock_path_isdir,
-    mock_rmtree,
+    mock_remove_deprecated,
     mock_merge,
     mock_chmod,
     mock_write_meta,
@@ -420,9 +417,10 @@ def test_handle_containerized_add_request_failure(
 @mock.patch('iib.workers.tasks.build_containerized_add.write_build_metadata')
 @mock.patch('iib.workers.tasks.build_containerized_add.chmod_recursively')
 @mock.patch('iib.workers.tasks.build_containerized_add.merge_catalogs_dirs')
-@mock.patch('iib.workers.tasks.build_containerized_add.shutil.rmtree')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_add.remove_deprecated_operators_from_git_catalog'
+)
 @mock.patch('iib.workers.tasks.build_containerized_add.Path.is_dir')
-@mock.patch('iib.workers.tasks.build_containerized_add.get_image_label')
 @mock.patch('iib.workers.tasks.build_containerized_add.opm_migrate')
 @mock.patch('iib.workers.tasks.build_containerized_add.deprecate_bundles_db')
 @mock.patch('iib.workers.tasks.build_containerized_add.get_bundles_from_deprecation_list')
@@ -460,9 +458,8 @@ def test_handle_containerized_add_request_overwrite(
     mock_get_deprecations,
     mock_deprecate,
     mock_opm_migrate,
-    mock_get_image_label,
     mock_path_isdir,
-    mock_rmtree,
+    mock_remove_deprecated,
     mock_merge,
     mock_chmod,
     mock_write_meta,

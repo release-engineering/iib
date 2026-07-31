@@ -46,6 +46,7 @@ from iib.workers.tasks.utils import (
     RequestConfigMerge,
     set_registry_token,
     get_bundles_from_deprecation_list,
+    remove_deprecated_operators_from_git_catalog,
 )
 from iib.workers.tasks.fbc_utils import merge_catalogs_dirs
 from iib.workers.tasks.iib_static_types import BundleImage
@@ -243,6 +244,7 @@ def handle_containerized_merge_request(
         deprecation_bundles = deprecation_bundles + [
             bundle['bundlePath'] for bundle in invalid_bundles
         ]
+        deprecation_bundles = list(dict.fromkeys(deprecation_bundles))
 
         # process the deprecation list into the intermediary index.db file
         if deprecation_bundles:
@@ -273,6 +275,16 @@ def handle_containerized_merge_request(
         # final destination of catalog (defined in Dockerfile)
         catalog_from_db = os.path.join(temp_dir, 'from_db')
         os.rename(fbc_dir, catalog_from_db)
+
+        # Remove stale operator directories from the target Git catalog before merging.
+        # This complements deprecate_bundles_db: merge_catalogs_dirs only copies from
+        # catalog_from_db and would leave existing configs/<package>/ dirs untouched, or
+        # re-add packages that were removed from index.db only when deprecate_bundles_db ran.
+        # Use the same bundle list as index.db deprecation (includes invalid_bundles).
+        if deprecation_bundles:
+            remove_deprecated_operators_from_git_catalog(
+                localized_git_catalog_path, deprecation_bundles
+            )
 
         # Merge migrated FBC with existing FBC in Git repo
         # overwrite data in `catalog_from_index` by data from `catalog_from_db`
