@@ -14,13 +14,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        # actions/checkout@v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Build iib-api
         id: build-iib-api
-        uses: redhat-actions/buildah-build@v2
+        # redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4
         with:
           image: iib-api
           tags: qe
