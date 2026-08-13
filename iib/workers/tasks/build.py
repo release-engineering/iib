@@ -48,6 +48,7 @@ from iib.workers.tasks.utils import (
     get_bundles_from_deprecation_list,
     get_resolved_bundles,
     get_resolved_image,
+    get_images_needing_overwrite_token,
     podman_pull,
     request_logger,
     reset_docker_config,
@@ -833,10 +834,19 @@ def handle_add_request(
     :raises IIBError: if the index image build fails.
     """
     _cleanup()
-    # Resolve bundles to their digests
+    # Resolve bundles to their digests. Apply overwrite_from_index_token only to same-namespace
+    # bundles that are not already covered by worker Docker config credentials. That preserves
+    # broader template auth (e.g. quay.io/namespace) when present, avoids breaking public pulls
+    # on other namespaces of the same registry, and still allows the overwrite token to pull
+    # private same-namespace bundles when no other creds exist.
+    # Do not stamp from_index auth here — this step does not pull from_index; prepare_request
+    # and later from_index accessors apply the overwrite token for the index itself.
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
 
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+    bundles_needing_token = get_images_needing_overwrite_token(from_index, bundles)
+
+    def _resolve_bundles() -> None:
+        nonlocal resolved_bundles
         resolved_bundles = get_resolved_bundles(bundles)
         verify_labels(resolved_bundles)
         if check_related_images:
@@ -845,6 +855,15 @@ def handle_add_request(
                 request_id,
                 worker_config.iib_related_image_registry_replacement.get(username),
             )
+
+    resolved_bundles: List[str] = []
+    if bundles_needing_token:
+        with set_registry_token(
+            overwrite_from_index_token, bundles_needing_token, append=True
+        ):
+            _resolve_bundles()
+    else:
+        _resolve_bundles()
 
     # Check if Gating passes for all the bundles
     if greenwave_config:
@@ -867,7 +886,7 @@ def handle_add_request(
     from_index_resolved = prebuild_info['from_index_resolved']
 
     Opm.set_opm_version(from_index_resolved)
-    with set_registry_token(overwrite_from_index_token, from_index_resolved):
+    with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
         is_fbc = is_image_fbc(from_index_resolved) if from_index else False
         if is_fbc:
             # logging requested by stakeholders do not delete

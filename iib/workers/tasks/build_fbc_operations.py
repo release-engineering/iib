@@ -18,6 +18,7 @@ from iib.workers.tasks.build import (
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.opm_operations import opm_registry_add_fbc_fragment, Opm
 from iib.workers.tasks.utils import (
+    get_images_needing_overwrite_token,
     get_resolved_image,
     prepare_request_for_build,
     request_logger,
@@ -69,12 +70,23 @@ def handle_fbc_operation_request(
     _cleanup()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragments')
 
-    # Resolve all fbc fragments
+    # Apply overwrite_from_index_token only to same-namespace fragments that are not already
+    # covered by worker Docker config credentials. from_index is not pulled here; prepare_request
+    # and later from_index accessors apply the overwrite token for the index itself.
+    fragments_needing_token = get_images_needing_overwrite_token(from_index, fbc_fragments)
     resolved_fbc_fragments = []
-    for fbc_fragment in fbc_fragments:
-        with set_registry_token(overwrite_from_index_token, fbc_fragment, append=True):
-            resolved_fbc_fragment = get_resolved_image(fbc_fragment)
-            resolved_fbc_fragments.append(resolved_fbc_fragment)
+
+    def _resolve_fbc_fragments() -> None:
+        for fbc_fragment in fbc_fragments:
+            resolved_fbc_fragments.append(get_resolved_image(fbc_fragment))
+
+    if fragments_needing_token:
+        with set_registry_token(
+            overwrite_from_index_token, fragments_needing_token, append=True
+        ):
+            _resolve_fbc_fragments()
+    else:
+        _resolve_fbc_fragments()
 
     prebuild_info = prepare_request_for_build(
         request_id,

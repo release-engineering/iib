@@ -857,6 +857,160 @@ def test_handle_add_request(
         mock_dep_b.assert_not_called()
 
 
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build.opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
+@mock.patch('iib.workers.tasks.build._get_present_bundles')
+@mock.patch('iib.workers.tasks.build.add_max_ocp_version_property')
+@mock.patch('iib.workers.tasks.build.get_images_needing_overwrite_token')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.is_image_fbc', return_value=False)
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_add_request_skips_overwrite_token_when_bundle_has_covering_auth(
+    mock_sov,
+    mock_iifbc,
+    mock_srt,
+    mock_gbn,
+    mock_amovp,
+    mock_gpb,
+    mock_alti,
+    mock_grb,
+    mock_capml,
+    mock_srs,
+    mock_uiips,
+    mock_pi,
+    mock_bi,
+    mock_oia,
+    mock_uiibs,
+    mock_prfb,
+    mock_vl,
+    mock_cleanup,
+):
+    """When Docker config already covers the bundle, do not apply overwrite token to it."""
+    from_index = 'quay.io/ns/comm-pending413:v4.13'
+    bundle = 'quay.io/ns/ack-controller:1.10.2'
+    overwrite_from_index_token = 'user:pass'
+    from_index_resolved = 'quay.io/ns/comm-pending413@sha256:bcdefg'
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.13',
+        'distribution_scope': 'prod',
+    }
+    mock_grb.return_value = ['quay.io/ns/ack-controller@sha256:123']
+    mock_gpb.return_value = [], []
+    mock_capml.return_value = 'quay.io/namespace/some-image:3'
+    mock_gbn.return_value = []  # covering auth exists
+    mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
+    mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+
+    build.handle_add_request(
+        [bundle],
+        3,
+        'binary-image:latest',
+        from_index,
+        None,
+        None,
+        None,
+        False,
+        False,
+        overwrite_from_index_token,
+    )
+
+    mock_gbn.assert_called_once_with(from_index, [bundle])
+    assert mock.call(overwrite_from_index_token, [bundle], append=True) not in mock_srt.call_args_list
+    assert mock.call(overwrite_from_index_token, [], append=True) not in mock_srt.call_args_list
+    assert mock.call(overwrite_from_index_token, None, append=True) not in mock_srt.call_args_list
+
+
+@mock.patch('iib.workers.tasks.build._cleanup')
+@mock.patch('iib.workers.tasks.build.verify_labels')
+@mock.patch('iib.workers.tasks.build.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build.opm_index_add')
+@mock.patch('iib.workers.tasks.build._build_image')
+@mock.patch('iib.workers.tasks.build._push_image')
+@mock.patch('iib.workers.tasks.build._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build.set_request_state')
+@mock.patch('iib.workers.tasks.build._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build._add_label_to_index')
+@mock.patch('iib.workers.tasks.build._get_present_bundles')
+@mock.patch('iib.workers.tasks.build.add_max_ocp_version_property')
+@mock.patch('iib.workers.tasks.build.get_images_needing_overwrite_token')
+@mock.patch('iib.workers.tasks.build.set_registry_token')
+@mock.patch('iib.workers.tasks.build.is_image_fbc', return_value=False)
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_add_request_applies_overwrite_token_when_bundle_lacks_covering_auth(
+    mock_sov,
+    mock_iifbc,
+    mock_srt,
+    mock_gbn,
+    mock_amovp,
+    mock_gpb,
+    mock_alti,
+    mock_grb,
+    mock_capml,
+    mock_srs,
+    mock_uiips,
+    mock_pi,
+    mock_bi,
+    mock_oia,
+    mock_uiibs,
+    mock_prfb,
+    mock_vl,
+    mock_cleanup,
+):
+    """When no Docker config covers the bundle, apply overwrite token for same-registry pull."""
+    from_index = 'quay.io/ns/comm-pending413:v4.13'
+    bundle = 'quay.io/ns/ack-controller:1.10.2'
+    overwrite_from_index_token = 'user:pass'
+    from_index_resolved = 'quay.io/ns/comm-pending413@sha256:bcdefg'
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.13',
+        'distribution_scope': 'prod',
+    }
+    mock_grb.return_value = ['quay.io/ns/ack-controller@sha256:123']
+    mock_gpb.return_value = [], []
+    mock_capml.return_value = 'quay.io/namespace/some-image:3'
+    mock_gbn.return_value = [bundle]  # no covering auth
+    mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
+    mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+
+    build.handle_add_request(
+        [bundle],
+        3,
+        'binary-image:latest',
+        from_index,
+        None,
+        None,
+        None,
+        False,
+        False,
+        overwrite_from_index_token,
+    )
+
+    mock_gbn.assert_called_once_with(from_index, [bundle])
+    mock_srt.assert_any_call(overwrite_from_index_token, [bundle], append=True)
+
+
 @mock.patch('iib.workers.tasks.build.update_request')
 @mock.patch('iib.workers.tasks.build._cleanup')
 @mock.patch('iib.workers.tasks.build.run_cmd')
