@@ -1,11 +1,14 @@
 # Based from https://github.com/rmohr/docker-activemq
-FROM registry.access.redhat.com/ubi8/ubi:latest
+# Base layer pinned by digest (ubi8/ubi:latest as of this pin). Note the `dnf update -y`
+# below still pulls current packages, so the full image is not bit-for-bit reproducible.
+# Keep this digest in lockstep with the other Dockerfiles when bumping.
+FROM registry.access.redhat.com/ubi8/ubi@sha256:e39486422f729b5c5b7c007104d2f9c92a14273b1de01cdc28d4ac648fb6e1dd
 
 ENV ACTIVEMQ_VERSION 5.15.12
 ENV ACTIVEMQ_HOME /opt/activemq
 
 # keeping container image updated (security updates)
-RUN  dnf install java-1.8.0-openjdk maven -y && dnf update -y
+RUN  dnf install java-1.8.0-openjdk maven -y && dnf update -y && dnf clean all
 
 RUN curl "https://archive.apache.org/dist/activemq/$ACTIVEMQ_VERSION/apache-activemq-$ACTIVEMQ_VERSION-bin.tar.gz" -o activemq-bin.tar.gz
 RUN tar xzf activemq-bin.tar.gz -C  /opt && \
