@@ -1,4 +1,7 @@
-FROM registry.access.redhat.com/ubi8/ubi:latest
+# Base layer pinned by digest (ubi8/ubi:latest as of this pin). Note the `dnf update -y`
+# below still pulls current packages, so the full image is not bit-for-bit reproducible.
+# Keep this digest in lockstep with the other Dockerfiles when bumping.
+FROM registry.access.redhat.com/ubi8/ubi@sha256:e39486422f729b5c5b7c007104d2f9c92a14273b1de01cdc28d4ac648fb6e1dd
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
@@ -22,15 +25,15 @@ RUN dnf -y install \
     python3.12-setuptools \
     && dnf update -y \
     && dnf clean all
-RUN update-alternatives --set python3 $(which python3.12)
+RUN update-alternatives --set python3 "$(which python3.12)"
 
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
 
 # default python3-pip version for rhel8 python3.8 is 19.3.1 and it can't be updated by dnf
 # we have to update it by pip to version above 21.0.0
-RUN pip3 install --upgrade pip
-RUN pip3 install -r requirements.txt --no-deps --require-hashes
-RUN pip3 install . --no-deps
+RUN pip3 install --no-cache-dir --upgrade pip
+RUN pip3 install --no-cache-dir -r requirements.txt --no-deps --require-hashes
+RUN pip3 install --no-cache-dir . --no-deps
 EXPOSE 8080
 CMD ["/usr/sbin/httpd", "-DFOREGROUND"]
