@@ -16,7 +16,8 @@ from iib.workers.tasks.build import (
     _update_index_image_build_state,
     _update_index_image_pull_spec,
 )
-from iib.workers.tasks.celery import app
+
+# from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.opm_operations import (
     opm_create_empty_fbc,
@@ -36,7 +37,7 @@ __all__ = ['handle_create_empty_index_request']
 log = logging.getLogger(__name__)
 
 
-@app.task
+# @app.task
 @request_logger
 @instrument_tracing(
     span_name="workers.tasks.handle_create_empty_index_request", attributes=get_binary_versions()

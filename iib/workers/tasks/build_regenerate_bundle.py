@@ -23,7 +23,8 @@ from iib.workers.tasks.build import (
     _copy_files_from_image,
 )
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.celery import app
+
+# from iib.workers.tasks.celery import app
 from iib.workers.tasks.utils import (
     get_image_labels,
     get_resolved_image,
@@ -51,7 +52,7 @@ yaml.preserve_quotes = True
 log = logging.getLogger(__name__)
 
 
-@app.task
+# @app.task
 @request_logger
 @instrument_tracing(
     span_name="workers.tasks.build.handle_regenerate_bundle_request",
