@@ -40,7 +40,8 @@ from iib.workers.tasks.build import (
     _update_index_image_build_state,
     _update_index_image_pull_spec,
 )
-from iib.workers.tasks.celery import app
+
+# from iib.workers.tasks.celery import app
 from iib.workers.tasks.fbc_utils import is_image_fbc
 from iib.workers.tasks.utils import (
     add_max_ocp_version_property,
@@ -273,7 +274,7 @@ def _add_bundles_missing_in_source(
     return missing_bundles, invalid_bundles
 
 
-@app.task
+# @app.task
 @request_logger
 @instrument_tracing(
     span_name="workers.tasks.build.handle_merge_request", attributes=get_binary_versions()
