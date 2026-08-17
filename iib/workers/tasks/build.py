@@ -22,7 +22,8 @@ from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError, ExternalServiceError
 from iib.workers.api_utils import set_request_state, update_request
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.celery import app
+
+# from iib.workers.tasks.celery import app
 from iib.workers.greenwave import gate_bundles
 from iib.workers.tasks.fbc_utils import (
     is_image_fbc,
@@ -777,7 +778,7 @@ def inspect_related_images(
         raise IIBError(f"IIB cannot access the following related images {invalid_related_images}")
 
 
-@app.task
+# @app.task
 @request_logger
 @instrument_tracing(span_name="workers.tasks.handle_add_request", attributes=get_binary_versions())
 def handle_add_request(
@@ -1078,7 +1079,7 @@ def handle_add_request(
     )
 
 
-@app.task
+# @app.task
 @request_logger
 @instrument_tracing(span_name="workers.tasks.handle_rm_request", attributes=get_binary_versions())
 def handle_rm_request(
