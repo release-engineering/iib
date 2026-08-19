@@ -300,3 +300,128 @@ def test__serialize_datetime():
 def test__serialize_datetime_raise():
     with pytest.raises(TypeError, match="Type <class 'int'> is not serializable."):
         _serialize_datetime(2025)
+
+
+def test_enforce_json_config_dir_skips_empty_yaml_documents(tmpdir):
+    yaml_with_empty_doc = """\
+    ---
+    foo: bar
+    ---
+    ---
+    another: data
+    """
+
+    expected_result = '{"foo": "bar"}{"another": "data"}'
+
+    input_file = os.path.join(tmpdir, "test_file.yaml")
+    output_file = os.path.join(tmpdir, "test_file.json")
+    with open(input_file, 'w') as w:
+        w.write(dedent(yaml_with_empty_doc))
+
+    enforce_json_config_dir(tmpdir)
+
+    with open(output_file, 'r') as f:
+        assert f.read() == expected_result
+
+
+def test_enforce_json_config_dir_raises_on_empty_yaml(tmpdir):
+    """Ensure a 0-byte YAML file raises a IIBError."""
+    empty_yaml = os.path.join(tmpdir, "empty.yaml")
+
+    # Create a 0-byte file
+    open(empty_yaml, 'w').close()
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Empty YAML file found" in str(exc_info.value)
+    assert "empty.yaml" in str(exc_info.value)
+
+
+def test_enforce_json_config_dir_raises_on_only_empty_yaml_documents(tmpdir):
+    """Ensure YAML with only empty documents raises and leaves no empty JSON."""
+    input_file = os.path.join(tmpdir, "empty_docs.yaml")
+    output_file = os.path.join(tmpdir, "empty_docs.json")
+
+    with open(input_file, 'w') as w:
+        w.write("---\n---\n")
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Empty YAML file found" in str(exc_info.value)
+    assert "empty_docs.yaml" in str(exc_info.value)
+    assert not os.path.exists(output_file)
+    assert os.path.exists(input_file)
+
+
+def test_enforce_json_config_dir_handles_yml_extension(tmpdir):
+    """Ensure files with the .yml extension are also processed."""
+    data = {"key": "value"}
+    input_file = os.path.join(tmpdir, "test_file.yml")
+    output_file = os.path.join(tmpdir, "test_file.json")
+
+    with open(input_file, 'w') as w:
+        yaml.dump(data, w)
+
+    enforce_json_config_dir(str(tmpdir))
+
+    assert os.path.exists(output_file)
+    assert not os.path.exists(input_file)
+
+    with open(output_file, 'r') as f:
+        assert json.load(f) == data
+
+
+def test_enforce_json_config_dir_raises_on_malformed_yaml(tmpdir):
+    """Ensure malformed YAML raises IIBError and leaves no stale .json file."""
+    input_file = os.path.join(tmpdir, "bad.yaml")
+    output_file = os.path.join(tmpdir, "bad.json")
+
+    with open(input_file, 'w') as w:
+        w.write("foo: bar\n  invalid_indent: boom\n")
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Failed to parse YAML content" in str(exc_info.value)
+    assert "bad.yaml" in str(exc_info.value)
+    assert not os.path.exists(output_file)
+    assert os.path.exists(input_file)
+
+
+def test_enforce_json_config_dir_raises_on_malformed_yaml_midstream(tmpdir):
+    """Ensure a YAML error mid-iteration removes the partially-written .json file."""
+    input_file = os.path.join(tmpdir, "partial.yaml")
+    output_file = os.path.join(tmpdir, "partial.json")
+
+    with open(input_file, 'w') as w:
+        w.write("---\nfoo: bar\n---\nbaz: [\n")
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Failed to parse YAML content" in str(exc_info.value)
+    assert "partial.yaml" in str(exc_info.value)
+    assert not os.path.exists(output_file)
+    assert os.path.exists(input_file)
+
+
+def test_enforce_json_config_dir_raises_on_conflicting_yaml_and_yml(tmpdir):
+    """Ensure IIBError is raised when both .yaml and .yml share the same stem."""
+    yaml_file = os.path.join(tmpdir, "catalog.yaml")
+    yml_file = os.path.join(tmpdir, "catalog.yml")
+
+    with open(yaml_file, 'w') as w:
+        yaml.dump({"source": "yaml"}, w)
+    with open(yml_file, 'w') as w:
+        yaml.dump({"source": "yml"}, w)
+
+    with pytest.raises(IIBError) as exc_info:
+        enforce_json_config_dir(str(tmpdir))
+
+    assert "Conflicting YAML files" in str(exc_info.value)
+    assert "catalog.json" in str(exc_info.value)
+    # Both input files must be preserved (no silent data loss)
+    assert os.path.exists(yaml_file)
+    assert os.path.exists(yml_file)

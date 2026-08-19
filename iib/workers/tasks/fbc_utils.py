@@ -154,20 +154,50 @@ def enforce_json_config_dir(config_dir: str) -> None:
     It will walk recursively and convert any YAML files to the JSON format.
 
     :param str config_dir: The config dir to walk recursively converting any YAML to JSON.
+    :raises IIBError: If the yaml content is empty.
     """
     log.info("Enforcing JSON content on config_dir: %s", config_dir)
     for dirpath, _, filenames in os.walk(config_dir):
+        yaml_stems: dict[str, str] = {}
+        for file in filenames:
+            lower = file.lower()
+            if lower.endswith(".yaml") or lower.endswith(".yml"):
+                stem = Path(file).stem
+                if stem in yaml_stems:
+                    raise IIBError(
+                        f"Conflicting YAML files found in {dirpath}: "
+                        f"{yaml_stems[stem]} and {file} would both produce {stem}.json"
+                    )
+                yaml_stems[stem] = file
+
         for file in filenames:
             in_file = os.path.join(dirpath, file)
-            if in_file.lower().endswith(".yaml"):
+            if in_file.lower().endswith(".yaml") or in_file.lower().endswith(".yml"):
+                if os.path.getsize(in_file) == 0:
+                    raise IIBError(f"Empty YAML file found: {in_file}")
+
                 out_file = os.path.join(dirpath, f"{Path(in_file).stem}.json")
                 log.debug(f"Converting {in_file} to {out_file}.")
                 # Make sure the output file doesn't exist before opening in append mode
                 with contextlib.suppress(FileNotFoundError):
                     os.remove(out_file)
                 # The input file may contain multiple chunks, we must append them accordingly
-                with open(in_file, 'r') as yaml_in, open(out_file, 'a') as json_out:
-                    data = yaml.load_all(yaml_in)
-                    for chunk in data:
-                        json.dump(chunk, json_out, default=_serialize_datetime)
+                wrote_chunk = False
+                try:
+                    with open(in_file, 'r') as yaml_in, open(out_file, 'a') as json_out:
+                        data = yaml.load_all(yaml_in)
+                        for chunk in data:
+                            # Ignore if it is an empty yaml object
+                            if chunk is None:
+                                continue
+                            json.dump(chunk, json_out, default=_serialize_datetime)
+                            wrote_chunk = True
+                except ruamel.yaml.YAMLError as e:
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(out_file)
+                    raise IIBError(f"Failed to parse YAML content in {in_file}: {e}") from e
+                if not wrote_chunk:
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(out_file)
+                    raise IIBError(f"Empty YAML file found: {in_file}")
                 os.remove(in_file)
