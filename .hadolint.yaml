@@ -1,0 +1,10 @@
+---
+# Hadolint config for IIB Dockerfiles (UBI-based).
+ignored:
+  - DL3003
+  - DL3013
+  - DL3041
+  - DL4006
+trustedRegistries:
+  - registry.access.redhat.com
+  - registry.redhat.io
