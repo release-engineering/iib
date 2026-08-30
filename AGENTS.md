@@ -57,3 +57,4 @@ Key modules:
 - **Never edit existing Alembic migrations** — generate a new revision instead.
 - **API ↔ Worker task signatures must match** — renaming args silently breaks in-flight requests.
 - **Avoid making changes to the old worker architecture** - Always ask before making changes to the following functions - `handle_add_request`, `handle_rm_request`, `handle_merge_request`, `handle_create_empty_index_request`, `handle_fbc_operation_request`, `handle_regenerate_bundle_request`
+- **Divergent-tag requests never merge their MR** — they reuse the base OCP branch's Konflux Component and must stay throw-away; the guard is `overwrite_from_index and not sources.is_divergent`. Never source their index.db from ORAS.
