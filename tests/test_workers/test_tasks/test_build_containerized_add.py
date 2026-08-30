@@ -694,15 +694,17 @@ def test_add_divergent_never_merges(
         request_id=request_id,
         binary_image=binary_image,
         from_index=from_index,
-        overwrite_from_index=False,
+        overwrite_from_index=True,
         overwrite_from_index_token="user:pass",
     )
 
     # Divergent path uses the extracted index.db, never ORAS.
     mock_fetch_index_db.assert_not_called()
 
-    # Divergent MR must never be merged, even though overwrite_from_index is False here
-    # (the guard also protects the True case, but this exercises the non-merge branch).
+    # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
+    # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
+    # prevent a merge is the handler-level `and not sources.is_divergent` guard. If
+    # that guard were removed, this MR would be merged and this assertion would fail.
     mock_merge_mr.assert_not_called()
     mock_cleanup_mr.assert_called_once()
 
