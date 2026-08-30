@@ -20,7 +20,7 @@ from iib.workers.tasks.containerized_utils import (
     fetch_and_verify_index_db_artifact,
     git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
-    prepare_git_repository_for_build,
+    prepare_build_sources,
     push_index_db_artifact,
     replicate_image_to_tagged_destinations,
     write_build_metadata,
@@ -134,26 +134,29 @@ def handle_containerized_rm_request(
     original_index_db_digest: Optional[str] = None
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        branch = ocp_version
-
-        # Set up and clone Git repository
-        (
-            index_git_repo,
-            local_git_repo_path,
-            localized_git_catalog_path,
-        ) = prepare_git_repository_for_build(
+        sources = prepare_build_sources(
             request_id=request_id,
             from_index=from_index,
             temp_dir=temp_dir,
-            branch=branch,
+            ocp_version=ocp_version,
             index_to_gitlab_push_map=index_to_gitlab_push_map or {},
+            overwrite_from_index=overwrite_from_index,
         )
+        index_git_repo = sources.index_git_repo
+        local_git_repo_path = sources.local_git_repo_path
+        localized_git_catalog_path = sources.localized_git_catalog_path
+        branch = sources.target_branch
 
-        # Pull index.db artifact (uses ImageStream cache if configured, otherwise pulls directly)
-        index_db_path = fetch_and_verify_index_db_artifact(
-            from_index=from_index,
-            temp_dir=temp_dir,
-        )
+        # Divergent path already has index.db extracted from the image; the normal
+        # path pulls it from ORAS. NEVER fall back to ORAS on the divergent path —
+        # that would read the base OCP branch's index.db.
+        if sources.index_db_path is not None:
+            index_db_path = sources.index_db_path
+        else:
+            index_db_path = fetch_and_verify_index_db_artifact(
+                from_index=from_index,
+                temp_dir=temp_dir,
+            )
 
         # Remove operators from /configs
         set_request_state(request_id, 'in_progress', 'Removing operators from catalog')
@@ -299,7 +302,7 @@ def handle_containerized_rm_request(
             # Merge or close the MR as the final step so that all side effects
             # (replication, metadata, index.db push) have succeeded before git
             # is advanced. This prevents git/index.db divergence on partial failure.
-            if overwrite_from_index:
+            if overwrite_from_index and not sources.is_divergent:
                 merge_mr_after_build(mr_details, index_git_repo)
                 # Prevent cleanup_on_failure from trying to close an already-merged MR
                 mr_details = None
