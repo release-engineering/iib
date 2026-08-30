@@ -7,6 +7,7 @@ import shutil
 import tarfile
 import tempfile
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -22,6 +23,7 @@ from iib.workers.tasks.git_utils import (
     get_git_token,
     get_last_commit_sha,
     merge_mr,
+    remote_branch_exists,
     resolve_git_url,
     revert_last_commit,
 )
@@ -33,6 +35,7 @@ from iib.workers.tasks.konflux_utils import (
 from iib.workers.tasks.oras_utils import (
     _get_artifact_combined_tag,
     get_image_digest,
+    get_index_tag,
     get_indexdb_artifact_pullspec,
     get_imagestream_artifact_pullspec,
     get_oras_artifact,
@@ -546,6 +549,111 @@ def cleanup_on_failure(
             log.info("Successfully restored index.db artifact to original digest")
         except Exception as restore_error:
             log.error("Failed to restore index.db artifact: %s", restore_error)
+
+
+@dataclass
+class BuildSources:
+    """Resolved inputs for a containerized build."""
+
+    index_git_repo: str
+    local_git_repo_path: str
+    localized_git_catalog_path: str
+    index_db_path: Optional[str]  # None => pull from ORAS; set => use extracted db
+    target_branch: str
+    is_divergent: bool
+
+
+def prepare_build_sources(
+    request_id: int,
+    from_index: str,
+    temp_dir: str,
+    ocp_version: str,
+    index_to_gitlab_push_map: Dict[str, str],
+    overwrite_from_index: bool,
+) -> BuildSources:
+    """
+    Resolve git repo + branch and decide the normal vs divergent build path.
+
+    Normal path: a branch named after the image tag exists -> build against it
+    (overwrite allowed). Divergent path: no branch for the tag -> reject
+    overwrite, reuse the base OCP branch's Konflux Component, and seed content
+    by extracting configs+index.db from the image.
+
+    :param int request_id: The IIB request ID
+    :param str from_index: The from_index pullspec
+    :param str temp_dir: Temporary directory to clone into / extract to
+    :param str ocp_version: Base OCP version branch, e.g. "v4.19"
+    :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
+    :param bool overwrite_from_index: Whether the request wants to overwrite from_index
+    :return: The resolved build sources
+    :rtype: BuildSources
+    :raises IIBError: if the git mapping is missing, overwrite is requested on
+        the divergent path, or the base OCP branch is not onboarded.
+    """
+    index_git_repo = resolve_git_url(from_index=from_index, index_repo_map=index_to_gitlab_push_map)
+    if not index_git_repo:
+        raise IIBError(
+            f"Git repository mapping not found for from_index: {from_index}. "
+            "index_to_gitlab_push_map is required."
+        )
+    token_name, git_token = get_git_token(index_git_repo)
+
+    tag = get_index_tag(from_index)
+    set_request_state(request_id, 'in_progress', 'Cloning Git repository')
+
+    if remote_branch_exists(index_git_repo, tag):
+        # Normal path — build against the tag branch, pull index.db from ORAS.
+        target_branch = tag
+        local_git_repo_path = Path(temp_dir) / 'git' / target_branch
+        local_git_repo_path.mkdir(parents=True, exist_ok=True)
+        clone_git_repo(
+            index_git_repo, target_branch, token_name, git_token, str(local_git_repo_path)
+        )
+        catalog_path = local_git_repo_path / 'configs'
+        if not catalog_path.exists():
+            raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
+        return BuildSources(
+            index_git_repo=index_git_repo,
+            local_git_repo_path=str(local_git_repo_path),
+            localized_git_catalog_path=str(catalog_path),
+            index_db_path=None,
+            target_branch=target_branch,
+            is_divergent=False,
+        )
+
+    # Divergent path.
+    if overwrite_from_index:
+        raise IIBError(
+            f"Cannot overwrite tag '{tag}' of {from_index}: no onboarded branch/Component "
+            f"exists for it. Onboard a '{tag}' branch to enable overwrite."
+        )
+
+    target_branch = ocp_version
+    if not remote_branch_exists(index_git_repo, target_branch):
+        raise IIBError(
+            f"Base OCP branch '{target_branch}' is not onboarded for {index_git_repo}. "
+            "Onboard the index before building divergent tags."
+        )
+
+    local_git_repo_path = Path(temp_dir) / 'git' / target_branch
+    local_git_repo_path.mkdir(parents=True, exist_ok=True)
+    clone_git_repo(index_git_repo, target_branch, token_name, git_token, str(local_git_repo_path))
+
+    # Content from the image (source of truth), scaffolding from the OCP branch.
+    extracted_configs, extracted_db = extract_catalog_and_db_from_image(from_index, temp_dir)
+    catalog_path = local_git_repo_path / 'configs'
+    if catalog_path.exists():
+        shutil.rmtree(catalog_path)
+    shutil.copytree(extracted_configs, catalog_path)
+
+    return BuildSources(
+        index_git_repo=index_git_repo,
+        local_git_repo_path=str(local_git_repo_path),
+        localized_git_catalog_path=str(catalog_path),
+        index_db_path=extracted_db,
+        target_branch=target_branch,
+        is_divergent=True,
+    )
 
 
 def prepare_git_repository_for_build(
