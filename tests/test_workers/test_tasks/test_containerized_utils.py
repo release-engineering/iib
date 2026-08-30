@@ -2,11 +2,13 @@
 import json
 import os
 import tarfile
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
 
 from iib.exceptions import IIBError
+from iib.workers.tasks import containerized_utils as cu
 from iib.workers.tasks.containerized_utils import (
     extract_catalog_and_db_from_image,
     extract_files_from_image_non_privileged,
@@ -1487,3 +1489,79 @@ def test_extract_catalog_and_db_raises_without_configs_label(mock_label):
 
     with pytest.raises(IIBError, match='does not contain a file-based catalog'):
         extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', '/tmp/does-not-matter')
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=True)
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_normal(
+    mock_url, mock_tok, mock_exists, mock_clone, mock_state, tmp_path
+):
+    (tmp_path / 'git' / 'v4.14' / 'configs').mkdir(parents=True)
+    src = cu.prepare_build_sources(
+        request_id=1,
+        from_index='quay.io/redhat/my-index:v4.14',
+        temp_dir=str(tmp_path),
+        ocp_version='v4.14',
+        index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+        overwrite_from_index=True,
+    )
+    assert src.is_divergent is False
+    assert src.target_branch == 'v4.14'
+    assert src.index_db_path is None  # normal path pulls from ORAS
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=False)
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_divergent_rejects_overwrite(
+    mock_url, mock_exists, mock_tok, mock_state, tmp_path
+):
+    with pytest.raises(IIBError, match='overwrite'):
+        cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:test',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=True,
+        )
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_catalog_and_db_from_image')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_divergent_extracts(
+    mock_url, mock_tok, mock_clone, mock_extract, mock_state, tmp_path
+):
+    # tag branch missing, ocp branch present
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.remote_branch_exists',
+        side_effect=[False, True],
+    ):
+        cfg = tmp_path / 'ex_configs'
+        cfg.mkdir()
+        (cfg / 'op').mkdir()
+        mock_extract.return_value = (str(cfg), str(tmp_path / 'ex.db'))
+        src = cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:test',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=False,
+        )
+    assert src.is_divergent is True
+    assert src.target_branch == 'v4.14'
+    assert src.index_db_path == str(tmp_path / 'ex.db')
