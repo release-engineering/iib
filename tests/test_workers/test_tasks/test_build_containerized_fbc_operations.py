@@ -611,19 +611,24 @@ def test_fbc_operations_divergent_never_merges(
     mock_replicate.return_value = ['registry.example.com/final-image:999']
     mock_push_index_db.return_value = 'sha256:index_db_digest'
 
+    overwrite_token = 'user:token'
     build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
         request_id=request_id,
         fbc_fragments=fbc_fragments,
         from_index=from_index,
         binary_image=binary_image,
-        overwrite_from_index=False,
+        overwrite_from_index=True,
+        overwrite_from_index_token=overwrite_token,
         index_to_gitlab_push_map={'quay.io/iib/from-index': index_git_repo},
     )
 
     # Divergent path uses the extracted index.db, never ORAS.
     mock_fetch_index_db.assert_not_called()
 
-    # Divergent MR must never be merged.
+    # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
+    # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
+    # prevent a merge is the handler-level `and not sources.is_divergent` guard. If
+    # that guard were removed, this MR would be merged and this assertion would fail.
     mock_merge_mr.assert_not_called()
     mock_cleanup_mr.assert_called_once()
 
@@ -632,7 +637,7 @@ def test_fbc_operations_divergent_never_merges(
         temp_dir=mock.ANY,
         from_index_configs_dir=localized_git_catalog_path,
         fbc_fragments=['fbc@sha256:789'],
-        overwrite_from_index_token=None,
+        overwrite_from_index_token=overwrite_token,
         index_db_path=index_db_path,
     )
     mock_cof.assert_not_called()
