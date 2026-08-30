@@ -3,10 +3,11 @@ import json
 import pytest
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build_containerized_fbc_operations
+from iib.workers.tasks import build_containerized_fbc_operations, containerized_utils
 from iib.workers.tasks.utils import RequestConfigFBCOperation
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
@@ -60,10 +61,11 @@ def test_handle_containerized_fbc_operation_request(
     mock_pida_push,
     mock_cof,
     mock_uiips,
+    mock_rbe,
 ):
     """Test containerized FBC operation with single fragment."""
     request_id = 10
-    from_index = 'from-index:latest'
+    from_index = 'quay.io/iib/from-index:latest'
     binary_image = 'binary-image:latest'
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
     fbc_fragments = ['fbc-fragment:latest']
@@ -176,6 +178,7 @@ def test_handle_containerized_fbc_operation_request(
     assert mock_srs.call_args[0][1] == 'complete'
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
@@ -229,10 +232,11 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_pida_push,
     mock_cof,
     mock_uiips,
+    mock_rbe,
 ):
     """Test containerized FBC operation with multiple fragments."""
     request_id = 10
-    from_index = 'from-index:latest'
+    from_index = 'quay.io/iib/from-index:latest'
     binary_image = 'binary-image:latest'
     binary_image_config = {'prod': {'v4.5': 'some_image'}}
     fbc_fragments = ['fbc-fragment1:latest', 'fbc-fragment2:latest']
@@ -291,6 +295,7 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     ]
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
@@ -346,6 +351,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_pida_push,
     mock_cof,
     mock_uiips,
+    mock_rbe,
 ):
     """Test containerized FBC operation with overwrite_from_index=True."""
     request_id = 10
@@ -418,6 +424,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     )
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
@@ -469,6 +476,7 @@ def test_handle_containerized_fbc_operation_request_failure(
     mock_pida_push,
     mock_cof,
     mock_uiips,
+    mock_rbe,
 ):
     """Test containerized FBC operation failure handling."""
     request_id = 10
@@ -514,3 +522,117 @@ def test_handle_containerized_fbc_operation_request_failure(
     args, kwargs = mock_cof.call_args
     assert kwargs['request_id'] == request_id
     assert "error: Download failed" in kwargs['reason']
+
+
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.monitor_pipeline_and_extract_image'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.Opm.set_opm_version')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
+def test_fbc_operations_divergent_never_merges(
+    mock_rdc,
+    mock_srs,
+    mock_gri,
+    mock_prfb,
+    mock_sov,
+    mock_uiibs,
+    mock_prepare_sources,
+    mock_fetch_index_db,
+    mock_oraff,
+    mock_wbm,
+    mock_git_commit,
+    mock_monitor,
+    mock_replicate,
+    mock_push_index_db,
+    mock_merge_mr,
+    mock_cleanup_mr,
+    mock_cof,
+    mock_uiips,
+    tmp_path,
+):
+    """Divergent path must never fall back to ORAS and must never merge the MR."""
+    request_id = 999
+    from_index = 'quay.io/iib/from-index:v4.99'
+    binary_image = 'binary-image:latest'
+    fbc_fragments = ['quay.io/iib/fbc-fragment1:latest']
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image_resolved': 'binary@sha256:123',
+        'from_index_resolved': 'index@sha256:456',
+        'ocp_version': 'v4.14',
+        'distribution_scope': 'prod',
+    }
+    mock_gri.return_value = 'fbc@sha256:789'
+
+    index_db_path = str(tmp_path / 'index.db')
+    index_git_repo = 'https://gitlab.com/repo/x.git'
+    local_git_repo_path = str(tmp_path / 'git_repo')
+    localized_git_catalog_path = str(tmp_path / 'git_repo' / 'configs')
+    mock_prepare_sources.return_value = containerized_utils.BuildSources(
+        index_git_repo=index_git_repo,
+        local_git_repo_path=local_git_repo_path,
+        localized_git_catalog_path=localized_git_catalog_path,
+        index_db_path=index_db_path,
+        target_branch='v4.14',
+        is_divergent=True,
+    )
+
+    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'])
+
+    mr_details = {
+        'mr_id': '1',
+        'mr_url': 'https://gitlab.com/mr/1',
+        'source_branch': 'iib-request-999-v4.14',
+    }
+    mock_git_commit.return_value = (mr_details, 'commit_sha_999')
+    mock_monitor.return_value = 'registry/output-image:sha256-12345'
+    mock_replicate.return_value = ['registry.example.com/final-image:999']
+    mock_push_index_db.return_value = 'sha256:index_db_digest'
+
+    build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=fbc_fragments,
+        from_index=from_index,
+        binary_image=binary_image,
+        overwrite_from_index=False,
+        index_to_gitlab_push_map={'quay.io/iib/from-index': index_git_repo},
+    )
+
+    # Divergent path uses the extracted index.db, never ORAS.
+    mock_fetch_index_db.assert_not_called()
+
+    # Divergent MR must never be merged.
+    mock_merge_mr.assert_not_called()
+    mock_cleanup_mr.assert_called_once()
+
+    mock_oraff.assert_called_once_with(
+        request_id=request_id,
+        temp_dir=mock.ANY,
+        from_index_configs_dir=localized_git_catalog_path,
+        fbc_fragments=['fbc@sha256:789'],
+        overwrite_from_index_token=None,
+        index_db_path=index_db_path,
+    )
+    mock_cof.assert_not_called()
