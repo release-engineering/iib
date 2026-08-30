@@ -165,6 +165,18 @@ def validate_git_remote_branch(repo_url: str, branch: str) -> None:
         raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
 
 
+def remote_branch_exists(repo_url: str, branch: str) -> bool:
+    """
+    Return True if the given branch exists on the remote, without raising.
+
+    :param str repo_url: The git repository URL.
+    :param str branch: The branch name to check.
+    :rtype: bool
+    """
+    remote_branch_status = run_cmd(["git", "ls-remote", "--heads", repo_url, branch], strict=False)
+    return bool(remote_branch_status.strip())
+
+
 def commit_and_push(
     request_id: int,
     local_repo_path: str,
