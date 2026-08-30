@@ -40,7 +40,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, run_cmd, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -141,6 +141,60 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
             shutil.copy2(source_full_path, dest)
 
         log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+
+
+def extract_catalog_and_db_from_image(from_index: str, temp_dir: str) -> Tuple[str, str]:
+    """
+    Extract FBC configs and index.db from an index image, unprivileged.
+
+    Used on the divergent-tag path where no git branch / ORAS artifact exists yet.
+    The from_index image is the source of truth for its own content.
+
+    index.db precedence: hidden db path -> configs database label -> empty db
+    (pure-FBC images may carry no db at all; there is no primitive to build a
+    SQLite index.db back from FBC configs, so an empty db is created and the
+    FBC configs remain authoritative).
+
+    :param str from_index: The from_index image pullspec.
+    :param str temp_dir: Base temp directory for extraction.
+    :return: Tuple of (configs_dir_path, index_db_path).
+    :rtype: Tuple[str, str]
+    :raises IIBError: If the image has no FBC configs label.
+    """
+    configs_label = get_image_label(from_index, 'operators.operatorframework.io.index.configs.v1')
+    if not configs_label:
+        raise IIBError(f"Index image {from_index} does not contain a file-based catalog.")
+
+    configs_dir = str(Path(temp_dir) / 'extracted_configs')
+    extract_files_from_image_non_privileged(from_index, configs_label, configs_dir)
+
+    index_db_path = str(Path(temp_dir) / 'extracted_index.db')
+    conf = get_worker_config()
+    hidden_db_path = conf['hidden_index_db_path']
+
+    try:
+        # Prefer the hidden db (carries deprecated/hidden bundle state).
+        extract_files_from_image_non_privileged(from_index, hidden_db_path, index_db_path)
+        return configs_dir, index_db_path
+    except IIBError:
+        log.info("No hidden index.db in %s; trying labeled db.", from_index)
+
+    db_label = get_image_label(from_index, 'operators.operatorframework.io.index.database.v1')
+    if db_label:
+        extract_files_from_image_non_privileged(from_index, db_label, index_db_path)
+        return configs_dir, index_db_path
+
+    # Pure FBC image: no embedded index.db (hidden or labeled). There is no opm
+    # primitive that builds a SQLite index.db from FBC configs (opm migrate only
+    # goes db -> configs), so create an empty index.db. The FBC configs are
+    # authoritative for this image; the empty db is populated by the handler's
+    # subsequent add/rm operations.
+    log.info("No embedded index.db found in %s; creating empty index.db.", from_index)
+    Path(index_db_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(index_db_path, 'w'):
+        pass
+
+    return configs_dir, index_db_path
 
 
 class ValidateBundlesThread(threading.Thread):

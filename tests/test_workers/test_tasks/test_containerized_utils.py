@@ -8,6 +8,7 @@ import pytest
 
 from iib.exceptions import IIBError
 from iib.workers.tasks.containerized_utils import (
+    extract_catalog_and_db_from_image,
     extract_files_from_image_non_privileged,
     pull_index_db_artifact,
     write_build_metadata,
@@ -1413,3 +1414,76 @@ def test_merge_mr_after_build_failure_closes_mr(mock_merge_mr, mock_close_mr):
         merge_mr_after_build(mr_details, 'https://gitlab.example.com/project')
 
     mock_close_mr.assert_called_once_with(mr_details, 'https://gitlab.example.com/project')
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_prefers_hidden_db(mock_extract, mock_label, tmp_path):
+    """When a hidden index.db exists, it is preferred over the labeled db."""
+
+    def label_side_effect(image, label):
+        return {
+            'operators.operatorframework.io.index.configs.v1': '/configs',
+            'operators.operatorframework.io.index.database.v1': '/database/index.db',
+        }[label]
+
+    mock_label.side_effect = label_side_effect
+
+    configs_dir, index_db = extract_catalog_and_db_from_image(
+        'quay.io/redhat/my-index:test', str(tmp_path)
+    )
+
+    assert configs_dir.endswith('configs')
+    assert index_db.endswith('index.db')
+    # Two extractions: configs dir and the hidden db file.
+    assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_falls_back_to_labeled_db(mock_extract, mock_label, tmp_path):
+    """When the hidden db is missing, fall back to the labeled database.v1 path."""
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+        'operators.operatorframework.io.index.database.v1': '/database/index.db',
+    }[label]
+    # First call (configs) ok; second call (hidden db) raises -> fall back to labeled db
+    mock_extract.side_effect = [None, IIBError('no hidden db'), None]
+
+    _, index_db = extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
+
+    assert index_db.endswith('index.db')
+    assert mock_extract.call_count == 3
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_pure_fbc_creates_empty_db(mock_extract, mock_label, tmp_path):
+    """Pure-FBC image (no hidden or labeled db) results in an empty index.db."""
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+        'operators.operatorframework.io.index.database.v1': '',
+    }[label]
+    # First call (configs) ok; second call (hidden db) raises -> no labeled db either
+    mock_extract.side_effect = [None, IIBError('no hidden db')]
+
+    configs_dir, index_db = extract_catalog_and_db_from_image(
+        'quay.io/redhat/my-index:test', str(tmp_path)
+    )
+
+    assert configs_dir.endswith('configs')
+    assert index_db.endswith('index.db')
+    assert os.path.exists(index_db)
+    assert os.path.getsize(index_db) == 0
+    # Only two extraction attempts: configs dir and the failed hidden db lookup.
+    # No opm_migrate / privileged call is ever invoked for the pure-FBC fallback.
+    assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_and_db_raises_without_configs_label(mock_label):
+    """If the image has no FBC configs label, an IIBError is raised."""
+    mock_label.return_value = ''
+
+    with pytest.raises(IIBError, match='does not contain a file-based catalog'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', '/tmp/does-not-matter')
