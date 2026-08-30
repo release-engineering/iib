@@ -16,6 +16,7 @@ from iib.workers.tasks.oras_utils import (
     _get_index_digest,
     _get_artifact_combined_tag,
     get_indexdb_artifact_pullspec,
+    get_index_tag,
 )
 
 
@@ -849,3 +850,7 @@ def test_refresh_indexdb_cache_for_image_propagates_exception(
 
     with pytest.raises(IIBError, match='Refresh failed'):
         refresh_indexdb_cache_for_image("registry.example.com/namespace/image:v1.0.0")
+
+
+def test_get_index_tag():
+    assert get_index_tag('quay.io/redhat/my-index:v4.17') == 'v4.17'

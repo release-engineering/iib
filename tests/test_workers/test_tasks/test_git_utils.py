@@ -1273,3 +1273,15 @@ def test_merge_gitlab_mr_retries_on_transient_failure(mock_extract, mock_session
     assert result == 'abc123'
     assert mock_session.put.call_count == 2
     mock_sleep.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_remote_branch_exists_true(mock_run):
+    mock_run.return_value = 'abc123\trefs/heads/v4.14\n'
+    assert git_utils.remote_branch_exists('https://gitlab/x.git', 'v4.14') is True
+
+
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_remote_branch_exists_false(mock_run):
+    mock_run.return_value = ''
+    assert git_utils.remote_branch_exists('https://gitlab/x.git', 'test') is False
