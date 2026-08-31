@@ -26,7 +26,7 @@ def pagination_metadata(pagination_query: Pagination, **kwargs) -> PaginationMet
         ),
         'last': url_for(
             str(request.endpoint),
-            page=pagination_query.pages,
+            page=max(1, pagination_query.pages),
             per_page=pagination_query.per_page,
             _external=True,
             **kwargs,
