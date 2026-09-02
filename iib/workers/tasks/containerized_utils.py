@@ -42,7 +42,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import get_image_label, run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -493,16 +493,15 @@ def cleanup_on_failure(
     request_id: int,
     from_index: str,
     index_repo_map: Dict[str, str],
-    original_index_db_digest: Optional[str] = None,
     reason: str = "error",
 ) -> None:
     """
-    Clean up Git changes and index.db artifacts on failure.
+    Clean up Git changes on failure.
 
     If a merge request was created, it will be closed (since the commit is only in a
     feature branch). If changes were pushed directly to the main branch, the commit
-    will be reverted. If the index.db artifact was pushed to the v4.x tag, it will be
-    restored to the original digest.
+    will be reverted. Content-addressed index.db artifacts are immutable, so there is
+    nothing to roll back on the artifact side.
 
     :param Optional[Dict[str, str]] mr_details: Details of the merge request if one was created
     :param Optional[str] last_commit_sha: The SHA of the last commit
@@ -511,7 +510,6 @@ def cleanup_on_failure(
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec
     :param Dict[str, str] index_repo_map: Mapping of index images to Git repositories
-    :param Optional[str] original_index_db_digest: Original digest of index.db before overwrite
     :param str reason: Reason for the cleanup (used in log messages)
     """
     if mr_details and index_git_repo:
@@ -538,31 +536,6 @@ def cleanup_on_failure(
             log.error("Failed to revert commit: %s", revert_error)
     else:
         log.error("Neither MR nor commit to revert. No cleanup needed for %s", reason)
-
-    # Restore index.db artifact to original digest if it was overwritten
-    if original_index_db_digest:
-        log.info("Restoring index.db artifact to original digest due to %s", reason)
-        try:
-            # Get the v4.x artifact reference
-            v4x_artifact_ref = get_indexdb_artifact_pullspec(from_index)
-
-            # Extract registry and repository from the pullspec
-            # Format: quay.io/namespace/repo:tag -> we need quay.io/namespace/repo
-            artifact_name = v4x_artifact_ref.rsplit(':', 1)[0]
-
-            # Use oras copy to restore the old digest to v4.x tag
-            # This is a registry-to-registry copy, no download needed
-            source_ref = f'{artifact_name}@{original_index_db_digest}'
-            log.info("Restoring %s from %s", v4x_artifact_ref, source_ref)
-
-            run_cmd(
-                ['oras', 'copy', source_ref, v4x_artifact_ref],
-                exc_msg=f'Failed to restore index.db artifact '
-                f'from {source_ref} to {v4x_artifact_ref}',
-            )
-            log.info("Successfully restored index.db artifact to original digest")
-        except Exception as restore_error:
-            log.error("Failed to restore index.db artifact: %s", restore_error)
 
 
 @dataclass
