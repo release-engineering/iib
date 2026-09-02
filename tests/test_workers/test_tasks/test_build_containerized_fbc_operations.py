@@ -405,6 +405,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         from_index='quay.io/iib/from-index:latest',
         index_db_path='/tmp/d',
         operators=['op1'],
+        output_image='reg/img',
         overwrite_from_index=True,
         request_type='fbc_operations',
     )
@@ -609,7 +610,7 @@ def test_fbc_operations_divergent_never_merges(
     mock_git_commit.return_value = (mr_details, 'commit_sha_999')
     mock_monitor.return_value = 'registry/output-image:sha256-12345'
     mock_replicate.return_value = ['registry.example.com/final-image:999']
-    mock_push_index_db.return_value = 'sha256:index_db_digest'
+    mock_push_index_db.return_value = None
 
     overwrite_token = 'user:token'
     build_containerized_fbc_operations.handle_containerized_fbc_operation_request(

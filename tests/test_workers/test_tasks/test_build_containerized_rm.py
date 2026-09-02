@@ -16,9 +16,8 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -72,7 +71,6 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
     mock_giap,
     mock_gid,
     mock_poa,
@@ -140,9 +138,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_gpiu.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
 
     # Mock ORAS push related functions
-    mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
-    mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc'
+    mock_gid.return_value = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc0'
 
     # Mock worker config
     mock_gwc.return_value = {
@@ -206,8 +203,11 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     # Verify image was copied
     assert mock_sc.call_count >= 1
 
-    # Verify index.db was pushed (2 times: request_id tag + v4.x tag)
+    # Verify index.db was pushed (2 times: request_id tag + current-artifact tag)
     assert mock_poa.call_count == 2
+
+    # Verify the content key was resolved from the built output image
+    mock_gid.assert_called_once_with('quay.io/konflux/built-image@sha256:xyz789')
 
     # Verify final state
     final_call = mock_srs.call_args_list[-1]
@@ -227,8 +227,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -280,7 +280,7 @@ def test_handle_containerized_rm_request_with_mr(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
+    mock_gid,
     mock_giap,
     mock_poa,
     mock_gwc,
@@ -340,8 +340,8 @@ def test_handle_containerized_rm_request_with_mr(
     mock_gpiu.return_value = 'quay.io/konflux/image@sha256:built'
 
     # Mock ORAS push related functions (only request_id tag, no overwrite)
-    mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
+    mock_gid.return_value = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567'
 
     # Mock config
     mock_gwc.return_value = {
@@ -389,9 +389,8 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -443,7 +442,6 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
     mock_giap,
     mock_gid,
     mock_poa,
@@ -502,9 +500,8 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_gpiu.return_value = 'image@sha'
 
     # Mock ORAS push related functions (conditionally used based on operators_in_db)
-    mock_gact.return_value = 'index-v4.14'
     mock_giap.return_value = 'reg/index-db:v4.14'
-    mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc'
+    mock_gid.return_value = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc0'
 
     mock_gwc.return_value = {
         'iib_registry': 'reg',
@@ -839,9 +836,8 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -893,7 +889,6 @@ def test_handle_containerized_rm_with_index_db_push(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
     mock_giap,
     mock_gid,
     mock_poa,
@@ -947,9 +942,8 @@ def test_handle_containerized_rm_with_index_db_push(
     mock_gpiu.return_value = 'image@sha'
 
     # Mock ORAS push related functions
-    mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
-    mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab'
+    mock_gid.return_value = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab00'
 
     mock_gwc.return_value = {
         'iib_registry': 'registry.io',
@@ -971,10 +965,10 @@ def test_handle_containerized_rm_with_index_db_push(
     # Verify MR was merged after build (overwrite flow)
     mock_merge_mr.assert_called_once()
 
-    # Verify index.db was pushed (2 times: request_id tag + v4.x tag)
+    # Verify index.db was pushed (2 times: request_id tag + current-artifact tag)
     assert mock_poa.call_count == 2
 
-    # Verify original digest was captured
+    # Verify the content key was resolved from the built output image
     mock_gid.assert_called_once()
 
     # Verify annotations were added
@@ -999,9 +993,8 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -1053,7 +1046,6 @@ def test_handle_containerized_rm_with_build_tags(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
     mock_giap,
     mock_gid,
     mock_poa,
@@ -1102,9 +1094,8 @@ def test_handle_containerized_rm_with_build_tags(
 
     # Mock ORAS-related functions
     # (needed because push_index_db_artifact now called even with empty operators)
-    mock_gact.return_value = 'index-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
-    mock_gid.return_value = 'sha256:abcdef'
+    mock_gid.return_value = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234567'
 
     mock_gwc.return_value = {
         'iib_registry': 'registry.io',
@@ -1140,8 +1131,8 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -1193,7 +1184,7 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gact,
+    mock_gid,
     mock_giap,
     mock_poa,
     mock_gwc,
@@ -1239,8 +1230,8 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     mock_gpiu.return_value = 'quay.io/konflux/image@sha256:built'
 
     # Mock ORAS push related functions
-    mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
+    mock_gid.return_value = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234568'
 
     mock_gwc.return_value = {
         'iib_registry': 'registry.io',
@@ -1595,7 +1586,7 @@ def test_rm_divergent_never_merges(
     mock_git_commit.return_value = (mr_details, 'commit_sha_789')
     mock_monitor.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
     mock_replicate.return_value = ['registry.example.com/final-image:789']
-    mock_push_index_db.return_value = 'sha256:index_db_digest'
+    mock_push_index_db.return_value = None
 
     build_containerized_rm.handle_containerized_rm_request(
         operators=operators,
@@ -1620,3 +1611,6 @@ def test_rm_divergent_never_merges(
     mock_orrf.assert_called_once()
     assert mock_orrf.call_args.kwargs['index_db_path'] == index_db_path
     mock_cof.assert_not_called()
+
+    expected_output_image = 'quay.io/konflux/built-image@sha256:xyz789'
+    assert mock_push_index_db.call_args.kwargs['output_image'] == expected_output_image

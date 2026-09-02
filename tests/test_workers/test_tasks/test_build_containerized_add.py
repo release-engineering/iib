@@ -171,7 +171,7 @@ def test_handle_containerized_add_request(
     mock_replicate.return_value = output_pull_specs
 
     # Mock final artifact push
-    mock_push_index_db.return_value = 'sha256:index_db_digest'
+    mock_push_index_db.return_value = None
 
     # Call the function
     if with_deprecations:
@@ -284,6 +284,7 @@ def test_handle_containerized_add_request(
     )
 
     mock_push_index_db.assert_called_once()
+    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
     mock_cleanup_mr.assert_called_once()
     mock_cleanup_failure.assert_not_called()
 
@@ -542,7 +543,7 @@ def test_handle_containerized_add_request_overwrite(
     output_pull_specs = ['registry.example.com/final-image:456']
     mock_replicate.return_value = output_pull_specs
 
-    mock_push_index_db.return_value = 'sha256:index_db_digest'
+    mock_push_index_db.return_value = None
 
     build_containerized_add.handle_containerized_add_request(
         bundles=bundles,
@@ -561,6 +562,7 @@ def test_handle_containerized_add_request_overwrite(
 
     # Verify the handler completed successfully
     mock_push_index_db.assert_called_once()
+    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
     mock_cleanup_failure.assert_not_called()
 
 
@@ -688,7 +690,7 @@ def test_add_divergent_never_merges(
     output_pull_specs = ['registry.example.com/final-image:789']
     mock_replicate.return_value = output_pull_specs
 
-    mock_push_index_db.return_value = 'sha256:index_db_digest'
+    mock_push_index_db.return_value = None
 
     build_containerized_add.handle_containerized_add_request(
         bundles=bundles,
@@ -701,6 +703,7 @@ def test_add_divergent_never_merges(
 
     # Divergent path uses the extracted index.db, never ORAS.
     mock_fetch_index_db.assert_not_called()
+    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
 
     # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
     # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
