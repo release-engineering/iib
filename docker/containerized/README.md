@@ -279,9 +279,12 @@ This lets IIB build and validate a one-off tag without requiring per-tag branch/
 
 ## Index DB Artifact and ImageStream Tag Naming
 
-Cached `index.db` artifact tags (ORAS) and ImageStream tags now include a short hash of the index image pullspec, making them namespace-safe: two images with the same repository name in different registry namespaces (e.g. `quay.io/redhat/my-index:v4.17` vs `quay.io/redhat-pending/my-index:v4.17`) no longer collide on the same cache tag.
+Cached `index.db` artifact tags (ORAS) and ImageStream tags are keyed on the index image's content (manifest) digest — `idb-<sha256>` — resolved via `skopeo inspect`, not on its pullspec. Because the key is the content itself, it is both namespace-safe and promotion-safe:
 
-Cache entries written under the old (pre-hash) naming scheme are orphaned by this change — they are not migrated in place. They are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
+- **Namespace-safe:** two images that share a repository name in different registry namespaces (e.g. `quay.io/redhat/my-index:v4.17` vs `quay.io/redhat-pending/my-index:v4.17`) have different content and therefore different digests, so they never collide on the same cache tag.
+- **Promotion-safe:** the same image content addressed by different pullspecs after a release or mirror (e.g. `quay.io/my-namespace/iib-pub:v4.17` → `registry.access.redhat.com/some-namespace/operator-index:v4.17`) preserves its manifest digest, so both pullspecs resolve to the *same* cache entry and share one `index.db`.
+
+Cache entries written under the previous pullspec-derived naming scheme are orphaned by this change — they are not migrated in place. The digest-keyed name simply misses on the first request after cutover and is repopulated via read-through bootstrap (the `index.db` is extracted from the image and pushed under the digest key). Orphaned entries are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
 
 ## Differences from Traditional Workflow
 
