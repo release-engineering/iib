@@ -33,8 +33,7 @@ from iib.workers.tasks.konflux_utils import (
     wait_for_pipeline_completion,
 )
 from iib.workers.tasks.oras_utils import (
-    _get_artifact_combined_tag,
-    get_image_digest,
+    _get_index_digest,
     get_index_tag,
     get_indexdb_artifact_pullspec,
     get_imagestream_artifact_pullspec,
@@ -422,71 +421,68 @@ def push_index_db_artifact(
     from_index: str,
     index_db_path: str,
     operators: List[str],
+    output_image: str,
     overwrite_from_index: bool = False,
     request_type: str = 'rm',
-) -> Optional[str]:
+) -> None:
     """
-    Push updated index.db artifact to registry with appropriate tags.
+    Push the updated index.db artifact, keyed on the built OUTPUT image digest.
 
-    This function pushes the index.db file to the artifact registry with a request-specific
-    tag and optionally to the v4.x tag if overwrite_from_index is True. It captures
-    the original digest of the v4.x tag before overwriting for potential rollback.
+    A per-request tag is always pushed for traceability. For overwrite requests
+    (which advance the from_index tag to the output image) the current artifact
+    ``idb-<output-digest>`` is also pushed (warm-push), so the next request that
+    resolves the tag to that digest finds it cached. Content keys are never
+    overwritten in place, so no original-digest rollback is required.
 
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec
     :param str index_db_path: Path to the index.db file to push
     :param List[str] operators: List of operators involved in the operation
+    :param str output_image: The built output image pullspec, used to derive the content key
     :param bool overwrite_from_index: Whether to overwrite the from_index
     :param str request_type: Type of request (e.g., 'rm', 'add')
-    :return: Original digest of v4.x tag if captured, None otherwise
-    :rtype: Optional[str]
     """
-    original_index_db_digest = None
+    if not (index_db_path and Path(index_db_path).exists()):
+        return
 
-    if index_db_path and Path(index_db_path).exists():
-        # Get directory and filename separately to push only the filename
-        # This ensures ORAS extracts the file as just "index.db" without
-        # directory structure
-        index_db_file = Path(index_db_path)
-        index_db_dir = str(index_db_file.parent)
-        index_db_filename = index_db_file.name
-        log.info('Pushing from directory: %s, filename: %s', index_db_dir, index_db_filename)
+    index_db_file = Path(index_db_path)
+    index_db_dir = str(index_db_file.parent)
+    index_db_filename = index_db_file.name
+    log.info('Pushing from directory: %s, filename: %s', index_db_dir, index_db_filename)
 
-        # Push with request_id tag irrespective of overwrite_from_index
-        set_request_state(request_id, 'in_progress', 'Pushing updated index database')
-        conf = get_worker_config()
-        request_artifact_ref = conf['iib_index_db_artifact_template'].format(
+    set_request_state(request_id, 'in_progress', 'Pushing updated index database')
+    conf = get_worker_config()
+    output_tag = f'idb-{_get_index_digest(output_image)}'
+
+    request_artifact_ref = conf['iib_index_db_artifact_template'].format(
+        registry=conf['iib_index_db_artifact_registry'],
+        tag=f'{output_tag}-{request_id}',
+    )
+    artifact_refs = [request_artifact_ref]
+    if overwrite_from_index:
+        current_artifact_ref = conf['iib_index_db_artifact_template'].format(
             registry=conf['iib_index_db_artifact_registry'],
-            tag=f"{_get_artifact_combined_tag(from_index)}-{request_id}",
+            tag=output_tag,
         )
-        artifact_refs = [request_artifact_ref]
-        if overwrite_from_index:
-            # Get the current digest of v4.x tag before overwriting it
-            # This allows us to restore it if anything fails after the push
-            v4x_artifact_ref = get_indexdb_artifact_pullspec(from_index)
-            log.info('Capturing original digest of %s for potential rollback', v4x_artifact_ref)
-            original_index_db_digest = get_image_digest(v4x_artifact_ref)
-            log.info('Original index.db digest: %s', original_index_db_digest)
-            artifact_refs.append(v4x_artifact_ref)
+        artifact_refs.append(current_artifact_ref)
 
-        # Build annotations - only include operators if not empty
-        annotations = {
-            'request_id': str(request_id),
-            'request_type': request_type,
-        }
-        if operators:
-            annotations['operators'] = ','.join(operators)
+    annotations = {
+        'request_id': str(request_id),
+        'request_type': request_type,
+        'from_index': from_index,
+        'output_image': output_image,
+    }
+    if operators:
+        annotations['operators'] = ','.join(operators)
 
-        for artifact_ref in artifact_refs:
-            push_oras_artifact(
-                artifact_ref=artifact_ref,
-                local_path=index_db_filename,
-                cwd=index_db_dir,
-                annotations=annotations.copy(),
-            )
-            log.info('Pushed %s to registry', artifact_ref)
-
-    return original_index_db_digest
+    for artifact_ref in artifact_refs:
+        push_oras_artifact(
+            artifact_ref=artifact_ref,
+            local_path=index_db_filename,
+            cwd=index_db_dir,
+            annotations=annotations.copy(),
+        )
+        log.info('Pushed %s to registry', artifact_ref)
 
 
 def cleanup_on_failure(
