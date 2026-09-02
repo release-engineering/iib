@@ -2,6 +2,7 @@
 """This file contains utility functions for containerized IIB operations."""
 import json
 import logging
+import os
 import queue
 import shutil
 import tarfile
@@ -42,7 +43,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import get_image_label, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, get_resolved_image, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -300,6 +301,42 @@ def validate_bundles_in_parallel(
     return None
 
 
+def bootstrap_index_db_from_image(from_index: str, temp_dir: str) -> str:
+    """
+    Extract index.db from the index image and populate the digest-keyed cache.
+
+    Used on a read miss (a from_index digest never seen before — pre-cutover or
+    externally-built index). Safe to write because the artifact key is
+    content-addressed and uniquely identifies "the index.db for this image".
+
+    Reuses Part B's ``extract_catalog_and_db_from_image``, which already
+    implements the hidden -> labeled -> empty index.db precedence, so bootstrap
+    works for pure-FBC and labeled-db images too, not just hidden-db ones.
+
+    :param str from_index: The from_index pullspec.
+    :param str temp_dir: Temporary directory to extract into.
+    :return: Directory containing the extracted ``index.db``.
+    :rtype: str
+    :raises IIBError: If the image has no FBC configs label, or if extraction
+        fails for a reason other than the hidden-db path being absent.
+    """
+    from_index_resolved = get_resolved_image(from_index)
+    _, extracted_db = extract_catalog_and_db_from_image(from_index_resolved, temp_dir)
+
+    dest = os.path.join(temp_dir, 'index_db_bootstrap')
+    os.makedirs(dest, exist_ok=True)
+    shutil.copyfile(extracted_db, os.path.join(dest, 'index.db'))
+
+    artifact_ref = get_indexdb_artifact_pullspec(from_index)
+    push_oras_artifact(
+        artifact_ref=artifact_ref,
+        local_path='index.db',
+        cwd=dest,
+        annotations={'from_index': from_index, 'bootstrap': 'true'},
+    )
+    return dest
+
+
 def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
     """
     Pull index.db artifact from registry, using ImageStream cache if available.
@@ -340,12 +377,14 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
 
     # Pull directly from Quay — either cache is disabled, stale, or unavailable
     artifact_ref = get_indexdb_artifact_pullspec(from_index)
-    artifact_dir = get_oras_artifact(
-        artifact_ref,
-        temp_dir,
-    )
-
-    return artifact_dir
+    try:
+        return get_oras_artifact(
+            artifact_ref,
+            temp_dir,
+        )
+    except IIBError:
+        log.info('index.db artifact %s not found; bootstrapping from image', artifact_ref)
+        return bootstrap_index_db_from_image(from_index, temp_dir)
 
 
 def write_build_metadata(
