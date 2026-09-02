@@ -198,11 +198,11 @@ def handle_containerized_create_empty_index_request(
         empty_tag = conf.get('iib_empty_index_db_tag', 'empty')
 
         # Construct the pullspec for the empty index.db artifact.
-        # This tag intentionally omits the pullspec hash used by
-        # _get_artifact_combined_tag: the empty index.db is a shared, content-free
-        # seed artifact keyed only by image name + "empty", so it is deliberately
-        # namespace-agnostic and does not risk the cross-namespace collisions that
-        # the hash guards against for real per-index artifacts.
+        # This tag intentionally does NOT use the content-digest key that
+        # _get_artifact_combined_tag derives for real indexes: the empty index.db
+        # is a shared, content-free seed artifact keyed only by image name +
+        # "empty", so it is deliberately reusable across indexes rather than tied
+        # to any single image's manifest digest.
         image_name, _ = _get_name_and_tag_from_pullspec(from_index)
         empty_artifact_ref = conf['iib_index_db_artifact_template'].format(
             registry=conf['iib_index_db_artifact_registry'],
