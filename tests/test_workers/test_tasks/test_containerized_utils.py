@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FileNotFoundInImageError
 from iib.workers.tasks import containerized_utils as cu
 from iib.workers.tasks.containerized_utils import (
     extract_catalog_and_db_from_image,
@@ -1449,8 +1449,9 @@ def test_extract_catalog_and_db_falls_back_to_labeled_db(mock_extract, mock_labe
         'operators.operatorframework.io.index.configs.v1': '/configs',
         'operators.operatorframework.io.index.database.v1': '/database/index.db',
     }[label]
-    # First call (configs) ok; second call (hidden db) raises -> fall back to labeled db
-    mock_extract.side_effect = [None, IIBError('no hidden db'), None]
+    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError
+    # (path genuinely absent) -> fall back to labeled db
+    mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db'), None]
 
     _, index_db = extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
 
@@ -1466,8 +1467,9 @@ def test_extract_catalog_and_db_pure_fbc_creates_empty_db(mock_extract, mock_lab
         'operators.operatorframework.io.index.configs.v1': '/configs',
         'operators.operatorframework.io.index.database.v1': '',
     }[label]
-    # First call (configs) ok; second call (hidden db) raises -> no labeled db either
-    mock_extract.side_effect = [None, IIBError('no hidden db')]
+    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError
+    # (path genuinely absent) -> no labeled db either
+    mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db')]
 
     configs_dir, index_db = extract_catalog_and_db_from_image(
         'quay.io/redhat/my-index:test', str(tmp_path)
@@ -1480,6 +1482,28 @@ def test_extract_catalog_and_db_pure_fbc_creates_empty_db(mock_extract, mock_lab
     # Only two extraction attempts: configs dir and the failed hidden db lookup.
     # No opm_migrate / privileged call is ever invoked for the pure-FBC fallback.
     assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_propagates_real_extraction_error(
+    mock_extract, mock_label, tmp_path
+):
+    """A genuine extraction failure (not a missing path) must propagate, not degrade.
+
+    Only FileNotFoundInImageError signals an absent hidden db; a plain IIBError
+    (registry/OCI/layer/tar failure) must not be silently swallowed as "no hidden
+    db", which would build an image from an incomplete index.db.
+    """
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+        'operators.operatorframework.io.index.database.v1': '/database/index.db',
+    }[label]
+    # First call (configs) ok; second call (hidden db) raises a real error.
+    mock_extract.side_effect = [None, IIBError('registry unreachable')]
+
+    with pytest.raises(IIBError, match='registry unreachable'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
 
 
 @patch('iib.workers.tasks.containerized_utils.get_image_label')
@@ -1505,6 +1529,7 @@ def test_prepare_build_sources_normal(
     src = cu.prepare_build_sources(
         request_id=1,
         from_index='quay.io/redhat/my-index:v4.14',
+        from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
         temp_dir=str(tmp_path),
         ocp_version='v4.14',
         index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
@@ -1528,6 +1553,7 @@ def test_prepare_build_sources_divergent_rejects_overwrite(
         cu.prepare_build_sources(
             request_id=1,
             from_index='quay.io/redhat/my-index:test',
+            from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
             temp_dir=str(tmp_path),
             ocp_version='v4.14',
             index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
@@ -1557,6 +1583,7 @@ def test_prepare_build_sources_divergent_extracts(
         src = cu.prepare_build_sources(
             request_id=1,
             from_index='quay.io/redhat/my-index:test',
+            from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
             temp_dir=str(tmp_path),
             ocp_version='v4.14',
             index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
@@ -1565,3 +1592,7 @@ def test_prepare_build_sources_divergent_extracts(
     assert src.is_divergent is True
     assert src.target_branch == 'v4.14'
     assert src.index_db_path == str(tmp_path / 'ex.db')
+    # Divergent extraction must read the resolved digest, not the mutable tag, so
+    # the index.db matches the exact image the request resolved to.
+    mock_extract.assert_called_once()
+    assert mock_extract.call_args.args[0] == 'quay.io/redhat/my-index@sha256:deadbeef'

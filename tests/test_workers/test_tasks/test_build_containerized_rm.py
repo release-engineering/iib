@@ -19,7 +19,6 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -73,7 +72,6 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_gid,
@@ -142,7 +140,6 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_gpiu.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
 
     # Mock ORAS push related functions
-    mock_gntfp.return_value = ('index-image', 'v4.14')
     mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
     mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc'
@@ -232,7 +229,6 @@ def test_handle_containerized_rm_request_success_with_overwrite(
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -284,7 +280,6 @@ def test_handle_containerized_rm_request_with_mr(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_poa,
@@ -345,7 +340,6 @@ def test_handle_containerized_rm_request_with_mr(
     mock_gpiu.return_value = 'quay.io/konflux/image@sha256:built'
 
     # Mock ORAS push related functions (only request_id tag, no overwrite)
-    mock_gntfp.return_value = ('index-image', 'v4.14')
     mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
 
@@ -398,7 +392,6 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -450,7 +443,6 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_gid,
@@ -510,7 +502,6 @@ def test_handle_containerized_rm_conditional_opm_rm(
     mock_gpiu.return_value = 'image@sha'
 
     # Mock ORAS push related functions (conditionally used based on operators_in_db)
-    mock_gntfp.return_value = ('index', 'v4.14')
     mock_gact.return_value = 'index-v4.14'
     mock_giap.return_value = 'reg/index-db:v4.14'
     mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc'
@@ -851,7 +842,6 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -903,7 +893,6 @@ def test_handle_containerized_rm_with_index_db_push(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_gid,
@@ -958,7 +947,6 @@ def test_handle_containerized_rm_with_index_db_push(
     mock_gpiu.return_value = 'image@sha'
 
     # Mock ORAS push related functions
-    mock_gntfp.return_value = ('index-image', 'v4.14')
     mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
     mock_gid.return_value = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab'
@@ -1014,7 +1002,6 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils.get_image_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -1066,7 +1053,6 @@ def test_handle_containerized_rm_with_build_tags(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_gid,
@@ -1116,7 +1102,6 @@ def test_handle_containerized_rm_with_build_tags(
 
     # Mock ORAS-related functions
     # (needed because push_index_db_artifact now called even with empty operators)
-    mock_gntfp.return_value = ('index', 'v4.14')
     mock_gact.return_value = 'index-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
     mock_gid.return_value = 'sha256:abcdef'
@@ -1157,7 +1142,6 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils._get_artifact_combined_tag')
-@mock.patch('iib.workers.tasks.containerized_utils._get_name_and_tag_from_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
 @mock.patch('iib.workers.tasks.containerized_utils.find_pipelinerun')
@@ -1209,7 +1193,6 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     mock_fpr,
     mock_wfpc,
     mock_gpiu,
-    mock_gntfp,
     mock_gact,
     mock_giap,
     mock_poa,
@@ -1256,7 +1239,6 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     mock_gpiu.return_value = 'quay.io/konflux/image@sha256:built'
 
     # Mock ORAS push related functions
-    mock_gntfp.return_value = ('index-image', 'v4.14')
     mock_gact.return_value = 'index-image-v4.14'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
 
