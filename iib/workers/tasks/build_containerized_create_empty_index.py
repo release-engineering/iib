@@ -175,7 +175,6 @@ def handle_containerized_create_empty_index_request(
     index_git_repo: Optional[str] = None
     last_commit_sha: Optional[str] = None
     output_pull_spec: Optional[str] = None
-    original_index_db_digest: Optional[str] = None
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         branch = ocp_version
@@ -348,12 +347,13 @@ def handle_containerized_create_empty_index_request(
 
             # Push the empty index.db with request ID tag
             # Since overwrite_from_index is False, this will only push with request_id tag
-            # and will not overwrite the v4.x tag
-            original_index_db_digest = push_index_db_artifact(
+            # and will not overwrite the current artifact
+            push_index_db_artifact(
                 request_id=request_id,
                 from_index=from_index,
                 index_db_path=str(index_db_path),
                 operators=[],  # Empty list since we're creating an empty index
+                output_image=image_url,
                 overwrite_from_index=False,  # Always False for create_empty_index
                 request_type='create_empty_index',
             )
@@ -376,7 +376,6 @@ def handle_containerized_create_empty_index_request(
                 request_id=request_id,
                 from_index=from_index,
                 index_repo_map=index_to_gitlab_push_map or {},
-                original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
             )
             raise IIBError(f"Failed to create empty index: {e}")
