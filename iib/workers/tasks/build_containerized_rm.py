@@ -131,7 +131,6 @@ def handle_containerized_rm_request(
     operators_in_db: Set[str] = set()
     last_commit_sha: Optional[str] = None
     output_pull_spec: Optional[str] = None
-    original_index_db_digest: Optional[str] = None
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         sources = prepare_build_sources(
@@ -290,12 +289,13 @@ def handle_containerized_rm_request(
 
             # Push updated index.db before merging the MR so that on failure both
             # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it and rolls back the artifact).
-            original_index_db_digest = push_index_db_artifact(
+            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
+            push_index_db_artifact(
                 request_id=request_id,
                 from_index=from_index,
                 index_db_path=index_db_path,
                 operators=operators,
+                output_image=image_url,
                 overwrite_from_index=overwrite_from_index,
                 request_type='rm',
             )
@@ -326,7 +326,6 @@ def handle_containerized_rm_request(
                 request_id=request_id,
                 from_index=from_index,
                 index_repo_map=index_to_gitlab_push_map or {},
-                original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
             )
             raise IIBError(f"Failed to remove operators: {e}")

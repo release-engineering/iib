@@ -317,8 +317,8 @@ def test_push_keys_current_artifact_on_output_digest(
     assert result is None
     m_digest.assert_called_with('quay.io/ns/foo@sha256:' + 'f' * 64)
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
-    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 in pushed_refs          # warm-push (overwrite)
-    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42' in pushed_refs   # per-request tag
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 in pushed_refs  # warm-push (overwrite)
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42' in pushed_refs  # per-request tag
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
@@ -346,7 +346,7 @@ def test_push_throwaway_skips_current_artifact(
         request_type='add',
     )
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
-    assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}   # only per-request tag
+    assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}  # only per-request tag
 
 
 @patch('iib.workers.tasks.containerized_utils.log')

@@ -148,11 +148,10 @@ def handle_containerized_add_request(
     distribution_scope = prebuild_info['distribution_scope']
 
     index_to_gitlab_push_map = index_to_gitlab_push_map or {}
-    # Variables mr_details, last_commit_sha and original_index_db_digest
-    # needs to be assigned; otherwise cleanup_on_failure() fails when an exception is raised.
+    # Variables mr_details and last_commit_sha need to be assigned; otherwise
+    # cleanup_on_failure() fails when an exception is raised.
     mr_details: Optional[Dict[str, str]] = None
     last_commit_sha: Optional[str] = None
-    original_index_db_digest: Optional[str] = None
 
     Opm.set_opm_version(from_index_resolved)
 
@@ -334,12 +333,13 @@ def handle_containerized_add_request(
 
             # Push updated index.db before merging the MR so that on failure both
             # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it and rolls back the artifact).
-            original_index_db_digest = push_index_db_artifact(
+            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
+            push_index_db_artifact(
                 request_id=request_id,
                 from_index=str(from_index),
                 index_db_path=artifact_index_db_file,
                 operators=operators,
+                output_image=image_url,
                 overwrite_from_index=overwrite_from_index,
                 request_type='add',
             )
@@ -368,7 +368,6 @@ def handle_containerized_add_request(
                 request_id=request_id,
                 from_index=str(from_index),
                 index_repo_map=index_to_gitlab_push_map or {},
-                original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
             )
             raise IIBError(f"Failed to add bundles: {e}")

@@ -274,7 +274,6 @@ def handle_containerized_regenerate_bundle_request(
                     request_id=request_id,
                     from_index='',  # No from_index for bundle regeneration
                     index_repo_map={},
-                    original_index_db_digest=None,  # No index.db for bundle regeneration
                     reason=f"error: {e}",
                 )
                 raise IIBError(f"Failed to regenerate bundle: {e}")
