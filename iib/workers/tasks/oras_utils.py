@@ -76,7 +76,6 @@ def get_index_tag(from_index: str) -> str:
     :param str from_index: The full index image pullspec (registry/namespace/repo:tag).
     :return: The tag portion of the pullspec.
     :rtype: str
-    :raises IIBError: If the pullspec parsing fails within the helper function.
     """
     _, tag = _get_name_and_tag_from_pullspec(from_index)
     return tag

@@ -134,6 +134,7 @@ def handle_containerized_fbc_operation_request(
         sources = prepare_build_sources(
             request_id=request_id,
             from_index=from_index,
+            from_index_resolved=from_index_resolved,
             temp_dir=temp_dir,
             ocp_version=prebuild_info['ocp_version'],
             index_to_gitlab_push_map=index_to_gitlab_push_map,

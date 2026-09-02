@@ -213,6 +213,7 @@ def test_handle_containerized_add_request(
     mock_prepare_sources.assert_called_once_with(
         request_id=request_id,
         from_index=str(from_index),
+        from_index_resolved='from-index@sha256:abcdef',
         temp_dir=temp_dir_path,
         ocp_version='v4.12',
         index_to_gitlab_push_map={},
