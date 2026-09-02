@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import inspect
 import json
 import os
 import tarfile
@@ -533,100 +534,10 @@ def test_cleanup_on_failure_no_mr_no_commit(mock_log):
     )
 
 
-@patch('iib.workers.tasks.containerized_utils.run_cmd')
-@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.containerized_utils.log')
-def test_cleanup_on_failure_restores_index_db_artifact(
-    mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd
-):
-    """If original_index_db_digest is provided, oras copy should be invoked correctly."""
-    mr_details = None
-    last_commit_sha = None
-    index_git_repo = None
-    overwrite_from_index = False
-    request_id = 1
-    from_index = 'quay.io/ns/index:v4.19'
-    index_repo_map = {}
-    original_digest = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-
-    v4x_artifact_ref = 'quay.io/ns/index-indexdb:v4.19'
-    mock_get_indexdb_artifact_pullspec.return_value = v4x_artifact_ref
-
-    cleanup_on_failure(
-        mr_details=mr_details,
-        last_commit_sha=last_commit_sha,
-        index_git_repo=index_git_repo,
-        overwrite_from_index=overwrite_from_index,
-        request_id=request_id,
-        from_index=from_index,
-        index_repo_map=index_repo_map,
-        original_index_db_digest=original_digest,
-    )
-
-    mock_log.info.assert_any_call(
-        "Restoring index.db artifact to original digest due to %s", "error"
-    )
-
-    artifact_name = v4x_artifact_ref.rsplit(':', 1)[0]
-    expected_source_ref = f'{artifact_name}@{original_digest}'
-
-    mock_run_cmd.assert_called_once_with(
-        ['oras', 'copy', expected_source_ref, v4x_artifact_ref],
-        exc_msg=(
-            f'Failed to restore index.db artifact from {expected_source_ref} '
-            f'to {v4x_artifact_ref}'
-        ),
-    )
-    mock_log.info.assert_any_call("Successfully restored index.db artifact to original digest")
-
-
-@patch('iib.workers.tasks.containerized_utils.run_cmd')
-@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.containerized_utils.log')
-def test_cleanup_on_failure_restore_failure_is_logged(
-    mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd
-):
-    """If restoring the artifact fails, error should be logged."""
-    mock_get_indexdb_artifact_pullspec.return_value = 'quay.io/ns/index-indexdb:v4.19'
-    mock_run_cmd.side_effect = RuntimeError("oras copy failed")
-
-    cleanup_on_failure(
-        mr_details=None,
-        last_commit_sha=None,
-        index_git_repo=None,
-        overwrite_from_index=False,
-        request_id=1,
-        from_index='quay.io/ns/index:v4.19',
-        index_repo_map={},
-        original_index_db_digest='sha256:0123456789abcdef0123456789abcdef0123456789abcde',
-    )
-
-    mock_run_cmd.assert_called_once()
-    mock_log.error.assert_any_call(
-        "Failed to restore index.db artifact: %s", mock_run_cmd.side_effect
-    )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.utils.run_cmd')
-def test_cleanup_on_failure_no_restore_when_no_original_digest(
-    mock_run_cmd, mock_get_indexdb_artifact_pullspec, mock_log
-):
-    """If original_index_db_digest is not provided, restoration must not be attempted."""
-    cleanup_on_failure(
-        mr_details=None,
-        last_commit_sha=None,
-        index_git_repo=None,
-        overwrite_from_index=False,
-        request_id=1,
-        from_index='quay.io/ns/index:v4.19',
-        index_repo_map={},
-        original_index_db_digest=None,
-    )
-
-    mock_get_indexdb_artifact_pullspec.assert_not_called()
-    mock_run_cmd.assert_not_called()
+def test_cleanup_on_failure_has_no_rollback_param():
+    """Content keys are immutable: cleanup_on_failure no longer restores artifacts."""
+    params = inspect.signature(cleanup_on_failure).parameters
+    assert 'original_index_db_digest' not in params
 
 
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
