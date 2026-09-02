@@ -517,7 +517,7 @@ def test_cleanup_on_failure_restores_index_db_artifact(
 
 
 @patch('iib.workers.tasks.containerized_utils.run_cmd')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
+@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @patch('iib.workers.tasks.containerized_utils.log')
 def test_cleanup_on_failure_restore_failure_is_logged(
     mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd

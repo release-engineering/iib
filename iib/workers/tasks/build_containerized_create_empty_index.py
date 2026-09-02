@@ -34,7 +34,6 @@ from iib.workers.tasks.opm_operations import (
     opm_validate,
 )
 from iib.workers.tasks.oras_utils import (
-    _get_artifact_combined_tag,
     _get_name_and_tag_from_pullspec,
     get_oras_artifact,
 )
@@ -203,7 +202,7 @@ def handle_containerized_create_empty_index_request(
         image_name, _ = _get_name_and_tag_from_pullspec(from_index)
         empty_artifact_ref = conf['iib_index_db_artifact_template'].format(
             registry=conf['iib_index_db_artifact_registry'],
-            tag=_get_artifact_combined_tag(image_name, empty_tag),
+            tag=f"{image_name}-{empty_tag}",
         )
 
         log.info('Fetching empty index.db from %s', empty_artifact_ref)
