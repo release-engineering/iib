@@ -1874,135 +1874,99 @@ def test_change_dir_invalid_directory_does_not_change_cwd(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "from_index,expected_pullspec",
+    "from_index,digest",
     [
-        (
-            "registry.example.com/namespace/iib-pub-pending:v4.17",
-            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
-        ),
-        (
-            "quay.io/namespace/my-image:latest",
-            "test-artifact-registry/index-db:my-image-latest",
-        ),
-        (
-            "registry.io/org/repo/index-image:v1.0.0",
-            "test-artifact-registry/index-db:index-image-v1.0.0",
-        ),
-        (
-            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
-            "test-artifact-registry/index-db:iib-pub-pending-v4.17",
-        ),
+        ("registry.example.com/namespace/iib-pub-pending:v4.17", "a" * 64),
+        ("quay.io/namespace/my-image:latest", "b" * 64),
+        ("registry.io/org/repo/index-image:v1.0.0", "c" * 64),
+        ("registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123", "d" * 64),
     ],
 )
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-def test_get_indexdb_artifact_pullspec(mock_gwc, from_index, expected_pullspec):
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_get_indexdb_artifact_pullspec(mock_digest, mock_gwc, from_index, digest):
     """Test constructing index DB artifact pullspecs."""
     from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
 
     mock_gwc.return_value = {
         'iib_index_db_artifact_registry': 'test-artifact-registry',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
+    mock_digest.return_value = f'sha256:{digest}'
 
     result = get_indexdb_artifact_pullspec(from_index)
 
-    assert result == expected_pullspec
+    assert result == f'test-artifact-registry/index-db:idb-{digest}'
 
 
-@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-def test_get_indexdb_artifact_pullspec_invalid(mock_gwc):
-    """Test _get_indexdb_artifact_pullspec with invalid pullspec."""
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_get_indexdb_artifact_pullspec_invalid(mock_digest):
+    """Test get_indexdb_artifact_pullspec propagates digest resolution failures."""
     from iib.workers.tasks.oras_utils import get_indexdb_artifact_pullspec
 
-    mock_gwc.return_value = {
-        'iib_index_db_artifact_registry': 'test-artifact-registry',
-        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
-    }
+    mock_digest.side_effect = IIBError('Failed to inspect image')
 
-    with pytest.raises(IIBError, match="Missing tag"):
+    with pytest.raises(IIBError, match="Failed to inspect image"):
         get_indexdb_artifact_pullspec("registry.example.com/namespace/image")
 
 
 @pytest.mark.parametrize(
-    "from_index,expected_pullspec",
+    "from_index,digest",
     [
-        (
-            "registry.example.com/namespace/iib-pub-pending:v4.17",
-            "test-imagestream-registry/index-db:iib-pub-pending-v4.17",
-        ),
-        (
-            "quay.io/namespace/my-image:latest",
-            "test-imagestream-registry/index-db:my-image-latest",
-        ),
-        (
-            "registry.io/org/repo/index-image:v1.0.0",
-            "test-imagestream-registry/index-db:index-image-v1.0.0",
-        ),
-        (
-            "registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123",
-            "test-imagestream-registry/index-db:iib-pub-pending-v4.17",
-        ),
+        ("registry.example.com/namespace/iib-pub-pending:v4.17", "a" * 64),
+        ("quay.io/namespace/my-image:latest", "b" * 64),
+        ("registry.io/org/repo/index-image:v1.0.0", "c" * 64),
+        ("registry.example.com/namespace/iib-pub-pending:v4.17@sha256:abc123", "d" * 64),
     ],
 )
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-def test_get_imagestream_artifact_pullspec(mock_gwc, from_index, expected_pullspec):
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_get_imagestream_artifact_pullspec(mock_digest, mock_gwc, from_index, digest):
     """Test constructing ImageStream artifact pullspecs."""
     mock_gwc.return_value = {
         'iib_index_db_imagestream_registry': 'test-imagestream-registry',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
+    mock_digest.return_value = f'sha256:{digest}'
 
     result = get_imagestream_artifact_pullspec(from_index)
 
-    assert result == expected_pullspec
+    assert result == f'test-imagestream-registry/index-db:idb-{digest}'
 
 
-@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
-def test_get_imagestream_artifact_pullspec_invalid(mock_gwc):
-    """Test get_imagestream_artifact_pullspec with invalid pullspec."""
-    mock_gwc.return_value = {
-        'iib_index_db_imagestream_registry': 'test-imagestream-registry',
-        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': '{image_name}-{tag}',
-    }
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_get_imagestream_artifact_pullspec_invalid(mock_digest):
+    """Test get_imagestream_artifact_pullspec propagates digest resolution failures."""
+    mock_digest.side_effect = IIBError('Failed to inspect image')
 
-    with pytest.raises(IIBError, match="Missing tag"):
+    with pytest.raises(IIBError, match="Failed to inspect image"):
         get_imagestream_artifact_pullspec("registry.example.com/namespace/image")
 
 
 @mock.patch('iib.workers.tasks.oras_utils.verify_indexdb_cache_sync')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
 @pytest.mark.parametrize(
-    "pullspec,expected_combined_tag,sync_result",
+    "pullspec,digest,sync_result",
     [
-        (
-            "registry.example.com/namespace/iib-pub-pending:v4.17",
-            "iib-pub-pending-v4.17",
-            True,
-        ),
-        (
-            "quay.io/namespace/my-image:latest",
-            "my-image-latest",
-            False,
-        ),
-        (
-            "registry.io/org/repo/index-image:v1.0.0@sha256:abc123",
-            "index-image-v1.0.0",
-            True,
-        ),
+        ("registry.example.com/namespace/iib-pub-pending:v4.17", "a" * 64, True),
+        ("quay.io/namespace/my-image:latest", "b" * 64, False),
+        ("registry.io/org/repo/index-image:v1.0.0@sha256:abc123", "c" * 64, True),
     ],
 )
 def test_verify_indexdb_cache_for_image(
-    mock_verify_sync, pullspec, expected_combined_tag, sync_result
+    mock_digest, mock_gwc, mock_verify_sync, pullspec, digest, sync_result
 ):
     """Test verify_indexdb_cache_for_image with various pullspecs."""
     from iib.workers.tasks.oras_utils import verify_indexdb_cache_for_image
 
+    mock_gwc.return_value = {'iib_index_db_artifact_tag_template': 'idb-{digest}'}
+    mock_digest.return_value = f'sha256:{digest}'
     mock_verify_sync.return_value = sync_result
 
     result = verify_indexdb_cache_for_image(pullspec)
 
     assert result == sync_result
-    mock_verify_sync.assert_called_once_with(expected_combined_tag)
+    mock_verify_sync.assert_called_once_with(f'idb-{digest}')

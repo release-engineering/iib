@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FileNotFoundInImageError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import BundleImage
@@ -125,9 +125,13 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
         normalized_src = src_path.lstrip('/')
         source_full_path = extract_dir / normalized_src
 
-        # Verify the requested path exists in the extracted filesystem
+        # Verify the requested path exists in the extracted filesystem.
+        # Raise the specific FileNotFoundInImageError (a subclass of IIBError) so
+        # callers can distinguish a genuinely absent path from a real extraction
+        # failure (registry, OCI parsing, layer, or tar error), which all raise
+        # plain IIBError above.
         if not source_full_path.exists():
-            raise IIBError(
+            raise FileNotFoundInImageError(
                 f'Path {src_path} not found in image {image}. '
                 f'Looked for {source_full_path} in extracted filesystem.'
             )
@@ -146,30 +150,39 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
         log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
 
 
-def extract_catalog_and_db_from_image(from_index: str, temp_dir: str) -> Tuple[str, str]:
+def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -> Tuple[str, str]:
     """
     Extract FBC configs and index.db from an index image, unprivileged.
 
     Used on the divergent-tag path where no git branch / ORAS artifact exists yet.
-    The from_index image is the source of truth for its own content.
+    The image is the source of truth for its own content.
+
+    The caller must pass the digest-resolved pullspec (``from_index_resolved``),
+    not the mutable tag, so the extracted content matches the image the request
+    already inspected during prebuild (OPM version, build metadata) and so the
+    repeated image reads here cannot disagree with each other.
 
     index.db precedence: hidden db path -> configs database label -> empty db
     (pure-FBC images may carry no db at all; there is no primitive to build a
     SQLite index.db back from FBC configs, so an empty db is created and the
     FBC configs remain authoritative).
 
-    :param str from_index: The from_index image pullspec.
+    :param str from_index_resolved: The digest-resolved from_index image pullspec.
     :param str temp_dir: Base temp directory for extraction.
     :return: Tuple of (configs_dir_path, index_db_path).
     :rtype: Tuple[str, str]
-    :raises IIBError: If the image has no FBC configs label.
+    :raises IIBError: If the image has no FBC configs label, or if a hidden-db
+        extraction attempt fails for a reason other than the path being absent
+        (e.g. a registry, OCI parsing, layer, or tar error).
     """
-    configs_label = get_image_label(from_index, 'operators.operatorframework.io.index.configs.v1')
+    configs_label = get_image_label(
+        from_index_resolved, 'operators.operatorframework.io.index.configs.v1'
+    )
     if not configs_label:
-        raise IIBError(f"Index image {from_index} does not contain a file-based catalog.")
+        raise IIBError(f"Index image {from_index_resolved} does not contain a file-based catalog.")
 
     configs_dir = str(Path(temp_dir) / 'extracted_configs')
-    extract_files_from_image_non_privileged(from_index, configs_label, configs_dir)
+    extract_files_from_image_non_privileged(from_index_resolved, configs_label, configs_dir)
 
     index_db_path = str(Path(temp_dir) / 'extracted_index.db')
     conf = get_worker_config()
@@ -177,14 +190,19 @@ def extract_catalog_and_db_from_image(from_index: str, temp_dir: str) -> Tuple[s
 
     try:
         # Prefer the hidden db (carries deprecated/hidden bundle state).
-        extract_files_from_image_non_privileged(from_index, hidden_db_path, index_db_path)
+        extract_files_from_image_non_privileged(from_index_resolved, hidden_db_path, index_db_path)
         return configs_dir, index_db_path
-    except IIBError:
-        log.info("No hidden index.db in %s; trying labeled db.", from_index)
+    except FileNotFoundInImageError:
+        # Only a genuinely absent hidden-db path falls through to the next source;
+        # real extraction failures (registry/OCI/layer/tar) raise plain IIBError
+        # and propagate, so we never silently degrade to a wrong index.db.
+        log.info("No hidden index.db in %s; trying labeled db.", from_index_resolved)
 
-    db_label = get_image_label(from_index, 'operators.operatorframework.io.index.database.v1')
+    db_label = get_image_label(
+        from_index_resolved, 'operators.operatorframework.io.index.database.v1'
+    )
     if db_label:
-        extract_files_from_image_non_privileged(from_index, db_label, index_db_path)
+        extract_files_from_image_non_privileged(from_index_resolved, db_label, index_db_path)
         return configs_dir, index_db_path
 
     # Pure FBC image: no embedded index.db (hidden or labeled). There is no opm
@@ -192,7 +210,7 @@ def extract_catalog_and_db_from_image(from_index: str, temp_dir: str) -> Tuple[s
     # goes db -> configs), so create an empty index.db. The FBC configs are
     # authoritative for this image; the empty db is populated by the handler's
     # subsequent add/rm operations.
-    log.info("No embedded index.db found in %s; creating empty index.db.", from_index)
+    log.info("No embedded index.db found in %s; creating empty index.db.", from_index_resolved)
     Path(index_db_path).parent.mkdir(parents=True, exist_ok=True)
     with open(index_db_path, 'w'):
         pass
@@ -566,6 +584,7 @@ class BuildSources:
 def prepare_build_sources(
     request_id: int,
     from_index: str,
+    from_index_resolved: str,
     temp_dir: str,
     ocp_version: str,
     index_to_gitlab_push_map: Dict[str, str],
@@ -579,8 +598,14 @@ def prepare_build_sources(
     overwrite, reuse the base OCP branch's Konflux Component, and seed content
     by extracting configs+index.db from the image.
 
+    Branch selection keys on the mutable tag (``from_index``), but divergent
+    content is extracted from the digest-resolved pullspec
+    (``from_index_resolved``) so it matches the image the request already
+    inspected during prebuild and cannot drift if the tag moves mid-request.
+
     :param int request_id: The IIB request ID
-    :param str from_index: The from_index pullspec
+    :param str from_index: The from_index pullspec (tag form, used for branch selection)
+    :param str from_index_resolved: The digest-resolved from_index pullspec (content source)
     :param str temp_dir: Temporary directory to clone into / extract to
     :param str ocp_version: Base OCP version branch, e.g. "v4.19"
     :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
@@ -601,7 +626,7 @@ def prepare_build_sources(
     tag = get_index_tag(from_index)
     set_request_state(request_id, 'in_progress', 'Cloning Git repository')
 
-    if remote_branch_exists(index_git_repo, tag):
+    if remote_branch_exists(index_git_repo, tag, token_name, git_token):
         # Normal path — build against the tag branch, pull index.db from ORAS.
         target_branch = tag
         local_git_repo_path = Path(temp_dir) / 'git' / target_branch
@@ -629,7 +654,7 @@ def prepare_build_sources(
         )
 
     target_branch = ocp_version
-    if not remote_branch_exists(index_git_repo, target_branch):
+    if not remote_branch_exists(index_git_repo, target_branch, token_name, git_token):
         raise IIBError(
             f"Base OCP branch '{target_branch}' is not onboarded for {index_git_repo}. "
             "Onboard the index before building divergent tags."
@@ -640,7 +665,10 @@ def prepare_build_sources(
     clone_git_repo(index_git_repo, target_branch, token_name, git_token, str(local_git_repo_path))
 
     # Content from the image (source of truth), scaffolding from the OCP branch.
-    extracted_configs, extracted_db = extract_catalog_and_db_from_image(from_index, temp_dir)
+    # Extract from the digest-resolved pullspec, not the mutable tag.
+    extracted_configs, extracted_db = extract_catalog_and_db_from_image(
+        from_index_resolved, temp_dir
+    )
     catalog_path = local_git_repo_path / 'configs'
     if catalog_path.exists():
         shutil.rmtree(catalog_path)

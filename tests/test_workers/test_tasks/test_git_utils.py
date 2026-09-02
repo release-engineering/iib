@@ -1285,3 +1285,32 @@ def test_remote_branch_exists_true(mock_run):
 def test_remote_branch_exists_false(mock_run):
     mock_run.return_value = ''
     assert git_utils.remote_branch_exists('https://gitlab/x.git', 'test') is False
+
+
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_remote_branch_exists_injects_token(mock_run):
+    mock_run.return_value = 'abc123\trefs/heads/v4.14\n'
+
+    assert (
+        git_utils.remote_branch_exists(
+            'https://gitlab/x.git', 'v4.14', token_name='user', token='secret'
+        )
+        is True
+    )
+
+    args, kwargs = mock_run.call_args
+    ls_remote_cmd = args[0]
+    # Token is injected into the URL passed to git, but the user-facing exc_msg
+    # references the token-free repo_url so the secret is not leaked in errors.
+    assert ls_remote_cmd[-2] == 'https://user:secret@gitlab/x.git'
+    assert 'secret' not in kwargs['exc_msg']
+
+
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_remote_branch_exists_propagates_command_failure(mock_run):
+    # A command failure (network/auth error) must raise, not be silently read as
+    # "branch absent", which would misroute the request onto the divergent path.
+    mock_run.side_effect = IIBError('git ls-remote failed')
+
+    with pytest.raises(IIBError, match='git ls-remote failed'):
+        git_utils.remote_branch_exists('https://gitlab/x.git', 'v4.14')

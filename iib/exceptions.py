@@ -13,6 +13,15 @@ class IIBError(BaseException):
     """An error was encountered in IIB."""
 
 
+class FileNotFoundInImageError(IIBError):
+    """A requested path was not present in a container image.
+
+    Subclasses IIBError so existing ``except IIBError`` handlers still catch it,
+    while letting callers distinguish a genuinely absent path from a real
+    extraction failure (registry, OCI parsing, layer, or tar error).
+    """
+
+
 class ValidationError(BaseException):
     """Denote invalid input."""
 
