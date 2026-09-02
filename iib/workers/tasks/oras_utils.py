@@ -58,21 +58,31 @@ def _get_name_and_tag_from_pullspec(image_pullspec: str) -> Tuple[str, str]:
     return index_name, tag
 
 
-def _get_artifact_combined_tag(image_name: str, tag: str) -> str:
+def _get_index_digest(pullspec: str) -> str:
     """
-    Generate a combined artifact tag for the given image name and tag.
+    Resolve a pullspec to its bare hex manifest digest (sha256), for artifact tags.
 
-    This function generates a unique combined tag for an image by using a template
-    string defined in the worker configuration and replacing placeholders with the
-    provided image name and tag.
+    :param str pullspec: The full index image pullspec.
+    :return: The 64-char hex digest without the ``sha256:`` prefix.
+    :rtype: str
+    """
+    return get_image_digest(pullspec).split(':', 1)[-1]
 
-    :param str image_name: The name of the image.
-    :param str tag: The version or identifier tag to be combined.
-    :return: A formatted string representing the combined artifact tag.
+
+def _get_artifact_combined_tag(from_index: str) -> str:
+    """
+    Generate the content-addressed artifact/ImageStream tag for an index image.
+
+    Keyed on the image's manifest digest ALONE (not name/tag/pullspec) so that
+    identical content addressed by different pullspecs (e.g. a released mirror)
+    shares one artifact, while different content never collides.
+
+    :param str from_index: The full index image pullspec (registry/namespace/repo:tag).
+    :return: Combined tag, e.g. "idb-<64-hex-sha256>".
     :rtype: str
     """
     return get_worker_config()['iib_index_db_artifact_tag_template'].format(
-        image_name=image_name, tag=tag
+        digest=_get_index_digest(from_index)
     )
 
 
@@ -87,11 +97,10 @@ def get_indexdb_artifact_pullspec(from_index: str) -> str:
     :rtype: str
     """
     conf = get_worker_config()
-    image_name, tag = _get_name_and_tag_from_pullspec(from_index)
 
     return conf['iib_index_db_artifact_template'].format(
         registry=conf['iib_index_db_artifact_registry'],
-        tag=_get_artifact_combined_tag(image_name, tag),
+        tag=_get_artifact_combined_tag(from_index),
     )
 
 
@@ -285,16 +294,15 @@ def verify_indexdb_cache_for_image(index_image_pullspec: str) -> bool:
     """
     Verify the synchronization state of the index database cache for a given container image.
 
-    This function extracts the image name and tag from the specified image
-    pullspec, generates an artifact combined tag, and verifies whether the
-    database cache for the image is synchronized.
+    This function generates the digest-based artifact combined tag for the
+    specified image pullspec and verifies whether the database cache for the
+    image is synchronized.
 
     :param str index_image_pullspec: The pull specification string of the container image.
     :return: The result of the cache synchronization verification process.
     :rtype: str
     """
-    index_name, tag = _get_name_and_tag_from_pullspec(index_image_pullspec)
-    return verify_indexdb_cache_sync(_get_artifact_combined_tag(index_name, tag))
+    return verify_indexdb_cache_sync(_get_artifact_combined_tag(index_image_pullspec))
 
 
 def refresh_indexdb_cache(
@@ -335,15 +343,12 @@ def refresh_indexdb_cache_for_image(index_image_pullspec: str) -> None:
     """
     Refresh the cached data for an index database, associating it with the given image pullspec.
 
-    This function extracts the name and tag from the specified image pullspec,
-    and refreshes the associated index database cache.
+    This function generates the digest-based artifact combined tag for the
+    specified image pullspec, and refreshes the associated index database cache.
 
     :param str index_image_pullspec: The pull specification of the index image to cache.
-    :return: A formatted string combining the index name and tag.
-    :rtype: str
     """
-    index_name, tag = _get_name_and_tag_from_pullspec(index_image_pullspec)
-    refresh_indexdb_cache(_get_artifact_combined_tag(index_name, tag))
+    refresh_indexdb_cache(_get_artifact_combined_tag(index_image_pullspec))
 
 
 def get_imagestream_artifact_pullspec(from_index: str) -> str:
@@ -358,8 +363,7 @@ def get_imagestream_artifact_pullspec(from_index: str) -> str:
     :rtype: str
     """
     conf = get_worker_config()
-    image_name, tag = _get_name_and_tag_from_pullspec(from_index)
-    combined_tag = _get_artifact_combined_tag(image_name, tag)
+    combined_tag = _get_artifact_combined_tag(from_index)
 
     # ImageStream pullspec format:
     # image-registry.openshift-image-registry.svc:5000/{namespace}/index-db:{combined_tag}

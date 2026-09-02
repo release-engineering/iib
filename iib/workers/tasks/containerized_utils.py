@@ -32,7 +32,6 @@ from iib.workers.tasks.konflux_utils import (
 )
 from iib.workers.tasks.oras_utils import (
     _get_artifact_combined_tag,
-    _get_name_and_tag_from_pullspec,
     get_image_digest,
     get_indexdb_artifact_pullspec,
     get_imagestream_artifact_pullspec,
@@ -380,11 +379,10 @@ def push_index_db_artifact(
 
         # Push with request_id tag irrespective of overwrite_from_index
         set_request_state(request_id, 'in_progress', 'Pushing updated index database')
-        image_name, tag = _get_name_and_tag_from_pullspec(from_index)
         conf = get_worker_config()
         request_artifact_ref = conf['iib_index_db_artifact_template'].format(
             registry=conf['iib_index_db_artifact_registry'],
-            tag=f"{_get_artifact_combined_tag(image_name, tag)}-{request_id}",
+            tag=f"{_get_artifact_combined_tag(from_index)}-{request_id}",
         )
         artifact_refs = [request_artifact_ref]
         if overwrite_from_index:
