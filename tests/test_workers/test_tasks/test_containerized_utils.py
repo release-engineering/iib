@@ -13,6 +13,7 @@ from iib.workers.tasks.containerized_utils import (
     extract_catalog_and_db_from_image,
     extract_files_from_image_non_privileged,
     pull_index_db_artifact,
+    push_index_db_artifact,
     write_build_metadata,
     cleanup_on_failure,
     validate_bundles_in_parallel,
@@ -285,6 +286,66 @@ def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
     mock_log.warning.assert_called_once_with(
         'ImageStream cache access failed, falling back to Quay: %s', error
     )
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_keys_current_artifact_on_output_digest(
+    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+):
+    m_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
+    # digest resolved from the OUTPUT image, not from_index
+    m_digest.return_value = 'f' * 64
+    db = tmp_path / 'index.db'
+    db.write_text('x')
+    result = push_index_db_artifact(
+        request_id=42,
+        from_index='quay.io/ns/foo:v4.17',
+        index_db_path=str(db),
+        operators=['op1'],
+        output_image='quay.io/ns/foo@sha256:' + 'f' * 64,
+        overwrite_from_index=True,
+        request_type='add',
+    )
+    assert result is None
+    m_digest.assert_called_with('quay.io/ns/foo@sha256:' + 'f' * 64)
+    pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 in pushed_refs          # warm-push (overwrite)
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42' in pushed_refs   # per-request tag
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_throwaway_skips_current_artifact(
+    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+):
+    m_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
+    m_digest.return_value = 'a' * 64
+    db = tmp_path / 'index.db'
+    db.write_text('x')
+    push_index_db_artifact(
+        request_id=7,
+        from_index='quay.io/ns/foo:v4.17',
+        index_db_path=str(db),
+        operators=[],
+        output_image='quay.io/ns/foo@sha256:' + 'a' * 64,
+        overwrite_from_index=False,
+        request_type='add',
+    )
+    pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
+    assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}   # only per-request tag
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
