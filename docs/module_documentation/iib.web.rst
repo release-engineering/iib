@@ -66,6 +66,14 @@ iib.web.iib\_static\_types module
    :undoc-members:
    :show-inheritance:
 
+iib.web.kafka\_producer module
+------------------------------
+
+.. automodule:: iib.web.kafka_producer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.web.manage module
 ---------------------
 
