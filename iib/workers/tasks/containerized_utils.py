@@ -2,9 +2,9 @@
 """This file contains utility functions for containerized IIB operations."""
 import json
 import logging
+import posixpath
 import queue
 import shutil
-import tarfile
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -49,104 +49,100 @@ log = logging.getLogger(__name__)
 
 def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path: str) -> None:
     """
-    Extract files from container image without podman/docker runtime.
+    Extract a file or directory from a container image, unprivileged.
 
-    This function uses skopeo to download the image as OCI layout, then extracts
-    the requested path from the image layers. This approach works in non-privileged
-    environments without container runtime access.
+    Delegates to ``oc image extract``, which correctly applies OCI layer and
+    whiteout semantics and handles the absolute symlinks (e.g. /etc/alternatives,
+    /etc/crypto-policies) and read-only cross-layer overwrites (e.g. /etc/machine-id)
+    that a hand-rolled ``tarfile`` reconstruction of the whole root filesystem
+    chokes on. It works without a container runtime, so it is safe in the
+    unprivileged API/worker containers. ``oc`` is already installed in the worker
+    base image (see docker/Dockerfile-base-image).
+
+    ``oc image extract`` distinguishes files from directories by argument shape and
+    exits 0 while extracting nothing when the path is absent, so this function
+    probes both shapes and treats "nothing extracted" as a missing path:
+
+    * directory: ``--path=<dir>/*:<dst>`` unpacks the directory's contents into
+      ``dest_path`` (matching the previous copytree-of-contents behaviour);
+    * file: ``--path=<file>:<dst>`` places the file at ``<dst>/<basename>``, which
+      is then copied to ``dest_path`` (which may have a different basename).
+
+    A glob on a file path matches nothing, so trying the directory form first is
+    safe; the file form is only reached (a second ``oc`` invocation) when the
+    directory form yields nothing. An existing-but-empty directory therefore also
+    reads as "not found" — acceptable for the FBC configs / manifests / metadata /
+    hidden index.db paths IIB extracts, none of which are ever legitimately empty.
 
     :param str image: the pull specification of the container image
-    :param str src_path: the full path within the container image to copy from
-    :param str dest_path: the full path on the local host to copy into
-    :raises IIBError: if the extraction fails or src_path is not found
+    :param str src_path: the absolute path within the container image to copy from
+    :param str dest_path: the path on the local host to copy into
+    :raises FileNotFoundInImageError: if src_path is absent in the image
+    :raises IIBError: if src_path is not absolute or ``oc image extract`` fails
     """
-    # Create temporary directory for OCI layout
+    from iib.workers.tasks.utils import run_cmd
+
+    if not src_path.startswith('/'):
+        raise IIBError(f'src_path must be an absolute image path, got {src_path!r}')
+
+    normalized = src_path.rstrip('/')
+    if not normalized:
+        raise IIBError(f'src_path must name a path under /, got {src_path!r}')
+
     with tempfile.TemporaryDirectory(prefix='iib-extract-') as temp_dir:
         temp_path = Path(temp_dir)
-        oci_dir = temp_path / 'oci'
-        oci_dir.mkdir(parents=True, exist_ok=True)
 
-        # Download image as OCI layout using skopeo
-        log.info('Downloading image %s as OCI layout', image)
-        _skopeo_copy(
-            source=f'docker://{image}',
-            destination=f'oci:{oci_dir}',
-            copy_all=False,
-            exc_msg=f'Failed to download image {image} as OCI layout',
+        # 1) Directory form: unpack the directory's children into a staging dir.
+        dir_staging = temp_path / 'dir'
+        dir_staging.mkdir()
+        log.info('Extracting %s from image %s to %s', src_path, image, dest_path)
+        run_cmd(
+            [
+                'oc',
+                'image',
+                'extract',
+                '--confirm',
+                f'--path={normalized}/*:{dir_staging.as_posix()}',
+                image,
+            ],
+            exc_msg=f'Failed to extract {src_path} from image {image}',
         )
+        if any(dir_staging.iterdir()):
+            dest = Path(dest_path)
+            dest.mkdir(parents=True, exist_ok=True)
+            # Copy the directory's contents into dest_path, preserving any nested
+            # symlinks verbatim (symlinks=True) rather than resolving them against
+            # the host root during the copy.
+            shutil.copytree(dir_staging, dest, dirs_exist_ok=True, symlinks=True)
+            log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+            return
 
-        # Read OCI index to find the manifest
-        index_path = oci_dir / 'index.json'
-        if not index_path.exists():
-            raise IIBError(f'OCI index.json not found at {index_path}')
-
-        with open(index_path, 'r') as f:
-            index = json.load(f)
-
-        # Get the manifest digest from the index
-        manifests = index.get('manifests', [])
-        if not manifests:
-            raise IIBError(f'No manifests found in OCI index for image {image}')
-
-        manifest_digest = manifests[0]['digest'].replace('sha256:', '')
-        manifest_path = oci_dir / 'blobs' / 'sha256' / manifest_digest
-
-        # Read manifest to get layer information
-        with open(manifest_path, 'r') as f:
-            manifest = json.load(f)
-
-        layers = manifest.get('layers', [])
-        if not layers:
-            raise IIBError(f'No layers found in manifest for image {image}')
-
-        # Create extraction directory to build the filesystem
-        extract_dir = temp_path / 'rootfs'
-        extract_dir.mkdir(parents=True, exist_ok=True)
-
-        # Extract each layer in order to build the complete filesystem
-        log.info('Extracting %d layers from image %s', len(layers), image)
-        for layer in layers:
-            layer_digest = layer['digest'].replace('sha256:', '')
-            layer_path = oci_dir / 'blobs' / 'sha256' / layer_digest
-
-            if not layer_path.exists():
-                raise IIBError(f'Layer blob not found at {layer_path}')
-
-            # Extract layer tar.gz to build filesystem
-            try:
-                with tarfile.open(layer_path, 'r:gz') as tar:
-                    # Extract all members safely with path traversal protection
-                    tar.extractall(path=extract_dir, filter='data')
-            except Exception as e:
-                raise IIBError(f'Failed to extract layer {layer_digest}: {e}')
-
-        # Normalize src_path (remove leading slash for filesystem access)
-        normalized_src = src_path.lstrip('/')
-        source_full_path = extract_dir / normalized_src
-
-        # Verify the requested path exists in the extracted filesystem.
-        # Raise the specific FileNotFoundInImageError (a subclass of IIBError) so
-        # callers can distinguish a genuinely absent path from a real extraction
-        # failure (registry, OCI parsing, layer, or tar error), which all raise
-        # plain IIBError above.
-        if not source_full_path.exists():
-            raise FileNotFoundInImageError(
-                f'Path {src_path} not found in image {image}. '
-                f'Looked for {source_full_path} in extracted filesystem.'
-            )
-
-        # Copy the requested path to destination
-        dest = Path(dest_path)
-        log.info('Copying %s from image to %s', src_path, dest_path)
-        if source_full_path.is_dir():
-            # If source is a directory, copy its contents
-            shutil.copytree(source_full_path, dest, dirs_exist_ok=True)
-        else:
-            # If source is a file, copy the file
+        # 2) File form: the path is a single file, placed at <staging>/<basename>.
+        file_staging = temp_path / 'file'
+        file_staging.mkdir()
+        run_cmd(
+            [
+                'oc',
+                'image',
+                'extract',
+                '--confirm',
+                f'--path={normalized}:{file_staging.as_posix()}',
+                image,
+            ],
+            exc_msg=f'Failed to extract {src_path} from image {image}',
+        )
+        extracted_file = file_staging / posixpath.basename(normalized)
+        if extracted_file.is_file():
+            dest = Path(dest_path)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_full_path, dest)
+            shutil.copy2(extracted_file, dest)
+            log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+            return
 
-        log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+        # 3) Neither shape produced output: the path is absent in the image. Raise
+        # the specific FileNotFoundInImageError (a subclass of IIBError) so callers
+        # can distinguish a genuinely absent path from an 'oc' failure above.
+        raise FileNotFoundInImageError(f'Path {src_path} not found in image {image}.')
 
 
 def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -> Tuple[str, str]:
