@@ -289,54 +289,21 @@ def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
     )
 
 
-@mock.patch('iib.workers.tasks.containerized_utils.bootstrap_index_db_from_image')
 @mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
-def test_pull_falls_back_to_bootstrap_on_miss(m_gwc, m_ref, m_pull, m_boot):
-    """When the digest-keyed artifact is missing in Quay, bootstrap from the image."""
+def test_pull_raises_when_artifact_missing(m_gwc, m_ref, m_pull):
+    """When the digest-keyed artifact is missing in Quay, the request must fail.
+
+    The normal path never falls back to extracting index.db from the image; an
+    un-onboarded image has no artifact and the request is failed so it can be
+    onboarded first.
+    """
     m_gwc.return_value = {'iib_use_imagestream_cache': False}
     m_ref.return_value = 'quay.io/iib/index-db:idb-x'
     m_pull.side_effect = IIBError('not found')  # Quay miss
-    m_boot.return_value = '/tmp/boot'
-    out = pull_index_db_artifact('quay.io/ns/foo:v4.17', '/tmp/req')
-    assert out == '/tmp/boot'
-    m_boot.assert_called_once_with('quay.io/ns/foo:v4.17', '/tmp/req')
-
-
-@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@mock.patch('iib.workers.tasks.containerized_utils.get_resolved_image')
-@mock.patch('iib.workers.tasks.containerized_utils.extract_catalog_and_db_from_image')
-def test_bootstrap_index_db_from_image(m_extract, m_resolved, m_ref, m_push, tmp_path):
-    """Bootstrap extracts index.db via Part B's extractor and pushes it to the digest key."""
-    from_index = 'quay.io/ns/foo:v4.17'
-    from_index_resolved = 'quay.io/ns/foo@sha256:deadbeef'
-    artifact_ref = 'quay.io/iib/index-db:idb-deadbeef'
-
-    # Simulate the extractor writing its output file into temp_dir.
-    def extract_side_effect(resolved, temp_dir):
-        extracted_db = os.path.join(temp_dir, 'extracted_index.db')
-        with open(extracted_db, 'w') as f:
-            f.write('sqlite-bytes')
-        return os.path.join(temp_dir, 'extracted_configs'), extracted_db
-
-    m_extract.side_effect = extract_side_effect
-    m_resolved.return_value = from_index_resolved
-    m_ref.return_value = artifact_ref
-
-    result = cu.bootstrap_index_db_from_image(from_index, str(tmp_path))
-
-    assert os.path.isfile(os.path.join(result, 'index.db'))
-    m_resolved.assert_called_once_with(from_index)
-    m_extract.assert_called_once_with(from_index_resolved, str(tmp_path))
-    m_ref.assert_called_once_with(from_index)
-    m_push.assert_called_once_with(
-        artifact_ref=artifact_ref,
-        local_path='index.db',
-        cwd=result,
-        annotations={'from_index': from_index, 'bootstrap': 'true'},
-    )
+    with pytest.raises(IIBError, match='No index.db found for the image'):
+        pull_index_db_artifact('quay.io/ns/foo:v4.17', '/tmp/req')
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
@@ -1465,44 +1432,25 @@ def test_extract_catalog_and_db_prefers_hidden_db(mock_extract, mock_label, tmp_
 
 @patch('iib.workers.tasks.containerized_utils.get_image_label')
 @patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
-def test_extract_catalog_and_db_falls_back_to_labeled_db(mock_extract, mock_label, tmp_path):
-    """When the hidden db is missing, fall back to the labeled database.v1 path."""
+def test_extract_catalog_and_db_raises_when_no_hidden_db(mock_extract, mock_label, tmp_path):
+    """When the hidden db is absent, the request fails; there is no labeled-db or empty-db fallback.
+
+    An image with no hidden index.db has not been onboarded to the containerized
+    build flow, so the request must fail rather than degrade to a labeled db or a
+    synthesised empty db.
+    """
     mock_label.side_effect = lambda image, label: {
         'operators.operatorframework.io.index.configs.v1': '/configs',
         'operators.operatorframework.io.index.database.v1': '/database/index.db',
     }[label]
-    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError
-    # (path genuinely absent) -> fall back to labeled db
-    mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db'), None]
-
-    _, index_db = extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
-
-    assert index_db.endswith('index.db')
-    assert mock_extract.call_count == 3
-
-
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
-@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
-def test_extract_catalog_and_db_pure_fbc_creates_empty_db(mock_extract, mock_label, tmp_path):
-    """Pure-FBC image (no hidden or labeled db) results in an empty index.db."""
-    mock_label.side_effect = lambda image, label: {
-        'operators.operatorframework.io.index.configs.v1': '/configs',
-        'operators.operatorframework.io.index.database.v1': '',
-    }[label]
-    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError
-    # (path genuinely absent) -> no labeled db either
+    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError.
     mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db')]
 
-    configs_dir, index_db = extract_catalog_and_db_from_image(
-        'quay.io/redhat/my-index:test', str(tmp_path)
-    )
+    with pytest.raises(IIBError, match='No index.db found in image'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
 
-    assert configs_dir.endswith('configs')
-    assert index_db.endswith('index.db')
-    assert os.path.exists(index_db)
-    assert os.path.getsize(index_db) == 0
     # Only two extraction attempts: configs dir and the failed hidden db lookup.
-    # No opm_migrate / privileged call is ever invoked for the pure-FBC fallback.
+    # The labeled database.v1 path is never read.
     assert mock_extract.call_count == 2
 
 

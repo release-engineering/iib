@@ -2,7 +2,6 @@
 """This file contains utility functions for containerized IIB operations."""
 import json
 import logging
-import os
 import queue
 import shutil
 import tarfile
@@ -43,7 +42,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import get_image_label, get_resolved_image, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -162,18 +161,19 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
     already inspected during prebuild (OPM version, build metadata) and so the
     repeated image reads here cannot disagree with each other.
 
-    index.db precedence: hidden db path -> configs database label -> empty db
-    (pure-FBC images may carry no db at all; there is no primitive to build a
-    SQLite index.db back from FBC configs, so an empty db is created and the
-    FBC configs remain authoritative).
+    Only the FBC configs and the hidden index.db are extracted. The hidden db is
+    the sole source of truth for the SQLite index; there is no fallback to the
+    labeled database path and no synthesised empty db. An image that carries no
+    hidden index.db has not been onboarded to the containerized build flow and
+    the request is failed so the image can be onboarded first.
 
     :param str from_index_resolved: The digest-resolved from_index image pullspec.
     :param str temp_dir: Base temp directory for extraction.
     :return: Tuple of (configs_dir_path, index_db_path).
     :rtype: Tuple[str, str]
-    :raises IIBError: If the image has no FBC configs label, or if a hidden-db
-        extraction attempt fails for a reason other than the path being absent
-        (e.g. a registry, OCI parsing, layer, or tar error).
+    :raises IIBError: If the image has no FBC configs label, if it carries no
+        hidden index.db, or if the hidden-db extraction fails for any other
+        reason (e.g. a registry, OCI parsing, layer, or tar error).
     """
     configs_label = get_image_label(
         from_index_resolved, 'operators.operatorframework.io.index.configs.v1'
@@ -182,6 +182,12 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
         raise IIBError(f"Index image {from_index_resolved} does not contain a file-based catalog.")
 
     configs_dir = str(Path(temp_dir) / 'extracted_configs')
+    log.info(
+        'Extracting FBC configs from %s (label path %s) to %s',
+        from_index_resolved,
+        configs_label,
+        configs_dir,
+    )
     extract_files_from_image_non_privileged(from_index_resolved, configs_label, configs_dir)
 
     index_db_path = str(Path(temp_dir) / 'extracted_index.db')
@@ -189,32 +195,21 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
     hidden_db_path = conf['hidden_index_db_path']
 
     try:
-        # Prefer the hidden db (carries deprecated/hidden bundle state).
+        # The hidden db is the only source of truth for the SQLite index.
+        log.info(
+            'Extracting hidden index.db from %s (image path %s) to %s',
+            from_index_resolved,
+            hidden_db_path,
+            index_db_path,
+        )
         extract_files_from_image_non_privileged(from_index_resolved, hidden_db_path, index_db_path)
-        return configs_dir, index_db_path
     except FileNotFoundInImageError:
-        # Only a genuinely absent hidden-db path falls through to the next source;
-        # real extraction failures (registry/OCI/layer/tar) raise plain IIBError
-        # and propagate, so we never silently degrade to a wrong index.db.
-        log.info("No hidden index.db in %s; trying labeled db.", from_index_resolved)
+        raise IIBError(
+            f"No index.db found in image {from_index_resolved} at hidden path "
+            f"{hidden_db_path}. Onboard the image to build."
+        )
 
-    db_label = get_image_label(
-        from_index_resolved, 'operators.operatorframework.io.index.database.v1'
-    )
-    if db_label:
-        extract_files_from_image_non_privileged(from_index_resolved, db_label, index_db_path)
-        return configs_dir, index_db_path
-
-    # Pure FBC image: no embedded index.db (hidden or labeled). There is no opm
-    # primitive that builds a SQLite index.db from FBC configs (opm migrate only
-    # goes db -> configs), so create an empty index.db. The FBC configs are
-    # authoritative for this image; the empty db is populated by the handler's
-    # subsequent add/rm operations.
-    log.info("No embedded index.db found in %s; creating empty index.db.", from_index_resolved)
-    Path(index_db_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(index_db_path, 'w'):
-        pass
-
+    log.info('Extracted FBC configs to %s and index.db to %s', configs_dir, index_db_path)
     return configs_dir, index_db_path
 
 
@@ -301,42 +296,6 @@ def validate_bundles_in_parallel(
     return None
 
 
-def bootstrap_index_db_from_image(from_index: str, temp_dir: str) -> str:
-    """
-    Extract index.db from the index image and populate the digest-keyed cache.
-
-    Used on a read miss (a from_index digest never seen before — pre-cutover or
-    externally-built index). Safe to write because the artifact key is
-    content-addressed and uniquely identifies "the index.db for this image".
-
-    Reuses Part B's ``extract_catalog_and_db_from_image``, which already
-    implements the hidden -> labeled -> empty index.db precedence, so bootstrap
-    works for pure-FBC and labeled-db images too, not just hidden-db ones.
-
-    :param str from_index: The from_index pullspec.
-    :param str temp_dir: Temporary directory to extract into.
-    :return: Directory containing the extracted ``index.db``.
-    :rtype: str
-    :raises IIBError: If the image has no FBC configs label, or if extraction
-        fails for a reason other than the hidden-db path being absent.
-    """
-    from_index_resolved = get_resolved_image(from_index)
-    _, extracted_db = extract_catalog_and_db_from_image(from_index_resolved, temp_dir)
-
-    dest = os.path.join(temp_dir, 'index_db_bootstrap')
-    os.makedirs(dest, exist_ok=True)
-    shutil.copyfile(extracted_db, os.path.join(dest, 'index.db'))
-
-    artifact_ref = get_indexdb_artifact_pullspec(from_index)
-    push_oras_artifact(
-        artifact_ref=artifact_ref,
-        local_path='index.db',
-        cwd=dest,
-        annotations={'from_index': from_index, 'bootstrap': 'true'},
-    )
-    return dest
-
-
 def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
     """
     Pull index.db artifact from registry, using ImageStream cache if available.
@@ -377,14 +336,18 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
 
     # Pull directly from Quay — either cache is disabled, stale, or unavailable
     artifact_ref = get_indexdb_artifact_pullspec(from_index)
+    log.info('Pulling index.db artifact %s into %s', artifact_ref, temp_dir)
     try:
         return get_oras_artifact(
             artifact_ref,
             temp_dir,
         )
     except IIBError:
-        log.info('index.db artifact %s not found; bootstrapping from image', artifact_ref)
-        return bootstrap_index_db_from_image(from_index, temp_dir)
+        log.error('index.db artifact %s not found for image %s', artifact_ref, from_index)
+        raise IIBError(
+            f"No index.db found for the image {from_index} (artifact {artifact_ref}). "
+            "Onboard the image to build."
+        )
 
 
 def write_build_metadata(
