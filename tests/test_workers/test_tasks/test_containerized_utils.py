@@ -1,15 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import inspect
 import json
 import os
-import tarfile
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
 
-from iib.exceptions import IIBError
+from iib.exceptions import IIBError, FileNotFoundInImageError
+from iib.workers.tasks import containerized_utils as cu
 from iib.workers.tasks.containerized_utils import (
+    extract_catalog_and_db_from_image,
     extract_files_from_image_non_privileged,
     pull_index_db_artifact,
+    push_index_db_artifact,
     write_build_metadata,
     cleanup_on_failure,
     validate_bundles_in_parallel,
@@ -284,6 +288,83 @@ def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
     )
 
 
+@mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_pull_raises_when_artifact_missing(m_gwc, m_ref, m_pull):
+    """When the digest-keyed artifact is missing in Quay, the request must fail.
+
+    The normal path never falls back to extracting index.db from the image; an
+    un-onboarded image has no artifact and the request is failed so it can be
+    onboarded first.
+    """
+    m_gwc.return_value = {'iib_use_imagestream_cache': False}
+    m_ref.return_value = 'quay.io/iib/index-db:idb-x'
+    m_pull.side_effect = IIBError('not found')  # Quay miss
+    with pytest.raises(IIBError, match='No index.db found for the image'):
+        pull_index_db_artifact('quay.io/ns/foo:v4.17', '/tmp/req')
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_keys_current_artifact_on_output_digest(
+    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+):
+    m_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
+    # digest resolved from the OUTPUT image, not from_index
+    m_digest.return_value = 'f' * 64
+    db = tmp_path / 'index.db'
+    db.write_text('x')
+    result = push_index_db_artifact(
+        request_id=42,
+        from_index='quay.io/ns/foo:v4.17',
+        index_db_path=str(db),
+        operators=['op1'],
+        output_image='quay.io/ns/foo@sha256:' + 'f' * 64,
+        overwrite_from_index=True,
+        request_type='add',
+    )
+    assert result is None
+    m_digest.assert_called_with('quay.io/ns/foo@sha256:' + 'f' * 64)
+    pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 in pushed_refs  # warm-push (overwrite)
+    assert 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42' in pushed_refs  # per-request tag
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_throwaway_skips_current_artifact(
+    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+):
+    m_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
+    m_digest.return_value = 'a' * 64
+    db = tmp_path / 'index.db'
+    db.write_text('x')
+    push_index_db_artifact(
+        request_id=7,
+        from_index='quay.io/ns/foo:v4.17',
+        index_db_path=str(db),
+        operators=[],
+        output_image='quay.io/ns/foo@sha256:' + 'a' * 64,
+        overwrite_from_index=False,
+        request_type='add',
+    )
+    pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
+    assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}  # only per-request tag
+
+
 @patch('iib.workers.tasks.containerized_utils.log')
 def test_write_build_metadata_creates_expected_json(mock_log, tmp_path):
     """write_build_metadata should create JSON file with expected content."""
@@ -469,100 +550,10 @@ def test_cleanup_on_failure_no_mr_no_commit(mock_log):
     )
 
 
-@patch('iib.workers.tasks.containerized_utils.run_cmd')
-@patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.containerized_utils.log')
-def test_cleanup_on_failure_restores_index_db_artifact(
-    mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd
-):
-    """If original_index_db_digest is provided, oras copy should be invoked correctly."""
-    mr_details = None
-    last_commit_sha = None
-    index_git_repo = None
-    overwrite_from_index = False
-    request_id = 1
-    from_index = 'quay.io/ns/index:v4.19'
-    index_repo_map = {}
-    original_digest = 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-
-    v4x_artifact_ref = 'quay.io/ns/index-indexdb:v4.19'
-    mock_get_indexdb_artifact_pullspec.return_value = v4x_artifact_ref
-
-    cleanup_on_failure(
-        mr_details=mr_details,
-        last_commit_sha=last_commit_sha,
-        index_git_repo=index_git_repo,
-        overwrite_from_index=overwrite_from_index,
-        request_id=request_id,
-        from_index=from_index,
-        index_repo_map=index_repo_map,
-        original_index_db_digest=original_digest,
-    )
-
-    mock_log.info.assert_any_call(
-        "Restoring index.db artifact to original digest due to %s", "error"
-    )
-
-    artifact_name = v4x_artifact_ref.rsplit(':', 1)[0]
-    expected_source_ref = f'{artifact_name}@{original_digest}'
-
-    mock_run_cmd.assert_called_once_with(
-        ['oras', 'copy', expected_source_ref, v4x_artifact_ref],
-        exc_msg=(
-            f'Failed to restore index.db artifact from {expected_source_ref} '
-            f'to {v4x_artifact_ref}'
-        ),
-    )
-    mock_log.info.assert_any_call("Successfully restored index.db artifact to original digest")
-
-
-@patch('iib.workers.tasks.containerized_utils.run_cmd')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.containerized_utils.log')
-def test_cleanup_on_failure_restore_failure_is_logged(
-    mock_log, mock_get_indexdb_artifact_pullspec, mock_run_cmd
-):
-    """If restoring the artifact fails, error should be logged."""
-    mock_get_indexdb_artifact_pullspec.return_value = 'quay.io/ns/index-indexdb:v4.19'
-    mock_run_cmd.side_effect = RuntimeError("oras copy failed")
-
-    cleanup_on_failure(
-        mr_details=None,
-        last_commit_sha=None,
-        index_git_repo=None,
-        overwrite_from_index=False,
-        request_id=1,
-        from_index='quay.io/ns/index:v4.19',
-        index_repo_map={},
-        original_index_db_digest='sha256:0123456789abcdef0123456789abcdef0123456789abcde',
-    )
-
-    mock_run_cmd.assert_called_once()
-    mock_log.error.assert_any_call(
-        "Failed to restore index.db artifact: %s", mock_run_cmd.side_effect
-    )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec')
-@patch('iib.workers.tasks.utils.run_cmd')
-def test_cleanup_on_failure_no_restore_when_no_original_digest(
-    mock_run_cmd, mock_get_indexdb_artifact_pullspec, mock_log
-):
-    """If original_index_db_digest is not provided, restoration must not be attempted."""
-    cleanup_on_failure(
-        mr_details=None,
-        last_commit_sha=None,
-        index_git_repo=None,
-        overwrite_from_index=False,
-        request_id=1,
-        from_index='quay.io/ns/index:v4.19',
-        index_repo_map={},
-        original_index_db_digest=None,
-    )
-
-    mock_get_indexdb_artifact_pullspec.assert_not_called()
-    mock_run_cmd.assert_not_called()
+def test_cleanup_on_failure_has_no_rollback_param():
+    """Content keys are immutable: cleanup_on_failure no longer restores artifacts."""
+    params = inspect.signature(cleanup_on_failure).parameters
+    assert 'original_index_db_digest' not in params
 
 
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
@@ -1087,267 +1078,115 @@ def test_wait_for_bundle_validation_threads_failure_raises_error_string(
     mock_log.error.assert_called()
 
 
-# Tests for extract_files_from_image_non_privileged
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_success_directory(
-    mock_skopeo_copy, mock_log, tmpdir
-):
-    """Test successful extraction of a directory from container image."""
-    import os
-    import tarfile
+# Tests for extract_files_from_image_non_privileged (backed by 'oc image extract')
+def _parse_oc_extract_path(cmd):
+    """Return (src, dst, is_dir_form) parsed from an 'oc image extract' argv."""
+    assert cmd[:4] == ['oc', 'image', 'extract', '--confirm']
+    path_arg = next(a for a in cmd if a.startswith('--path=')).removeprefix('--path=')
+    src, dst = path_arg.rsplit(':', 1)
+    if src.endswith('/*'):
+        return src[: -len('/*')], dst, True
+    return src, dst, False
 
-    # Setup destination directory
+
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_success_directory(mock_run_cmd, tmpdir):
+    """A directory is extracted via the '<dir>/*' glob form into dest_path."""
+
+    def fake_oc(cmd, *args, **kwargs):
+        src, dst, is_dir = _parse_oc_extract_path(cmd)
+        if is_dir and src == '/manifests':
+            # oc unpacks the directory's children into dst.
+            os.makedirs(dst, exist_ok=True)
+            with open(os.path.join(dst, 'test_manifest.yaml'), 'w') as f:
+                f.write('test: data')
+
+    mock_run_cmd.side_effect = fake_oc
     dest_dir = tmpdir.join('dest')
 
-    # Mock skopeo_copy to create proper OCI layout
-    def mock_copy(source, destination, copy_all, exc_msg):
-        # Extract OCI directory path from destination (format: oci:/path/to/oci)
-        oci_path = destination.replace('oci:', '')
-
-        # Create OCI layout structure
-        os.makedirs(oci_path, exist_ok=True)
-        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
-        os.makedirs(blobs_dir, exist_ok=True)
-
-        # Create index.json
-        index_json = {
-            'manifests': [
-                {
-                    'digest': 'sha256:abc123',
-                    'mediaType': 'application/vnd.oci.image.manifest.v1+json',
-                }
-            ]
-        }
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-        # Create manifest
-        manifest_json = {
-            'layers': [
-                {
-                    'digest': 'sha256:layer1',
-                    'mediaType': 'application/vnd.oci.image.layer.v1.tar+gzip',
-                }
-            ]
-        }
-        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
-            json.dump(manifest_json, f)
-
-        # Create layer tar.gz with /manifests directory
-        layer_path = os.path.join(blobs_dir, 'layer1')
-        with tarfile.open(layer_path, 'w:gz') as tar:
-            # Create a temporary test file
-            test_file = tmpdir.join('temp_test_manifest.yaml')
-            test_file.write('test: data')
-            # Add it to the tar with the path we expect in the image
-            tar.add(str(test_file), arcname='manifests/test_manifest.yaml')
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    # Call the function under test
     extract_files_from_image_non_privileged('quay.io/ns/test:v1', '/manifests', str(dest_dir))
 
-    # Verify the extraction succeeded
-    assert dest_dir.check(dir=True)
-    extracted_file = dest_dir.join('test_manifest.yaml')
-    assert extracted_file.check(file=True)
-    assert extracted_file.read() == 'test: data'
-
-    # Verify skopeo was called
-    mock_skopeo_copy.assert_called_once()
-    call_args = mock_skopeo_copy.call_args
-    assert call_args[1]['source'] == 'docker://quay.io/ns/test:v1'
-    assert 'oci:' in call_args[1]['destination']
-    assert call_args[1]['copy_all'] is False
+    extracted = dest_dir.join('test_manifest.yaml')
+    assert extracted.check(file=True)
+    assert extracted.read() == 'test: data'
+    # Directory form is tried first and is sufficient (single oc invocation).
+    mock_run_cmd.assert_called_once()
+    src, _, is_dir = _parse_oc_extract_path(mock_run_cmd.call_args[0][0])
+    assert (src, is_dir) == ('/manifests', True)
 
 
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_missing_index(mock_skopeo_copy, mock_log, tmpdir):
-    """Test extraction fails when OCI index.json is missing."""
-    # Mock skopeo_copy to create OCI dir without index.json
-    def mock_copy(source, destination, copy_all, exc_msg):
-        # Extract OCI directory path from destination
-        oci_path = destination.replace('oci:', '')
-        os.makedirs(oci_path, exist_ok=True)
-        # Don't create index.json to simulate error
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_success_file(mock_run_cmd, tmpdir):
+    """A single file is extracted via the no-glob form and copied to dest_path.
 
-    mock_skopeo_copy.side_effect = mock_copy
+    dest_path may have a different basename than the source file (e.g. the hidden
+    'do.not.edit.db' is copied to 'extracted_index.db').
+    """
 
-    with pytest.raises(IIBError, match='OCI index.json not found'):
+    def fake_oc(cmd, *args, **kwargs):
+        src, dst, is_dir = _parse_oc_extract_path(cmd)
+        # Directory form finds nothing for a file path; file form places the file
+        # at <dst>/<basename>.
+        if not is_dir and src == '/var/lib/iib/_hidden/do.not.edit.db':
+            os.makedirs(dst, exist_ok=True)
+            with open(os.path.join(dst, 'do.not.edit.db'), 'wb') as f:
+                f.write(b'SQLite format 3\x00')
+
+    mock_run_cmd.side_effect = fake_oc
+    dest_file = tmpdir.join('extracted_index.db')
+
+    extract_files_from_image_non_privileged(
+        'quay.io/ns/test:v1', '/var/lib/iib/_hidden/do.not.edit.db', str(dest_file)
+    )
+
+    assert dest_file.check(file=True)
+    assert dest_file.read_binary() == b'SQLite format 3\x00'
+    # Directory form first (empty), then file form.
+    assert mock_run_cmd.call_count == 2
+    forms = [_parse_oc_extract_path(c[0][0])[2] for c in mock_run_cmd.call_args_list]
+    assert forms == [True, False]
+
+
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_path_not_found(mock_run_cmd, tmpdir):
+    """When neither form extracts anything, FileNotFoundInImageError is raised."""
+    # oc exits 0 and extracts nothing when the path is absent: run_cmd is a no-op.
+    mock_run_cmd.return_value = ''
+
+    with pytest.raises(FileNotFoundInImageError, match='Path /manifests not found in image'):
+        extract_files_from_image_non_privileged(
+            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+        )
+    assert mock_run_cmd.call_count == 2
+
+
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_oc_failure(mock_run_cmd, tmpdir):
+    """A failure from 'oc image extract' propagates as IIBError."""
+    mock_run_cmd.side_effect = IIBError('Failed to extract /manifests from image')
+
+    with pytest.raises(IIBError, match='Failed to extract /manifests from image'):
         extract_files_from_image_non_privileged(
             'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
         )
 
 
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_no_manifests(mock_skopeo_copy, mock_log, tmpdir):
-    """Test extraction fails when no manifests in OCI index."""
-
-    def mock_copy(source, destination, copy_all, exc_msg):
-        oci_path = destination.replace('oci:', '')
-        os.makedirs(oci_path, exist_ok=True)
-        # Create index.json with empty manifests
-        index_json = {'manifests': []}
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    with pytest.raises(IIBError, match='No manifests found in OCI index'):
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_relative_src_rejected(mock_run_cmd, tmpdir):
+    """A non-absolute src_path is rejected before invoking oc."""
+    with pytest.raises(IIBError, match='must be an absolute image path'):
         extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
+            'quay.io/ns/test:v1', 'manifests', str(tmpdir.join('dest'))
         )
+    mock_run_cmd.assert_not_called()
 
 
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_no_layers(mock_skopeo_copy, mock_log, tmpdir):
-    """Test extraction fails when no layers in manifest."""
-
-    def mock_copy(source, destination, copy_all, exc_msg):
-        oci_path = destination.replace('oci:', '')
-        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
-        os.makedirs(blobs_dir, exist_ok=True)
-
-        # Create index.json
-        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-        # Create manifest with no layers
-        manifest_json = {'layers': []}
-        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
-            json.dump(manifest_json, f)
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    with pytest.raises(IIBError, match='No layers found in manifest'):
-        extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
-        )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_missing_layer_blob(
-    mock_skopeo_copy, mock_log, tmpdir
-):
-    """Test extraction fails when layer blob file is missing."""
-
-    def mock_copy(source, destination, copy_all, exc_msg):
-        oci_path = destination.replace('oci:', '')
-        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
-        os.makedirs(blobs_dir, exist_ok=True)
-
-        # Create index.json
-        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-        # Create manifest with layer reference
-        manifest_json = {'layers': [{'digest': 'sha256:missing_layer'}]}
-        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
-            json.dump(manifest_json, f)
-        # Don't create the layer blob file
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    with pytest.raises(IIBError, match='Layer blob not found'):
-        extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
-        )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_path_not_found(mock_skopeo_copy, mock_log, tmpdir):
-    """Test extraction fails when requested path doesn't exist in image."""
-
-    def mock_copy(source, destination, copy_all, exc_msg):
-        oci_path = destination.replace('oci:', '')
-        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
-        os.makedirs(blobs_dir, exist_ok=True)
-
-        # Create index.json
-        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-        # Create manifest
-        manifest_json = {'layers': [{'digest': 'sha256:layer1'}]}
-        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
-            json.dump(manifest_json, f)
-
-        # Create empty layer tar.gz (no content)
-        layer_path = os.path.join(blobs_dir, 'layer1')
-        with tarfile.open(layer_path, 'w:gz'):
-            pass  # Empty tar
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    with pytest.raises(IIBError, match='Path /manifests not found in image'):
-        extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
-        )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_invalid_layer_tarball(
-    mock_skopeo_copy, mock_log, tmpdir
-):
-    """Test extraction fails when layer tarball is corrupted."""
-
-    def mock_copy(source, destination, copy_all, exc_msg):
-        oci_path = destination.replace('oci:', '')
-        blobs_dir = os.path.join(oci_path, 'blobs', 'sha256')
-        os.makedirs(blobs_dir, exist_ok=True)
-
-        # Create index.json
-        index_json = {'manifests': [{'digest': 'sha256:abc123'}]}
-        with open(os.path.join(oci_path, 'index.json'), 'w') as f:
-            json.dump(index_json, f)
-
-        # Create manifest
-        manifest_json = {'layers': [{'digest': 'sha256:corrupted_layer'}]}
-        with open(os.path.join(blobs_dir, 'abc123'), 'w') as f:
-            json.dump(manifest_json, f)
-
-        # Create corrupted layer (not a valid tar.gz)
-        layer_path = os.path.join(blobs_dir, 'corrupted_layer')
-        with open(layer_path, 'w') as f:
-            f.write('not a valid tar.gz file')
-
-    mock_skopeo_copy.side_effect = mock_copy
-
-    with pytest.raises(IIBError, match='Failed to extract layer'):
-        extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
-        )
-
-
-@patch('iib.workers.tasks.containerized_utils.log')
-@patch('iib.workers.tasks.containerized_utils._skopeo_copy')
-def test_extract_files_from_image_non_privileged_skopeo_copy_failure(
-    mock_skopeo_copy, mock_log, tmpdir
-):
-    """Test extraction fails when skopeo copy fails."""
-    mock_skopeo_copy.side_effect = IIBError('Failed to download image')
-
-    with pytest.raises(IIBError, match='Failed to download image'):
-        extract_files_from_image_non_privileged(
-            'quay.io/ns/test:v1', '/manifests', str(tmpdir.join('dest'))
-        )
-
-    mock_skopeo_copy.assert_called_once()
-    # Verify the call was made with correct parameters
-    call_args = mock_skopeo_copy.call_args
-    assert call_args[1]['source'] == 'docker://quay.io/ns/test:v1'
-    assert 'oci:' in call_args[1]['destination']
-    assert call_args[1]['copy_all'] is False
+@patch('iib.workers.tasks.utils.run_cmd')
+def test_extract_files_from_image_non_privileged_root_src_rejected(mock_run_cmd, tmpdir):
+    """A src_path of '/' names no path under root and is rejected."""
+    with pytest.raises(IIBError, match='must name a path under /'):
+        extract_files_from_image_non_privileged('quay.io/ns/test:v1', '/', str(tmpdir.join('dest')))
+    mock_run_cmd.assert_not_called()
 
 
 @patch('iib.workers.tasks.containerized_utils.get_last_commit_sha')
@@ -1413,3 +1252,164 @@ def test_merge_mr_after_build_failure_closes_mr(mock_merge_mr, mock_close_mr):
         merge_mr_after_build(mr_details, 'https://gitlab.example.com/project')
 
     mock_close_mr.assert_called_once_with(mr_details, 'https://gitlab.example.com/project')
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_prefers_hidden_db(mock_extract, mock_label, tmp_path):
+    """When a hidden index.db exists, it is preferred over the labeled db."""
+
+    def label_side_effect(image, label):
+        return {
+            'operators.operatorframework.io.index.configs.v1': '/configs',
+            'operators.operatorframework.io.index.database.v1': '/database/index.db',
+        }[label]
+
+    mock_label.side_effect = label_side_effect
+
+    configs_dir, index_db = extract_catalog_and_db_from_image(
+        'quay.io/redhat/my-index:test', str(tmp_path)
+    )
+
+    assert configs_dir.endswith('configs')
+    assert index_db.endswith('index.db')
+    # Two extractions: configs dir and the hidden db file.
+    assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_raises_when_no_hidden_db(mock_extract, mock_label, tmp_path):
+    """When the hidden db is absent, the request fails; there is no labeled-db or empty-db fallback.
+
+    An image with no hidden index.db has not been onboarded to the containerized
+    build flow, so the request must fail rather than degrade to a labeled db or a
+    synthesised empty db.
+    """
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+        'operators.operatorframework.io.index.database.v1': '/database/index.db',
+    }[label]
+    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError.
+    mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db')]
+
+    with pytest.raises(IIBError, match='No index.db found in image'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
+
+    # Only two extraction attempts: configs dir and the failed hidden db lookup.
+    # The labeled database.v1 path is never read.
+    assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_propagates_real_extraction_error(
+    mock_extract, mock_label, tmp_path
+):
+    """A genuine extraction failure (not a missing path) must propagate, not degrade.
+
+    Only FileNotFoundInImageError signals an absent hidden db; a plain IIBError
+    (registry/OCI/layer/tar failure) must not be silently swallowed as "no hidden
+    db", which would build an image from an incomplete index.db.
+    """
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+        'operators.operatorframework.io.index.database.v1': '/database/index.db',
+    }[label]
+    # First call (configs) ok; second call (hidden db) raises a real error.
+    mock_extract.side_effect = [None, IIBError('registry unreachable')]
+
+    with pytest.raises(IIBError, match='registry unreachable'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_and_db_raises_without_configs_label(mock_label):
+    """If the image has no FBC configs label, an IIBError is raised."""
+    mock_label.return_value = ''
+
+    with pytest.raises(IIBError, match='does not contain a file-based catalog'):
+        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', '/tmp/does-not-matter')
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=True)
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_normal(
+    mock_url, mock_tok, mock_exists, mock_clone, mock_state, tmp_path
+):
+    (tmp_path / 'git' / 'v4.14' / 'configs').mkdir(parents=True)
+    src = cu.prepare_build_sources(
+        request_id=1,
+        from_index='quay.io/redhat/my-index:v4.14',
+        from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
+        temp_dir=str(tmp_path),
+        ocp_version='v4.14',
+        index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+        overwrite_from_index=True,
+    )
+    assert src.is_divergent is False
+    assert src.target_branch == 'v4.14'
+    assert src.index_db_path is None  # normal path pulls from ORAS
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=False)
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_divergent_rejects_overwrite(
+    mock_url, mock_exists, mock_tok, mock_state, tmp_path
+):
+    with pytest.raises(IIBError, match='overwrite'):
+        cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:test',
+            from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=True,
+        )
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_catalog_and_db_from_image')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_divergent_extracts(
+    mock_url, mock_tok, mock_clone, mock_extract, mock_state, tmp_path
+):
+    # tag branch missing, ocp branch present
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.remote_branch_exists',
+        side_effect=[False, True],
+    ):
+        cfg = tmp_path / 'ex_configs'
+        cfg.mkdir()
+        (cfg / 'op').mkdir()
+        mock_extract.return_value = (str(cfg), str(tmp_path / 'ex.db'))
+        src = cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:test',
+            from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=False,
+        )
+    assert src.is_divergent is True
+    assert src.target_branch == 'v4.14'
+    assert src.index_db_path == str(tmp_path / 'ex.db')
+    # Divergent extraction must read the resolved digest, not the mutable tag, so
+    # the index.db matches the exact image the request resolved to.
+    mock_extract.assert_called_once()
+    assert mock_extract.call_args.args[0] == 'quay.io/redhat/my-index@sha256:deadbeef'

@@ -253,6 +253,39 @@ The worker configuration is in `docker/containerized/worker_config.py`. This fil
 - Includes the containerized task modules
 - Validates required configuration on startup
 
+## Git Branch and Tag Semantics
+
+The Git branch used for a request's catalog is keyed on the **image tag**, not a fixed OCP-version mapping. For the existing fleet this is a no-op, since prod index tags already equal the OCP version (e.g. `v4.19` → branch `v4.19`).
+
+### Onboarding a Non-OCP Tag
+
+To onboard a tag that isn't an OCP version (e.g. a custom or pre-release tag), a maintainer must:
+
+1. Create a Git branch in the catalog repository named exactly after the tag.
+2. Provision a Konflux Component for that branch, so pushes to it trigger a PipelineRun.
+
+Once both exist, requests against that tag build and push normally, and `overwrite_from_index` is honored like any other branch.
+
+### Divergent Tags (No Matching Branch)
+
+If a request targets a tag with no corresponding Git branch — for example a timestamped, point-in-time tag cut from an existing index — IIB treats it as a **divergent tag**:
+
+- Configs and `index.db` are extracted directly from the index image (unprivileged), not sourced from ORAS. Only the FBC configs and the hidden `index.db` are extracted; if the image carries no hidden `index.db`, the request fails ("no index.db found, onboard the image to build") — there is no labeled-db or empty-db fallback.
+- The build reuses the base OCP branch's existing Konflux Component via a throw-away merge request.
+- That MR is **never merged** — it is always closed after the pipeline completes (or on failure), regardless of outcome.
+- `overwrite_from_index` is **rejected** for divergent-tag requests; there is no direct-push path.
+
+This lets IIB build and validate a one-off tag without requiring per-tag branch/Component provisioning.
+
+## Index DB Artifact and ImageStream Tag Naming
+
+Cached `index.db` artifact tags (ORAS) and ImageStream tags are keyed on the index image's content (manifest) digest — `idb-<sha256>` — resolved via `skopeo inspect`, not on its pullspec. Because the key is the content itself, it is both namespace-safe and promotion-safe:
+
+- **Namespace-safe:** two images that share a repository name in different registry namespaces (e.g. `quay.io/redhat/my-index:v4.17` vs `quay.io/redhat-pending/my-index:v4.17`) have different content and therefore different digests, so they never collide on the same cache tag.
+- **Promotion-safe:** the same image content addressed by different pullspecs after a release or mirror (e.g. `quay.io/my-namespace/iib-pub:v4.17` → `registry.access.redhat.com/some-namespace/operator-index:v4.17`) preserves its manifest digest, so both pullspecs resolve to the *same* cache entry and share one `index.db`.
+
+Cache entries written under the previous pullspec-derived naming scheme are orphaned by this change — they are not migrated in place. On the normal path IIB never falls back to extracting `index.db` from the image: if the digest-keyed artifact is missing, the request fails with a "no index.db found for the image, onboard the image to build" error, and the image must be onboarded (which populates the artifact) before it can be built. Orphaned entries are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
+
 ## Differences from Traditional Workflow
 
 | Aspect | Traditional Workflow | Containerized Workflow |

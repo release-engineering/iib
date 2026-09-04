@@ -18,7 +18,7 @@ from iib.workers.tasks.containerized_utils import (
     fetch_and_verify_index_db_artifact,
     git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
-    prepare_git_repository_for_build,
+    prepare_build_sources,
     push_index_db_artifact,
     replicate_image_to_tagged_destinations,
     write_build_metadata,
@@ -112,11 +112,10 @@ def handle_containerized_fbc_operation_request(
     distribution_scope = prebuild_info['distribution_scope']
 
     index_to_gitlab_push_map = index_to_gitlab_push_map or {}
-    # Variables mr_details, last_commit_sha and original_index_db_digest
-    # needs to be assigned; otherwise cleanup_on_failure() fails when an exception is raised.
+    # Variables mr_details and last_commit_sha need to be assigned; otherwise
+    # cleanup_on_failure() fails when an exception is raised.
     mr_details: Optional[Dict[str, str]] = None
     last_commit_sha: Optional[str] = None
-    original_index_db_digest: Optional[str] = None
 
     Opm.set_opm_version(from_index_resolved)
 
@@ -131,26 +130,30 @@ def handle_containerized_fbc_operation_request(
     _update_index_image_build_state(request_id, prebuild_info)
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
-        branch = prebuild_info['ocp_version']
-
-        # Set up and clone Git repository
-        (
-            index_git_repo,
-            local_git_repo_path,
-            localized_git_catalog_path,
-        ) = prepare_git_repository_for_build(
+        sources = prepare_build_sources(
             request_id=request_id,
             from_index=from_index,
+            from_index_resolved=from_index_resolved,
             temp_dir=temp_dir,
-            branch=branch,
+            ocp_version=prebuild_info['ocp_version'],
             index_to_gitlab_push_map=index_to_gitlab_push_map,
+            overwrite_from_index=overwrite_from_index,
         )
+        index_git_repo = sources.index_git_repo
+        local_git_repo_path = sources.local_git_repo_path
+        localized_git_catalog_path = sources.localized_git_catalog_path
+        branch = sources.target_branch
 
-        # Pull index.db artifact (uses ImageStream cache if configured, otherwise pulls directly)
-        artifact_index_db_file = fetch_and_verify_index_db_artifact(
-            from_index=from_index,
-            temp_dir=temp_dir,
-        )
+        # Divergent path already has index.db extracted from the image; the normal
+        # path pulls it from ORAS. NEVER fall back to ORAS on the divergent path —
+        # that would read the base OCP branch's index.db.
+        if sources.index_db_path is not None:
+            artifact_index_db_file = sources.index_db_path
+        else:
+            artifact_index_db_file = fetch_and_verify_index_db_artifact(
+                from_index=from_index,
+                temp_dir=temp_dir,
+            )
 
         set_request_state(request_id, 'in_progress', 'Adding fbc fragment')
         (
@@ -232,12 +235,13 @@ def handle_containerized_fbc_operation_request(
 
             # Push updated index.db before merging the MR so that on failure both
             # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it and rolls back the artifact).
-            original_index_db_digest = push_index_db_artifact(
+            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
+            push_index_db_artifact(
                 request_id=request_id,
                 from_index=from_index,
                 index_db_path=index_db_path,
                 operators=operators_in_db,
+                output_image=image_url,
                 overwrite_from_index=overwrite_from_index,
                 request_type='fbc_operations',
             )
@@ -245,7 +249,7 @@ def handle_containerized_fbc_operation_request(
             # Merge or close the MR as the final step so that all side effects
             # (replication, metadata, index.db push) have succeeded before git
             # is advanced. This prevents git/index.db divergence on partial failure.
-            if overwrite_from_index:
+            if overwrite_from_index and not sources.is_divergent:
                 merge_mr_after_build(mr_details, index_git_repo)
                 # Prevent cleanup_on_failure from trying to close an already-merged MR
                 mr_details = None
@@ -267,7 +271,6 @@ def handle_containerized_fbc_operation_request(
                 request_id=request_id,
                 from_index=from_index,
                 index_repo_map=index_to_gitlab_push_map or {},
-                original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
             )
             raise IIBError(f"Failed to add FBC fragment: {e}")

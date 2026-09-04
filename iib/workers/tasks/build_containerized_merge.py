@@ -159,7 +159,6 @@ def handle_containerized_merge_request(
     index_git_repo: Optional[str] = None
     last_commit_sha: Optional[str] = None
     output_pull_spec: Optional[str] = None
-    original_index_db_digest: Optional[str] = None
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Setup and clone Git repository
@@ -371,12 +370,13 @@ def handle_containerized_merge_request(
 
             # Push updated index.db before merging the MR so that on failure both
             # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it and rolls back the artifact).
-            original_index_db_digest = push_index_db_artifact(
+            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
+            push_index_db_artifact(
                 request_id=request_id,
                 from_index=effective_index_image,
                 index_db_path=source_index_db_path,
                 operators=operators_in_db,
+                output_image=image_url,
                 overwrite_from_index=overwrite_target_index,
                 request_type='merge',
             )
@@ -407,7 +407,6 @@ def handle_containerized_merge_request(
                 request_id=request_id,
                 from_index=effective_index_image,
                 index_repo_map={},
-                original_index_db_digest=original_index_db_digest,
                 reason=f"error: {e}",
             )
             # Reset Docker config for the next request. This is a fail safe.

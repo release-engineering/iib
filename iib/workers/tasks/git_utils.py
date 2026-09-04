@@ -165,6 +165,46 @@ def validate_git_remote_branch(repo_url: str, branch: str) -> None:
         raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
 
 
+def remote_branch_exists(
+    repo_url: str,
+    branch: str,
+    token_name: Optional[str] = None,
+    token: Optional[str] = None,
+) -> bool:
+    """
+    Return True if the given branch exists on the remote.
+
+    This distinguishes a reachable remote with no matching branch (returns
+    False) from a failed command such as a network or auth error (raises), so a
+    transient failure is never silently interpreted as a missing branch. A
+    silent false negative would misroute a request onto the divergent build path.
+
+    When ``token_name`` and ``token`` are provided, authentication is injected
+    into the remote URL the same way :func:`clone_git_repo` does, so the check
+    works against private repositories.
+
+    :param str repo_url: The git repository URL.
+    :param str branch: The branch name to check.
+    :param str token_name: Optional name of the Git repository token.
+    :param str token: Optional value of the Git repository token.
+    :rtype: bool
+    :raises IIBError: If the ``git ls-remote`` command fails (e.g. network or auth error).
+    """
+    ls_remote_url = repo_url
+    if token_name and token:
+        base_url = repo_url.replace('https://', '')
+        ls_remote_url = f"https://{token_name}:{token}@{base_url}"
+
+    # strict=True (default) so a command failure raises IIBError instead of
+    # returning empty output that would be misread as "branch absent". The
+    # exc_msg deliberately references repo_url, not the token-injected URL.
+    remote_branch_status = run_cmd(
+        ["git", "ls-remote", "--heads", ls_remote_url, branch],
+        exc_msg=f"Error checking for remote branch '{branch}' in repo {repo_url}",
+    )
+    return bool(remote_branch_status.strip())
+
+
 def commit_and_push(
     request_id: int,
     local_repo_path: str,
