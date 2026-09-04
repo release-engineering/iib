@@ -231,6 +231,7 @@ def test_send_messages_nonfatal(mock_gsd, mock_bc, app):
 
 @pytest.mark.parametrize('request_msg_expected', (True, False))
 @pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging._get_request_state_change_envelope')
 @mock.patch('iib.web.messaging._get_batch_state_change_envelope')
 @mock.patch('iib.web.messaging.send_messages')
@@ -238,6 +239,7 @@ def test_send_message_for_state_change(
     mock_sm,
     mock_gbsce,
     mock_grstce,
+    mock_skm,
     batch_msg_expected,
     request_msg_expected,
     app,
@@ -269,11 +271,18 @@ def test_send_message_for_state_change(
 
 @pytest.mark.parametrize('request_msg_expected', (True, False))
 @pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging._get_request_state_change_envelope')
 @mock.patch('iib.web.messaging._get_batch_state_change_envelope')
 @mock.patch('iib.web.messaging.send_messages')
 def test_send_messages_for_new_batch_of_requests(
-    mock_sm, mock_gbsce, mock_grsce, batch_msg_expected, request_msg_expected, minimal_request_add
+    mock_sm,
+    mock_gbsce,
+    mock_grsce,
+    mock_skm,
+    batch_msg_expected,
+    request_msg_expected,
+    minimal_request_add,
 ):
     expected_msgs = []
     if request_msg_expected:
@@ -300,8 +309,11 @@ def test_send_messages_for_new_batch_of_requests(
         mock_sm.assert_not_called()
 
 
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging.send_messages')
-def test_send_messages_for_new_batch_of_requests_no_requests(mock_sm, minimal_request_add):
+def test_send_messages_for_new_batch_of_requests_no_requests(
+    mock_sm, mock_skm, minimal_request_add
+):
     messaging.send_messages_for_new_batch_of_requests([])
 
     mock_sm.assert_not_called()

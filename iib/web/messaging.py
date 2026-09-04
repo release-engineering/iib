@@ -16,11 +16,80 @@ from iib.web.iib_static_types import (
     BatchRequestResponseList,
 )
 from iib.web.models import Batch, Request, RequestStateMapping
+from iib.web.kafka_producer import get_kafka_producer, send_kafka_message
 
 __all__ = ['Envelope', 'json_to_envelope', 'send_messages', 'send_message_for_state_change']
 
 
 Envelope = namedtuple('Envelope', 'address message')
+
+
+def _build_request_state_change_data(
+    request: Request,
+) -> tuple:
+    """
+    Build the content and properties for a request state change message.
+
+    Used by both the legacy AMQP and Kafka paths.
+
+    :param iib.web.models.Request request: the request that changed states
+    :return: a tuple of (content, properties)
+    :rtype: tuple
+    """
+    request_json = cast(BaseClassRequestResponse, request.to_json(verbose=False))
+    properties = {
+        'batch': request_json['batch'],
+        'id': request_json['id'],
+        'state': request_json['state'],
+        'user': request_json['user'],
+    }
+    return request_json, properties
+
+
+def _build_batch_state_change_data(
+    batch: Batch,
+    new_batch: Optional[bool] = False,
+) -> Optional[tuple]:
+    """
+    Build the content and properties for a batch state change message.
+
+    Returns ``None`` when no message should be sent.
+    Used by both the legacy AMQP and Kafka paths.
+
+    :param iib.web.models.Batch batch: the batch that changed states
+    :param bool new_batch: if ``True``, a new batch message will be generated
+    :return: a tuple of (content, properties) or None
+    :rtype: tuple or None
+    """
+    if new_batch:
+        batch_state = 'in_progress'
+    else:
+        batch_state = batch.state
+
+    if not (new_batch or batch_state in RequestStateMapping.get_final_states()):
+        return None
+
+    batch_username = getattr(batch.user, 'username', None)
+    content: BatchRequestResponseList = {
+        'batch': batch.id,
+        'annotations': batch.annotations,
+        'requests': [
+            {
+                'id': r.id,
+                'organization': getattr(r, 'organization', None),
+                'request_type': r.type_name,
+            }
+            for r in batch.requests
+        ],
+        'state': batch_state,
+        'user': batch_username,
+    }
+    properties = {
+        'batch': batch.id,
+        'state': batch_state,
+        'user': batch_username,
+    }
+    return content, properties
 
 
 def _get_batch_state_change_envelope(
@@ -47,34 +116,10 @@ def _get_batch_state_change_envelope(
         )
         return None
 
-    if new_batch:
-        # Avoid querying the database for the batch state since we know it's a new batch
-        batch_state = 'in_progress'
-    else:
-        batch_state = batch.state
-
-    if new_batch or batch_state in RequestStateMapping.get_final_states():
+    data = _build_batch_state_change_data(batch, new_batch)
+    if data:
         current_app.logger.debug('Preparing to send a state change message for batch %d', batch.id)
-        batch_username = getattr(batch.user, 'username', None)
-        content: BatchRequestResponseList = {
-            'batch': batch.id,
-            'annotations': batch.annotations,
-            'requests': [
-                {
-                    'id': request.id,
-                    'organization': getattr(request, 'organization', None),
-                    'request_type': request.type_name,
-                }
-                for request in batch.requests
-            ],
-            'state': batch_state,
-            'user': batch_username,
-        }
-        properties = {
-            'batch': batch.id,
-            'state': batch_state,
-            'user': batch_username,
-        }
+        content, properties = data
         return json_to_envelope(batch_address, content, properties)
     return None
 
@@ -98,15 +143,8 @@ def _get_request_state_change_envelope(request: Request) -> Optional[Envelope]:
         return None
 
     current_app.logger.debug('Preparing to send a state change message for request %d', request.id)
-    # cast from Union - see Request.to_json
-    request_json = cast(BaseClassRequestResponse, request.to_json(verbose=False))
-    properties = {
-        'batch': request_json['batch'],
-        'id': request_json['id'],
-        'state': request_json['state'],
-        'user': request_json['user'],
-    }
-    return json_to_envelope(request_address, request_json, properties)
+    content, properties = _build_request_state_change_data(request)
+    return json_to_envelope(request_address, content, properties)
 
 
 def _get_ssl_domain() -> Optional[proton.SSLDomain]:
@@ -199,6 +237,38 @@ def send_messages(envelopes: List[Envelope]) -> None:
             connection.close()
 
 
+def _send_kafka_messages(
+    requests: List[Request],
+    batch: Batch,
+    new_batch: Optional[bool] = False,
+) -> None:
+    """
+    Send request and batch state-change messages to Kafka.
+
+    :param list requests: one or more requests whose state changed
+    :param iib.web.models.Batch batch: the batch associated with the requests
+    :param bool new_batch: if ``True``, a batch-creation message is sent
+    """
+    producer = get_kafka_producer()
+    if not producer:
+        return
+
+    conf = current_app.config
+
+    build_topic = conf.get('IIB_KAFKA_BUILD_STATE_TOPIC')
+    if build_topic:
+        for request in requests:
+            content, properties = _build_request_state_change_data(request)
+            send_kafka_message(producer, build_topic, content, properties)
+
+    batch_topic = conf.get('IIB_KAFKA_BATCH_STATE_TOPIC')
+    if batch_topic:
+        batch_data = _build_batch_state_change_data(batch, new_batch)
+        if batch_data:
+            content, properties = batch_data
+            send_kafka_message(producer, batch_topic, content, properties)
+
+
 def send_message_for_state_change(request: Request, new_batch_msg: Optional[bool] = False) -> None:
     """
     Send the appropriate message(s) based on a build request state change.
@@ -222,6 +292,8 @@ def send_message_for_state_change(request: Request, new_batch_msg: Optional[bool
 
     if envelopes:
         send_messages(envelopes)
+
+    _send_kafka_messages([request], request.batch, new_batch=new_batch_msg)
 
 
 def send_messages_for_new_batch_of_requests(requests: List[Request]) -> None:
@@ -250,3 +322,5 @@ def send_messages_for_new_batch_of_requests(requests: List[Request]) -> None:
 
     if envelopes:
         send_messages(envelopes)
+
+    _send_kafka_messages(requests, batch, new_batch=True)
