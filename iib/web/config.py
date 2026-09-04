@@ -38,6 +38,13 @@ class Config(object):
     IIB_REQUEST_RELATED_BUNDLES_DIR: Optional[str] = None
     IIB_REQUEST_RECURSIVE_RELATED_BUNDLES_DIR: Optional[str] = None
     IIB_USER_TO_QUEUE: Union[Dict[str, str], Dict[str, Dict[str, str]]] = _get_empty_dict_str_str()
+    # Kafka messaging configuration
+    IIB_KAFKA_BATCH_STATE_TOPIC: Optional[str] = None
+    IIB_KAFKA_BROKERS: Optional[List[str]] = None
+    IIB_KAFKA_BUILD_STATE_TOPIC: Optional[str] = None
+    IIB_KAFKA_SSL_CAFILE: str = '/etc/pki/tls/certs/ca-bundle.crt'
+    IIB_KAFKA_USERNAME: Optional[str] = None
+    IIB_KAFKA_PASSWORD: Optional[str] = None
     IIB_WORKER_USERNAMES: List[str] = []
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
 
