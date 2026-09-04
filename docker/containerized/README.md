@@ -270,7 +270,7 @@ Once both exist, requests against that tag build and push normally, and `overwri
 
 If a request targets a tag with no corresponding Git branch — for example a timestamped, point-in-time tag cut from an existing index — IIB treats it as a **divergent tag**:
 
-- Configs and `index.db` are extracted directly from the index image (unprivileged), not sourced from ORAS.
+- Configs and `index.db` are extracted directly from the index image (unprivileged), not sourced from ORAS. Only the FBC configs and the hidden `index.db` are extracted; if the image carries no hidden `index.db`, the request fails ("no index.db found, onboard the image to build") — there is no labeled-db or empty-db fallback.
 - The build reuses the base OCP branch's existing Konflux Component via a throw-away merge request.
 - That MR is **never merged** — it is always closed after the pipeline completes (or on failure), regardless of outcome.
 - `overwrite_from_index` is **rejected** for divergent-tag requests; there is no direct-push path.
@@ -284,7 +284,7 @@ Cached `index.db` artifact tags (ORAS) and ImageStream tags are keyed on the ind
 - **Namespace-safe:** two images that share a repository name in different registry namespaces (e.g. `quay.io/redhat/my-index:v4.17` vs `quay.io/redhat-pending/my-index:v4.17`) have different content and therefore different digests, so they never collide on the same cache tag.
 - **Promotion-safe:** the same image content addressed by different pullspecs after a release or mirror (e.g. `quay.io/my-namespace/iib-pub:v4.17` → `registry.access.redhat.com/some-namespace/operator-index:v4.17`) preserves its manifest digest, so both pullspecs resolve to the *same* cache entry and share one `index.db`.
 
-Cache entries written under the previous pullspec-derived naming scheme are orphaned by this change — they are not migrated in place. The digest-keyed name simply misses on the first request after cutover and is repopulated via read-through bootstrap (the `index.db` is extracted from the image and pushed under the digest key). Orphaned entries are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
+Cache entries written under the previous pullspec-derived naming scheme are orphaned by this change — they are not migrated in place. On the normal path IIB never falls back to extracting `index.db` from the image: if the digest-keyed artifact is missing, the request fails with a "no index.db found for the image, onboard the image to build" error, and the image must be onboarded (which populates the artifact) before it can be built. Orphaned entries are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
 
 ## Differences from Traditional Workflow
 
