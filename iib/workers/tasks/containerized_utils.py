@@ -70,14 +70,19 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
 
     A glob on a file path matches nothing, so trying the directory form first is
     safe; the file form is only reached (a second ``oc`` invocation) when the
-    directory form yields nothing. An existing-but-empty directory therefore also
-    reads as "not found" — acceptable for the FBC configs / manifests / metadata /
-    hidden index.db paths IIB extracts, none of which are ever legitimately empty.
+    directory form yields nothing.
+
+    ``oc image extract`` only unpacks file entries: an empty directory (a directory
+    with no files under it, e.g. an empty index's ``/configs``) contributes no
+    entries and is indistinguishable here from an absent path — both raise
+    ``FileNotFoundInImageError``. Callers that can legitimately expect an empty
+    directory (because they hold another signal, such as the image's configs
+    label) must catch this and treat it as empty rather than missing.
 
     :param str image: the pull specification of the container image
     :param str src_path: the absolute path within the container image to copy from
     :param str dest_path: the path on the local host to copy into
-    :raises FileNotFoundInImageError: if src_path is absent in the image
+    :raises FileNotFoundInImageError: if src_path is absent (or an empty directory)
     :raises IIBError: if src_path is not absolute or ``oc image extract`` fails
     """
     from iib.workers.tasks.utils import run_cmd
@@ -114,8 +119,18 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
             # symlinks verbatim (symlinks=True) rather than resolving them against
             # the host root during the copy.
             shutil.copytree(dir_staging, dest, dirs_exist_ok=True, symlinks=True)
-            log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+            log.info(
+                'Extracted %s from image %s to %s as a directory (glob form)',
+                src_path,
+                image,
+                dest_path,
+            )
             return
+        log.debug(
+            'Directory-glob form matched nothing for %s in image %s; trying no-glob form',
+            src_path,
+            image,
+        )
 
         # 2) File form: the path is a single file, placed at <staging>/<basename>.
         file_staging = temp_path / 'file'
@@ -136,12 +151,27 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
             dest = Path(dest_path)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(extracted_file, dest)
-            log.info('Successfully extracted %s from image %s to %s', src_path, image, dest_path)
+            log.info(
+                'Extracted %s from image %s to %s as a file (no-glob form)',
+                src_path,
+                image,
+                dest_path,
+            )
             return
 
-        # 3) Neither shape produced output: the path is absent in the image. Raise
-        # the specific FileNotFoundInImageError (a subclass of IIBError) so callers
-        # can distinguish a genuinely absent path from an 'oc' failure above.
+        # 3) Neither shape produced output. Because 'oc image extract' unpacks only
+        # file entries, this means src_path is either absent or an empty directory
+        # (the two are indistinguishable here). Raise the specific
+        # FileNotFoundInImageError (a subclass of IIBError) so callers can tell this
+        # apart from an 'oc' failure above and, where they have another signal (e.g.
+        # a configs label), treat an empty directory as empty rather than missing.
+        log.error(
+            'Nothing extracted for %s in image %s: neither the directory-glob nor the '
+            'no-glob form of "oc image extract" produced output (path is absent or an '
+            'empty directory)',
+            src_path,
+            image,
+        )
         raise FileNotFoundInImageError(f'Path {src_path} not found in image {image}.')
 
 
@@ -162,6 +192,11 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
     labeled database path and no synthesised empty db. An image that carries no
     hidden index.db has not been onboarded to the containerized build flow and
     the request is failed so the image can be onboarded first.
+
+    The configs label is the signal that the image declares an FBC root, so a
+    declared-but-empty configs directory (an empty index, whose ``/configs`` holds
+    no files) is treated as an empty catalog rather than a missing path — the
+    divergent add/rm operation then populates it.
 
     :param str from_index_resolved: The digest-resolved from_index image pullspec.
     :param str temp_dir: Base temp directory for extraction.
@@ -184,7 +219,20 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
         configs_label,
         configs_dir,
     )
-    extract_files_from_image_non_privileged(from_index_resolved, configs_label, configs_dir)
+    try:
+        extract_files_from_image_non_privileged(from_index_resolved, configs_label, configs_dir)
+    except FileNotFoundInImageError:
+        # The image declares a configs label but nothing is stored under it. 'oc
+        # image extract' cannot represent an empty directory, so this is an empty
+        # FBC catalog (an empty index), not a broken image. Use an empty configs
+        # directory; the handler's add/rm operation writes the operators into it.
+        log.info(
+            'Configs path %s in %s is empty; using an empty catalog directory at %s',
+            configs_label,
+            from_index_resolved,
+            configs_dir,
+        )
+        Path(configs_dir).mkdir(parents=True, exist_ok=True)
 
     index_db_path = str(Path(temp_dir) / 'extracted_index.db')
     conf = get_worker_config()
