@@ -1149,7 +1149,11 @@ def test_extract_files_from_image_non_privileged_success_file(mock_run_cmd, tmpd
 
 @patch('iib.workers.tasks.utils.run_cmd')
 def test_extract_files_from_image_non_privileged_path_not_found(mock_run_cmd, tmpdir):
-    """When neither form extracts anything, FileNotFoundInImageError is raised."""
+    """When neither form extracts anything, FileNotFoundInImageError is raised.
+
+    'oc image extract' unpacks only file entries, so an absent path and an empty
+    directory both extract nothing and are indistinguishable at this layer.
+    """
     # oc exits 0 and extracts nothing when the path is absent: run_cmd is a no-op.
     mock_run_cmd.return_value = ''
 
@@ -1298,6 +1302,34 @@ def test_extract_catalog_and_db_raises_when_no_hidden_db(mock_extract, mock_labe
 
     # Only two extraction attempts: configs dir and the failed hidden db lookup.
     # The labeled database.v1 path is never read.
+    assert mock_extract.call_count == 2
+
+
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+def test_extract_catalog_and_db_empty_configs_uses_empty_dir(mock_extract, mock_label, tmp_path):
+    """A declared-but-empty /configs (empty index) yields an empty catalog, not a failure.
+
+    'oc image extract' cannot represent an empty directory, so extracting an empty
+    index's /configs raises FileNotFoundInImageError. Because the image declares a
+    configs label, this is treated as an empty catalog directory; the hidden db is
+    still extracted normally.
+    """
+    mock_label.side_effect = lambda image, label: {
+        'operators.operatorframework.io.index.configs.v1': '/configs',
+    }.get(label, '')
+    # First call (configs) reports nothing under the declared path; second call
+    # (hidden db) succeeds.
+    mock_extract.side_effect = [FileNotFoundInImageError('empty /configs'), None]
+
+    configs_dir, index_db = extract_catalog_and_db_from_image(
+        'quay.io/redhat/empty-index:test', str(tmp_path)
+    )
+
+    assert configs_dir.endswith('extracted_configs')
+    assert os.path.isdir(configs_dir)
+    assert os.listdir(configs_dir) == []  # empty catalog
+    assert index_db.endswith('index.db')
     assert mock_extract.call_count == 2
 
 
