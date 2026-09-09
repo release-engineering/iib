@@ -9,7 +9,7 @@ import tempfile
 from typing import Any, Dict, Optional, Tuple
 
 from iib.common.tracing import instrument_tracing
-from iib.exceptions import IIBError
+from iib.exceptions import ArtifactNotFoundError, IIBError
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest  # noqa: F401
 
@@ -136,7 +136,8 @@ def get_oras_artifact(
     :param str temp_dir_prefix: Prefix for the temporary directory name
     :return: Path to the temporary directory containing the artifact (always absolute)
     :rtype: str
-    :raises IIBError: If the pull operation fails
+    :raises ArtifactNotFoundError: If the registry reports that the artifact does not exist
+    :raises IIBError: If the pull operation fails for any other reason
     """
     log.info('Pulling OCI artifact %s to temporary directory', artifact_ref)
 
@@ -166,7 +167,12 @@ def get_oras_artifact(
             # Clean up temp directory on failure
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
-            raise IIBError(f'Failed to pull OCI artifact {artifact_ref}: {e}')
+            # Preserve the "the artifact is absent" signal through the wrap, so callers can
+            # tell a never-onboarded image from a registry that failed to answer.
+            exc_msg = f'Failed to pull OCI artifact {artifact_ref}: {e}'
+            if isinstance(e, ArtifactNotFoundError):
+                raise ArtifactNotFoundError(exc_msg) from e
+            raise IIBError(exc_msg) from e
 
 
 @instrument_tracing(span_name="workers.tasks.oras_utils.push_oras_artifact")

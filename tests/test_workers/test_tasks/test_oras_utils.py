@@ -6,7 +6,7 @@ import re
 import pytest
 from unittest import mock
 
-from iib.exceptions import IIBError
+from iib.exceptions import ArtifactNotFoundError, IIBError
 from iib.workers.tasks.oras_utils import (
     get_oras_artifact,
     push_oras_artifact,
@@ -130,9 +130,32 @@ def test_get_oras_artifact_failure(mock_rmtree, mock_run_cmd, mock_mkdtemp, mock
     mock_mkdtemp.return_value = '/tmp/test-dir'
     mock_exists.return_value = True
 
-    with pytest.raises(IIBError, match='Pull failed'):
+    with pytest.raises(IIBError, match='Pull failed') as exc_info:
         get_oras_artifact(artifact_ref, base_dir)
     mock_rmtree.assert_called_once_with('/tmp/test-dir')
+    assert not isinstance(exc_info.value, ArtifactNotFoundError)
+
+
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+@mock.patch('os.path.exists')
+@mock.patch('tempfile.mkdtemp')
+@mock.patch('iib.workers.tasks.oras_utils.run_cmd')
+@mock.patch('shutil.rmtree')
+def test_get_oras_artifact_missing_preserves_not_found_type(
+    mock_rmtree, mock_run_cmd, mock_mkdtemp, mock_exists, mock_gwc
+):
+    """A missing artifact must stay distinguishable after the cleanup wrapper re-raises."""
+    mock_gwc.return_value = _oras_worker_config_minimal()
+    artifact_ref = 'quay.io/test/repo:latest'
+    mock_run_cmd.side_effect = ArtifactNotFoundError('Failed to pull OCI artifact')
+    mock_mkdtemp.return_value = '/tmp/test-dir'
+    mock_exists.return_value = True
+
+    with pytest.raises(ArtifactNotFoundError, match='Failed to pull OCI artifact') as exc_info:
+        get_oras_artifact(artifact_ref, '/tmp/base')
+
+    mock_rmtree.assert_called_once_with('/tmp/test-dir')
+    assert isinstance(exc_info.value.__cause__, ArtifactNotFoundError)
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')

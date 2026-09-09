@@ -34,7 +34,7 @@ from iib.workers.dogpile_cache import (
     skopeo_inspect_should_use_cache,
 )
 
-from iib.exceptions import IIBError, ExternalServiceError
+from iib.exceptions import ArtifactNotFoundError, IIBError, ExternalServiceError
 from iib.workers.config import get_worker_config
 from iib.workers.s3_utils import upload_file_to_s3_bucket
 from iib.workers.api_utils import set_request_state
@@ -925,6 +925,14 @@ def podman_pull(*args) -> None:
     )
 
 
+# The registry error codes that mean "the artifact is not there", as opposed to "the registry
+# could not answer". Matched case-insensitively against 'oras pull' stderr; the leading '.*' is
+# required because _regex_reverse_search anchors with re.match.
+_ORAS_NOT_FOUND_REGEX = (
+    r'(?i).*(?:MANIFEST_UNKNOWN|NAME_UNKNOWN|BLOB_UNKNOWN|: not found\b|status(?: code)?:? 404\b)'
+)
+
+
 def _regex_reverse_search(
     regex: str,
     proc_response: subprocess.CompletedProcess,
@@ -1020,6 +1028,15 @@ def run_cmd(
                 match = _regex_reverse_search(regex, response)
                 if match:
                     raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
+        elif cmd[:2] == ['oras', 'pull']:
+            # 'oras pull' exits non-zero for a missing artifact and for a registry that is
+            # unreachable, unauthenticated or erroring. Only the first means "this image was
+            # never onboarded", so match the registry's not-found codes specifically and let
+            # everything else fall through to the generic IIBError below. Deliberately does
+            # not match a bare 401/403: an authenticated registry answers 404 for an absent
+            # tag, and treating a credential failure as "not found" is what we are fixing.
+            if _regex_reverse_search(_ORAS_NOT_FOUND_REGEX, response):
+                raise ArtifactNotFoundError(exc_msg)
 
         raise IIBError(exc_msg)
 
