@@ -1307,6 +1307,21 @@ def test_remote_branch_exists_injects_token(mock_run):
 
 
 @mock.patch('iib.workers.tasks.git_utils.run_cmd')
+def test_remote_branch_exists_matches_fully_qualified_ref(mock_run):
+    # 'git ls-remote' matches a pattern against the tail of a ref at slash
+    # boundaries, so a bare 'v4.17' also matches 'refs/heads/team/v4.17'. Passing
+    # the fully-qualified ref keeps a nested branch from being reported as the
+    # tag branch, which would misroute a divergent-tag request onto the normal
+    # path where the subsequent clone fails.
+    mock_run.return_value = 'abc123\trefs/heads/v4.17\n'
+
+    assert git_utils.remote_branch_exists('https://gitlab/x.git', 'v4.17') is True
+
+    ls_remote_cmd = mock_run.call_args[0][0]
+    assert ls_remote_cmd[-1] == 'refs/heads/v4.17'
+
+
+@mock.patch('iib.workers.tasks.git_utils.run_cmd')
 def test_remote_branch_exists_propagates_command_failure(mock_run):
     # A command failure (network/auth error) must raise, not be silently read as
     # "branch absent", which would misroute the request onto the divergent path.

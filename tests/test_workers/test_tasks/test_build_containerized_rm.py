@@ -147,6 +147,7 @@ def test_handle_containerized_rm_request_success_with_overwrite(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test
@@ -349,6 +350,7 @@ def test_handle_containerized_rm_request_with_mr(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test - without overwrite_from_index_token
@@ -508,6 +510,7 @@ def test_handle_containerized_rm_conditional_opm_rm(
         'iib_image_push_template': '{registry}/iib:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test
@@ -950,6 +953,7 @@ def test_handle_containerized_rm_with_index_db_push(
         'iib_image_push_template': '{registry}/iib:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test
@@ -1102,6 +1106,7 @@ def test_handle_containerized_rm_with_build_tags(
         'iib_image_push_template': '{registry}/iib:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test
@@ -1238,6 +1243,7 @@ def test_handle_containerized_rm_close_mr_failure_logged(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Mock close_mr to raise error

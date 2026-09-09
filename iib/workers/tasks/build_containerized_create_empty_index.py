@@ -199,7 +199,7 @@ def handle_containerized_create_empty_index_request(
 
         # Construct the pullspec for the empty index.db artifact.
         # This tag intentionally does NOT use the content-digest key that
-        # _get_artifact_combined_tag derives for real indexes: the empty index.db
+        # _get_content_addressed_artifact_tag derives for real indexes: the empty index.db
         # is a shared, content-free seed artifact keyed only by image name +
         # "empty", so it is deliberately reusable across indexes rather than tied
         # to any single image's manifest digest.

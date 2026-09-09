@@ -81,7 +81,7 @@ def get_index_tag(from_index: str) -> str:
     return tag
 
 
-def _get_artifact_combined_tag(from_index: str) -> str:
+def _get_content_addressed_artifact_tag(from_index: str) -> str:
     """
     Generate the content-addressed artifact/ImageStream tag for an index image.
 
@@ -112,7 +112,7 @@ def get_indexdb_artifact_pullspec(from_index: str) -> str:
 
     return conf['iib_index_db_artifact_template'].format(
         registry=conf['iib_index_db_artifact_registry'],
-        tag=_get_artifact_combined_tag(from_index),
+        tag=_get_content_addressed_artifact_tag(from_index),
     )
 
 
@@ -314,7 +314,7 @@ def verify_indexdb_cache_for_image(index_image_pullspec: str) -> bool:
     :return: The result of the cache synchronization verification process.
     :rtype: str
     """
-    return verify_indexdb_cache_sync(_get_artifact_combined_tag(index_image_pullspec))
+    return verify_indexdb_cache_sync(_get_content_addressed_artifact_tag(index_image_pullspec))
 
 
 def refresh_indexdb_cache(
@@ -360,7 +360,7 @@ def refresh_indexdb_cache_for_image(index_image_pullspec: str) -> None:
 
     :param str index_image_pullspec: The pull specification of the index image to cache.
     """
-    refresh_indexdb_cache(_get_artifact_combined_tag(index_image_pullspec))
+    refresh_indexdb_cache(_get_content_addressed_artifact_tag(index_image_pullspec))
 
 
 def get_imagestream_artifact_pullspec(from_index: str) -> str:
@@ -375,11 +375,11 @@ def get_imagestream_artifact_pullspec(from_index: str) -> str:
     :rtype: str
     """
     conf = get_worker_config()
-    combined_tag = _get_artifact_combined_tag(from_index)
+    artifact_tag = _get_content_addressed_artifact_tag(from_index)
 
     # ImageStream pullspec format:
-    # image-registry.openshift-image-registry.svc:5000/{namespace}/index-db:{combined_tag}
+    # image-registry.openshift-image-registry.svc:5000/{namespace}/index-db:{artifact_tag}
     imagestream_pullspec = conf['iib_index_db_artifact_template'].format(
-        registry=conf['iib_index_db_imagestream_registry'], tag=combined_tag
+        registry=conf['iib_index_db_imagestream_registry'], tag=artifact_tag
     )
     return imagestream_pullspec

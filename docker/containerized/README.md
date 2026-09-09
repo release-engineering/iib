@@ -284,6 +284,8 @@ Cached `index.db` artifact tags (ORAS) and ImageStream tags are keyed on the ind
 - **Namespace-safe:** two images that share a repository name in different registry namespaces (e.g. `quay.io/redhat/my-index:v4.17` vs `quay.io/redhat-pending/my-index:v4.17`) have different content and therefore different digests, so they never collide on the same cache tag.
 - **Promotion-safe:** the same image content addressed by different pullspecs after a release or mirror (e.g. `quay.io/my-namespace/iib-pub:v4.17` → `registry.access.redhat.com/some-namespace/operator-index:v4.17`) preserves its manifest digest, so both pullspecs resolve to the *same* cache entry and share one `index.db`.
 
+The tag is built from `iib_index_db_artifact_tag_template` (default `idb-{digest}`) on both the read and the write path. Its placeholders changed with this scheme: `{image_name}` and `{tag}` are no longer supplied, and `{digest}` is. A deployment carrying an override from the old scheme is rejected at worker startup with a `ConfigError` naming the setting, rather than failing part-way through a build.
+
 Cache entries written under the previous pullspec-derived naming scheme are orphaned by this change — they are not migrated in place. On the normal path IIB never falls back to extracting `index.db` from the image: if the digest-keyed artifact is missing, the request fails with a "no index.db found for the image, onboard the image to build" error, and the image must be onboarded (which populates the artifact) before it can be built. Orphaned entries are cleaned up by the existing cache-pruning process rather than any code path in this workflow.
 
 ## Differences from Traditional Workflow
