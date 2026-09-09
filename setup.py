@@ -20,6 +20,7 @@ setup(
         'flask-migrate',
         'flask-sqlalchemy',
         'importlib-resources',
+        'confluent-kafka',
         'kubernetes',
         'operator-manifest==0.0.5',
         'psycopg2-binary',
