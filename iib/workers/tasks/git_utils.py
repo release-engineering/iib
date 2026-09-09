@@ -193,6 +193,7 @@ def remote_branch_exists(
     :param str branch: The branch name to check.
     :param str token_name: Optional name of the Git repository token.
     :param str token: Optional value of the Git repository token.
+    :return: True if the branch exists on the remote, False otherwise.
     :rtype: bool
     :raises IIBError: If the ``git ls-remote`` command fails (e.g. network or auth error).
     """
@@ -201,11 +202,17 @@ def remote_branch_exists(
         base_url = repo_url.replace('https://', '')
         ls_remote_url = f"https://{token_name}:{token}@{base_url}"
 
+    # Match the fully-qualified ref, not the bare branch name: 'git ls-remote'
+    # matches a pattern against the tail of a ref at slash boundaries, so the
+    # bare name 'v4.17' also matches 'refs/heads/team/v4.17' and would report a
+    # branch that does not exist -- misrouting a divergent-tag request onto the
+    # normal path, where the subsequent clone then fails.
+    #
     # strict=True (default) so a command failure raises IIBError instead of
     # returning empty output that would be misread as "branch absent". The
     # exc_msg deliberately references repo_url, not the token-injected URL.
     remote_branch_status = run_cmd(
-        ["git", "ls-remote", "--heads", ls_remote_url, branch],
+        ["git", "ls-remote", "--heads", ls_remote_url, f"refs/heads/{branch}"],
         exc_msg=f"Error checking for remote branch '{branch}' in repo {repo_url}",
     )
     return bool(remote_branch_status.strip())

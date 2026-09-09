@@ -383,6 +383,7 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
     _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
     _validate_konflux_config(conf)
+    _validate_index_db_artifact_tag_template(conf)
 
     if conf.get('iib_aws_s3_bucket_name'):
         if not isinstance(conf['iib_aws_s3_bucket_name'], str):
@@ -436,6 +437,40 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
                 '"OTEL_EXPORTER_OTLP_ENDPOINT" and "OTEL_SERVICE_NAME" environment '
                 'variables must be set to valid strings when "IIB_OTEL_TRACING" is set to True.'
             )
+
+
+def _validate_index_db_artifact_tag_template(conf: app.utils.Settings) -> None:
+    """
+    Ensure the index.db artifact tag template is keyed on the image content digest.
+
+    The template placeholders changed from ``{image_name}``/``{tag}`` to ``{digest}``
+    when index.db cache keys became content-addressed. A deployment carrying an
+    override from the old scheme would otherwise fail deep inside a build with a
+    bare ``KeyError``; catch it at worker startup and name the setting instead.
+
+    :param celery.app.utils.Settings conf: the Celery application configuration to validate
+    :raises iib.exceptions.ConfigError: if the template does not use ``{digest}``
+    """
+    template = conf.get('iib_index_db_artifact_tag_template')
+    if template is None:
+        # Not overridden, so the config class default applies. Only a site-level
+        # override can be wrong here, and an override is always present.
+        return
+
+    try:
+        template.format(digest='0' * 64)
+    except (KeyError, IndexError):
+        raise ConfigError(
+            'iib_index_db_artifact_tag_template must use only the "{digest}" placeholder. '
+            'index.db cache entries are keyed on the index image manifest digest; the '
+            f'"{{image_name}}"/"{{tag}}" placeholders are no longer supplied. Got: {template}'
+        )
+
+    if '{digest}' not in template:
+        raise ConfigError(
+            'iib_index_db_artifact_tag_template must contain the "{digest}" placeholder so '
+            f'cache entries stay keyed on image content. Got: {template}'
+        )
 
 
 def _validate_multiple_opm_mapping(iib_ocp_opm_mapping: Dict[str, str]) -> None:

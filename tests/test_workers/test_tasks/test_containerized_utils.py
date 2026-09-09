@@ -2,6 +2,7 @@
 import inspect
 import json
 import os
+from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
 
@@ -316,6 +317,7 @@ def test_push_keys_current_artifact_on_output_digest(
     m_gwc.return_value = {
         'iib_index_db_artifact_registry': 'quay.io/iib',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
     # digest resolved from the OUTPUT image, not from_index
     m_digest.return_value = 'f' * 64
@@ -348,6 +350,7 @@ def test_push_throwaway_skips_current_artifact(
     m_gwc.return_value = {
         'iib_index_db_artifact_registry': 'quay.io/iib',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
     m_digest.return_value = 'a' * 64
     db = tmp_path / 'index.db'
@@ -363,6 +366,121 @@ def test_push_throwaway_skips_current_artifact(
     )
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
     assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}  # only per-request tag
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_honors_configured_tag_template(m_exists, m_state, m_gwc, m_digest, m_push, tmp_path):
+    # The write path must derive its tag from the same config template the read
+    # path uses, or an operator override leaves pushed and looked-up tags
+    # disagreeing and every lookup misses.
+    m_gwc.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'cache-{digest}',
+    }
+    m_digest.return_value = 'b' * 64
+    db = tmp_path / 'index.db'
+    db.write_text('x')
+    push_index_db_artifact(
+        request_id=9,
+        from_index='quay.io/ns/foo:v4.17',
+        index_db_path=str(db),
+        operators=[],
+        output_image='quay.io/ns/foo@sha256:' + 'b' * 64,
+        overwrite_from_index=True,
+        request_type='add',
+    )
+    pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
+    assert pushed_refs == {
+        'quay.io/iib/index-db:cache-' + 'b' * 64,
+        'quay.io/iib/index-db:cache-' + 'b' * 64 + '-9',
+    }
+
+
+def test_reject_escaping_symlinks_allows_tree_without_symlinks(tmp_path):
+    root = tmp_path / 'configs'
+    (root / 'my-operator').mkdir(parents=True)
+    (root / 'my-operator' / 'catalog.json').write_text('{}')
+
+    assert cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'configs') is None
+
+
+def test_reject_escaping_symlinks_allows_internal_relative_symlink(tmp_path):
+    # A link that stays inside the extraction root resolves to real content that
+    # was already extracted from the image, so it is not an escape.
+    root = tmp_path / 'configs'
+    (root / 'pkg').mkdir(parents=True)
+    (root / 'pkg' / 'catalog.json').write_text('{}')
+    (root / 'alias.json').symlink_to(Path('pkg') / 'catalog.json')
+
+    assert cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'configs') is None
+
+
+def test_reject_escaping_symlinks_rejects_absolute_symlink(tmp_path):
+    # The exfiltration case: a hostile image ships /configs/x -> /etc/passwd, and
+    # a later plain copytree would resolve it against the worker filesystem and
+    # commit host content to git.
+    root = tmp_path / 'configs'
+    root.mkdir()
+    (root / 'leak.json').symlink_to('/etc/passwd')
+
+    with pytest.raises(IIBError, match='points outside the extracted content'):
+        cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'FBC configs directory')
+
+
+def test_reject_escaping_symlinks_rejects_relative_escape(tmp_path):
+    outside = tmp_path / 'outside.txt'
+    outside.write_text('secret')
+    root = tmp_path / 'configs'
+    root.mkdir()
+    (root / 'leak.json').symlink_to(Path('..') / 'outside.txt')
+
+    with pytest.raises(IIBError, match='points outside the extracted content'):
+        cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'FBC configs directory')
+
+
+def test_reject_escaping_symlinks_rejects_dangling_absolute_symlink(tmp_path):
+    # resolve() is non-strict, so a link to a path that does not exist still
+    # yields a target outside the root and is caught rather than skipped.
+    root = tmp_path / 'configs'
+    root.mkdir()
+    (root / 'leak.json').symlink_to('/nonexistent/host/path')
+
+    with pytest.raises(IIBError, match='points outside the extracted content'):
+        cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'FBC configs directory')
+
+
+def test_reject_escaping_symlinks_rejects_escaping_directory_symlink(tmp_path):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'secret.json').write_text('{}')
+    root = tmp_path / 'configs'
+    root.mkdir()
+    (root / 'pkg').symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(IIBError, match='points outside the extracted content'):
+        cu._reject_escaping_symlinks(str(root), 'quay.io/ns/foo:v1', 'FBC configs directory')
+
+
+@patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+@patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_and_db_rejects_escaping_symlink(m_label, m_extract, m_gwc, tmp_path):
+    m_label.return_value = '/configs'
+    m_gwc.return_value = {'hidden_index_db_path': '/var/lib/iib/_hidden/do.not.edit.db'}
+
+    def fake_extract(image, src_path, dest_path):
+        Path(dest_path).mkdir(parents=True, exist_ok=True)
+        Path(dest_path, 'leak.json').symlink_to('/etc/passwd')
+
+    m_extract.side_effect = fake_extract
+
+    with pytest.raises(IIBError, match='points outside the extracted content'):
+        extract_catalog_and_db_from_image('quay.io/ns/foo@sha256:abc', str(tmp_path))
 
 
 @patch('iib.workers.tasks.containerized_utils.log')
@@ -1089,7 +1207,7 @@ def _parse_oc_extract_path(cmd):
     return src, dst, False
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_success_directory(mock_run_cmd, tmpdir):
     """A directory is extracted via the '<dir>/*' glob form into dest_path."""
 
@@ -1115,7 +1233,7 @@ def test_extract_files_from_image_non_privileged_success_directory(mock_run_cmd,
     assert (src, is_dir) == ('/manifests', True)
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_success_file(mock_run_cmd, tmpdir):
     """A single file is extracted via the no-glob form and copied to dest_path.
 
@@ -1147,7 +1265,7 @@ def test_extract_files_from_image_non_privileged_success_file(mock_run_cmd, tmpd
     assert forms == [True, False]
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_path_not_found(mock_run_cmd, tmpdir):
     """When neither form extracts anything, FileNotFoundInImageError is raised.
 
@@ -1164,7 +1282,7 @@ def test_extract_files_from_image_non_privileged_path_not_found(mock_run_cmd, tm
     assert mock_run_cmd.call_count == 2
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_oc_failure(mock_run_cmd, tmpdir):
     """A failure from 'oc image extract' propagates as IIBError."""
     mock_run_cmd.side_effect = IIBError('Failed to extract /manifests from image')
@@ -1175,7 +1293,7 @@ def test_extract_files_from_image_non_privileged_oc_failure(mock_run_cmd, tmpdir
         )
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_relative_src_rejected(mock_run_cmd, tmpdir):
     """A non-absolute src_path is rejected before invoking oc."""
     with pytest.raises(IIBError, match='must be an absolute image path'):
@@ -1185,7 +1303,7 @@ def test_extract_files_from_image_non_privileged_relative_src_rejected(mock_run_
     mock_run_cmd.assert_not_called()
 
 
-@patch('iib.workers.tasks.utils.run_cmd')
+@patch('iib.workers.tasks.containerized_utils.run_cmd')
 def test_extract_files_from_image_non_privileged_root_src_rejected(mock_run_cmd, tmpdir):
     """A src_path of '/' names no path under root and is rejected."""
     with pytest.raises(IIBError, match='must name a path under /'):
