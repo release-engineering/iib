@@ -2,6 +2,7 @@
 """This file contains utility functions for containerized IIB operations."""
 import json
 import logging
+import os
 import posixpath
 import queue
 import shutil
@@ -42,7 +43,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import get_image_label, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, run_cmd, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -85,8 +86,6 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
     :raises FileNotFoundInImageError: if src_path is absent (or an empty directory)
     :raises IIBError: if src_path is not absolute or ``oc image extract`` fails
     """
-    from iib.workers.tasks.utils import run_cmd
-
     if not src_path.startswith('/'):
         raise IIBError(f'src_path must be an absolute image path, got {src_path!r}')
 
@@ -175,6 +174,46 @@ def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path
         raise FileNotFoundInImageError(f'Path {src_path} not found in image {image}.')
 
 
+def _reject_escaping_symlinks(root: str, image: str, description: str) -> None:
+    """
+    Fail if any symlink under ``root`` resolves outside of ``root``.
+
+    Content extracted from an index image is copied into the git catalog and
+    committed. ``extract_files_from_image_non_privileged`` deliberately stages
+    with ``symlinks=True`` so a link is never followed against the worker's own
+    filesystem, but that only defers the question: a later plain
+    ``shutil.copytree`` resolves what the link points at, and an image carrying
+    ``/configs/x -> /etc/passwd`` would get host content committed and pushed.
+
+    An FBC catalog is declarative JSON/YAML, so a symlink leaving the extraction
+    root is not a legitimate shape for an index image to have. Reject it by name
+    rather than silently dropping it, so a malformed or hostile image is
+    reported instead of quietly producing a subtly wrong catalog. Links that
+    stay inside ``root`` are left alone.
+
+    :param str root: The extraction directory to validate.
+    :param str image: The image the content came from, for the error message.
+    :param str description: What ``root`` holds, for the error message.
+    :raises IIBError: If a symlink under ``root`` points outside of ``root``.
+    """
+    root_resolved = Path(root).resolve()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in dirnames + filenames:
+            entry = Path(dirpath) / name
+            if not entry.is_symlink():
+                continue
+            # resolve() walks the whole link chain and, being non-strict, still
+            # yields a path for a dangling link -- so an absolute link to a
+            # non-existent host path is caught here too.
+            target = entry.resolve()
+            if target.is_relative_to(root_resolved):
+                continue
+            raise IIBError(
+                f"{description} in image {image} contains a symlink that points outside "
+                f"the extracted content: {entry.relative_to(root)} -> {os.readlink(entry)}."
+            )
+
+
 def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -> Tuple[str, str]:
     """
     Extract FBC configs and index.db from an index image, unprivileged.
@@ -202,8 +241,9 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
     :param str temp_dir: Base temp directory for extraction.
     :return: Tuple of (configs_dir_path, index_db_path).
     :rtype: Tuple[str, str]
-    :raises IIBError: If the image has no FBC configs label, if it carries no
-        hidden index.db, or if the hidden-db extraction fails for any other
+    :raises IIBError: If the image has no FBC configs label, if its configs tree
+        contains a symlink pointing outside the extracted content, if it carries
+        no hidden index.db, or if the hidden-db extraction fails for any other
         reason (e.g. a registry, OCI parsing, layer, or tar error).
     """
     configs_label = get_image_label(
@@ -234,6 +274,10 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
         )
         Path(configs_dir).mkdir(parents=True, exist_ok=True)
 
+    # The configs tree is committed to git verbatim, so refuse one that would
+    # drag content in from outside the extraction root when it is copied.
+    _reject_escaping_symlinks(configs_dir, from_index_resolved, 'FBC configs directory')
+
     index_db_path = str(Path(temp_dir) / 'extracted_index.db')
     conf = get_worker_config()
     hidden_db_path = conf['hidden_index_db_path']
@@ -247,11 +291,11 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
             index_db_path,
         )
         extract_files_from_image_non_privileged(from_index_resolved, hidden_db_path, index_db_path)
-    except FileNotFoundInImageError:
+    except FileNotFoundInImageError as e:
         raise IIBError(
             f"No index.db found in image {from_index_resolved} at hidden path "
             f"{hidden_db_path}. Onboard the image to build."
-        )
+        ) from e
 
     log.info('Extracted FBC configs to %s and index.db to %s', configs_dir, index_db_path)
     return configs_dir, index_db_path
@@ -386,12 +430,12 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
             artifact_ref,
             temp_dir,
         )
-    except IIBError:
+    except IIBError as e:
         log.error('index.db artifact %s not found for image %s', artifact_ref, from_index)
         raise IIBError(
             f"No index.db found for the image {from_index} (artifact {artifact_ref}). "
             "Onboard the image to build."
-        )
+        ) from e
 
 
 def write_build_metadata(
@@ -498,7 +542,12 @@ def push_index_db_artifact(
 
     set_request_state(request_id, 'in_progress', 'Pushing updated index database')
     conf = get_worker_config()
-    output_tag = f'idb-{_get_index_digest(output_image)}'
+    # Derive the tag through the same config template the read path uses
+    # (oras_utils._get_content_addressed_artifact_tag), so an operator override
+    # cannot leave pushed tags and looked-up tags disagreeing.
+    output_tag = conf['iib_index_db_artifact_tag_template'].format(
+        digest=_get_index_digest(output_image)
+    )
 
     request_artifact_ref = conf['iib_index_db_artifact_template'].format(
         registry=conf['iib_index_db_artifact_registry'],
@@ -584,9 +633,13 @@ def cleanup_on_failure(
         log.error("Neither MR nor commit to revert. No cleanup needed for %s", reason)
 
 
-@dataclass
+@dataclass(frozen=True)
 class BuildSources:
-    """Resolved inputs for a containerized build."""
+    """Resolved inputs for a containerized build.
+
+    Frozen so the ``is_divergent`` guard -- which decides whether an MR may be
+    merged -- cannot be flipped after ``prepare_build_sources`` has resolved it.
+    """
 
     index_git_repo: str
     local_git_repo_path: str
@@ -711,6 +764,12 @@ def prepare_git_repository_for_build(
 
     This function resolves the Git repository URL from the from_index,
     gets the Git token, clones the repository, and verifies the configs directory exists.
+
+    Intentionally retained alongside :func:`prepare_build_sources` for the request
+    types where divergent-tag detection does not apply (merge, create_empty_index):
+    those build against a caller-chosen branch rather than one derived from the
+    from_index tag, so there is no tag branch whose absence would select a
+    divergent path.
 
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec

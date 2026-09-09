@@ -14,7 +14,7 @@ from iib.workers.tasks.oras_utils import (
     get_image_stream_digest,
     refresh_indexdb_cache,
     _get_index_digest,
-    _get_artifact_combined_tag,
+    _get_content_addressed_artifact_tag,
     get_indexdb_artifact_pullspec,
     get_index_tag,
 )
@@ -32,7 +32,7 @@ def test_get_index_digest_strips_algo_prefix(mock_digest):
 def test_combined_tag_is_digest_only(mock_digest, mock_gwc):
     mock_gwc.return_value = {'iib_index_db_artifact_tag_template': 'idb-{digest}'}
     mock_digest.return_value = 'sha256:' + 'b' * 64
-    assert _get_artifact_combined_tag('quay.io/my-ns/iib-pub:v4.17') == 'idb-' + 'b' * 64
+    assert _get_content_addressed_artifact_tag('quay.io/my-ns/iib-pub:v4.17') == 'idb-' + 'b' * 64
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
@@ -41,8 +41,10 @@ def test_same_content_different_pullspec_same_tag(mock_digest, mock_gwc):
     """Problem 1b: promotion — identical digest under two pullspecs => identical tag."""
     mock_gwc.return_value = {'iib_index_db_artifact_tag_template': 'idb-{digest}'}
     mock_digest.return_value = 'sha256:' + 'c' * 64
-    staging = _get_artifact_combined_tag('quay.io/my-ns/iib-pub:v4.17')
-    released = _get_artifact_combined_tag('registry.access.redhat.com/some-ns/operator-index:v4.17')
+    staging = _get_content_addressed_artifact_tag('quay.io/my-ns/iib-pub:v4.17')
+    released = _get_content_addressed_artifact_tag(
+        'registry.access.redhat.com/some-ns/operator-index:v4.17'
+    )
     assert staging == released == 'idb-' + 'c' * 64
 
 
@@ -52,8 +54,8 @@ def test_different_content_different_tag(mock_digest, mock_gwc):
     """Problem 1: different images (different digests) => different tags."""
     mock_gwc.return_value = {'iib_index_db_artifact_tag_template': 'idb-{digest}'}
     mock_digest.side_effect = ['sha256:' + 'd' * 64, 'sha256:' + 'e' * 64]
-    a = _get_artifact_combined_tag('quay.io/redhat/foo:v4.17')
-    b = _get_artifact_combined_tag('quay.io/redhat-pending/foo:v4.17')
+    a = _get_content_addressed_artifact_tag('quay.io/redhat/foo:v4.17')
+    b = _get_content_addressed_artifact_tag('quay.io/redhat-pending/foo:v4.17')
     assert a != b
 
 
@@ -703,12 +705,12 @@ def test_get_name_and_tag_from_pullspec_invalid(invalid_pullspec, expected_error
 )
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
-def test_get_artifact_combined_tag(mock_digest, mock_gwc, pullspec, digest, expected_tag):
+def test_get_content_addressed_artifact_tag(mock_digest, mock_gwc, pullspec, digest, expected_tag):
     """Test generating combined artifact tags."""
     mock_gwc.return_value = {'iib_index_db_artifact_tag_template': 'idb-{digest}'}
     mock_digest.return_value = f'sha256:{digest}'
 
-    result = _get_artifact_combined_tag(pullspec)
+    result = _get_content_addressed_artifact_tag(pullspec)
 
     assert result == expected_tag
 

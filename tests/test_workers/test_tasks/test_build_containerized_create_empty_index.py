@@ -115,6 +115,7 @@ def test_handle_containerized_create_empty_index_primary_path(
     mock_gwc_local.return_value = {
         'iib_empty_index_db_tag': 'empty',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
     }
 
@@ -141,6 +142,7 @@ def test_handle_containerized_create_empty_index_primary_path(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Mock metadata file read/write for labels
@@ -345,6 +347,7 @@ def test_handle_containerized_create_empty_index_fallback(
     mock_gwc_local.return_value = {
         'iib_empty_index_db_tag': 'empty',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
     }
 
@@ -381,6 +384,7 @@ def test_handle_containerized_create_empty_index_fallback(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Test
@@ -500,6 +504,7 @@ def test_handle_containerized_create_empty_index_pipeline_failure(
     mock_gwc_local.return_value = {
         'iib_empty_index_db_tag': 'empty',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
     }
 
@@ -686,6 +691,7 @@ def test_handle_containerized_create_empty_index_unexpected_opm_error(
     mock_gwc_local.return_value = {
         'iib_empty_index_db_tag': 'empty',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
     }
 
@@ -713,6 +719,7 @@ def test_handle_containerized_create_empty_index_unexpected_opm_error(
         'iib_image_push_template': '{registry}/iib-build:{request_id}',
         'iib_index_db_artifact_registry': 'artifact-registry.io',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+        'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
 
     # Execute and verify error is raised

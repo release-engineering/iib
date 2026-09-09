@@ -9,7 +9,12 @@ import celery
 import pytest
 
 from iib.exceptions import ConfigError
-from iib.workers.config import configure_celery, validate_celery_config, _validate_konflux_config
+from iib.workers.config import (
+    configure_celery,
+    validate_celery_config,
+    _validate_index_db_artifact_tag_template,
+    _validate_konflux_config,
+)
 
 
 @patch('os.path.isfile', return_value=False)
@@ -603,3 +608,42 @@ def test_validate_konflux_config_valid_environment_name_variants(env_name):
     }.get(key)
 
     _validate_konflux_config(conf)
+
+
+@pytest.mark.parametrize(
+    'template',
+    (
+        'idb-{digest}',
+        '{digest}',
+        'index-db-{digest}-cache',
+    ),
+)
+def test_validate_index_db_artifact_tag_template_valid(template):
+    assert (
+        _validate_index_db_artifact_tag_template({'iib_index_db_artifact_tag_template': template})
+        is None
+    )
+
+
+def test_validate_index_db_artifact_tag_template_absent_uses_default():
+    # Only a site-level override can be wrong, and an override is always present;
+    # an absent key means the config class default applies.
+    assert _validate_index_db_artifact_tag_template({}) is None
+
+
+@pytest.mark.parametrize(
+    'template, expected',
+    (
+        # Carried over from the pullspec-derived naming scheme; these placeholders
+        # are no longer supplied and would raise a bare KeyError mid-build.
+        ('{image_name}-{tag}', 'must use only the "{digest}" placeholder'),
+        ('{tag}', 'must use only the "{digest}" placeholder'),
+        # Formats cleanly but drops the content key, silently sharing one cache
+        # entry across every index image.
+        ('idb-static', 'must contain the "{digest}" placeholder'),
+        ('', 'must contain the "{digest}" placeholder'),
+    ),
+)
+def test_validate_index_db_artifact_tag_template_invalid(template, expected):
+    with pytest.raises(ConfigError, match=re.escape(expected)):
+        _validate_index_db_artifact_tag_template({'iib_index_db_artifact_tag_template': template})
