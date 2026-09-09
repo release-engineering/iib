@@ -75,6 +75,14 @@ iib.web.manage module
    :private-members:
    :show-inheritance:
 
+iib.web.kafka\_producer module
+------------------------------
+
+.. automodule:: iib.web.kafka_producer
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 iib.web.messaging module
 ------------------------
 

@@ -26,6 +26,13 @@ class Config(object):
     IIB_GRAPH_MODE_INDEX_ALLOW_LIST: List[str] = []
     IIB_GRAPH_MODE_OPTIONS: List[str] = ['replaces', 'semver', 'semver-skippatch']
     IIB_GREENWAVE_CONFIG: Dict[str, str] = {}
+    # Kafka messaging configuration
+    IIB_KAFKA_BATCH_STATE_TOPIC: Optional[str] = None
+    IIB_KAFKA_BROKERS: Optional[List[str]] = None
+    IIB_KAFKA_BUILD_STATE_TOPIC: Optional[str] = None
+    IIB_KAFKA_PASSWORD: Optional[str] = None
+    IIB_KAFKA_SSL_CAFILE: str = '/etc/pki/tls/certs/ca-bundle.crt'
+    IIB_KAFKA_USERNAME: Optional[str] = None
     IIB_LOG_FORMAT: str = '%(asctime)s %(name)s %(levelname)s %(module)s.%(funcName)s %(message)s'
     # This sets the level of the "flask.app" logger, which is accessed from current_app.logger
     IIB_LOG_LEVEL: str = 'INFO'

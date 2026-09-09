@@ -312,6 +312,21 @@ The custom configuration options for AMQP 1.0 messaging are listed below:
 * `IIB_MESSAGING_URLS` - a list of AMQP(S) URLs to use when connecting to the AMQP 1.0 broker. This
   must be set if messaging is enabled.
 
+The custom configuration options for Kafka messaging are listed below. Kafka messaging is optional.
+When configured, IIB publishes the state-change events to configured Kafka topics :
+
+* `IIB_KAFKA_BROKERS` - a list of Kafka broker addresses (e.g. `['broker1:9096', 'broker2:9096']`).
+  If this is not set, Kafka messaging is disabled entirely.
+* `IIB_KAFKA_USERNAME` - the SASL username for Kafka authentication. Both `IIB_KAFKA_USERNAME` and
+  `IIB_KAFKA_PASSWORD` must be set together.
+* `IIB_KAFKA_PASSWORD` - the SASL password for Kafka authentication.
+* `IIB_KAFKA_SSL_CAFILE` - the path to a CA certificate file used to verify the Kafka broker's TLS
+  certificate. This defaults to `/etc/pki/tls/certs/ca-bundle.crt`.
+* `IIB_KAFKA_BUILD_STATE_TOPIC` - the Kafka topic to publish build request state-change messages to.
+  If this is not set, build state-change messages will not be published to Kafka.
+* `IIB_KAFKA_BATCH_STATE_TOPIC` - the Kafka topic to publish batch state-change messages to.
+  If this is not set, batch state-change messages will not be published to Kafka.
+
 If you wish to configure AWS S3 bucket for storing artifact files, the following **environment variables**
 must be set along with `IIB_AWS_S3_BUCKET_NAME` config variable:
 
