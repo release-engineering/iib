@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from iib.exceptions import IIBError, FileNotFoundInImageError
+from iib.exceptions import ArtifactNotFoundError, IIBError, FileNotFoundInImageError
 from iib.workers.tasks import containerized_utils as cu
 from iib.workers.tasks.containerized_utils import (
     extract_catalog_and_db_from_image,
@@ -301,9 +301,29 @@ def test_pull_raises_when_artifact_missing(m_gwc, m_ref, m_pull):
     """
     m_gwc.return_value = {'iib_use_imagestream_cache': False}
     m_ref.return_value = 'quay.io/iib/index-db:idb-x'
-    m_pull.side_effect = IIBError('not found')  # Quay miss
+    m_pull.side_effect = ArtifactNotFoundError('not found')  # Quay miss
     with pytest.raises(IIBError, match='No index.db found for the image'):
         pull_index_db_artifact('quay.io/ns/foo:v4.17', '/tmp/req')
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_pull_reports_registry_failure_as_distinct_from_missing(m_gwc, m_ref, m_pull):
+    """A registry that cannot answer must not be reported as an un-onboarded image.
+
+    Telling the user to onboard an image that is already onboarded sends them
+    down the wrong path, so a transient pull failure keeps its own message.
+    """
+    m_gwc.return_value = {'iib_use_imagestream_cache': False}
+    m_ref.return_value = 'quay.io/iib/index-db:idb-x'
+    m_pull.side_effect = IIBError('Failed to pull OCI artifact: 503 Service Unavailable')
+
+    with pytest.raises(IIBError, match='Failed to pull the index.db artifact') as exc_info:
+        pull_index_db_artifact('quay.io/ns/foo:v4.17', '/tmp/req')
+
+    assert 'Onboard the image' not in str(exc_info.value)
+    assert '503 Service Unavailable' in str(exc_info.value)
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')

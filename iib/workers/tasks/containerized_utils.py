@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from iib.exceptions import IIBError, FileNotFoundInImageError
+from iib.exceptions import ArtifactNotFoundError, IIBError, FileNotFoundInImageError
 from iib.workers.api_utils import set_request_state
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import BundleImage
@@ -395,7 +395,8 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
     :param str temp_dir: Temporary directory where the artifact will be extracted
     :return: Path to the directory containing the extracted artifact
     :rtype: str
-    :raises IIBError: If the pull operation fails
+    :raises IIBError: If the artifact does not exist (the image was never onboarded) or if the
+        pull fails for any other reason. The two cases carry different messages.
     """
     conf = get_worker_config()
     if conf.get('iib_use_imagestream_cache', False):
@@ -430,11 +431,21 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
             artifact_ref,
             temp_dir,
         )
-    except IIBError as e:
+    except ArtifactNotFoundError as e:
         log.error('index.db artifact %s not found for image %s', artifact_ref, from_index)
         raise IIBError(
             f"No index.db found for the image {from_index} (artifact {artifact_ref}). "
             "Onboard the image to build."
+        ) from e
+    except IIBError as e:
+        # The registry could not answer (unreachable, auth, 5xx). Telling the user to onboard
+        # an image that is already onboarded sends them down the wrong path, so say what
+        # actually happened and let the request be retried.
+        log.error('Failed to pull index.db artifact %s for image %s', artifact_ref, from_index)
+        raise IIBError(
+            f"Failed to pull the index.db artifact {artifact_ref} for the image {from_index}: "
+            f"{e}. This is not a missing artifact; the registry could not be reached or "
+            "refused the request."
         ) from e
 
 

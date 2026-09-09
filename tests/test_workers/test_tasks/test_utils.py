@@ -11,6 +11,7 @@ from unittest import mock
 
 import pytest
 
+from iib.exceptions import ArtifactNotFoundError
 from iib.exceptions import ExternalServiceError
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
@@ -533,6 +534,84 @@ def test_run_cmd_failed_buildah_registry_unavailable(mock_sub_run: mock.MagicMoc
             exc_msg='Failed to build the container image on the arch amd64',
         )
 
+    mock_sub_run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'subprocess_stderr',
+    (
+        'Error: quay.io/iib/index-db:idb-abc123: not found',
+        'Error: failed to resolve quay.io/iib/index-db:idb-abc123: not found',
+        (
+            'Error: unexpected status code 404: MANIFEST_UNKNOWN: manifest unknown; '
+            'map[Tag:idb-abc123]'
+        ),
+        'Error: NAME_UNKNOWN: repository name not known to registry',
+        'Error: BLOB_UNKNOWN: blob unknown to registry',
+        'Error: recv failure: unexpected status: 404 Not Found',
+    ),
+)
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_oras_pull_artifact_missing(mock_sub_run, subprocess_stderr):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = subprocess_stderr
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(ArtifactNotFoundError, match='Failed to pull OCI artifact'):
+        utils.run_cmd(
+            ['oras', 'pull', 'quay.io/iib/index-db:idb-abc123', '-o', '/tmp/somewhere'],
+            exc_msg='Failed to pull OCI artifact quay.io/iib/index-db:idb-abc123',
+        )
+
+    mock_sub_run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    'subprocess_stderr',
+    (
+        'Error: unexpected status code 401: UNAUTHORIZED: authentication required',
+        'Error: unexpected status code 403: DENIED: access forbidden',
+        'Error: unexpected status code 503: Service Unavailable',
+        'Error: dial tcp: lookup quay.io: no such host',
+        'Error: context deadline exceeded (Client.Timeout exceeded while awaiting headers)',
+    ),
+)
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_oras_pull_registry_error_is_not_artifact_missing(
+    mock_sub_run, subprocess_stderr
+):
+    """A registry that cannot answer must not be reported as a missing artifact."""
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = subprocess_stderr
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError, match='Failed to pull OCI artifact') as exc_info:
+        utils.run_cmd(
+            ['oras', 'pull', 'quay.io/iib/index-db:idb-abc123', '-o', '/tmp/somewhere'],
+            exc_msg='Failed to pull OCI artifact quay.io/iib/index-db:idb-abc123',
+        )
+
+    assert not isinstance(exc_info.value, ArtifactNotFoundError)
+    mock_sub_run.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_oras_push_is_never_artifact_missing(mock_sub_run):
+    """'not found' on a push says nothing about whether the artifact was already there."""
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = 'Error: quay.io/iib/index-db:idb-abc123: not found'
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError, match='Failed to push') as exc_info:
+        utils.run_cmd(
+            ['oras', 'push', 'quay.io/iib/index-db:idb-abc123', 'index.db'],
+            exc_msg='Failed to push OCI artifact quay.io/iib/index-db:idb-abc123',
+        )
+
+    assert not isinstance(exc_info.value, ArtifactNotFoundError)
     mock_sub_run.assert_called_once()
 
 
