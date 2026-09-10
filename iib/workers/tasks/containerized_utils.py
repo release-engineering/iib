@@ -751,7 +751,10 @@ def prepare_build_sources(
     catalog_path = local_git_repo_path / 'configs'
     if catalog_path.exists():
         shutil.rmtree(catalog_path)
-    shutil.copytree(extracted_configs, catalog_path)
+    # symlinks=True for the same reason as the extraction copy: escaping links are
+    # already rejected, and the ones that remain are internal to the catalog, so copy
+    # them verbatim instead of materializing duplicate regular files in the commit.
+    shutil.copytree(extracted_configs, catalog_path, symlinks=True)
 
     return BuildSources(
         index_git_repo=index_git_repo,

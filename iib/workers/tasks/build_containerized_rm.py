@@ -303,6 +303,12 @@ def handle_containerized_rm_request(
             # Merge or close the MR as the final step so that all side effects
             # (replication, metadata, index.db push) have succeeded before git
             # is advanced. This prevents git/index.db divergence on partial failure.
+            #
+            # The `not sources.is_divergent` half is defense-in-depth: prepare_build_sources
+            # already rejects overwrite_from_index on the divergent path, so this cannot be
+            # reached with both set. It stays because a divergent build reuses the base OCP
+            # branch's Konflux Component -- merging its MR would publish one tag's content
+            # onto the shared branch.
             if overwrite_from_index and not sources.is_divergent:
                 merge_mr_after_build(mr_details, index_git_repo)
                 # Prevent cleanup_on_failure from trying to close an already-merged MR
