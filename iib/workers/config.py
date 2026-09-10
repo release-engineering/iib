@@ -439,6 +439,13 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
             )
 
 
+# Maximum length of an OCI reference tag, per the distribution spec grammar.
+_OCI_MAX_TAG_LENGTH = 128
+# Characters held back for the "-<request_id>" suffix the index.db push path appends:
+# one separator plus a 10-digit request id, which covers the full 32-bit id range.
+_REQUEST_ID_SUFFIX_RESERVE = 11
+
+
 def _validate_index_db_artifact_tag_template(conf: app.utils.Settings) -> None:
     """
     Ensure the index.db artifact tag template is keyed on the image content digest.
@@ -449,7 +456,8 @@ def _validate_index_db_artifact_tag_template(conf: app.utils.Settings) -> None:
     bare ``KeyError``; catch it at worker startup and name the setting instead.
 
     :param celery.app.utils.Settings conf: the Celery application configuration to validate
-    :raises iib.exceptions.ConfigError: if the template does not use ``{digest}``
+    :raises iib.exceptions.ConfigError: if the template does not use ``{digest}``, or if it
+        cannot yield a tag within the OCI length limit
     """
     template = conf.get('iib_index_db_artifact_tag_template')
     if template is None:
@@ -470,6 +478,20 @@ def _validate_index_db_artifact_tag_template(conf: app.utils.Settings) -> None:
         raise ConfigError(
             'iib_index_db_artifact_tag_template must contain the "{digest}" placeholder so '
             f'cache entries stay keyed on image content. Got: {template}'
+        )
+
+    # An OCI reference tag is capped at 128 characters. The push path appends
+    # "-<request_id>" to the rendered tag for the per-request copy, so the template must
+    # leave room for that suffix too -- otherwise a long custom prefix passes startup and
+    # then fails at push time, after the image has already been built.
+    rendered_length = len(template.format(digest='0' * 64))
+    budget = _OCI_MAX_TAG_LENGTH - _REQUEST_ID_SUFFIX_RESERVE
+    if rendered_length > budget:
+        raise ConfigError(
+            'iib_index_db_artifact_tag_template renders a tag of '
+            f'{rendered_length} characters, which leaves no room for the "-<request_id>" '
+            f'suffix within the {_OCI_MAX_TAG_LENGTH}-character OCI tag limit. Keep the '
+            f'rendered tag at or under {budget} characters. Got: {template}'
         )
 
 

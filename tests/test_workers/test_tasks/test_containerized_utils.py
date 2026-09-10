@@ -1583,3 +1583,40 @@ def test_prepare_build_sources_divergent_extracts(
     # the index.db matches the exact image the request resolved to.
     mock_extract.assert_called_once()
     assert mock_extract.call_args.args[0] == 'quay.io/redhat/my-index@sha256:deadbeef'
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_catalog_and_db_from_image')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch(
+    'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
+)
+def test_prepare_build_sources_divergent_preserves_internal_symlinks(
+    mock_url, mock_tok, mock_clone, mock_extract, mock_state, tmp_path
+):
+    # _reject_escaping_symlinks permits links that stay inside the extraction root, so
+    # the copy into the git catalog must keep them as links rather than dereferencing
+    # them into duplicate regular files in the commit.
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.remote_branch_exists',
+        side_effect=[False, True],
+    ):
+        cfg = tmp_path / 'ex_configs'
+        (cfg / 'op').mkdir(parents=True)
+        (cfg / 'op' / 'catalog.json').write_text('{}')
+        (cfg / 'op' / 'alias.json').symlink_to('catalog.json')
+        mock_extract.return_value = (str(cfg), str(tmp_path / 'ex.db'))
+        src = cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:test',
+            from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=False,
+        )
+
+    copied_alias = Path(src.localized_git_catalog_path) / 'op' / 'alias.json'
+    assert copied_alias.is_symlink()
+    assert os.readlink(copied_alias) == 'catalog.json'
