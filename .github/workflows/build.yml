@@ -16,6 +16,19 @@ jobs:
   deployments:
     name: Build and Push to quay.io
     runs-on: ubuntu-latest
+    # Only build releases from the legacy `v*` series, which is cut from master.
+    #
+    # Releases cut from `main` (containerized IIB) use the `ocp-v*` series and are built by
+    # release_on_ocp_tag.yml on that branch. GitHub offers no way to filter `release` events
+    # by tag name under `on:`, so the tag has to be checked here instead. Without this guard,
+    # publishing a release from main would check out main's tree and push it as `latest` --
+    # the channel the legacy track promotes to the `prod` tag on Quay from.
+    #
+    # The scheduled and manual paths need no such guard: they resolve their tag via
+    # find-latest-tag with prefix 'v', which already excludes `ocp-v*`.
+    if: >-
+      github.event_name != 'release'
+      || startsWith(github.event.release.tag_name, 'v')
 
     steps:
       - name: Get latest tag
