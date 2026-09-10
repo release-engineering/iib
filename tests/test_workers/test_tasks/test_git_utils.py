@@ -897,7 +897,6 @@ def test_push_configs_to_git_removing_content(
 @mock.patch("iib.workers.tasks.git_utils.run_cmd")
 @mock.patch("iib.workers.tasks.git_utils.get_git_token")
 @mock.patch("iib.workers.tasks.git_utils.clone_git_repo")
-@mock.patch("iib.workers.tasks.git_utils.configure_git_user")
 @mock.patch("iib.workers.tasks.git_utils.commit_and_push")
 @mock.patch("iib.workers.tasks.git_utils.os.path.exists")
 @mock.patch("iib.workers.tasks.git_utils.os.listdir")
@@ -905,7 +904,6 @@ def test_push_configs_to_git_add_and_remove(
     mock_listdir,
     mock_path_exists,
     mock_commit_and_push,
-    mock_configure_git,
     mock_clone,
     mock_ggt,
     mock_cmd,
@@ -917,7 +915,6 @@ def test_push_configs_to_git_add_and_remove(
     mock_ggt.return_value = "foo", "bar"
     mock_cmd.return_value = "main"
     mock_clone.return_value = None
-    mock_configure_git.return_value = None
     mock_commit_and_push.return_value = None
     mock_path_exists.return_value = False
     mock_listdir.return_value = ["operator1", "operator2", "operator3"]

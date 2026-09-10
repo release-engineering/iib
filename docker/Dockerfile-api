@@ -1,4 +1,8 @@
-FROM registry.access.redhat.com/ubi9/ubi:latest
+# Base layer pinned by digest to the linux/amd64 manifest of ubi9/ubi:latest
+# (9.8-1788939089 as of this pin). Note the `dnf update -y` below still pulls current
+# packages, so the full image is not bit-for-bit reproducible.
+# Keep this digest in lockstep with the other Dockerfiles when bumping.
+FROM registry.access.redhat.com/ubi9/ubi@sha256:4406835b776f05688a823ff532203587b9238510817645c9f37e0fdac1743b8c
 LABEL maintainer="Red Hat - EXD"
 
 WORKDIR /src
@@ -24,13 +28,13 @@ RUN dnf -y install \
     && dnf clean all
 
 # UBI9 doesn't come with alternatives installed for python3 by default, so we need to set it manually
-RUN update-alternatives --install /usr/bin/python3 python3 $(which python3.12) 1
-RUN update-alternatives --install /usr/bin/pip3 pip3 $(which pip3.12) 1
+RUN update-alternatives --install /usr/bin/python3 python3 "$(which python3.12)" 1
+RUN update-alternatives --install /usr/bin/pip3 pip3 "$(which pip3.12)" 1
 
 COPY . .
 COPY ./docker/iib-httpd.conf /etc/httpd/conf/httpd.conf
 
-RUN pip3 install -r requirements.txt --no-deps --require-hashes
-RUN pip3 install . --no-deps
+RUN pip3 install --no-cache-dir -r requirements.txt --no-deps --require-hashes
+RUN pip3 install --no-cache-dir . --no-deps
 EXPOSE 8080
 CMD ["/usr/sbin/httpd", "-DFOREGROUND"]

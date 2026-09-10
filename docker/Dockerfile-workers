@@ -2,6 +2,10 @@
 # Production default pulls the base from Quay; local compose overrides BASE_IMAGE to
 # iib-base-image:local. See docker/README.md for the two-stage build architecture.
 ARG BASE_IMAGE=quay.io/exd-guild-hello-operator/iib-base-image:latest
+# DL3026: hadolint cannot resolve a whole-image ARG, so it cannot match the registry
+# against the allow list. The default is a trusted Quay repo and compose overrides it
+# with the registry-less local build, which no allow list entry could cover.
+# hadolint ignore=DL3026
 FROM ${BASE_IMAGE}
 LABEL maintainer="Red Hat - EXD"
 
@@ -19,11 +23,11 @@ ENV KRB5CCNAME=FILE:/home/iib-worker/krb5cc_iib_worker
 
 # Dependency layers: copy only lockfiles first so code edits reuse pip cache.
 COPY requirements.txt setup.py MANIFEST.in LICENSE ./
-RUN pip3 install --upgrade pip
-RUN pip3 install -r requirements.txt --no-deps --require-hashes
+RUN pip3 install --no-cache-dir --upgrade pip
+RUN pip3 install --no-cache-dir -r requirements.txt --no-deps --require-hashes
 
 # Must stay inside build context (no ``..``). Default ``iib`` = package dir at repo root.
 ARG IIB_PKG_SRC=iib
 COPY ${IIB_PKG_SRC} ./iib/
-RUN pip3 install . --no-deps
+RUN pip3 install --no-cache-dir . --no-deps
 CMD ["/usr/local/bin/celery", "-A", "iib.workers.tasks", "worker", "--loglevel=debug"]

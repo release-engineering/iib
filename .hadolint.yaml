@@ -9,8 +9,8 @@ ignored:
   # DL3041: use `dnf install -y` with versions/no cache — UBI dnf handling and
   #         module streams make strict version pinning impractical here.
   - DL3041
-  # DL4006: require `SHELL -o pipefail` before a RUN that pipes commands — none of
-  #         these Dockerfiles use a pipe in RUN, so the pipefail SHELL is unnecessary.
+  # DL4006: require `SHELL -o pipefail` before a RUN that pipes commands — the only
+  #         pipes here feed `sha256sum -c -`, which fails the build on its own.
   - DL4006
 trustedRegistries:
   - registry.access.redhat.com
