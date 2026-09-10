@@ -642,8 +642,21 @@ def test_validate_index_db_artifact_tag_template_absent_uses_default():
         # entry across every index image.
         ('idb-static', 'must contain the "{digest}" placeholder'),
         ('', 'must contain the "{digest}" placeholder'),
+        # 64 hex digits plus a 54-char prefix is 118, which fits in the 128-char OCI
+        # tag limit on its own but leaves no room for the "-<request_id>" suffix the
+        # push path appends -- so it must fail at startup, not mid-build.
+        ('x' * 54 + '{digest}', 'leaves no room for the "-<request_id>" suffix'),
     ),
 )
 def test_validate_index_db_artifact_tag_template_invalid(template, expected):
     with pytest.raises(ConfigError, match=re.escape(expected)):
         _validate_index_db_artifact_tag_template({'iib_index_db_artifact_tag_template': template})
+
+
+def test_validate_index_db_artifact_tag_template_at_length_budget():
+    # 64 hex digits plus a 53-char prefix is exactly the 117-char budget: allowed.
+    template = 'x' * 53 + '{digest}'
+    assert (
+        _validate_index_db_artifact_tag_template({'iib_index_db_artifact_tag_template': template})
+        is None
+    )

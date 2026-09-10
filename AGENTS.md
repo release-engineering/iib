@@ -49,7 +49,7 @@ Key modules:
 
 ## Pitfalls
 - **Never use tools that require privileged access** - the production deployment does not have access to privileged containers.
-- `overwrite_from_index_token` triggers an index.db push to Quay after build; if that push fails, the git commit must also be reverted.
+- `overwrite_from_index_token` triggers an index.db push to Quay after build; if that push fails, the git commit must also be reverted. Only the git side rolls back — index.db artifacts are keyed by content digest and never overwritten, so there is nothing to undo on the artifact side.
 - **Always revert the git commit on Konflux or push failure** — dangling commits break the next build. This includes when overwrite_from_index_token triggers an index.db push to Quay that fails. Mark the request failed immediately after reverting.
 - **`index.db` lives in `/var/index_db`, not `/tmp`** — the task-start cleanup wipes `/tmp`; storing it there deletes the cache between requests.
 - **`regenerate_bundle` always opens a PR** — source bundle overwrite is unsupported; don't add a direct-push path for this request type.
