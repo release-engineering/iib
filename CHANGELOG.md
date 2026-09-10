@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 10.0.0
+
+First release of containerized IIB, cut from `main`. Tagged `ocp-v10.0.0`.
+
+Releases up to and including 9.5.x are cut from `master` (legacy IIB) and tagged `v*`. The two
+tracks now release independently from the same repository:
+
+| | legacy (`master`) | containerized (`main`) |
+| --- | --- | --- |
+| git tag | `v9.5.3` | `ocp-v10.0.0` |
+| built by | `build.yml` | `release_on_ocp_tag.yml` |
+| image tags | `iib-*:v9.5.3`, `iib-*:latest`, `iib-api:qe` | `iib-api:ocp-v10.0.0`, `iib-worker:ocp-v10.0.0` |
+| moving channel | `latest` | `ocp-latest` (main HEAD, via `build_on_main.yml`) |
+| deployed to | production, by promoting a digest to the `prod` tag on Quay | QE and Stage |
+
+The `ocp-` prefix keeps the containerized series out of the `v*` namespace that the legacy
+release automation scans, so a release from `main` cannot reach the `latest` channel that
+production is promoted from. At cutover the prefix is dropped and the series continues as `v*`.
+
+* Containerized build architecture: workers fetch `index.db` from Quay via ORAS, mutate FBC
+  config, push to git, and let Konflux build the final index image.
+
 ## 9.5.3
 
 * Update dependency wcwidth to v0.8.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1333

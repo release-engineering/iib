@@ -3,8 +3,11 @@ name: Build IIB-API image and push to quay.io
 
 on:
   push:
+    # Legacy `v*` releases only. Tags in the `ocp-v*` series are cut from `main`
+    # (containerized IIB) and must not overwrite iib-api:qe for the legacy track;
+    # they are handled by release_on_ocp_tag.yml on that branch.
     tags:
-      - '*'
+      - 'v*'
 
 jobs:
   # this job will only be triggered when tag is pushed
