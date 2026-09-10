@@ -48,7 +48,8 @@ Additionally, `black` is used to enforce other coding standards with the followi
 
 * Single quotes are used instead of double quotes
 
-To verify that your code meets these standards, you may run `tox -e black,flake8`.
+To verify that your code meets these standards, you may run `tox -m static`, which runs all the
+static linters (`black`, `flake8`, `yamllint`, `mypy`, and `hadolint`).
 
 ## Running the Unit Tests
 

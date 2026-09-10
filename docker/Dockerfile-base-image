@@ -1,7 +1,11 @@
 # iib-base-image — shared worker tooling layer (opm, buildah, podman, oras, oc, Kerberos, etc.).
 # Published to quay.io/exd-guild-hello-operator/iib-base-image:latest by CI.
 # Dockerfile-workers builds on top of this image; see docker/README.md for architecture.
-FROM registry.access.redhat.com/ubi9/ubi:latest
+# Base layer pinned by digest to the linux/amd64 manifest of ubi9/ubi:latest
+# (9.8-1788939089 as of this pin). Note the `dnf update -y` below still pulls current
+# packages, so the full image is not bit-for-bit reproducible.
+# Keep this digest in lockstep with the other Dockerfiles when bumping.
+FROM registry.access.redhat.com/ubi9/ubi@sha256:4406835b776f05688a823ff532203587b9238510817645c9f37e0fdac1743b8c
 LABEL maintainer="Red Hat - EXD"
 
 RUN dnf -y install \
@@ -31,6 +35,7 @@ RUN dnf -y install \
 
 # Install all opm variants,
 # then expose the default opm via symlink.
+# hadolint shell=/bin/bash
 RUN set -eux; \
     install_binary() { \
       local name="$1"; local url="$2"; local sha="$3"; \
@@ -75,8 +80,8 @@ RUN set -eux; \
 
 
 # UBI9 doesn't come with alternatives installed for python3 by default, so we need to set it manually
-RUN update-alternatives --install /usr/bin/python3 python3 $(which python3.12) 1
-RUN update-alternatives --install /usr/bin/pip3 pip3 $(which pip3.12) 1
+RUN update-alternatives --install /usr/bin/python3 python3 "$(which python3.12)" 1
+RUN update-alternatives --install /usr/bin/pip3 pip3 "$(which pip3.12)" 1
 
 # Adjust storage.conf to enable Fuse storage.
 RUN sed -i -e 's|^#mount_program|mount_program|g' /etc/containers/storage.conf
