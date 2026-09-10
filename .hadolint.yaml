@@ -1,0 +1,17 @@
+---
+# Hadolint config for IIB Dockerfiles (UBI-based).
+ignored:
+  # DL3003: `cd ...` in RUN — UBI build steps intentionally change dirs mid-RUN
+  #         where `WORKDIR` would leak state into later layers.
+  - DL3003
+  # DL3013: pin pip versions — pip is provided/managed by the UBI base image.
+  - DL3013
+  # DL3041: use `dnf install -y` with versions/no cache — UBI dnf handling and
+  #         module streams make strict version pinning impractical here.
+  - DL3041
+  # DL4006: require `SHELL -o pipefail` before a RUN that pipes commands — none of
+  #         these Dockerfiles use a pipe in RUN, so the pipefail SHELL is unnecessary.
+  - DL4006
+trustedRegistries:
+  - registry.access.redhat.com
+  - registry.redhat.io
