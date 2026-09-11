@@ -2,7 +2,7 @@
 # Base layer pinned by digest (ubi8/ubi:latest as of this pin). Note the `dnf update -y`
 # below still pulls current packages, so the full image is not bit-for-bit reproducible.
 # Keep this digest in lockstep with the other Dockerfiles when bumping.
-FROM registry.access.redhat.com/ubi8/ubi@sha256:e39486422f729b5c5b7c007104d2f9c92a14273b1de01cdc28d4ac648fb6e1dd
+FROM registry.access.redhat.com/ubi8/ubi@sha256:ed721ca811f29fa0fd8a4666aec2fb6771f3defbecc708a973d0b711d6f09293
 
 ENV ACTIVEMQ_VERSION 5.15.12
 ENV ACTIVEMQ_HOME /opt/activemq
