@@ -143,6 +143,7 @@ def test_handle_containerized_fbc_operation_request(
         fbc_fragments=['fbc-fragment@sha256:qwerty'],
         overwrite_from_index_token=None,
         index_db_path=mock.ANY,
+        from_index='quay.io/iib/from-index:latest',
     )
 
     # Verify MR creation (since no overwrite token)
@@ -285,6 +286,7 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
         fbc_fragments=['fbc-fragment1@sha256:qwerty', 'fbc-fragment2@sha256:asdfgh'],
         overwrite_from_index_token=None,
         index_db_path=mock.ANY,
+        from_index='quay.io/iib/from-index:latest',
     )
 
     # Verify build state update contains all resolved fragments
@@ -361,7 +363,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_prfb.return_value = {
         'arches': {'amd64'},
         'binary_image_resolved': 'binary@sha256:123',
-        'from_index_resolved': 'index@sha256:456',
+        'from_index_resolved': 'quay.io/iib/from-index@sha256:456',
         'ocp_version': 'v4.6',
         'distribution_scope': 'prod',
     }
@@ -418,7 +420,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         from_index='quay.io/iib/from-index:latest',
         overwrite_from_index=True,
         overwrite_from_index_token=overwrite_token,
-        resolved_prebuild_from_index='index@sha256:456',
+        resolved_prebuild_from_index='quay.io/iib/from-index@sha256:456',
         add_or_rm=True,
         is_image_fbc=True,
         index_repo_map={},
@@ -485,7 +487,7 @@ def test_handle_containerized_fbc_operation_request_failure(
     mock_prfb.return_value = {
         'arches': {'amd64'},
         'binary_image_resolved': 'binary@sha256:123',
-        'from_index_resolved': 'index@sha256:456',
+        'from_index_resolved': 'quay.io/iib/from-index@sha256:456',
         'ocp_version': 'v4.6',
         'distribution_scope': 'prod',
     }
@@ -581,7 +583,7 @@ def test_fbc_operations_divergent_never_merges(
     mock_prfb.return_value = {
         'arches': {'amd64'},
         'binary_image_resolved': 'binary@sha256:123',
-        'from_index_resolved': 'index@sha256:456',
+        'from_index_resolved': 'quay.io/iib/from-index@sha256:456',
         'ocp_version': 'v4.14',
         'distribution_scope': 'prod',
     }
@@ -640,5 +642,121 @@ def test_fbc_operations_divergent_never_merges(
         fbc_fragments=['fbc@sha256:789'],
         overwrite_from_index_token=overwrite_token,
         index_db_path=index_db_path,
+        from_index=from_index,
     )
     mock_cof.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.monitor_pipeline_and_extract_image'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.Opm.set_opm_version')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
+def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
+    mock_rdc,
+    mock_set_token,
+    mock_srs,
+    mock_gri,
+    mock_prfb,
+    mock_sov,
+    mock_uiibs,
+    mock_prepare_sources,
+    mock_fetch_index_db,
+    mock_oraff,
+    mock_wbm,
+    mock_git_commit,
+    mock_monitor,
+    mock_replicate,
+    mock_push_index_db,
+    mock_merge_mr,
+    mock_cleanup_mr,
+    mock_cof,
+    mock_uiips,
+    mock_load_auths,
+    tmp_path,
+):
+    """The overwrite token is applied to same-namespace fragments, not to unrelated ones."""
+    request_id = 555
+    from_index = 'quay.io/iib-ns/from-index:v4.15'
+    from_index_resolved = 'quay.io/iib-ns/from-index@sha256:abcdef'
+    # same_ns is private and in from_index's namespace -> needs the token.
+    # other_ns is on the same registry but a different namespace -> must keep template auth.
+    same_ns = 'quay.io/iib-ns/fragment:v1'
+    other_ns = 'quay.io/other-ns/fragment:v1'
+    fbc_fragments = [same_ns, other_ns]
+
+    # Worker docker config carries only a registry-level key, which does not count as
+    # path-scoped coverage.
+    mock_load_auths.return_value = {'quay.io': {'auth': 'dGVtcGxhdGU='}}
+
+    mock_gri.side_effect = [
+        'quay.io/iib-ns/fragment@sha256:111',
+        'quay.io/other-ns/fragment@sha256:222',
+    ]
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image_resolved': 'binary@sha256:123',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.15',
+        'distribution_scope': 'prod',
+    }
+
+    index_db_path = str(tmp_path / 'index.db')
+    mock_prepare_sources.return_value = containerized_utils.BuildSources(
+        index_git_repo='https://gitlab.com/repo/x.git',
+        local_git_repo_path=str(tmp_path / 'git_repo'),
+        localized_git_catalog_path=str(tmp_path / 'git_repo' / 'configs'),
+        index_db_path=None,
+        target_branch='v4.15',
+        is_divergent=False,
+    )
+    mock_fetch_index_db.return_value = index_db_path
+    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'])
+    mock_git_commit.return_value = ({'mr_id': '1'}, 'commit_sha_555')
+    mock_monitor.return_value = 'registry/output-image:sha256-12345'
+    mock_replicate.return_value = ['registry.example.com/final-image:555']
+
+    build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=fbc_fragments,
+        from_index=from_index,
+        binary_image='binary-image:latest',
+        overwrite_from_index=True,
+        overwrite_from_index_token='user:pass',
+    )
+
+    scoped_images = [call.args[1] for call in mock_set_token.call_args_list]
+
+    # The fragment resolve is scoped to the same-namespace fragment only.
+    assert [same_ns] in scoped_images
+    # from_index itself is still authenticated for the label read driving the opm version.
+    assert from_index_resolved in scoped_images
+    # The unrelated namespace never gets the overwrite token stamped over its template auth.
+    for scoped in scoped_images:
+        assert other_ns not in scoped
+
+    # The handler hands from_index down so the extract step can scope the token the same way.
+    assert mock_oraff.call_args.kwargs['from_index'] == from_index

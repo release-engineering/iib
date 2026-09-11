@@ -1482,3 +1482,82 @@ def test_opm_registry_add_fbc_fragment_containerized(
     mock_copytree.assert_any_call(
         os.path.join('/tmp/fragment_path', 'op2'), os.path.join(from_index_configs_dir, 'op2')
     )
+
+
+@mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
+@mock.patch('iib.workers.tasks.utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_registry_add_fbc_fragment_containerized_scopes_overwrite_token(
+    mock_set_state,
+    mock_extract,
+    mock_verify,
+    mock_migrate,
+    mock_copytree,
+    mock_set_auths,
+    mock_load_auths,
+):
+    """Fragment extraction authenticates same-namespace fragments only."""
+    temp_dir = '/tmp/dir'
+    index_db_path = '/tmp/dir/index.db'
+    same_ns = 'quay.io/iib-ns/fragment@sha256:111'
+    other_ns = 'quay.io/other-ns/fragment@sha256:222'
+
+    # Only a registry-level key in the worker config, which does not count as path-scoped.
+    mock_load_auths.return_value = {'quay.io': {'auth': 'dGVtcGxhdGU='}}
+    mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
+    mock_verify.return_value = ([], index_db_path)
+
+    opm_operations.opm_registry_add_fbc_fragment_containerized(
+        request_id=1,
+        temp_dir=temp_dir,
+        from_index_configs_dir='/tmp/dir/configs',
+        fbc_fragments=[same_ns, other_ns],
+        overwrite_from_index_token='user:pass',
+        index_db_path=index_db_path,
+        from_index='quay.io/iib-ns/index:v4.15',
+    )
+
+    # The token is stamped for the same-namespace fragment and its namespace fallback key,
+    # and never for the fragment in an unrelated namespace.
+    mock_set_auths.assert_called_once()
+    stamped_keys = set(mock_set_auths.call_args.args[0]['auths'])
+    assert stamped_keys == {'quay.io/iib-ns/fragment', 'quay.io/iib-ns'}
+
+    # Extraction still runs for every fragment, inside that single window.
+    assert mock_extract.call_count == 2
+
+
+@mock.patch('iib.workers.tasks.utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_registry_add_fbc_fragment_containerized_without_from_index(
+    mock_set_state,
+    mock_extract,
+    mock_verify,
+    mock_migrate,
+    mock_copytree,
+    mock_set_auths,
+):
+    """Without from_index there is no namespace to match, so no token is applied."""
+    index_db_path = '/tmp/dir/index.db'
+    mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
+    mock_verify.return_value = ([], index_db_path)
+
+    opm_operations.opm_registry_add_fbc_fragment_containerized(
+        request_id=1,
+        temp_dir='/tmp/dir',
+        from_index_configs_dir='/tmp/dir/configs',
+        fbc_fragments=['quay.io/iib-ns/fragment@sha256:111'],
+        overwrite_from_index_token='user:pass',
+        index_db_path=index_db_path,
+    )
+
+    mock_set_auths.assert_not_called()
+    mock_extract.assert_called_once()

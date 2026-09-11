@@ -1147,6 +1147,7 @@ def opm_registry_add_fbc_fragment_containerized(
     fbc_fragments: List[str],
     overwrite_from_index_token: Optional[str],
     index_db_path: Optional[str] = None,
+    from_index: Optional[str] = None,
 ) -> Tuple[str, str, List[str]]:
     """
     Add FBC fragments to the from_index image.
@@ -1160,6 +1161,9 @@ def opm_registry_add_fbc_fragment_containerized(
     :param list fbc_fragments: the list of pull specifications of fbc fragments to be added.
     :param str overwrite_from_index_token: token used to access the image
     :param str index_db_path: path to the index database file
+    :param str from_index: the pull specification of the index image the request is based on. Used
+        only to scope ``overwrite_from_index_token`` to same-namespace fragments; the index itself
+        is not pulled here.
     :return: Returns paths to directories for containing file-based catalog, path to index.db,
         and list of operators removed from index_db_path
     :rtype: str, str, list(str)
@@ -1170,17 +1174,28 @@ def opm_registry_add_fbc_fragment_containerized(
         f'Extracting operator packages from {len(fbc_fragments)} fbc fragment(s)',
     )
 
-    # Single pass: Extract all fragment paths and operators
+    from iib.workers.tasks.utils import get_images_needing_overwrite_token, set_registry_token
+
+    # Single pass: Extract all fragment paths and operators. extract_fbc_fragment pulls each
+    # fragment image, so re-apply the overwrite token for same-namespace fragments that are not
+    # covered by worker Docker config, matching the resolve step in the handler.
+    # set_registry_token is a no-op when the list is empty, so a single call covers both the
+    # "some fragments need the token" and "none need it" cases.
     fragment_data = []
     all_fragment_operators = []
 
-    for i, fbc_fragment in enumerate(fbc_fragments):
-        # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
-        fragment_path, fragment_operators = extract_fbc_fragment(
-            temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
-        )
-        fragment_data.append((fragment_path, fragment_operators))
-        all_fragment_operators.extend(fragment_operators)
+    with set_registry_token(
+        overwrite_from_index_token,
+        get_images_needing_overwrite_token(from_index, fbc_fragments),
+        append=True,
+    ):
+        for i, fbc_fragment in enumerate(fbc_fragments):
+            # fragment path will look like /tmp/iib-**/fbc-fragment-{index}
+            fragment_path, fragment_operators = extract_fbc_fragment(
+                temp_dir=temp_dir, fbc_fragment=fbc_fragment, fragment_index=i
+            )
+            fragment_data.append((fragment_path, fragment_operators))
+            all_fragment_operators.extend(fragment_operators)
 
     # Single verification: Check for operators that already exist in the database
     operators_in_db, index_db_path_local = verify_operators_exists(

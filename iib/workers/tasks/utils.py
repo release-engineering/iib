@@ -960,8 +960,13 @@ def set_registry_auths(
     """
     Configure authentication to the registry with provided dockerconfig.json.
 
-    This context manager will reset the authentication to the way it was after it exits. If
-    ``registry_auths`` is falsy, this context manager will do nothing.
+    On exit this context manager restores the ``iib_docker_config_template`` baseline via
+    :func:`reset_docker_config` — not whatever configuration was in place on entry. Nesting it
+    inside another credential window therefore drops that outer window's ``auths`` for the
+    remainder of the outer block. Keep credential windows narrow enough to wrap a single pull
+    operation rather than spanning other calls that establish their own credentials.
+
+    If ``registry_auths`` is falsy, this context manager will do nothing.
 
     :param dict registry_auths: dockerconfig.json auth only information to private registries
     :param bool use_empty_config: When True, only use provided credentials in config.json

@@ -44,7 +44,9 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token')
 def test_handle_containerized_rm_request_success_with_overwrite(
+    mock_srt,
     mock_merge_mr,
     mock_makedirs,
     mock_path_exists,
@@ -174,8 +176,14 @@ def test_handle_containerized_rm_request_success_with_overwrite(
         ),
     )
 
-    # Verify OPM version was set
-    mock_opm.set_opm_version.assert_called_once()
+    # Verify OPM version was set. It reads a label off from_index, so the overwrite token
+    # must be stamped for the resolved index -- otherwise a private from_index fails here.
+    mock_opm.set_opm_version.assert_called_once_with('quay.io/namespace/index-image@sha256:def456')
+    mock_srt.assert_called_once_with(
+        overwrite_from_index_token,
+        'quay.io/namespace/index-image@sha256:def456',
+        append=True,
+    )
 
     # Verify git operations
     mock_cgr.assert_called_once()
@@ -1519,7 +1527,9 @@ def test_handle_containerized_rm_missing_output_pull_spec(
 @mock.patch('iib.workers.tasks.build_containerized_rm.Opm')
 @mock.patch('iib.workers.tasks.build_containerized_rm.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token')
 def test_rm_divergent_never_merges(
+    mock_srt,
     mock_srs,
     mock_prfb,
     mock_opm,
