@@ -29,6 +29,7 @@ from iib.workers.tasks.opm_operations import (
     opm_registry_add_fbc_fragment_containerized,
 )
 from iib.workers.tasks.utils import (
+    get_images_needing_overwrite_token,
     get_resolved_image,
     prepare_request_for_build,
     request_logger,
@@ -85,12 +86,19 @@ def handle_containerized_fbc_operation_request(
     reset_docker_config()
     set_request_state(request_id, 'in_progress', 'Resolving the fbc fragments')
 
-    # Resolve all fbc fragments
+    # Resolve all fbc fragments. Apply overwrite_from_index_token only to same-namespace
+    # fragments that are not already covered by worker Docker config credentials, so that
+    # unrelated private fragments and namespace template credentials are left intact.
+    # from_index is not pulled here; prepare_request and later from_index accessors apply
+    # the overwrite token for the index itself.
     resolved_fbc_fragments = []
-    for fbc_fragment in fbc_fragments:
-        with set_registry_token(overwrite_from_index_token, fbc_fragment, append=True):
-            resolved_fbc_fragment = get_resolved_image(fbc_fragment)
-            resolved_fbc_fragments.append(resolved_fbc_fragment)
+    with set_registry_token(
+        overwrite_from_index_token,
+        get_images_needing_overwrite_token(from_index, fbc_fragments),
+        append=True,
+    ):
+        for fbc_fragment in fbc_fragments:
+            resolved_fbc_fragments.append(get_resolved_image(fbc_fragment))
 
     prebuild_info = prepare_request_for_build(
         request_id,
@@ -117,7 +125,9 @@ def handle_containerized_fbc_operation_request(
     mr_details: Optional[Dict[str, str]] = None
     last_commit_sha: Optional[str] = None
 
-    Opm.set_opm_version(from_index_resolved)
+    # Reads a label off from_index, so it needs the overwrite token when the index is private.
+    with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+        Opm.set_opm_version(from_index_resolved)
 
     # Store all resolved fragments
     prebuild_info['fbc_fragments_resolved'] = resolved_fbc_fragments
@@ -167,6 +177,7 @@ def handle_containerized_fbc_operation_request(
             fbc_fragments=resolved_fbc_fragments,
             overwrite_from_index_token=overwrite_from_index_token,
             index_db_path=artifact_index_db_file,
+            from_index=from_index,
         )
 
         # Write build metadata to a file to be added with the commit

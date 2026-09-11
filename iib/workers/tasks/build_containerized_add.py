@@ -44,6 +44,7 @@ from iib.workers.tasks.opm_operations import (
 from iib.workers.tasks.utils import (
     chmod_recursively,
     get_bundles_from_deprecation_list,
+    get_images_needing_overwrite_token,
     get_resolved_bundles,
     remove_deprecated_operators_from_git_catalog,
     request_logger,
@@ -115,10 +116,20 @@ def handle_containerized_add_request(
     :raises IIBError: if the index image build fails.
     """
     reset_docker_config()
-    # Resolve bundles to their digests
+    # Resolve bundles to their digests. Apply overwrite_from_index_token only to same-namespace
+    # bundles that are not already covered by worker Docker config credentials. That preserves
+    # broader template auth (e.g. quay.io/namespace) when present, avoids breaking public pulls
+    # on other namespaces of the same registry, and still allows the overwrite token to pull
+    # private same-namespace bundles when no other creds exist.
+    # Do not stamp from_index auth here — this step does not pull from_index; prepare_request
+    # and later from_index accessors apply the overwrite token for the index itself.
     set_request_state(request_id, 'in_progress', 'Resolving the bundles')
 
-    with set_registry_token(overwrite_from_index_token, from_index, append=True):
+    with set_registry_token(
+        overwrite_from_index_token,
+        get_images_needing_overwrite_token(from_index, bundles),
+        append=True,
+    ):
         resolved_bundles = get_resolved_bundles(bundles)
         verify_labels(resolved_bundles)
         if check_related_images:
@@ -153,7 +164,9 @@ def handle_containerized_add_request(
     mr_details: Optional[Dict[str, str]] = None
     last_commit_sha: Optional[str] = None
 
-    Opm.set_opm_version(from_index_resolved)
+    # Reads a label off from_index, so it needs the overwrite token when the index is private.
+    with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+        Opm.set_opm_version(from_index_resolved)
 
     _update_index_image_build_state(request_id, prebuild_info)
     present_bundles: List[BundleImage] = []
@@ -218,13 +231,21 @@ def handle_containerized_add_request(
 
         # This is a replacement for opm_registry_add_fbc for a containerized version of IIB.
         # Note: only index.db is modified (FBC directory is unchanged)
-        _opm_registry_add(
-            base_dir=temp_dir,
-            index_db=artifact_index_db_file,
-            bundles=resolved_bundles,
-            overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
-            graph_update_mode=graph_update_mode,
-        )
+        # 'opm registry add' pulls the bundle images, so re-apply the overwrite token for
+        # same-namespace bundles not covered by worker Docker config, as done for the resolve
+        # above. The earlier window has already closed by this point.
+        with set_registry_token(
+            overwrite_from_index_token,
+            get_images_needing_overwrite_token(from_index, resolved_bundles),
+            append=True,
+        ):
+            _opm_registry_add(
+                base_dir=temp_dir,
+                index_db=artifact_index_db_file,
+                bundles=resolved_bundles,
+                overwrite_csv=(prebuild_info['distribution_scope'] in ['dev', 'stage']),
+                graph_update_mode=graph_update_mode,
+            )
 
         deprecation_bundles = get_bundles_from_deprecation_list(
             present_bundles_pull_spec + resolved_bundles, deprecation_list or []
