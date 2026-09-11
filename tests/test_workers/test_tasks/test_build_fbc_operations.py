@@ -338,6 +338,130 @@ def test_handle_fbc_operation_request_with_overwrite_token(
 @mock.patch('iib.workers.tasks.build_fbc_operations.opm_registry_add_fbc_fragment')
 @mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_build_state')
 @mock.patch('iib.workers.tasks.build_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_images_needing_overwrite_token')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_registry_token')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_fbc_operation_skips_overwrite_token_when_fragment_has_covering_auth(
+    mock_sov,
+    mock_cleanup,
+    mock_srs,
+    mock_gri,
+    mock_srt,
+    mock_gin,
+    mock_prfb,
+    mock_uiibs,
+    mock_oraff,
+    mock_alti,
+    mock_bi,
+    mock_pi,
+    mock_cpml,
+    mock_uiips,
+):
+    """When Docker config already covers the fragment, do not apply overwrite token."""
+    request_id = 10
+    from_index = 'quay.io/ns/index:v4.16'
+    fragment = 'quay.io/ns/fbc-fragment:latest'
+    overwrite_from_index_token = 'user:password'
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': 'quay.io/ns/index@sha256:bcdefg',
+        'ocp_version': 'v4.16',
+        'distribution_scope': 'prod',
+    }
+    mock_gri.return_value = 'quay.io/ns/fbc-fragment@sha256:frag1'
+    mock_gin.return_value = []  # covering auth exists
+    mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
+    mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+
+    build_fbc_operations.handle_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=[fragment],
+        from_index=from_index,
+        binary_image='binary-image:latest',
+        overwrite_from_index_token=overwrite_from_index_token,
+    )
+
+    mock_gin.assert_called_once_with(from_index, [fragment])
+    mock_srt.assert_not_called()
+    mock_gri.assert_called_once_with(fragment)
+
+
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_fbc_operations._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build_fbc_operations._push_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._build_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_fbc_operations.opm_registry_add_fbc_fragment')
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_images_needing_overwrite_token')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_registry_token')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_fbc_operation_applies_overwrite_token_when_fragment_lacks_covering_auth(
+    mock_sov,
+    mock_cleanup,
+    mock_srs,
+    mock_gri,
+    mock_srt,
+    mock_gin,
+    mock_prfb,
+    mock_uiibs,
+    mock_oraff,
+    mock_alti,
+    mock_bi,
+    mock_pi,
+    mock_cpml,
+    mock_uiips,
+):
+    """When no Docker config covers the fragment, apply overwrite token for same-registry pull."""
+    request_id = 10
+    from_index = 'quay.io/ns/index:v4.16'
+    fragment = 'quay.io/ns/fbc-fragment:latest'
+    overwrite_from_index_token = 'user:password'
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image': 'binary-image:latest',
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': 'quay.io/ns/index@sha256:bcdefg',
+        'ocp_version': 'v4.16',
+        'distribution_scope': 'prod',
+    }
+    mock_gri.return_value = 'quay.io/ns/fbc-fragment@sha256:frag1'
+    mock_gin.return_value = [fragment]  # no covering auth
+    mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
+    mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+
+    build_fbc_operations.handle_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=[fragment],
+        from_index=from_index,
+        binary_image='binary-image:latest',
+        overwrite_from_index_token=overwrite_from_index_token,
+    )
+
+    mock_gin.assert_called_once_with(from_index, [fragment])
+    mock_srt.assert_called_once_with(overwrite_from_index_token, [fragment], append=True)
+    mock_gri.assert_called_once_with(fragment)
+
+
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_fbc_operations._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build_fbc_operations._push_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._build_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_fbc_operations.opm_registry_add_fbc_fragment')
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
