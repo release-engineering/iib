@@ -1,5 +1,6 @@
 boto3
 celery
+confluent-kafka
 dogpile.cache
 flask
 flask-login

@@ -16,6 +16,7 @@ RUN dnf -y install \
     krb5-devel \
     libffi-devel \
     libpq-devel \
+    librdkafka \
     mod_auth_gssapi \
     mod_ssl \
     python3.12-mod_wsgi \

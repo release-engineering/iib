@@ -278,6 +278,9 @@ click-repl==0.3.0 \
     --hash=sha256:17849c23dba3d667247dc4defe1757fff98694e90fe37474f3feebb69ced26a9 \
     --hash=sha256:fb7e06deb8da8de86180a33a9da97ac316751c094c6899382da7feeeeb51b812
     # via celery
+confluent-kafka==2.15.1 \
+    --hash=sha256:326e237f6b25587d7dc96854e3a1315979843bacbe48d76a50412f12e49328e1
+    # via iib (setup.py)
 cryptography==50.0.0 \
     --hash=sha256:031e2d5dd4bb9caa3ca9c82e5a197fd8ae680232cee62603d1a813f3f07e3d03 \
     --hash=sha256:06a32a980526a6ab9a4b9bf8f7385800791e2bb960903cb6b530e4817509a3b7 \
