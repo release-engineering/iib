@@ -115,7 +115,7 @@ def handle_fbc_operation_request(
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Process all resolved fbc fragments at once
-        opm_registry_add_fbc_fragment(
+        operators_removed = opm_registry_add_fbc_fragment(
             request_id,
             temp_dir,
             from_index_resolved,
@@ -157,9 +157,12 @@ def handle_fbc_operation_request(
         add_or_rm=True,
     )
     _cleanup()
-    set_request_state(
-        request_id,
-        'complete',
-        f"The {len(resolved_fbc_fragments)} FBC fragment(s) were successfully added "
-        "in the index image",
+    complete_msg = (
+        f"Successfully added {len(resolved_fbc_fragments)} FBC fragment(s)"
+        " to the index image"
     )
+    if operators_removed:
+        complete_msg += (
+            f" and removed {operators_removed} from the SQLite DB"
+        )
+    set_request_state(request_id, 'complete', complete_msg)

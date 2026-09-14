@@ -914,7 +914,7 @@ def test_opm_registry_add_fbc_fragment(
     # Assert deprecations file was created as expected
     assert os.path.exists(deprecation_file)
 
-    opm_operations.opm_registry_add_fbc_fragment(
+    result = opm_operations.opm_registry_add_fbc_fragment(
         10, tmpdir, from_index, binary_image, [fbc_fragment], None
     )
 
@@ -959,7 +959,7 @@ def test_opm_registry_add_fbc_fragment(
         assert os.path.exists(deprecation_file)
         assert operator_deprecation_dir.check()
         assert deprecations_dir.check(dir=True)
-    mock_srs.call_count == 2
+    assert result == operators_exists
     mock_cpt.assert_has_calls(
         [
             mock.call(

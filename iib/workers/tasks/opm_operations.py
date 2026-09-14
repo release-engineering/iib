@@ -1007,7 +1007,7 @@ def opm_registry_add_fbc_fragment(
     binary_image: str,
     fbc_fragments: List[str],
     overwrite_from_index_token: Optional[str],
-) -> None:
+) -> List[str]:
     """
     Add FBC fragments to from_index image.
 
@@ -1021,6 +1021,8 @@ def opm_registry_add_fbc_fragment(
         gets copied from. This should point to a digest or stable tag.
     :param list fbc_fragments: the list of pull specifications of fbc fragments to be added.
     :param str overwrite_from_index_token: token used to access the image
+    :return: list of operator packages that were removed from the SQLite DB
+    :rtype: list
     """
     set_request_state(
         request_id,
@@ -1064,6 +1066,11 @@ def opm_registry_add_fbc_fragment(
 
     # Remove existing operators if any conflicts found
     if operators_in_db:
+        set_request_state(
+            request_id,
+            'in_progress',
+            f'Removing operator(s) {operators_in_db} from index.db',
+        )
         remove_operator_deprecations(
             from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
         )
@@ -1122,6 +1129,8 @@ def opm_registry_add_fbc_fragment(
         binary_image=binary_image,
         dockerfile_name='index.Dockerfile',
     )
+
+    return operators_in_db
 
 
 def remove_operator_deprecations(from_index_configs_dir: str, operators: List[str]) -> None:

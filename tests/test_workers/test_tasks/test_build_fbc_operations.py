@@ -50,6 +50,8 @@ def test_handle_fbc_operation_request(
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
 
+    mock_oraff.return_value = []
+
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
         fbc_fragments=fbc_fragments,
@@ -131,6 +133,7 @@ def test_handle_fbc_operation_request_multiple_fragments(
         'distribution_scope': "prod",
     }
     mock_gri.side_effect = ['fbc-fragment1@sha256:qwerty', 'fbc-fragment2@sha256:asdfgh']
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -155,7 +158,7 @@ def test_handle_fbc_operation_request_multiple_fragments(
 
     # Verify final completion message mentions both fragments
     completion_call = mock_srs.call_args_list[-1]
-    assert '2 FBC fragment(s) were successfully added' in completion_call[0][2]
+    assert 'Successfully added 2 FBC fragment(s)' in completion_call[0][2]
 
     mock_sov.assert_called_once_with(from_index_resolved)
     mock_cpml.assert_called_once_with(request_id, {'s390x', 'amd64'}, None)
@@ -210,6 +213,7 @@ def test_handle_fbc_operation_request_empty_fragments(
         'ocp_version': 'v4.6',
         'distribution_scope': "prod",
     }
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -231,7 +235,7 @@ def test_handle_fbc_operation_request_empty_fragments(
 
     # Verify completion message mentions 0 fragments
     completion_call = mock_srs.call_args_list[-1]
-    assert '0 FBC fragment(s) were successfully added' in completion_call[0][2]
+    assert 'Successfully added 0 FBC fragment(s)' in completion_call[0][2]
 
     mock_sov.assert_called_once_with(from_index_resolved)
     mock_cpml.assert_called_once_with(request_id, {'s390x', 'amd64'}, None)
@@ -292,6 +296,7 @@ def test_handle_fbc_operation_request_with_overwrite_token(
         'distribution_scope': "prod",
     }
     mock_gri.side_effect = ['fbc-fragment1@sha256:qwerty', 'fbc-fragment2@sha256:asdfgh']
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -378,6 +383,7 @@ def test_handle_fbc_operation_skips_overwrite_token_when_fragment_has_covering_a
     mock_gin.return_value = []  # covering auth exists
     mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
     mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -440,6 +446,7 @@ def test_handle_fbc_operation_applies_overwrite_token_when_fragment_lacks_coveri
     mock_gin.return_value = [fragment]  # no covering auth
     mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
     mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -502,6 +509,7 @@ def test_handle_fbc_operation_request_with_build_tags(
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
     mock_cpml.return_value = 'output-image:latest'
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -563,6 +571,7 @@ def test_handle_fbc_operation_request_with_add_arches(
         'distribution_scope': "prod",
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -635,6 +644,7 @@ def test_handle_fbc_operation_request_with_distribution_scope(
         'distribution_scope': distribution_scope,
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -707,6 +717,7 @@ def test_handle_fbc_operation_request_with_overwrite_from_index(
         'distribution_scope': "prod",
     }
     mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
+    mock_oraff.return_value = []
 
     build_fbc_operations.handle_fbc_operation_request(
         request_id=request_id,
@@ -728,3 +739,131 @@ def test_handle_fbc_operation_request_with_overwrite_from_index(
         resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
     )
+
+
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_fbc_operations._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build_fbc_operations._push_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._build_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_fbc_operations.opm_registry_add_fbc_fragment')
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_fbc_operation_request_with_operator_cleanup(
+    mock_sov,
+    mock_cleanup,
+    mock_srs,
+    mock_gri,
+    mock_ugri,
+    mock_prfb,
+    mock_uiibs,
+    mock_oraff,
+    mock_alti,
+    mock_bi,
+    mock_pi,
+    mock_cpml,
+    mock_uiips,
+):
+    """Test that complete message includes DB cleanup info when operators are removed."""
+    request_id = 10
+    from_index = 'from-index:latest'
+    binary_image = 'binary-image:latest'
+    binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    fbc_fragments = ['fbc-fragment1:latest', 'fbc-fragment2:latest']
+    arches = {'amd64', 's390x'}
+    from_index_resolved = 'from-index@sha256:bcdefg'
+
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': binary_image,
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.6',
+        'distribution_scope': "prod",
+    }
+    mock_gri.side_effect = ['fbc-fragment1@sha256:qwerty', 'fbc-fragment2@sha256:asdfgh']
+    mock_oraff.return_value = ['operator-X']
+
+    build_fbc_operations.handle_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=fbc_fragments,
+        from_index=from_index,
+        binary_image=binary_image,
+        binary_image_config=binary_image_config,
+    )
+
+    # Verify completion message mentions both added fragments and removed operators
+    completion_call = mock_srs.call_args_list[-1]
+    assert completion_call[0][1] == 'complete'
+    assert 'Successfully added 2 FBC fragment(s)' in completion_call[0][2]
+    assert "['operator-X']" in completion_call[0][2]
+    assert 'SQLite DB' in completion_call[0][2]
+
+
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_fbc_operations._create_and_push_manifest_list')
+@mock.patch('iib.workers.tasks.build_fbc_operations._push_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._build_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations._add_label_to_index')
+@mock.patch('iib.workers.tasks.build_fbc_operations.opm_registry_add_fbc_fragment')
+@mock.patch('iib.workers.tasks.build_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.utils.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_fbc_operations._cleanup')
+@mock.patch('iib.workers.tasks.opm_operations.Opm.set_opm_version')
+def test_handle_fbc_operation_request_no_operator_cleanup(
+    mock_sov,
+    mock_cleanup,
+    mock_srs,
+    mock_gri,
+    mock_ugri,
+    mock_prfb,
+    mock_uiibs,
+    mock_oraff,
+    mock_alti,
+    mock_bi,
+    mock_pi,
+    mock_cpml,
+    mock_uiips,
+):
+    """Test that complete message omits DB cleanup info when no operators are removed."""
+    request_id = 10
+    from_index = 'from-index:latest'
+    binary_image = 'binary-image:latest'
+    binary_image_config = {'prod': {'v4.5': 'some_image'}}
+    fbc_fragments = ['fbc-fragment:latest']
+    arches = {'amd64', 's390x'}
+    from_index_resolved = 'from-index@sha256:bcdefg'
+
+    mock_prfb.return_value = {
+        'arches': arches,
+        'binary_image': binary_image,
+        'binary_image_resolved': 'binary-image@sha256:abcdef',
+        'from_index_resolved': from_index_resolved,
+        'ocp_version': 'v4.6',
+        'distribution_scope': "prod",
+    }
+    mock_gri.return_value = 'fbc-fragment@sha256:qwerty'
+    mock_oraff.return_value = []
+
+    build_fbc_operations.handle_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=fbc_fragments,
+        from_index=from_index,
+        binary_image=binary_image,
+        binary_image_config=binary_image_config,
+    )
+
+    # Verify completion message only mentions added fragments, no removal
+    completion_call = mock_srs.call_args_list[-1]
+    assert completion_call[0][1] == 'complete'
+    assert 'Successfully added 1 FBC fragment(s)' in completion_call[0][2]
+    assert 'SQLite DB' not in completion_call[0][2]
+    assert 'removed' not in completion_call[0][2]
