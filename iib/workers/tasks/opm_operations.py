@@ -1148,7 +1148,7 @@ def opm_registry_add_fbc_fragment_containerized(
     overwrite_from_index_token: Optional[str],
     index_db_path: Optional[str] = None,
     from_index: Optional[str] = None,
-) -> Tuple[str, str, List[str]]:
+) -> Tuple[str, str, List[str], List[str]]:
     """
     Add FBC fragments to the from_index image.
 
@@ -1165,8 +1165,9 @@ def opm_registry_add_fbc_fragment_containerized(
         only to scope ``overwrite_from_index_token`` to same-namespace fragments; the index itself
         is not pulled here.
     :return: Returns paths to directories for containing file-based catalog, path to index.db,
-        and list of operators removed from index_db_path
-    :rtype: str, str, list(str)
+        list of operators removed from index_db_path, and list of operators added from the
+        fbc fragments
+    :rtype: str, str, list(str), list(str)
     """
     set_request_state(
         request_id,
@@ -1197,6 +1198,10 @@ def opm_registry_add_fbc_fragment_containerized(
             fragment_data.append((fragment_path, fragment_operators))
             all_fragment_operators.extend(fragment_operators)
 
+    # Two fragments may carry the same package; de-duplicate while keeping the order they
+    # were encountered in so the request's state_reason reads predictably.
+    all_fragment_operators = list(dict.fromkeys(all_fragment_operators))
+
     # Single verification: Check for operators that already exist in the database
     operators_in_db, index_db_path_local = verify_operators_exists(
         from_index=None,
@@ -1210,6 +1215,11 @@ def opm_registry_add_fbc_fragment_containerized(
     if operators_in_db:
         remove_operator_deprecations(
             from_index_configs_dir=from_index_configs_dir, operators=operators_in_db
+        )
+        set_request_state(
+            request_id,
+            'in_progress',
+            f'Removing operator(s) {operators_in_db} from index.db',
         )
         log.info('Removing %s from index.db ', operators_in_db)
         _opm_registry_rm(
@@ -1255,7 +1265,7 @@ def opm_registry_add_fbc_fragment_containerized(
             )
             shutil.copytree(fragment_opr_src_path, fragment_opr_dest_path)
 
-    return from_index_configs_dir, index_db_path_local, operators_in_db
+    return from_index_configs_dir, index_db_path_local, operators_in_db, all_fragment_operators
 
 
 def remove_operator_deprecations(from_index_configs_dir: str, operators: List[str]) -> None:

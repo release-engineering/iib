@@ -1445,7 +1445,7 @@ def test_opm_registry_add_fbc_fragment_containerized(
         index_db_path,
     )
 
-    assert ret == (from_index_configs_dir, index_db_path, operators_in_db)
+    assert ret == (from_index_configs_dir, index_db_path, operators_in_db, ['op2'])
 
     mock_extract.assert_called_once_with(
         temp_dir=temp_dir, fbc_fragment=fbc_fragments[0], fragment_index=0
@@ -1474,10 +1474,18 @@ def test_opm_registry_add_fbc_fragment_containerized(
             os.path.join(from_index_configs_dir, 'op1'),
             dirs_exist_ok=True,
         )
+        # The index.db cleanup is reported while the request is running, not only in
+        # the final state_reason.
+        mock_set_state.assert_any_call(
+            request_id,
+            'in_progress',
+            f'Removing operator(s) {operators_in_db} from index.db',
+        )
     else:
         mock_remove_dep.assert_not_called()
         mock_rm.assert_not_called()
         mock_migrate.assert_not_called()
+        assert not any('from index.db' in call.args[2] for call in mock_set_state.call_args_list)
 
     mock_copytree.assert_any_call(
         os.path.join('/tmp/fragment_path', 'op2'), os.path.join(from_index_configs_dir, 'op2')
