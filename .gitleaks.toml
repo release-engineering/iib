@@ -1,0 +1,69 @@
+title = "IIB gitleaks config"
+
+# Start from gitleaks' stock ruleset and narrow it to this repo's realities.
+# Keep this file as tight as possible: every allowlist below is scoped to
+# specific rules AND specific paths, so a genuine credential still trips the
+# scan even in the directories named here.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Fake docker config.json 'auth' blobs in the worker tests, plus the matching
+'..._auth_secret' worker-config keys. These decode to placeholders such as
+'quay_token' / 'registry_token'. Matched on the line shape rather than by
+whitelisting tests/ wholesale, so an unrelated credential that happens to sit
+in a test file is still reported. 'condition = AND' means a hit must be BOTH
+under tests/ AND on an auth: <base64> line to be ignored.
+"""
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^tests/''']
+regexTarget = "line"
+regexes = ['''auth(_secret)?["']?\s*:\s*["'][A-Za-z0-9+/=]{8,}''']
+
+[[allowlists]]
+description = """
+The handful of named placeholder tokens the tests assert on. Pinned as exact
+values so that a real token pasted into these same files still trips the scan.
+"""
+targetRules = ["generic-api-key", "gitlab-pat"]
+condition = "AND"
+paths = ['''^tests/''']
+regexes = [
+  '''^Sup3r_S3cr31-T0ken$''',
+  '''^iibpubpendingabc123$''',
+  '''^glpat-ABcdeF5g6HIjkl1Mnop1$''',
+]
+
+[[allowlists]]
+description = """
+TLS material for the local docker-compose dev stack ('make up'), marked
+'Do not use these in production!' in docker/registry/README.md. The broker certs
+are still committed so the stack works out of the box; the registry certs are
+gone from the tree (replaced by automatic generation in ca465a3) but remain in
+history, so the path stays listed here to keep full-history scans quiet.
+Neither guards anything reachable, so there is nothing to rotate.
+"""
+targetRules = ["private-key"]
+paths = [
+  '''^docker/message_broker/certs/''',
+  '''^docker/registry/certs/''',
+]
+
+[[allowlists]]
+description = """
+Generated, untracked build output. These only exist in a working tree, and any
+hit in them is a copy of a finding already reported against its real source
+file, so reporting them twice is pure noise.
+"""
+paths = [
+  '''^\.tox/''',
+  '''^\.mypy_cache/''',
+  '''^\.superpowers/''',
+  '''^htmlcov/''',
+  '''(^|/)__pycache__/''',
+  '''\.pyc$''',
+  '''^coverage\.xml$''',
+  '''^\.coverage$''',
+]
