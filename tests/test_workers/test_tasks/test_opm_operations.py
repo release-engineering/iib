@@ -462,6 +462,8 @@ def test_opm_registry_add(
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @pytest.mark.parametrize('graph_update_mode', (None, 'semver-skippatch'))
+@mock.patch('iib.workers.tasks.utils.get_images_needing_overwrite_token', return_value=[])
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.opm_operations.create_dockerfile')
 @mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
 @mock.patch('iib.workers.tasks.opm_operations._opm_registry_add')
@@ -475,6 +477,8 @@ def test_opm_registry_add_fbc(
     mock_ora,
     mock_om,
     mock_ogd,
+    mock_srt,
+    mock_gin,
     from_index,
     bundles,
     overwrite_csv,
@@ -490,6 +494,8 @@ def test_opm_registry_add_fbc(
     mock_gid.return_value = index_db_file
     mock_om.return_value = (fbc_dir, cache_dir)
     mock_iifbc.return_value = is_fbc
+    mock_srt.return_value.__enter__ = mock.Mock(return_value=None)
+    mock_srt.return_value.__exit__ = mock.Mock(return_value=None)
 
     opm_operations.opm_registry_add_fbc(
         base_dir=tmpdir,
@@ -499,8 +505,20 @@ def test_opm_registry_add_fbc(
         graph_update_mode=graph_update_mode,
         overwrite_csv=overwrite_csv,
         container_tool=container_tool,
+        overwrite_from_index_token='user:pass',
     )
 
+    mock_gin.assert_called_once_with(from_index, bundles)
+    # _get_or_create_temp_index_db_file stamps the token for from_index (when set); the resolve
+    # block then always enters set_registry_token for the bundles needing the token (empty here,
+    # which is an internal no-op).
+    if from_index:
+        assert mock_srt.call_args_list == [
+            mock.call('user:pass', from_index, append=True),
+            mock.call('user:pass', [], append=True),
+        ]
+    else:
+        mock_srt.assert_called_once_with('user:pass', [], append=True)
     mock_ora.assert_called_once_with(
         base_dir=tmpdir,
         index_db=index_db_file,
@@ -833,9 +851,13 @@ def test_generate_cache_locally_failed(
 @mock.patch('iib.workers.tasks.opm_operations.get_catalog_dir')
 @mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
 @mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.utils.get_images_needing_overwrite_token', return_value=[])
+@mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.opm_operations.set_request_state')
 def test_opm_registry_add_fbc_fragment(
     mock_srs,
+    mock_srt,
+    mock_gin,
     mock_eff,
     mock_voe,
     mock_gcr,
@@ -896,6 +918,13 @@ def test_opm_registry_add_fbc_fragment(
         10, tmpdir, from_index, binary_image, [fbc_fragment], None
     )
 
+    mock_gin.assert_called_once_with(from_index, [fbc_fragment])
+    # set_registry_token is always entered now; it no-ops internally on a falsy token.
+    # First for the from_index catalog dir, then for the (empty) fragments needing a token.
+    assert mock_srt.call_args_list == [
+        mock.call(None, from_index, append=True),
+        mock.call(None, [], append=True),
+    ]
     mock_eff.assert_called_with(temp_dir=tmpdir, fbc_fragment=fbc_fragment, fragment_index=0)
     mock_voe.assert_called_with(
         from_index=from_index,
@@ -991,11 +1020,13 @@ def test_verify_operator_exists(
 @pytest.mark.parametrize('overwrite_csv', (True, False))
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
 @pytest.mark.parametrize('graph_update_mode', (None, 'semver'))
+@mock.patch('iib.workers.tasks.utils.get_images_needing_overwrite_token', return_value=[])
 @mock.patch('iib.workers.tasks.utils.set_registry_token')
 @mock.patch('iib.workers.tasks.utils.run_cmd')
 def test_opm_index_add(
     mock_run_cmd,
     mock_srt,
+    mock_gin,
     from_index,
     bundles,
     overwrite_csv,
@@ -1024,8 +1055,10 @@ def test_opm_index_add(
     if from_index:
         assert '--from-index' in opm_args
         assert from_index in opm_args
+        mock_gin.assert_called_once_with(from_index, bundles)
     else:
         assert '--from-index' not in opm_args
+        mock_gin.assert_not_called()
     if overwrite_csv:
         assert '--overwrite-latest' in opm_args
     else:
@@ -1042,7 +1075,10 @@ def test_opm_index_add(
         assert '--mode' not in opm_args
     assert "--enable-alpha" in opm_args
 
-    mock_srt.assert_called_once_with('user:pass', from_index, append=True)
+    if from_index:
+        mock_srt.assert_called_once_with('user:pass', [from_index], append=True)
+    else:
+        mock_srt.assert_not_called()
 
 
 @pytest.mark.parametrize('container_tool', (None, 'podwoman'))
@@ -1446,3 +1482,82 @@ def test_opm_registry_add_fbc_fragment_containerized(
     mock_copytree.assert_any_call(
         os.path.join('/tmp/fragment_path', 'op2'), os.path.join(from_index_configs_dir, 'op2')
     )
+
+
+@mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
+@mock.patch('iib.workers.tasks.utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_registry_add_fbc_fragment_containerized_scopes_overwrite_token(
+    mock_set_state,
+    mock_extract,
+    mock_verify,
+    mock_migrate,
+    mock_copytree,
+    mock_set_auths,
+    mock_load_auths,
+):
+    """Fragment extraction authenticates same-namespace fragments only."""
+    temp_dir = '/tmp/dir'
+    index_db_path = '/tmp/dir/index.db'
+    same_ns = 'quay.io/iib-ns/fragment@sha256:111'
+    other_ns = 'quay.io/other-ns/fragment@sha256:222'
+
+    # Only a registry-level key in the worker config, which does not count as path-scoped.
+    mock_load_auths.return_value = {'quay.io': {'auth': 'dGVtcGxhdGU='}}
+    mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
+    mock_verify.return_value = ([], index_db_path)
+
+    opm_operations.opm_registry_add_fbc_fragment_containerized(
+        request_id=1,
+        temp_dir=temp_dir,
+        from_index_configs_dir='/tmp/dir/configs',
+        fbc_fragments=[same_ns, other_ns],
+        overwrite_from_index_token='user:pass',
+        index_db_path=index_db_path,
+        from_index='quay.io/iib-ns/index:v4.15',
+    )
+
+    # The token is stamped for the same-namespace fragment and its namespace fallback key,
+    # and never for the fragment in an unrelated namespace.
+    mock_set_auths.assert_called_once()
+    stamped_keys = set(mock_set_auths.call_args.args[0]['auths'])
+    assert stamped_keys == {'quay.io/iib-ns/fragment', 'quay.io/iib-ns'}
+
+    # Extraction still runs for every fragment, inside that single window.
+    assert mock_extract.call_count == 2
+
+
+@mock.patch('iib.workers.tasks.utils.set_registry_auths')
+@mock.patch('iib.workers.tasks.opm_operations.shutil.copytree')
+@mock.patch('iib.workers.tasks.opm_operations.opm_migrate')
+@mock.patch('iib.workers.tasks.opm_operations.verify_operators_exists')
+@mock.patch('iib.workers.tasks.opm_operations.extract_fbc_fragment')
+@mock.patch('iib.workers.tasks.opm_operations.set_request_state')
+def test_opm_registry_add_fbc_fragment_containerized_without_from_index(
+    mock_set_state,
+    mock_extract,
+    mock_verify,
+    mock_migrate,
+    mock_copytree,
+    mock_set_auths,
+):
+    """Without from_index there is no namespace to match, so no token is applied."""
+    index_db_path = '/tmp/dir/index.db'
+    mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
+    mock_verify.return_value = ([], index_db_path)
+
+    opm_operations.opm_registry_add_fbc_fragment_containerized(
+        request_id=1,
+        temp_dir='/tmp/dir',
+        from_index_configs_dir='/tmp/dir/configs',
+        fbc_fragments=['quay.io/iib-ns/fragment@sha256:111'],
+        overwrite_from_index_token='user:pass',
+        index_db_path=index_db_path,
+    )
+
+    mock_set_auths.assert_not_called()
+    mock_extract.assert_called_once()

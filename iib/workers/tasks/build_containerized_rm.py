@@ -38,6 +38,7 @@ from iib.workers.tasks.utils import (
     prepare_request_for_build,
     reset_docker_config,
     request_logger,
+    set_registry_token,
     RequestConfigAddRm,
 )
 
@@ -119,8 +120,10 @@ def handle_containerized_rm_request(
     distribution_scope = prebuild_info['distribution_scope']
     arches = prebuild_info['arches']
 
-    # Set OPM version
-    Opm.set_opm_version(from_index_resolved)
+    # Set OPM version. This reads a label off from_index, so it needs the overwrite token
+    # when the index is private.
+    with set_registry_token(overwrite_from_index_token, from_index_resolved, append=True):
+        Opm.set_opm_version(from_index_resolved)
     opm_version = Opm.opm_version
 
     _update_index_image_build_state(request_id, prebuild_info)

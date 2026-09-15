@@ -720,3 +720,146 @@ def test_add_divergent_never_merges(
         graph_update_mode=None,
     )
     mock_cleanup_failure.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
+@mock.patch('iib.workers.tasks.build_containerized_add.shutil.copytree')
+@mock.patch('iib.workers.tasks.build_containerized_add.Path.mkdir')
+@mock.patch('iib.workers.tasks.build_containerized_add.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_add.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_add.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_add.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_add._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_add.replicate_image_to_tagged_destinations')
+@mock.patch('iib.workers.tasks.build_containerized_add.monitor_pipeline_and_extract_image')
+@mock.patch('iib.workers.tasks.build_containerized_add.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_add.write_build_metadata')
+@mock.patch('iib.workers.tasks.build_containerized_add.chmod_recursively')
+@mock.patch('iib.workers.tasks.build_containerized_add.merge_catalogs_dirs')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_add.remove_deprecated_operators_from_git_catalog'
+)
+@mock.patch('iib.workers.tasks.build_containerized_add.Path.is_dir')
+@mock.patch('iib.workers.tasks.build_containerized_add.opm_migrate')
+@mock.patch('iib.workers.tasks.build_containerized_add.deprecate_bundles_db')
+@mock.patch('iib.workers.tasks.build_containerized_add.get_bundles_from_deprecation_list')
+@mock.patch('iib.workers.tasks.build_containerized_add._opm_registry_add')
+@mock.patch('iib.workers.tasks.build_containerized_add._get_missing_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add._get_present_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add.fetch_and_verify_index_db_artifact')
+@mock.patch('iib.workers.tasks.build_containerized_add.prepare_build_sources')
+@mock.patch('iib.workers.tasks.build_containerized_add.tempfile.TemporaryDirectory')
+@mock.patch('iib.workers.tasks.build_containerized_add._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_add.Opm')
+@mock.patch('iib.workers.tasks.build_containerized_add.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_add.inspect_related_images')
+@mock.patch('iib.workers.tasks.build_containerized_add.verify_labels')
+@mock.patch('iib.workers.tasks.build_containerized_add.get_resolved_bundles')
+@mock.patch('iib.workers.tasks.build_containerized_add.set_registry_token')
+@mock.patch('iib.workers.tasks.build_containerized_add.reset_docker_config')
+def test_handle_containerized_add_request_scopes_overwrite_token_to_bundles(
+    mock_reset_docker,
+    mock_set_token,
+    mock_get_resolved,
+    mock_verify_labels,
+    mock_inspect,
+    mock_prepare_req,
+    mock_opm,
+    mock_update_build_state,
+    mock_td,
+    mock_prepare_sources,
+    mock_fetch_index_db,
+    mock_get_present,
+    mock_get_missing,
+    mock_opm_add,
+    mock_get_deprecations,
+    mock_deprecate,
+    mock_opm_migrate,
+    mock_path_isdir,
+    mock_remove_deprecated,
+    mock_merge,
+    mock_chmod,
+    mock_write_meta,
+    mock_git_commit,
+    mock_monitor,
+    mock_replicate,
+    mock_update_pull_spec,
+    mock_push_index_db,
+    mock_cleanup_mr,
+    mock_set_state,
+    mock_cleanup_failure,
+    mock_makedirs,
+    mock_copytree,
+    mock_load_auths,
+    tmpdir,
+):
+    """The overwrite token is applied to same-namespace bundles, not to from_index or others."""
+    request_id = 321
+    from_index = 'quay.io/iib-ns/index:v4.15'
+    from_index_resolved = 'quay.io/iib-ns/index@sha256:abcdef'
+    # same_ns is private and in from_index's namespace -> needs the token.
+    # other_ns is on the same registry but a different namespace -> must keep template auth.
+    same_ns = 'quay.io/iib-ns/bundle:v1'
+    other_ns = 'quay.io/other-ns/bundle:v1'
+    bundles = [same_ns, other_ns]
+    resolved_same_ns = 'quay.io/iib-ns/bundle@sha256:111'
+    resolved_other_ns = 'quay.io/other-ns/bundle@sha256:222'
+    resolved_bundles = [resolved_same_ns, resolved_other_ns]
+
+    # Worker docker config carries only a registry-level key, which does not count as
+    # path-scoped coverage.
+    mock_load_auths.return_value = {'quay.io': {'auth': 'dGVtcGxhdGU='}}
+
+    mock_get_resolved.return_value = resolved_bundles
+    mock_td.return_value.__enter__.return_value = '/tmp/iib-321-temp'
+    mock_prepare_req.return_value = {
+        'from_index_resolved': from_index_resolved,
+        'binary_image_resolved': 'binary-image@sha256:fedcba',
+        'arches': {'amd64'},
+        'bundle_mapping': {'some-operator': resolved_bundles},
+        'ocp_version': 'v4.15',
+        'distribution_scope': 'prod',
+        'binary_image': 'binary-image:latest',
+    }
+
+    local_git_repo_path = Path(tmpdir) / 'git_repo'
+    local_git_repo_path.mkdir(parents=True)
+    mock_prepare_sources.return_value = containerized_utils.BuildSources(
+        index_git_repo=mock.Mock(),
+        local_git_repo_path=local_git_repo_path,
+        localized_git_catalog_path=Path(local_git_repo_path) / 'configs',
+        index_db_path=None,
+        target_branch='v4.15',
+        is_divergent=False,
+    )
+    mock_fetch_index_db.return_value = '/tmp/index.db'
+    mock_path_isdir.return_value = False
+    mock_get_present.return_value = ([], [])
+    mock_get_missing.return_value = resolved_bundles
+    mock_get_deprecations.return_value = []
+    mock_opm_migrate.return_value = ('/tmp/from_db', None)
+    mock_git_commit.return_value = ({'mr_id': 1}, 'commit_sha_123')
+    mock_monitor.return_value = 'registry.example.com/output-image:tag'
+    mock_replicate.return_value = ['registry.example.com/final-image:321']
+
+    build_containerized_add.handle_containerized_add_request(
+        bundles=bundles,
+        request_id=request_id,
+        binary_image='binary-image:latest',
+        from_index=from_index,
+        overwrite_from_index_token='user:pass',
+    )
+
+    scoped_images = [call.args[1] for call in mock_set_token.call_args_list]
+
+    # Bundle resolve is scoped to the same-namespace bundle only -- not from_index, and not
+    # the bundle in an unrelated namespace whose template credentials must survive.
+    assert [same_ns] in scoped_images
+    # 'opm registry add' pulls the bundles too, so the digest-resolved form is scoped as well.
+    assert [resolved_same_ns] in scoped_images
+    # from_index itself is still authenticated for the label read driving the opm version.
+    assert from_index_resolved in scoped_images
+
+    for scoped in scoped_images:
+        assert other_ns not in scoped
+        assert resolved_other_ns not in scoped
