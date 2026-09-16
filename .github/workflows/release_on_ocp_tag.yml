@@ -1,0 +1,95 @@
+---
+# Build and push released iib-api and iib-worker images for the containerized track.
+#
+# Triggered by pushing an `ocp-v*` tag on main (e.g. ocp-v10.0.0). That series is deliberately
+# disjoint from the legacy `v*` series cut from master: `v*` feeds iib-*:latest and iib-api:qe,
+# which the legacy track promotes to the `prod` tag on Quay from. Keeping the namespaces
+# separate means a release from main cannot reach the legacy promotion path, and keeps the
+# release list unambiguous for whoever moves that tag by hand.
+#
+# Tags pushed to quay.io/exd-guild-hello-operator: iib-api:<tag>, iib-worker:<tag>.
+# These are immutable release pins for QE/Stage to deploy. The moving ocp-latest channel is
+# published separately by build_on_main.yml on every merge to main, and is NOT updated here --
+# a release must stay pinned to the tree it was cut from.
+#
+# The base image is not rebuilt here. An `ocp-v*` tag is cut from a main commit that already
+# went through build_on_main.yml, which rebuilds and pushes iib-base-image:latest whenever
+# docker/Dockerfile-base-image changes. Note that Dockerfile-workers therefore resolves
+# `iib-base-image:latest` at build time rather than by digest, so a release built today and
+# rebuilt later is not byte-identical.
+name: Build release images on ocp-v tag
+
+permissions:
+  contents: read
+
+on:
+  push:
+    tags:
+      - 'ocp-v*'
+
+jobs:
+  release:
+    name: Build and Push released images to quay.io
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        # actions/checkout@v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          # Full history so the tag can be verified as an ancestor of main below.
+          fetch-depth: 0
+
+      # An `ocp-v*` tag pushed from a feature branch would otherwise publish images that look
+      # like a release but were never merged. Fail loudly instead of publishing them.
+      - name: Verify tag is on main
+        run: |
+          # fetch-depth: 0 above already fetches all branches, but a tag push checks out a
+          # detached tag ref -- fetch main explicitly so the check cannot fail for want of a ref.
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not an ancestor of main."
+            echo "::error::Releases for the containerized track must be cut from main."
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} verified on main."
+
+      - name: Build iib-api
+        id: build-iib-api
+        # redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4
+        with:
+          image: iib-api
+          tags: ${{ github.ref_name }}
+          dockerfiles: |
+            ./docker/Dockerfile-api
+
+      - name: Build iib-worker
+        id: build-iib-worker
+        # redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@9dc2ade9b5db229966b5025ae266311e12f349c4
+        with:
+          image: iib-worker
+          tags: ${{ github.ref_name }}
+          dockerfiles: |
+            ./docker/Dockerfile-workers
+
+      - name: Push iib-api to quay.io
+        id: push-iib-api
+        uses: redhat-actions/push-to-registry@v2.7.1
+        with:
+          image: ${{ steps.build-iib-api.outputs.image }}
+          tags: ${{ steps.build-iib-api.outputs.tags }}
+          registry: quay.io/exd-guild-hello-operator
+          username: ${{ secrets.REGISTRY_QUAY_IO_USER }}
+          password: ${{ secrets.REGISTRY_QUAY_IO_PASSWORD }}
+
+      - name: Push iib-worker to quay.io
+        id: push-iib-worker
+        uses: redhat-actions/push-to-registry@v2.7.1
+        with:
+          image: ${{ steps.build-iib-worker.outputs.image }}
+          tags: ${{ steps.build-iib-worker.outputs.tags }}
+          registry: quay.io/exd-guild-hello-operator
+          username: ${{ secrets.REGISTRY_QUAY_IO_USER }}
+          password: ${{ secrets.REGISTRY_QUAY_IO_PASSWORD }}
