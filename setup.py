@@ -3,7 +3,10 @@ from setuptools import setup, find_packages
 
 setup(
     name='iib',
-    version='9.5.3',
+    # Containerized IIB, released from main as the `ocp-v*` git tag series (ocp-v10.0.0 here).
+    # The tag carries the `ocp-` prefix to stay disjoint from the legacy `v*` series cut from
+    # master; this field cannot, since PEP 440 forbids it. See CHANGELOG.md.
+    version='10.0.0',
     long_description=__doc__,
     packages=find_packages(exclude=['tests', 'tests.*']),
     include_package_data=True,
