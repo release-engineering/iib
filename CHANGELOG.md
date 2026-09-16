@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.5.4
+
+* Update dependency cryptography to v48 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1352
+* chore: add agents repo to allowed_remote_resources by @ggallen in https://github.com/release-engineering/iib/pull/1360
+* Update dependency setuptools to v83 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1364
+* Update dependency cryptography to v50 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1371
+* Fix push_configs_to_git to support simultaneous add and remove by @lipoja in https://github.com/release-engineering/iib/pull/1365
+* Pass deprecated operator packages as rm_operators in handle_add_request by @lipoja in https://github.com/release-engineering/iib/pull/1367
+* skip converting empty yaml objects by @ashwgit in https://github.com/release-engineering/iib/pull/1372
+* Add SECURITY.md for CRA by @nmars in https://github.com/release-engineering/iib/pull/1376
+* Add Hadolint for Dockerfiles and fix the errors by @chandwanitulsi in https://github.com/release-engineering/iib/pull/1374
+* Scope overwrite_from_index_token to same-namespace images without path-scoped Docker auth by @chandwanitulsi in https://github.com/release-engineering/iib/pull/1370
+
 ## 9.5.3
 
 * Update dependency wcwidth to v0.8.1 by @renovate[bot] in https://github.com/release-engineering/iib/pull/1333
