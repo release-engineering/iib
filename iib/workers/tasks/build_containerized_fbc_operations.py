@@ -170,6 +170,7 @@ def handle_containerized_fbc_operation_request(
             updated_catalog_path,
             index_db_path,
             operators_in_db,
+            added_operators,
         ) = opm_registry_add_fbc_fragment_containerized(
             request_id=request_id,
             temp_dir=temp_dir,
@@ -273,12 +274,13 @@ def handle_containerized_fbc_operation_request(
             else:
                 cleanup_merge_request_if_exists(mr_details, index_git_repo)
 
-            set_request_state(
-                request_id,
-                'complete',
-                f"The operator(s) {operators_in_db} were successfully removed "
-                "from the index image",
-            )
+            # Summarize every action the request took. The per-step messages (extracting
+            # fragments, removing operators from index.db, adding packages) are reported
+            # as in_progress updates while the build runs.
+            state_reason = f"Successfully added operators {added_operators} to the index image"
+            if operators_in_db:
+                state_reason += f" and removed operators {operators_in_db} from the index.db"
+            set_request_state(request_id, 'complete', state_reason)
         except Exception as e:
             cleanup_on_failure(
                 mr_details=mr_details,

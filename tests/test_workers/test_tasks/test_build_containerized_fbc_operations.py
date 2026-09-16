@@ -91,7 +91,7 @@ def test_handle_containerized_fbc_operation_request(
     # Mock os.path.exists for index.db check and catalogs dir check
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         # Mock opm operation result
-        mock_oraff.return_value = ('/tmp/updated_catalog_path', '/tmp/index.db', [])
+        mock_oraff.return_value = ('/tmp/updated_catalog_path', '/tmp/index.db', [], ['op1'])
 
         # Mock Konflux pipeline flow
         mock_cmr.return_value = {'mr_url': 'http://mr.url'}
@@ -177,6 +177,7 @@ def test_handle_containerized_fbc_operation_request(
 
     # Verify success state
     assert mock_srs.call_args[0][1] == 'complete'
+    assert mock_srs.call_args[0][2] == "Successfully added operators ['op1'] to the index image"
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
@@ -262,7 +263,7 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_ggt.return_value = ('token_name', 'token_value')
 
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
-        mock_oraff.return_value = ('/tmp/updated', '/tmp/db', [])
+        mock_oraff.return_value = ('/tmp/updated', '/tmp/db', [], ['op1', 'op2'])
         mock_cmr.return_value = {'mr_url': 'http://mr.url'}
         mock_glcs.return_value = 'sha123'
         mock_fp.return_value = [{'metadata': {'name': 'pipeline-run-1'}}]
@@ -382,7 +383,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_docker_config = json.dumps({'auths': {}})
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
         with mock.patch('builtins.open', mock.mock_open(read_data=mock_docker_config)) as mock_file:
-            mock_oraff.return_value = ('/tmp/c', '/tmp/d', ['op1'])
+            mock_oraff.return_value = ('/tmp/c', '/tmp/d', ['op1'], ['op1'])
             mock_glcs.return_value = 'sha1'
             mock_fp.return_value = [{'metadata': {'name': 'pr1'}}]
             mock_wfpc.return_value = {'status': 'Succeeded'}
@@ -602,7 +603,7 @@ def test_fbc_operations_divergent_never_merges(
         is_divergent=True,
     )
 
-    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'])
+    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'], ['op1'])
 
     mr_details = {
         'mr_id': '1',
@@ -734,7 +735,7 @@ def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
         is_divergent=False,
     )
     mock_fetch_index_db.return_value = index_db_path
-    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'])
+    mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'], ['op1'])
     mock_git_commit.return_value = ({'mr_id': '1'}, 'commit_sha_555')
     mock_monitor.return_value = 'registry/output-image:sha256-12345'
     mock_replicate.return_value = ['registry.example.com/final-image:555']
@@ -760,3 +761,109 @@ def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
 
     # The handler hands from_index down so the extract step can scope the token the same way.
     assert mock_oraff.call_args.kwargs['from_index'] == from_index
+
+
+@pytest.mark.parametrize(
+    'operators_in_db, added_operators, expected_state_reason',
+    (
+        (
+            [],
+            ['op1', 'op2'],
+            "Successfully added operators ['op1', 'op2'] to the index image",
+        ),
+        (
+            ['op1'],
+            ['op1', 'op2'],
+            "Successfully added operators ['op1', 'op2'] to the index image"
+            " and removed operators ['op1'] from the index.db",
+        ),
+    ),
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.monitor_pipeline_and_extract_image'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+)
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'
+)
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_build_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.Opm.set_opm_version')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_request_for_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
+def test_fbc_operations_complete_state_reason_summarizes_all_actions(
+    mock_rdc,
+    mock_srs,
+    mock_gri,
+    mock_prfb,
+    mock_sov,
+    mock_uiibs,
+    mock_prepare_sources,
+    mock_fetch_index_db,
+    mock_oraff,
+    mock_wbm,
+    mock_git_commit,
+    mock_monitor,
+    mock_replicate,
+    mock_push_index_db,
+    mock_merge_mr,
+    mock_cleanup_mr,
+    mock_cof,
+    mock_uiips,
+    tmp_path,
+    operators_in_db,
+    added_operators,
+    expected_state_reason,
+):
+    """The complete state must summarize the fragments added and the index.db cleanup."""
+    request_id = 42
+    index_db_path = str(tmp_path / 'index.db')
+
+    mock_prfb.return_value = {
+        'arches': {'amd64'},
+        'binary_image_resolved': 'binary@sha256:123',
+        'from_index_resolved': 'index@sha256:456',
+        'ocp_version': 'v4.14',
+        'distribution_scope': 'prod',
+    }
+    mock_gri.return_value = 'fbc@sha256:789'
+    mock_prepare_sources.return_value = containerized_utils.BuildSources(
+        index_git_repo='https://gitlab.com/repo/x.git',
+        local_git_repo_path=str(tmp_path / 'git_repo'),
+        localized_git_catalog_path=str(tmp_path / 'git_repo' / 'configs'),
+        index_db_path=index_db_path,
+        target_branch='v4.14',
+        is_divergent=False,
+    )
+    mock_oraff.return_value = (
+        '/tmp/updated_catalog_path',
+        index_db_path,
+        operators_in_db,
+        added_operators,
+    )
+    mock_git_commit.return_value = ({'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1'}, 'sha42')
+    mock_monitor.return_value = 'registry/output-image:sha256-12345'
+    mock_replicate.return_value = ['registry.example.com/final-image:42']
+
+    build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
+        request_id=request_id,
+        fbc_fragments=['quay.io/iib/fbc-fragment1:latest'],
+        from_index='quay.io/iib/from-index:v4.14',
+    )
+
+    mock_cof.assert_not_called()
+    assert mock_srs.call_args[0] == (request_id, 'complete', expected_state_reason)
