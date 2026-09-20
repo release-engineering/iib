@@ -107,6 +107,7 @@ def test_handle_containerized_add_request(
     index_db_path = '/tmp/index.db'
     temp_dir_path = '/tmp/iib-123-temp'
     from_index = 'index:latest'
+    overwrite_from_index_token = "user:pass"
 
     mock_get_resolved.return_value = resolved_bundles
     mock_td.return_value.__enter__.return_value = temp_dir_path
@@ -134,7 +135,7 @@ def test_handle_containerized_add_request(
         localized_git_catalog_path=localized_git_catalog_path,
         index_db_path=None,
         target_branch='v4.12',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
 
     mock_fetch_index_db.return_value = index_db_path
@@ -160,7 +161,8 @@ def test_handle_containerized_add_request(
     mock_opm_migrate.return_value = (catalog_from_db, None)
 
     # Mock commit and push
-    mock_git_commit.return_value = ({'mr_id': 1}, 'commit_sha_123')
+    mr_details = {'mr_id': 1}
+    mock_git_commit.return_value = (mr_details, 'commit_sha_123')
 
     # Mock pipeline monitoring
     image_url = 'registry.example.com/output-image:tag'
@@ -169,6 +171,7 @@ def test_handle_containerized_add_request(
     # Mock replication
     output_pull_specs = ['registry.example.com/final-image:123']
     mock_replicate.return_value = output_pull_specs
+    mock_update_pull_spec.return_value = 'registry.example.com/final-image@sha256:destination'
 
     # Mock final artifact push
     mock_push_index_db.return_value = None
@@ -183,7 +186,7 @@ def test_handle_containerized_add_request(
                 from_index=from_index,
                 check_related_images=check_related_images,
                 deprecation_list=deprecation_list,
-                overwrite_from_index_token="user:pass",
+                overwrite_from_index_token=overwrite_from_index_token,
             )
     else:
         build_containerized_add.handle_containerized_add_request(
@@ -193,7 +196,7 @@ def test_handle_containerized_add_request(
             from_index=from_index,
             check_related_images=check_related_images,
             deprecation_list=deprecation_list,
-            overwrite_from_index_token="user:pass",
+            overwrite_from_index_token=overwrite_from_index_token,
         )
 
     # Verifications
@@ -218,6 +221,10 @@ def test_handle_containerized_add_request(
         ocp_version='v4.12',
         index_to_gitlab_push_map={},
         overwrite_from_index=False,
+        overwrite_from_index_token=overwrite_from_index_token,
+    )
+    assert mock_prepare_sources.call_args.kwargs['overwrite_from_index_token'] == (
+        overwrite_from_index_token
     )
 
     # Verify bundle checks
@@ -284,8 +291,10 @@ def test_handle_containerized_add_request(
     )
 
     mock_push_index_db.assert_called_once()
-    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
-    mock_cleanup_mr.assert_called_once()
+    assert mock_push_index_db.call_args.kwargs['output_image'] == (
+        'registry.example.com/final-image@sha256:destination'
+    )
+    mock_cleanup_mr.assert_called_once_with(mr_details, index_git_repo, raise_on_error=True)
     mock_cleanup_failure.assert_not_called()
 
 
@@ -383,7 +392,7 @@ def test_handle_containerized_add_request_failure(
         localized_git_catalog_path='/tmp/repo/catalog',
         index_db_path=None,
         target_branch='v4.12',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
 
     # Mock TD
@@ -521,7 +530,7 @@ def test_handle_containerized_add_request_overwrite(
         localized_git_catalog_path=localized_git_catalog_path,
         index_db_path=None,
         target_branch='v4.12',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
 
     mock_fetch_index_db.return_value = index_db_path
@@ -542,6 +551,7 @@ def test_handle_containerized_add_request_overwrite(
 
     output_pull_specs = ['registry.example.com/final-image:456']
     mock_replicate.return_value = output_pull_specs
+    mock_update_pull_spec.return_value = 'index@sha256:destination'
 
     mock_push_index_db.return_value = None
 
@@ -562,7 +572,7 @@ def test_handle_containerized_add_request_overwrite(
 
     # Verify the handler completed successfully
     mock_push_index_db.assert_called_once()
-    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
+    assert mock_push_index_db.call_args.kwargs['output_image'] == 'index@sha256:destination'
     mock_cleanup_failure.assert_not_called()
 
 
@@ -601,7 +611,14 @@ def test_handle_containerized_add_request_overwrite(
 @mock.patch('iib.workers.tasks.build_containerized_add.set_registry_token')
 @mock.patch('iib.workers.tasks.build_containerized_add.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_add.merge_mr_after_build')
-def test_add_divergent_never_merges(
+@pytest.mark.parametrize(
+    'source_kind',
+    (
+        containerized_utils.BuildSourceKind.DIVERGENT,
+        containerized_utils.BuildSourceKind.CHAINED,
+    ),
+)
+def test_add_nonmergeable_source_never_merges(
     mock_merge_mr,
     mock_reset_docker,
     mock_set_token,
@@ -635,9 +652,10 @@ def test_add_divergent_never_merges(
     mock_cleanup_failure,
     mock_makedirs,
     mock_copytree,
+    source_kind,
     tmpdir,
 ):
-    """Divergent path must never fall back to ORAS and must never merge the MR."""
+    """Nonmergeable sources use their extracted index.db and never merge the MR."""
     bundles = ['some-bundle:latest']
     request_id = 789
     binary_image = 'binary-image:latest'
@@ -670,7 +688,7 @@ def test_add_divergent_never_merges(
         localized_git_catalog_path=localized_git_catalog_path,
         index_db_path=index_db_path,
         target_branch='v4.14',
-        is_divergent=True,
+        source_kind=source_kind,
     )
 
     mock_path_isdir.return_value = True
@@ -684,13 +702,19 @@ def test_add_divergent_never_merges(
     mr_details = {'mr_id': 1, 'mr_url': 'https://gitlab.com/mr/1', 'source_branch': 'iib-789-v4.14'}
     mock_git_commit.return_value = (mr_details, 'commit_sha_789')
 
-    image_url = 'registry.example.com/output-image:tag'
+    image_url = 'registry.example.com/output-image@sha256:' + 'a' * 64
     mock_monitor.return_value = image_url
 
     output_pull_specs = ['registry.example.com/final-image:789']
     mock_replicate.return_value = output_pull_specs
+    resolved_output = 'registry.example.com/final-image@sha256:' + 'b' * 64
+    mock_update_pull_spec.return_value = resolved_output
 
     mock_push_index_db.return_value = None
+    publication = mock.Mock()
+    publication.attach_mock(mock_update_pull_spec, 'metadata')
+    publication.attach_mock(mock_push_index_db, 'artifact')
+    publication.attach_mock(mock_cleanup_mr, 'close')
 
     build_containerized_add.handle_containerized_add_request(
         bundles=bundles,
@@ -703,14 +727,15 @@ def test_add_divergent_never_merges(
 
     # Divergent path uses the extracted index.db, never ORAS.
     mock_fetch_index_db.assert_not_called()
-    assert mock_push_index_db.call_args.kwargs['output_image'] == image_url
+    assert mock_push_index_db.call_args.kwargs['output_image'] == resolved_output
+    assert [call[0] for call in publication.mock_calls] == ['metadata', 'artifact', 'close']
 
     # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
     # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
-    # prevent a merge is the handler-level `and not sources.is_divergent` guard. If
+    # prevent a merge is the handler-level `sources.merge_allowed` guard. If
     # that guard were removed, this MR would be merged and this assertion would fail.
     mock_merge_mr.assert_not_called()
-    mock_cleanup_mr.assert_called_once()
+    mock_cleanup_mr.assert_called_once_with(mr_details, index_git_repo, raise_on_error=True)
 
     mock_opm_add.assert_called_once_with(
         base_dir=temp_dir_path,
@@ -830,7 +855,7 @@ def test_handle_containerized_add_request_scopes_overwrite_token_to_bundles(
         localized_git_catalog_path=Path(local_git_repo_path) / 'configs',
         index_db_path=None,
         target_branch='v4.15',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
     mock_fetch_index_db.return_value = '/tmp/index.db'
     mock_path_isdir.return_value = False

@@ -116,6 +116,22 @@ def get_indexdb_artifact_pullspec(from_index: str) -> str:
     )
 
 
+def get_request_indexdb_artifact_pullspec(index_image: str, request_id: int) -> str:
+    """
+    Construct the per-request index.db artifact pullspec.
+
+    :param str index_image: The resolved output index image.
+    :param int request_id: The IIB request that produced the artifact.
+    :return: The request-specific index.db artifact pullspec.
+    :rtype: str
+    """
+    conf = get_worker_config()
+    tag = f'{_get_content_addressed_artifact_tag(index_image)}-{request_id}'
+    return conf['iib_index_db_artifact_template'].format(
+        registry=conf['iib_index_db_artifact_registry'], tag=tag
+    )
+
+
 @instrument_tracing(span_name="workers.tasks.oras_utils.get_oras_artifact")
 def get_oras_artifact(
     artifact_ref: str,
