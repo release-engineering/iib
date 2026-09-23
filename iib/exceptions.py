@@ -13,6 +13,10 @@ class IIBError(BaseException):
     """An error was encountered in IIB."""
 
 
+class GitLabSourceBranchNotReadyError(IIBError):
+    """GitLab has not updated its source branch cache after a successful push."""
+
+
 class FileNotFoundInImageError(IIBError):
     """
     A requested path was not present in a container image.
