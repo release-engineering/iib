@@ -9,10 +9,17 @@ from typing import Dict, Optional, Tuple, List
 
 from operator_manifest.operator import ImageName
 import requests
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_incrementing,
+)
 from urllib.parse import urlparse, quote_plus
 
 from iib.common.tracing import instrument_tracing
-from iib.exceptions import IIBError
+from iib.exceptions import GitLabSourceBranchNotReadyError, IIBError
 from iib.workers.api_utils import requests_session
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd
@@ -487,6 +494,14 @@ def _extract_gitlab_info(repo_url: str) -> Tuple[str, str]:
     return api_url, project_path
 
 
+# GitLab can validate a newly pushed branch against a briefly stale Redis branch cache.
+@retry(
+    before_sleep=before_sleep_log(log, logging.WARNING),
+    reraise=True,
+    retry=retry_if_exception_type(GitLabSourceBranchNotReadyError),
+    stop=stop_after_attempt(4),
+    wait=wait_incrementing(start=5, increment=5),
+)
 def _create_gitlab_mr(
     repo_url: str, git_token: str, source_branch: str, target_branch: str, request_id: int
 ) -> Dict[str, str]:
@@ -524,6 +539,28 @@ def _create_gitlab_mr(
         response = requests_session.post(api_url, headers=headers, json=payload, timeout=30)
 
         if not response.ok:
+            try:
+                response_data = response.json()
+            except ValueError:
+                response_data = {}
+
+            response_message = (
+                response_data.get('message') if isinstance(response_data, dict) else None
+            )
+            source_branch_errors = (
+                response_message.get('source_branch')
+                if isinstance(response_message, dict)
+                else None
+            )
+            if (
+                response.status_code == 400
+                and isinstance(source_branch_errors, list)
+                and 'does not exist' in source_branch_errors
+            ):
+                raise GitLabSourceBranchNotReadyError(
+                    f'Failed to create merge request: 400, Response: {response.text}'
+                )
+
             log.error(
                 'Failed to create merge request. Status: %d, Response: %s',
                 response.status_code,

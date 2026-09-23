@@ -712,6 +712,64 @@ def test_create_gitlab_mr_success(mock_requests_post):
     assert call_args[1]['headers']['Authorization'] == f'Bearer {PUB_TOKEN_VALUE}'
 
 
+@mock.patch('iib.workers.api_utils.requests_session.post')
+def test_create_gitlab_mr_retries_when_source_branch_cache_is_stale(mock_requests_post):
+    """A missing source branch among other validation errors is retried."""
+    stale_branch_response = mock.Mock()
+    stale_branch_response.ok = False
+    stale_branch_response.status_code = 400
+    stale_branch_response.text = '{"message":{"source_branch":["does not exist","is invalid"]}}'
+    stale_branch_response.json.return_value = {
+        'message': {'source_branch': ['does not exist', 'is invalid']}
+    }
+
+    success_response = mock.Mock()
+    success_response.ok = True
+    success_response.json.return_value = {
+        'iid': 123,
+        'web_url': 'https://my-gitlab-instance.com/project/merge_requests/123',
+    }
+    mock_requests_post.side_effect = [
+        stale_branch_response,
+        stale_branch_response,
+        success_response,
+    ]
+
+    result = git_utils._create_gitlab_mr(
+        repo_url=PUB_GIT_REPO,
+        git_token=PUB_TOKEN_VALUE,
+        source_branch='feature-branch',
+        target_branch='main',
+        request_id=456,
+    )
+
+    assert result['mr_id'] == '123'
+    assert mock_requests_post.call_count == 3
+
+
+@mock.patch('iib.workers.api_utils.requests_session.post')
+def test_create_gitlab_mr_stops_after_source_branch_cache_retries(mock_requests_post):
+    """A persistently missing source branch fails after the bounded retry window."""
+    stale_branch_response = mock.Mock()
+    stale_branch_response.ok = False
+    stale_branch_response.status_code = 400
+    stale_branch_response.text = '{"message":{"source_branch":["does not exist"]}}'
+    stale_branch_response.json.return_value = {'message': {'source_branch': ['does not exist']}}
+    mock_requests_post.return_value = stale_branch_response
+
+    with pytest.raises(IIBError, match="Failed to create merge request: 400") as exc_info:
+        git_utils._create_gitlab_mr(
+            repo_url=PUB_GIT_REPO,
+            git_token=PUB_TOKEN_VALUE,
+            source_branch='feature-branch',
+            target_branch='main',
+            request_id=456,
+        )
+
+    assert mock_requests_post.call_count == 4
+    assert stale_branch_response.text in str(exc_info.value)
+
+
 @mock.patch('iib.workers.api_utils.requests_session.put')
 def test_close_gitlab_mr_success(mock_requests_put):
     """Test successful GitLab API call for closing MR."""
@@ -731,6 +789,44 @@ def test_close_gitlab_mr_success(mock_requests_put):
 
 
 @pytest.mark.parametrize(
+    'response_data',
+    [
+        [],
+        'Bad Request',
+        None,
+        {'message': 'Bad Request'},
+        {'message': None},
+    ],
+)
+@mock.patch('iib.workers.api_utils.requests_session.post')
+def test_create_gitlab_mr_non_dict_error_data_uses_generic_error_path(
+    mock_requests_post, response_data, caplog
+):
+    """Valid non-dictionary error data is handled as a generic GitLab API failure."""
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 400
+    mock_response.text = 'Unexpected response'
+    mock_response.json.return_value = response_data
+    mock_requests_post.return_value = mock_response
+
+    with pytest.raises(IIBError, match="Failed to create merge request: 400"):
+        git_utils._create_gitlab_mr(
+            repo_url=PUB_GIT_REPO,
+            git_token=PUB_TOKEN_VALUE,
+            source_branch='feature-branch',
+            target_branch='main',
+            request_id=456,
+        )
+
+    assert mock_requests_post.call_count == 1
+    assert (
+        'Failed to create merge request. Status: 400, Response: Unexpected response'
+        in caplog.messages
+    )
+
+
+@pytest.mark.parametrize(
     "status_code,error_message",
     [
         (400, "Bad Request"),
@@ -745,6 +841,7 @@ def test_create_gitlab_mr_http_errors(mock_requests_post, status_code, error_mes
     mock_response.ok = False
     mock_response.status_code = status_code
     mock_response.text = error_message
+    mock_response.json.side_effect = ValueError("Invalid JSON response")
     mock_requests_post.return_value = mock_response
 
     with pytest.raises(IIBError, match=f"Failed to create merge request: {status_code}"):
