@@ -260,7 +260,7 @@ def _update_index_image_pull_spec(
     is_image_fbc: bool = False,
     index_repo_map: Optional[Dict[str, str]] = None,
     rm_operators: Optional[List[str]] = None,
-) -> None:
+) -> Optional[str]:
     """
     Update the request with the modified index image.
 
@@ -283,6 +283,8 @@ def _update_index_image_pull_spec(
         required if ``is_image_fbc`` is ``True``.
     :param list(str) rm_operators: List of operator package names to remove from the Git
         catalog during overwrite. Used by RM requests and ADD requests with deprecations.
+    :return: The recorded index_image_resolved when add_or_rm is True, otherwise None.
+    :rtype: Optional[str]
     :raises IIBError: if the manifest list couldn't be created and pushed
     """
     conf = get_worker_config()
@@ -322,6 +324,7 @@ def _update_index_image_pull_spec(
         payload['internal_index_image_copy_resolved'] = get_resolved_image(output_pull_spec)
 
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')
+    return payload.get('index_image_resolved')
 
 
 def _get_external_arch_pull_spec(

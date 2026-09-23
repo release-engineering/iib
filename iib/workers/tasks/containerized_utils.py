@@ -5,15 +5,18 @@ import logging
 import os
 import posixpath
 import queue
+import re
 import shutil
 import tempfile
 import threading
+from contextlib import nullcontext
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from iib.exceptions import ArtifactNotFoundError, IIBError, FileNotFoundInImageError
-from iib.workers.api_utils import set_request_state
+from iib.workers.api_utils import get_request, set_request_state
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import BundleImage
 from iib.workers.tasks.build import _skopeo_copy
@@ -34,11 +37,11 @@ from iib.workers.tasks.konflux_utils import (
     wait_for_pipeline_completion,
 )
 from iib.workers.tasks.oras_utils import (
-    _get_index_digest,
     get_index_tag,
     get_indexdb_artifact_pullspec,
     get_imagestream_artifact_pullspec,
     get_oras_artifact,
+    get_request_indexdb_artifact_pullspec,
     push_oras_artifact,
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
@@ -46,6 +49,106 @@ from iib.workers.tasks.oras_utils import (
 from iib.workers.tasks.utils import get_image_label, run_cmd, skopeo_inspect
 
 log = logging.getLogger(__name__)
+
+
+_REQUEST_ID_SENTINEL = '__IIB_REQUEST_ID__'
+_CHAINED_REQUEST_TYPES = frozenset({'add', 'rm', 'fbc-operations'})
+
+
+@dataclass(frozen=True)
+class ChainedBuildSource:
+    """Immutable ancestry and immediate-parent data for a chained build."""
+
+    parent_request_id: int
+    parent_index_image: str
+    parent_index_image_resolved: str
+    original_from_index: str
+    ancestry: Tuple[int, ...]
+
+
+def get_iib_output_request_id(image: str) -> Optional[int]:
+    """Return the request ID when an image exactly matches an IIB output template."""
+    conf = get_worker_config()
+    registries = {conf['iib_registry']}
+    if conf.get('iib_index_image_output_registry'):
+        registries.add(conf['iib_index_image_output_registry'])
+
+    for registry in registries:
+        rendered = conf['iib_image_push_template'].format(
+            registry=registry,
+            request_id=_REQUEST_ID_SENTINEL,
+        )
+        pattern = re.escape(rendered).replace(
+            re.escape(_REQUEST_ID_SENTINEL),
+            r'(?P<request_id>[0-9]+)',
+        )
+        match = re.fullmatch(pattern, image)
+        if match:
+            return int(match.group('request_id'))
+    return None
+
+
+def resolve_chained_build_source(
+    from_index: str,
+    overwrite_from_index: bool,
+    overwrite_from_index_token: Optional[str],
+) -> Optional[ChainedBuildSource]:
+    """Resolve immutable ancestry when ``from_index`` is an IIB build output."""
+    parent_id = get_iib_output_request_id(from_index)
+    if parent_id is None:
+        return None
+    if overwrite_from_index or overwrite_from_index_token:
+        raise IIBError(
+            f'Chained from_index {from_index} cannot be overwritten; '
+            'IIB output images are read-only build results.'
+        )
+
+    current_image = from_index
+    current_id: Optional[int] = parent_id
+    seen: set[int] = set()
+    ancestry: List[int] = []
+    immediate_parent: Optional[Dict[str, Any]] = None
+
+    while current_id is not None:
+        if current_id in seen:
+            raise IIBError(f'Build chain contains a cycle at request {current_id}: {ancestry}')
+        seen.add(current_id)
+        ancestry.append(current_id)
+        request_data = get_request(current_id)
+
+        if request_data.get('state') != 'complete':
+            raise IIBError(f'Parent request {current_id} is not complete.')
+        if request_data.get('request_type') not in _CHAINED_REQUEST_TYPES:
+            raise IIBError(
+                f'Parent request {current_id} has unsupported request type '
+                f"{request_data.get('request_type')!r}."
+            )
+        if request_data.get('index_image') != current_image:
+            raise IIBError(
+                f'Parent request {current_id} index_image '
+                f"{request_data.get('index_image')!r} does not match "
+                f'{current_image!r}.'
+            )
+        if not request_data.get('index_image_resolved'):
+            raise IIBError(f'Parent request {current_id} has no resolved index image.')
+        if immediate_parent is None:
+            immediate_parent = request_data
+
+        next_image = request_data.get('from_index')
+        if not next_image:
+            raise IIBError(f'Parent request {current_id} has no from_index.')
+        current_image = next_image
+        current_id = get_iib_output_request_id(current_image)
+
+    if immediate_parent is None:
+        raise IIBError(f'Failed to resolve parent request {parent_id}.')
+    return ChainedBuildSource(
+        parent_request_id=parent_id,
+        parent_index_image=immediate_parent['index_image'],
+        parent_index_image_resolved=immediate_parent['index_image_resolved'],
+        original_from_index=current_image,
+        ancestry=tuple(ancestry),
+    )
 
 
 def extract_files_from_image_non_privileged(image: str, src_path: str, dest_path: str) -> None:
@@ -214,37 +317,19 @@ def _reject_escaping_symlinks(root: str, image: str, description: str) -> None:
             )
 
 
-def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -> Tuple[str, str]:
-    """
-    Extract FBC configs and index.db from an index image, unprivileged.
-
-    Used on the divergent-tag path where no git branch / ORAS artifact exists yet.
-    The image is the source of truth for its own content.
+def extract_catalog_from_image(from_index_resolved: str, temp_dir: str) -> str:
+    """Extract FBC configs from an index image, unprivileged.
 
     The caller must pass the digest-resolved pullspec (``from_index_resolved``),
     not the mutable tag, so the extracted content matches the image the request
-    already inspected during prebuild (OPM version, build metadata) and so the
-    repeated image reads here cannot disagree with each other.
-
-    Only the FBC configs and the hidden index.db are extracted. The hidden db is
-    the sole source of truth for the SQLite index; there is no fallback to the
-    labeled database path and no synthesised empty db. An image that carries no
-    hidden index.db has not been onboarded to the containerized build flow and
-    the request is failed so the image can be onboarded first.
-
-    The configs label is the signal that the image declares an FBC root, so a
-    declared-but-empty configs directory (an empty index, whose ``/configs`` holds
-    no files) is treated as an empty catalog rather than a missing path — the
-    divergent add/rm operation then populates it.
+    already inspected during prebuild.
 
     :param str from_index_resolved: The digest-resolved from_index image pullspec.
     :param str temp_dir: Base temp directory for extraction.
-    :return: Tuple of (configs_dir_path, index_db_path).
-    :rtype: Tuple[str, str]
-    :raises IIBError: If the image has no FBC configs label, if its configs tree
-        contains a symlink pointing outside the extracted content, if it carries
-        no hidden index.db, or if the hidden-db extraction fails for any other
-        reason (e.g. a registry, OCI parsing, layer, or tar error).
+    :return: Path to the extracted configs directory.
+    :rtype: str
+    :raises IIBError: If the image has no FBC configs label or if its configs tree
+        contains a symlink pointing outside the extracted content.
     """
     configs_label = get_image_label(
         from_index_resolved, 'operators.operatorframework.io.index.configs.v1'
@@ -277,6 +362,42 @@ def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -
     # The configs tree is committed to git verbatim, so refuse one that would
     # drag content in from outside the extraction root when it is copied.
     _reject_escaping_symlinks(configs_dir, from_index_resolved, 'FBC configs directory')
+    return configs_dir
+
+
+def extract_catalog_and_db_from_image(from_index_resolved: str, temp_dir: str) -> Tuple[str, str]:
+    """
+    Extract FBC configs and index.db from an index image, unprivileged.
+
+    Used on the divergent-tag path where no git branch / ORAS artifact exists yet.
+    The image is the source of truth for its own content.
+
+    The caller must pass the digest-resolved pullspec (``from_index_resolved``),
+    not the mutable tag, so the extracted content matches the image the request
+    already inspected during prebuild (OPM version, build metadata) and so the
+    repeated image reads here cannot disagree with each other.
+
+    Only the FBC configs and the hidden index.db are extracted. The hidden db is
+    the sole source of truth for the SQLite index; there is no fallback to the
+    labeled database path and no synthesised empty db. An image that carries no
+    hidden index.db has not been onboarded to the containerized build flow and
+    the request is failed so the image can be onboarded first.
+
+    The configs label is the signal that the image declares an FBC root, so a
+    declared-but-empty configs directory (an empty index, whose ``/configs`` holds
+    no files) is treated as an empty catalog rather than a missing path — the
+    divergent add/rm operation then populates it.
+
+    :param str from_index_resolved: The digest-resolved from_index image pullspec.
+    :param str temp_dir: Base temp directory for extraction.
+    :return: Tuple of (configs_dir_path, index_db_path).
+    :rtype: Tuple[str, str]
+    :raises IIBError: If the image has no FBC configs label, if its configs tree
+        contains a symlink pointing outside the extracted content, if it carries
+        no hidden index.db, or if the hidden-db extraction fails for any other
+        reason (e.g. a registry, OCI parsing, layer, or tar error).
+    """
+    configs_dir = extract_catalog_from_image(from_index_resolved, temp_dir)
 
     index_db_path = str(Path(temp_dir) / 'extracted_index.db')
     conf = get_worker_config()
@@ -449,6 +570,42 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
         ) from e
 
 
+def fetch_and_verify_request_index_db_artifact(
+    index_image_resolved: str, request_id: int, temp_dir: str
+) -> str:
+    """
+    Fetch a request-specific index.db artifact and verify its payload.
+
+    :param str index_image_resolved: The producing request's resolved output image.
+    :param int request_id: The producing IIB request ID.
+    :param str temp_dir: Directory where the artifact should be downloaded.
+    :return: Path to the canonical or legacy-compatible index database payload.
+    :rtype: str
+    :raises IIBError: If the artifact cannot be fetched or has no supported payload.
+    """
+    artifact_ref = get_request_indexdb_artifact_pullspec(index_image_resolved, request_id)
+    try:
+        artifact_dir = get_oras_artifact(artifact_ref, temp_dir)
+    except ArtifactNotFoundError as e:
+        raise IIBError(
+            f'Request-specific index.db artifact {artifact_ref} not found for '
+            f'parent request {request_id}.'
+        ) from e
+    except IIBError as e:
+        raise IIBError(
+            f'Failed to pull request-specific index.db artifact {artifact_ref}: {e}'
+        ) from e
+
+    index_db = Path(artifact_dir) / 'index.db'
+    if not index_db.is_file():
+        # Divergent builds published this basename before payload normalization.
+        legacy_index_db = Path(artifact_dir) / 'extracted_index.db'
+        if not legacy_index_db.is_file():
+            raise IIBError(f'Index.db file not found at {index_db}.')
+        return str(legacy_index_db)
+    return str(index_db)
+
+
 def write_build_metadata(
     local_repo_path: str,
     opm_version: str,
@@ -548,29 +705,12 @@ def push_index_db_artifact(
 
     index_db_file = Path(index_db_path)
     index_db_dir = str(index_db_file.parent)
-    index_db_filename = index_db_file.name
-    log.info('Pushing from directory: %s, filename: %s', index_db_dir, index_db_filename)
 
     set_request_state(request_id, 'in_progress', 'Pushing updated index database')
-    conf = get_worker_config()
-    # Derive the tag through the same config template the read path uses
-    # (oras_utils._get_content_addressed_artifact_tag), so an operator override
-    # cannot leave pushed tags and looked-up tags disagreeing.
-    output_tag = conf['iib_index_db_artifact_tag_template'].format(
-        digest=_get_index_digest(output_image)
-    )
-
-    request_artifact_ref = conf['iib_index_db_artifact_template'].format(
-        registry=conf['iib_index_db_artifact_registry'],
-        tag=f'{output_tag}-{request_id}',
-    )
+    request_artifact_ref = get_request_indexdb_artifact_pullspec(output_image, request_id)
     artifact_refs = [request_artifact_ref]
     if overwrite_from_index:
-        current_artifact_ref = conf['iib_index_db_artifact_template'].format(
-            registry=conf['iib_index_db_artifact_registry'],
-            tag=output_tag,
-        )
-        artifact_refs.append(current_artifact_ref)
+        artifact_refs.append(get_indexdb_artifact_pullspec(output_image))
 
     annotations = {
         'request_id': str(request_id),
@@ -581,14 +721,24 @@ def push_index_db_artifact(
     if operators:
         annotations['operators'] = ','.join(operators)
 
-    for artifact_ref in artifact_refs:
-        push_oras_artifact(
-            artifact_ref=artifact_ref,
-            local_path=index_db_filename,
-            cwd=index_db_dir,
-            annotations=annotations.copy(),
-        )
-        log.info('Pushed %s to registry', artifact_ref)
+    # ORAS preserves local filenames in the payload. Stage noncanonical inputs
+    # without renaming or overwriting the source database used by the build.
+    with (
+        nullcontext(index_db_dir)
+        if index_db_file.name == 'index.db'
+        else tempfile.TemporaryDirectory(prefix='iib-index-db-')
+    ) as artifact_dir:
+        if index_db_file.name != 'index.db':
+            shutil.copyfile(index_db_file, Path(artifact_dir) / 'index.db')
+        log.info('Pushing index.db from directory: %s', artifact_dir)
+        for artifact_ref in artifact_refs:
+            push_oras_artifact(
+                artifact_ref=artifact_ref,
+                local_path='index.db',
+                cwd=artifact_dir,
+                annotations=annotations.copy(),
+            )
+            log.info('Pushed %s to registry', artifact_ref)
 
 
 def cleanup_on_failure(
@@ -644,20 +794,29 @@ def cleanup_on_failure(
         log.error("Neither MR nor commit to revert. No cleanup needed for %s", reason)
 
 
+class BuildSourceKind(str, Enum):
+    """Describe how build content and Git/Konflux scaffolding are sourced."""
+
+    STANDARD = 'standard'
+    DIVERGENT = 'divergent'
+    CHAINED = 'chained'
+
+
 @dataclass(frozen=True)
 class BuildSources:
-    """Resolved inputs for a containerized build.
-
-    Frozen so the ``is_divergent`` guard -- which decides whether an MR may be
-    merged -- cannot be flipped after ``prepare_build_sources`` has resolved it.
-    """
+    """Resolved inputs and merge policy for a containerized build."""
 
     index_git_repo: str
     local_git_repo_path: str
     localized_git_catalog_path: str
     index_db_path: Optional[str]  # None => pull from ORAS; set => use extracted db
     target_branch: str
-    is_divergent: bool
+    source_kind: BuildSourceKind
+
+    @property
+    def merge_allowed(self) -> bool:
+        """Return whether a build may merge its generated merge request."""
+        return self.source_kind is BuildSourceKind.STANDARD
 
 
 def prepare_build_sources(
@@ -668,17 +827,20 @@ def prepare_build_sources(
     ocp_version: str,
     index_to_gitlab_push_map: Dict[str, str],
     overwrite_from_index: bool,
+    overwrite_from_index_token: Optional[str] = None,
 ) -> BuildSources:
     """
-    Resolve git repo + branch and decide the normal vs divergent build path.
+    Resolve Git/Konflux scaffolding and content for a containerized build.
 
-    Normal path: a branch named after the image tag exists -> build against it
+    Standard path: a branch named after the image tag exists -> build against it
     (overwrite allowed). Divergent path: no branch for the tag -> reject
     overwrite, reuse the base OCP branch's Konflux Component, and seed content
-    by extracting configs+index.db from the image.
+    by extracting configs+index.db from the image. Chained path: select Git
+    scaffolding from the original ancestor and seed configs+index.db from the
+    immediate parent's immutable outputs.
 
-    Branch selection keys on the mutable tag (``from_index``), but divergent
-    content is extracted from the digest-resolved pullspec
+    Standard/divergent branch selection keys on the mutable tag
+    (``from_index``), but divergent content is extracted from the digest-resolved pullspec
     (``from_index_resolved``) so it matches the image the request already
     inspected during prebuild and cannot drift if the tag moves mid-request.
 
@@ -689,20 +851,72 @@ def prepare_build_sources(
     :param str ocp_version: Base OCP version branch, e.g. "v4.19"
     :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
     :param bool overwrite_from_index: Whether the request wants to overwrite from_index
+    :param Optional[str] overwrite_from_index_token: Registry credentials supplied for overwrite
     :return: The resolved build sources
     :rtype: BuildSources
     :raises IIBError: if the git mapping is missing, overwrite is requested on
-        the divergent path, or the base OCP branch is not onboarded.
+        the divergent or chained path, or required Git scaffolding is not onboarded.
     """
-    index_git_repo = resolve_git_url(from_index=from_index, index_repo_map=index_to_gitlab_push_map)
+    chained_source = resolve_chained_build_source(
+        from_index, overwrite_from_index, overwrite_from_index_token
+    )
+    mapping_index = chained_source.original_from_index if chained_source else from_index
+    index_git_repo = resolve_git_url(
+        from_index=mapping_index,
+        index_repo_map=index_to_gitlab_push_map,
+    )
     if not index_git_repo:
         raise IIBError(
-            f"Git repository mapping not found for from_index: {from_index}. "
+            f"Git repository mapping not found for from_index: {mapping_index}. "
             "index_to_gitlab_push_map is required."
         )
     token_name, git_token = get_git_token(index_git_repo)
 
-    tag = get_index_tag(from_index)
+    tag = get_index_tag(mapping_index)
+
+    if chained_source:
+        target_branch = tag
+        if not remote_branch_exists(index_git_repo, target_branch, token_name, git_token):
+            target_branch = ocp_version
+            if not remote_branch_exists(index_git_repo, target_branch, token_name, git_token):
+                raise IIBError(
+                    f"Base OCP branch '{target_branch}' is not onboarded for "
+                    f'{index_git_repo}; chained build scaffolding is unavailable.'
+                )
+
+        set_request_state(request_id, 'in_progress', 'Cloning Git repository')
+        local_git_repo_path = Path(temp_dir) / 'git' / target_branch
+        local_git_repo_path.mkdir(parents=True, exist_ok=True)
+        clone_git_repo(
+            index_git_repo,
+            target_branch,
+            token_name,
+            git_token,
+            str(local_git_repo_path),
+        )
+        catalog_path = local_git_repo_path / 'configs'
+        if not catalog_path.exists():
+            raise IIBError(f'Catalogs directory not found in {local_git_repo_path}')
+
+        parent_catalog = extract_catalog_from_image(
+            chained_source.parent_index_image_resolved, temp_dir
+        )
+        shutil.rmtree(catalog_path)
+        shutil.copytree(parent_catalog, catalog_path, symlinks=True)
+        index_db_path = fetch_and_verify_request_index_db_artifact(
+            chained_source.parent_index_image_resolved,
+            chained_source.parent_request_id,
+            temp_dir,
+        )
+        return BuildSources(
+            index_git_repo=index_git_repo,
+            local_git_repo_path=str(local_git_repo_path),
+            localized_git_catalog_path=str(catalog_path),
+            index_db_path=index_db_path,
+            target_branch=target_branch,
+            source_kind=BuildSourceKind.CHAINED,
+        )
+
     set_request_state(request_id, 'in_progress', 'Cloning Git repository')
 
     if remote_branch_exists(index_git_repo, tag, token_name, git_token):
@@ -722,7 +936,7 @@ def prepare_build_sources(
             localized_git_catalog_path=str(catalog_path),
             index_db_path=None,
             target_branch=target_branch,
-            is_divergent=False,
+            source_kind=BuildSourceKind.STANDARD,
         )
 
     # Divergent path.
@@ -762,7 +976,7 @@ def prepare_build_sources(
         localized_git_catalog_path=str(catalog_path),
         index_db_path=extracted_db,
         target_branch=target_branch,
-        is_divergent=True,
+        source_kind=BuildSourceKind.DIVERGENT,
     )
 
 
@@ -792,8 +1006,16 @@ def prepare_git_repository_for_build(
     :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
     :return: Tuple of (index_git_repo, local_git_repo_path, localized_git_catalog_path)
     :rtype: Tuple[str, str, str]
-    :raises IIBError: If Git repository cannot be resolved or configs directory not found
+    :raises IIBError: If chaining is unsupported, the Git repository cannot be resolved,
+        or the configs directory is not found.
     """
+    parent_request_id = get_iib_output_request_id(from_index)
+    if parent_request_id is not None:
+        raise IIBError(
+            'Chaining is only supported for add, rm, and fbc-operations requests; '
+            f'{from_index} is the output of request {parent_request_id}.'
+        )
+
     # Get Git repository information
     index_git_repo = resolve_git_url(from_index=from_index, index_repo_map=index_to_gitlab_push_map)
     if not index_git_repo:
@@ -956,15 +1178,18 @@ def replicate_image_to_tagged_destinations(
 def cleanup_merge_request_if_exists(
     mr_details: Optional[Dict[str, str]],
     index_git_repo: Optional[str],
+    raise_on_error: bool = False,
 ) -> None:
     """
     Close merge request if it was created.
 
-    This function attempts to close a merge request and logs a warning
-    if the operation fails.
+    This function attempts to close a merge request. By default it logs a warning
+    if closure fails; callers may require the error to propagate for a success-path cleanup.
 
     :param Optional[Dict[str, str]] mr_details: Details of the merge request
     :param Optional[str] index_git_repo: URL of the Git repository
+    :param bool raise_on_error: Re-raise closure errors when cleanup is a required success step.
+    :raises IIBError: If closure fails and ``raise_on_error`` is true.
     """
     if mr_details and index_git_repo:
         try:
@@ -972,6 +1197,8 @@ def cleanup_merge_request_if_exists(
             log.info("Closed merge request: %s", mr_details.get('mr_url'))
         except IIBError as e:
             log.warning("Failed to close merge request: %s", e)
+            if raise_on_error:
+                raise
 
 
 def merge_mr_after_build(

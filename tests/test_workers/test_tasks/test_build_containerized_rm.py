@@ -8,6 +8,12 @@ from iib.workers.tasks import build_containerized_rm, containerized_utils
 from iib.workers.tasks.utils import RequestConfigAddRm
 
 
+@pytest.fixture(autouse=True)
+def _mock_registry_token():
+    with mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token'):
+        yield
+
+
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
@@ -16,7 +22,7 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -45,7 +51,12 @@ from iib.workers.tasks.utils import RequestConfigAddRm
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_rm.prepare_build_sources',
+    wraps=containerized_utils.prepare_build_sources,
+)
 def test_handle_containerized_rm_request_success_with_overwrite(
+    mock_prepare_sources,
     mock_srt,
     mock_merge_mr,
     mock_makedirs,
@@ -140,6 +151,7 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     mock_gpiu.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
 
     # Mock ORAS push related functions
+    mock_uiips.return_value = 'quay.io/namespace/index-image@sha256:destination'
     mock_giap.return_value = 'registry.io/index-db:v4.14'
     mock_gid.return_value = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc0'
 
@@ -174,6 +186,9 @@ def test_handle_containerized_rm_request_success_with_overwrite(
             distribution_scope=None,
             binary_image_config=None,
         ),
+    )
+    assert mock_prepare_sources.call_args.kwargs['overwrite_from_index_token'] == (
+        overwrite_from_index_token
     )
 
     # Verify OPM version was set. It reads a label off from_index, so the overwrite token
@@ -215,8 +230,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     # Verify index.db was pushed (2 times: request_id tag + current-artifact tag)
     assert mock_poa.call_count == 2
 
-    # Verify the content key was resolved from the built output image
-    mock_gid.assert_called_once_with('quay.io/konflux/built-image@sha256:xyz789')
+    # The final destination may have a different digest after replication.
+    mock_gid.assert_called_once_with('quay.io/namespace/index-image@sha256:destination')
 
     # Verify final state
     final_call = mock_srs.call_args_list[-1]
@@ -236,7 +251,7 @@ def test_handle_containerized_rm_request_success_with_overwrite(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -399,7 +414,7 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -847,7 +862,7 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -1005,7 +1020,7 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -1144,7 +1159,7 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
+@mock.patch('iib.workers.tasks.oras_utils._get_index_digest')
 @mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -1171,7 +1186,7 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
-def test_handle_containerized_rm_close_mr_failure_logged(
+def test_handle_containerized_rm_close_mr_failure_fails_request(
     mock_makedirs,
     mock_exists,
     mock_copytree,
@@ -1208,7 +1223,7 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     mock_rdc,
     mock_rbe,
 ):
-    """Test that MR close failure is logged but doesn't fail the request."""
+    """A successful build is not completed while its throw-away MR remains open."""
     request_id = 10
     operators = ['test-operator']
     from_index = 'quay.io/namespace/index-image:v4.14'
@@ -1257,20 +1272,17 @@ def test_handle_containerized_rm_close_mr_failure_logged(
     # Mock close_mr to raise error
     mock_close_mr.side_effect = IIBError('Failed to close MR')
 
-    # Test - should complete successfully despite MR close failure
-    build_containerized_rm.handle_containerized_rm_request(
-        operators=operators,
-        request_id=request_id,
-        from_index=from_index,
-        index_to_gitlab_push_map={'quay.io/namespace/index-image': 'https://gitlab.com/repo'},
-    )
+    with pytest.raises(IIBError, match='Failed to remove operators: Failed to close MR'):
+        build_containerized_rm.handle_containerized_rm_request(
+            operators=operators,
+            request_id=request_id,
+            from_index=from_index,
+            index_to_gitlab_push_map={'quay.io/namespace/index-image': 'https://gitlab.com/repo'},
+        )
 
-    # Verify MR was attempted to be closed
     mock_close_mr.assert_called_once()
-
-    # Verify request still completed successfully
-    final_call = mock_srs.call_args_list[-1]
-    assert final_call[0][1] == 'complete'
+    mock_cof.assert_called_once()
+    assert all(call.args[1] != 'complete' for call in mock_srs.call_args_list)
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
@@ -1528,7 +1540,14 @@ def test_handle_containerized_rm_missing_output_pull_spec(
 @mock.patch('iib.workers.tasks.build_containerized_rm.prepare_request_for_build')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token')
-def test_rm_divergent_never_merges(
+@pytest.mark.parametrize(
+    'source_kind',
+    (
+        containerized_utils.BuildSourceKind.DIVERGENT,
+        containerized_utils.BuildSourceKind.CHAINED,
+    ),
+)
+def test_rm_nonmergeable_source_never_merges(
     mock_srt,
     mock_srs,
     mock_prfb,
@@ -1556,9 +1575,10 @@ def test_rm_divergent_never_merges(
     mock_update_pull_spec,
     mock_cof,
     mock_rdc,
+    source_kind,
     tmp_path,
 ):
-    """Divergent path must never fall back to ORAS and must never merge the MR."""
+    """Nonmergeable sources use their extracted index.db and never merge the MR."""
     request_id = 789
     operators = ['operator1']
     from_index = 'quay.io/namespace/index-image:v4.99'
@@ -1587,7 +1607,7 @@ def test_rm_divergent_never_merges(
         localized_git_catalog_path=localized_git_catalog_path,
         index_db_path=index_db_path,
         target_branch='v4.14',
-        is_divergent=True,
+        source_kind=source_kind,
     )
 
     mock_voe.return_value = ({'operator1'}, index_db_path)
@@ -1600,9 +1620,15 @@ def test_rm_divergent_never_merges(
         'source_branch': 'iib-request-789-v4.14',
     }
     mock_git_commit.return_value = (mr_details, 'commit_sha_789')
-    mock_monitor.return_value = 'quay.io/konflux/built-image@sha256:xyz789'
+    mock_monitor.return_value = 'quay.io/konflux/built-image@sha256:' + 'a' * 64
     mock_replicate.return_value = ['registry.example.com/final-image:789']
+    resolved_output = 'registry.example.com/final-image@sha256:' + 'b' * 64
+    mock_update_pull_spec.return_value = resolved_output
     mock_push_index_db.return_value = None
+    publication = mock.Mock()
+    publication.attach_mock(mock_update_pull_spec, 'metadata')
+    publication.attach_mock(mock_push_index_db, 'artifact')
+    publication.attach_mock(mock_cleanup_mr, 'close')
 
     build_containerized_rm.handle_containerized_rm_request(
         operators=operators,
@@ -1619,14 +1645,14 @@ def test_rm_divergent_never_merges(
 
     # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
     # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
-    # prevent a merge is the handler-level `and not sources.is_divergent` guard. If
+    # prevent a merge is the handler-level `sources.merge_allowed` guard. If
     # that guard were removed, this MR would be merged and this assertion would fail.
     mock_merge_mr.assert_not_called()
-    mock_cleanup_mr.assert_called_once()
+    mock_cleanup_mr.assert_called_once_with(mr_details, index_git_repo, raise_on_error=True)
 
     mock_orrf.assert_called_once()
     assert mock_orrf.call_args.kwargs['index_db_path'] == index_db_path
     mock_cof.assert_not_called()
 
-    expected_output_image = 'quay.io/konflux/built-image@sha256:xyz789'
-    assert mock_push_index_db.call_args.kwargs['output_image'] == expected_output_image
+    assert mock_push_index_db.call_args.kwargs['output_image'] == resolved_output
+    assert [call[0] for call in publication.mock_calls] == ['metadata', 'artifact', 'close']
