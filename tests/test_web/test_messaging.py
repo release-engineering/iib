@@ -231,6 +231,7 @@ def test_send_messages_nonfatal(mock_gsd, mock_bc, app):
 
 @pytest.mark.parametrize('request_msg_expected', (True, False))
 @pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging._get_request_state_change_envelope')
 @mock.patch('iib.web.messaging._get_batch_state_change_envelope')
 @mock.patch('iib.web.messaging.send_messages')
@@ -238,6 +239,7 @@ def test_send_message_for_state_change(
     mock_sm,
     mock_gbsce,
     mock_grstce,
+    mock_skm,
     batch_msg_expected,
     request_msg_expected,
     app,
@@ -269,11 +271,18 @@ def test_send_message_for_state_change(
 
 @pytest.mark.parametrize('request_msg_expected', (True, False))
 @pytest.mark.parametrize('batch_msg_expected', (True, False))
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging._get_request_state_change_envelope')
 @mock.patch('iib.web.messaging._get_batch_state_change_envelope')
 @mock.patch('iib.web.messaging.send_messages')
 def test_send_messages_for_new_batch_of_requests(
-    mock_sm, mock_gbsce, mock_grsce, batch_msg_expected, request_msg_expected, minimal_request_add
+    mock_sm,
+    mock_gbsce,
+    mock_grsce,
+    mock_skm,
+    batch_msg_expected,
+    request_msg_expected,
+    minimal_request_add,
 ):
     expected_msgs = []
     if request_msg_expected:
@@ -300,8 +309,149 @@ def test_send_messages_for_new_batch_of_requests(
         mock_sm.assert_not_called()
 
 
+@mock.patch('iib.web.messaging._send_kafka_messages')
 @mock.patch('iib.web.messaging.send_messages')
-def test_send_messages_for_new_batch_of_requests_no_requests(mock_sm, minimal_request_add):
+def test_send_messages_for_new_batch_of_requests_no_requests(
+    mock_sm, mock_skm, minimal_request_add
+):
     messaging.send_messages_for_new_batch_of_requests([])
 
     mock_sm.assert_not_called()
+
+
+@mock.patch('iib.web.messaging.send_kafka_message')
+@mock.patch('iib.web.messaging.get_kafka_producer')
+def test_send_kafka_messages_no_producer(
+    mock_get_producer, mock_send_msg, app, db, minimal_request_add
+):
+    """When the producer is None, no messages should be sent."""
+    mock_get_producer.return_value = None
+
+    messaging._send_kafka_messages([minimal_request_add], minimal_request_add.batch)
+
+    mock_send_msg.assert_not_called()
+
+
+@mock.patch('iib.web.messaging.send_kafka_message')
+@mock.patch('iib.web.messaging.get_kafka_producer')
+def test_send_kafka_messages_build_and_batch(
+    mock_get_producer, mock_send_msg, app, db, minimal_request_add
+):
+    """Verify both build and batch messages are sent on new batch."""
+    mock_producer = mock.Mock()
+    mock_get_producer.return_value = mock_producer
+    app.config['IIB_KAFKA_BUILD_STATE_TOPIC'] = 'dev.eng.iib.build.state'
+    app.config['IIB_KAFKA_BATCH_STATE_TOPIC'] = 'dev.eng.iib.batch.state'
+
+    minimal_request_add.add_state('in_progress', 'Starting')
+    db.session.commit()
+
+    messaging._send_kafka_messages([minimal_request_add], minimal_request_add.batch, new_batch=True)
+
+    assert mock_send_msg.call_count == 2
+    build_call = mock_send_msg.call_args_list[0]
+    assert build_call[0][0] is mock_producer
+    assert build_call[0][1] == 'dev.eng.iib.build.state'
+
+    batch_call = mock_send_msg.call_args_list[1]
+    assert batch_call[0][0] is mock_producer
+    assert batch_call[0][1] == 'dev.eng.iib.batch.state'
+
+
+@mock.patch('iib.web.messaging.send_kafka_message')
+@mock.patch('iib.web.messaging.get_kafka_producer')
+def test_send_kafka_messages_no_topics(
+    mock_get_producer, mock_send_msg, app, db, minimal_request_add
+):
+    """When topics are not configured, no messages should be sent."""
+    mock_get_producer.return_value = mock.Mock()
+    app.config.pop('IIB_KAFKA_BUILD_STATE_TOPIC', None)
+    app.config.pop('IIB_KAFKA_BATCH_STATE_TOPIC', None)
+
+    messaging._send_kafka_messages([minimal_request_add], minimal_request_add.batch)
+
+    mock_send_msg.assert_not_called()
+
+
+@mock.patch('iib.web.messaging.send_kafka_message')
+@mock.patch('iib.web.messaging.get_kafka_producer')
+def test_send_kafka_messages_batch_not_final(
+    mock_get_producer, mock_send_msg, app, db, minimal_request_add
+):
+    """Batch message should not be sent when batch is in_progress and new_batch is False."""
+    mock_get_producer.return_value = mock.Mock()
+    app.config['IIB_KAFKA_BUILD_STATE_TOPIC'] = 'dev.eng.iib.build.state'
+    app.config['IIB_KAFKA_BATCH_STATE_TOPIC'] = 'dev.eng.iib.batch.state'
+
+    minimal_request_add.add_state('in_progress', 'Starting')
+    db.session.commit()
+
+    messaging._send_kafka_messages(
+        [minimal_request_add], minimal_request_add.batch, new_batch=False
+    )
+
+    # Only build message, no batch message (batch is in_progress, not final)
+    assert mock_send_msg.call_count == 1
+    assert mock_send_msg.call_args_list[0][0][1] == 'dev.eng.iib.build.state'
+
+
+@mock.patch('iib.web.messaging.send_kafka_message')
+@mock.patch('iib.web.messaging.get_kafka_producer')
+def test_send_kafka_messages_exception_nonfatal(
+    mock_get_producer, mock_send_msg, app, db, minimal_request_add
+):
+    """Verify that exceptions in _send_kafka_messages do not propagate."""
+    mock_get_producer.return_value = mock.Mock()
+    app.config['IIB_KAFKA_BUILD_STATE_TOPIC'] = 'dev.eng.iib.build.state'
+    mock_send_msg.side_effect = RuntimeError('unexpected error')
+
+    # Should not raise — error is caught and logged
+    messaging._send_kafka_messages([minimal_request_add], minimal_request_add.batch)
+
+
+@mock.patch('iib.web.messaging._send_kafka_messages')
+@mock.patch('iib.web.messaging.send_messages')
+@mock.patch('iib.web.messaging._get_batch_state_change_envelope')
+@mock.patch('iib.web.messaging._get_request_state_change_envelope')
+def test_send_message_for_state_change_calls_kafka(
+    mock_req_env,
+    mock_batch_env,
+    mock_send_amqp,
+    mock_send_kafka,
+    app,
+    db,
+    minimal_request_add,
+):
+    """Verify send_message_for_state_change invokes _send_kafka_messages."""
+    mock_req_env.return_value = mock.Mock()
+    mock_batch_env.return_value = None
+
+    messaging.send_message_for_state_change(minimal_request_add, new_batch_msg=False)
+
+    mock_send_kafka.assert_called_once_with(
+        [minimal_request_add], minimal_request_add.batch, new_batch=False
+    )
+
+
+@mock.patch('iib.web.messaging._send_kafka_messages')
+@mock.patch('iib.web.messaging.send_messages')
+@mock.patch('iib.web.messaging._get_batch_state_change_envelope')
+@mock.patch('iib.web.messaging._get_request_state_change_envelope')
+def test_send_messages_for_new_batch_calls_kafka(
+    mock_req_env,
+    mock_batch_env,
+    mock_send_amqp,
+    mock_send_kafka,
+    app,
+    db,
+    minimal_request_add,
+):
+    """Verify send_messages_for_new_batch_of_requests invokes _send_kafka_messages."""
+    mock_req_env.return_value = mock.Mock()
+    mock_batch_env.return_value = None
+
+    messaging.send_messages_for_new_batch_of_requests([minimal_request_add])
+
+    mock_send_kafka.assert_called_once_with(
+        [minimal_request_add], minimal_request_add.batch, new_batch=True
+    )
