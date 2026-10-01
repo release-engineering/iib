@@ -7,6 +7,12 @@ from iib.workers.tasks import build_containerized_fbc_operations, containerized_
 from iib.workers.tasks.utils import RequestConfigFBCOperation
 
 
+@pytest.fixture(autouse=True)
+def _mock_registry_token():
+    with mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_registry_token'):
+        yield
+
+
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
@@ -89,12 +95,14 @@ def test_handle_containerized_fbc_operation_request(
     mock_ggt.return_value = ('token_name', 'token_value')
 
     # Mock os.path.exists for index.db check and catalogs dir check
-    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.Path.exists', return_value=True
+    ), mock.patch('iib.workers.tasks.containerized_utils.close_mr') as mock_close_mr:
         # Mock opm operation result
         mock_oraff.return_value = ('/tmp/updated_catalog_path', '/tmp/index.db', [], ['op1'])
 
         # Mock Konflux pipeline flow
-        mock_cmr.return_value = {'mr_url': 'http://mr.url'}
+        mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'http://mr.url'}
         mock_glcs.return_value = 'sha123'
         mock_fp.return_value = [{'metadata': {'name': 'pipeline-run-1'}}]
         mock_wfpc.return_value = {'status': 'Succeeded'}
@@ -108,6 +116,8 @@ def test_handle_containerized_fbc_operation_request(
             binary_image=binary_image,
             binary_image_config=binary_image_config,
         )
+
+    mock_close_mr.assert_called_once_with(mock_cmr.return_value, index_git_repo)
 
     # Assertions
     mock_prfb.assert_called_once_with(
@@ -262,9 +272,11 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
     mock_rgu.return_value = index_git_repo
     mock_ggt.return_value = ('token_name', 'token_value')
 
-    with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.Path.exists', return_value=True
+    ), mock.patch('iib.workers.tasks.containerized_utils.close_mr') as mock_close_mr:
         mock_oraff.return_value = ('/tmp/updated', '/tmp/db', [], ['op1', 'op2'])
-        mock_cmr.return_value = {'mr_url': 'http://mr.url'}
+        mock_cmr.return_value = {'mr_id': '1', 'mr_url': 'http://mr.url'}
         mock_glcs.return_value = 'sha123'
         mock_fp.return_value = [{'metadata': {'name': 'pipeline-run-1'}}]
         mock_wfpc.return_value = {'status': 'Succeeded'}
@@ -278,6 +290,8 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
             binary_image=binary_image,
             binary_image_config=binary_image_config,
         )
+
+    mock_close_mr.assert_called_once_with(mock_cmr.return_value, index_git_repo)
 
     # Verify OPM operation was called with list of resolved fragments
     mock_oraff.assert_called_once_with(
@@ -327,7 +341,12 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
+@mock.patch(
+    'iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources',
+    wraps=containerized_utils.prepare_build_sources,
+)
 def test_handle_containerized_fbc_operation_request_with_overwrite(
+    mock_prepare_sources,
     mock_merge_mr,
     mock_srs_utils,
     mock_makedirs,
@@ -379,6 +398,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         'mr_url': 'https://gitlab.com/mr/1',
         'source_branch': 'iib-request-10-v4.6',
     }
+    mock_uiips.return_value = 'quay.io/iib/from-index@sha256:destination'
 
     mock_docker_config = json.dumps({'auths': {}})
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
@@ -401,6 +421,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
     # Verify MR creation and merge for overwrite flow
     mock_cmr.assert_called_once()
     mock_merge_mr.assert_called_once()
+    assert mock_prepare_sources.call_args.kwargs['overwrite_from_index_token'] == (overwrite_token)
 
     # Verify DB artifacts pushed
     mock_pida_push.assert_called_once_with(
@@ -408,7 +429,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         from_index='quay.io/iib/from-index:latest',
         index_db_path='/tmp/d',
         operators=['op1'],
-        output_image='reg/img',
+        output_image='quay.io/iib/from-index@sha256:destination',
         overwrite_from_index=True,
         request_type='fbc_operations',
     )
@@ -554,7 +575,14 @@ def test_handle_containerized_fbc_operation_request_failure(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
-def test_fbc_operations_divergent_never_merges(
+@pytest.mark.parametrize(
+    'source_kind',
+    (
+        containerized_utils.BuildSourceKind.DIVERGENT,
+        containerized_utils.BuildSourceKind.CHAINED,
+    ),
+)
+def test_fbc_operations_nonmergeable_source_never_merges(
     mock_rdc,
     mock_srs,
     mock_gri,
@@ -573,9 +601,10 @@ def test_fbc_operations_divergent_never_merges(
     mock_cleanup_mr,
     mock_cof,
     mock_uiips,
+    source_kind,
     tmp_path,
 ):
-    """Divergent path must never fall back to ORAS and must never merge the MR."""
+    """Nonmergeable sources use their extracted index.db and never merge the MR."""
     request_id = 999
     from_index = 'quay.io/iib/from-index:v4.99'
     binary_image = 'binary-image:latest'
@@ -600,7 +629,7 @@ def test_fbc_operations_divergent_never_merges(
         localized_git_catalog_path=localized_git_catalog_path,
         index_db_path=index_db_path,
         target_branch='v4.14',
-        is_divergent=True,
+        source_kind=source_kind,
     )
 
     mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'], ['op1'])
@@ -611,9 +640,15 @@ def test_fbc_operations_divergent_never_merges(
         'source_branch': 'iib-request-999-v4.14',
     }
     mock_git_commit.return_value = (mr_details, 'commit_sha_999')
-    mock_monitor.return_value = 'registry/output-image:sha256-12345'
+    mock_monitor.return_value = 'registry/output-image@sha256:' + 'a' * 64
     mock_replicate.return_value = ['registry.example.com/final-image:999']
+    resolved_output = 'registry.example.com/final-image@sha256:' + 'b' * 64
+    mock_uiips.return_value = resolved_output
     mock_push_index_db.return_value = None
+    publication = mock.Mock()
+    publication.attach_mock(mock_uiips, 'metadata')
+    publication.attach_mock(mock_push_index_db, 'artifact')
+    publication.attach_mock(mock_cleanup_mr, 'close')
 
     overwrite_token = 'user:token'
     build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
@@ -631,10 +666,12 @@ def test_fbc_operations_divergent_never_merges(
 
     # overwrite_from_index=True here: the divergent BuildSources bypasses Task 4's
     # entry-point overwrite rejection (mocked directly), so the ONLY thing that can
-    # prevent a merge is the handler-level `and not sources.is_divergent` guard. If
+    # prevent a merge is the handler-level `sources.merge_allowed` guard. If
     # that guard were removed, this MR would be merged and this assertion would fail.
     mock_merge_mr.assert_not_called()
-    mock_cleanup_mr.assert_called_once()
+    mock_cleanup_mr.assert_called_once_with(mr_details, index_git_repo, raise_on_error=True)
+    assert mock_push_index_db.call_args.kwargs['output_image'] == resolved_output
+    assert [call[0] for call in publication.mock_calls] == ['metadata', 'artifact', 'close']
 
     mock_oraff.assert_called_once_with(
         request_id=request_id,
@@ -732,7 +769,7 @@ def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
         localized_git_catalog_path=str(tmp_path / 'git_repo' / 'configs'),
         index_db_path=None,
         target_branch='v4.15',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
     mock_fetch_index_db.return_value = index_db_path
     mock_oraff.return_value = ('/tmp/updated_catalog_path', index_db_path, ['op1'], ['op1'])
@@ -847,7 +884,7 @@ def test_fbc_operations_complete_state_reason_summarizes_all_actions(
         localized_git_catalog_path=str(tmp_path / 'git_repo' / 'configs'),
         index_db_path=index_db_path,
         target_branch='v4.14',
-        is_divergent=False,
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
     )
     mock_oraff.return_value = (
         '/tmp/updated_catalog_path',
