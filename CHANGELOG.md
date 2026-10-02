@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
+## 9.6.0
+
+* ci: scope legacy release builds to the v* tag series by @yashvardhannanavati in https://github.com/release-engineering/iib/pull/1385
+* feat: add Kafka publish support for request/batch state changes by @ashwgit in https://github.com/release-engineering/iib/pull/1396
+
+
 ## 9.5.4
 
 * Update dependency cryptography to v48 [SECURITY] by @renovate[bot] in https://github.com/release-engineering/iib/pull/1352
