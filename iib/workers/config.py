@@ -24,10 +24,12 @@ from iib.workers.tasks.iib_static_types import (
 class Config(object):
     """The base IIB Celery configuration."""
 
-    # When publishing a message, don't continuously retry or else the HTTP connection times out
-    broker_transport_options: Dict[str, int] = {'max_retries': 10}
-    # Avoid infinite Celery retries when the broker is offline.
-    broker_connection_max_retries: int = 10
+    # Keep retrying so a worker can recover its task consumer after a transient AMQP disconnect.
+    # A finite retry limit can leave the worker process running without a registered consumer.
+    broker_transport_options: Dict[str, Optional[int]] = {'max_retries': None}
+    broker_connection_retry: bool = True
+    broker_connection_retry_on_startup: bool = True
+    broker_connection_max_retries: Optional[int] = None
     iib_aws_s3_bucket_name: Optional[str] = None
     iib_api_timeout: int = 120
     iib_docker_config_template: str = os.path.join(
