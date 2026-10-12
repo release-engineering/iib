@@ -23,7 +23,10 @@ def test_configure_celery_with_classes(mock_isfile):
     assert celery_app.conf.task_default_queue == 'celery'
     configure_celery(celery_app)
     assert celery_app.conf.task_default_queue == 'iib'
-    assert celery_app.conf.broker_connection_max_retries == 10
+    assert celery_app.conf.broker_connection_retry is True
+    assert celery_app.conf.broker_connection_retry_on_startup is True
+    assert celery_app.conf.broker_connection_max_retries is None
+    assert celery_app.conf.broker_transport_options == {'max_retries': None}
 
 
 @patch('os.getenv')
@@ -40,7 +43,10 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     configure_celery(celery_app)
     assert celery_app.conf.task_default_queue == 'not-iib'
     assert celery_app.conf.timezone == 'America/New_York'
-    assert celery_app.conf.broker_connection_max_retries == 10
+    assert celery_app.conf.broker_connection_retry is True
+    assert celery_app.conf.broker_connection_retry_on_startup is True
+    assert celery_app.conf.broker_connection_max_retries is None
+    assert celery_app.conf.broker_transport_options == {'max_retries': None}
 
 
 @mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'some-str'})
