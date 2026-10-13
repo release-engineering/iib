@@ -27,6 +27,7 @@ def test_configure_celery_with_classes(mock_isfile):
     assert celery_app.conf.broker_connection_retry_on_startup is True
     assert celery_app.conf.broker_connection_max_retries is None
     assert celery_app.conf.broker_transport_options == {'max_retries': None}
+    assert celery_app.conf.task_publish_retry_policy == {'max_retries': 10}
 
 
 @patch('os.getenv')
@@ -47,6 +48,7 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     assert celery_app.conf.broker_connection_retry_on_startup is True
     assert celery_app.conf.broker_connection_max_retries is None
     assert celery_app.conf.broker_transport_options == {'max_retries': None}
+    assert celery_app.conf.task_publish_retry_policy == {'max_retries': 10}
 
 
 @mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'some-str'})

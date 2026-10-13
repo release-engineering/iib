@@ -30,6 +30,9 @@ class Config(object):
     broker_connection_retry: bool = True
     broker_connection_retry_on_startup: bool = True
     broker_connection_max_retries: Optional[int] = None
+    # Limit retries when publishing tasks from the API. Worker reconnects remain unlimited above,
+    # but an API request must eventually fail so handle_broker_error can mark it as failed.
+    task_publish_retry_policy: Dict[str, Optional[int]] = {'max_retries': 10}
     iib_aws_s3_bucket_name: Optional[str] = None
     iib_api_timeout: int = 120
     iib_docker_config_template: str = os.path.join(
