@@ -277,6 +277,24 @@ If a request targets a tag with no corresponding Git branch — for example a ti
 
 This lets IIB build and validate a one-off tag without requiring per-tag branch/Component provisioning.
 
+### Chaining IIB Build Outputs
+
+Containerized `add`, `rm`, and `fbc-operations` requests may use the completed
+`index_image` from an earlier request as `from_index`. IIB resolves request
+ancestry to locate the original onboarded Git repository and its Konflux
+scaffolding, but reconstructs the immediate parent's state from:
+
+- FBC configs embedded in the parent's resolved output image; and
+- `index-db:idb-<parent-output-digest>-<parent-request-id>` in Quay.
+
+Chained requests are always throw-away. Supplying `overwrite_from_index` or
+`overwrite_from_index_token` for an IIB output image fails the request because
+users cannot overwrite IIB's output registry. The Konflux MR is always closed
+and never merged.
+
+Chaining is not supported for `merge-index-image`, `create-empty-index`,
+`regenerate-bundle`, or legacy worker requests.
+
 ## Index DB Artifact and ImageStream Tag Naming
 
 Cached `index.db` artifact tags (ORAS) and ImageStream tags are keyed on the index image's content (manifest) digest — `idb-<sha256>` — resolved via `skopeo inspect`, not on its pullspec. Because the key is the content itself, it is both namespace-safe and promotion-safe:

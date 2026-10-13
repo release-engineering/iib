@@ -180,6 +180,7 @@ def handle_containerized_add_request(
             ocp_version=prebuild_info['ocp_version'],
             index_to_gitlab_push_map=index_to_gitlab_push_map,
             overwrite_from_index=overwrite_from_index,
+            overwrite_from_index_token=overwrite_from_index_token,
         )
         index_git_repo = sources.index_git_repo
         local_git_repo_path = sources.local_git_repo_path
@@ -335,7 +336,7 @@ def handle_containerized_add_request(
                     "This should not happen if the pipeline completed successfully."
                 )
 
-            _update_index_image_pull_spec(
+            index_image_resolved = _update_index_image_pull_spec(
                 output_pull_spec=output_pull_spec,
                 request_id=request_id,
                 arches=arches,
@@ -351,6 +352,8 @@ def handle_containerized_add_request(
                 # a Konflux pipelinerun. So the old workflow isn't needed.
                 index_repo_map={},
             )
+            if index_image_resolved is None:
+                raise IIBError(f'request {request_id} has no resolved index image.')
 
             # Push updated index.db before merging the MR so that on failure both
             # git and the index.db artifact remain consistent (MR stays open,
@@ -360,7 +363,7 @@ def handle_containerized_add_request(
                 from_index=str(from_index),
                 index_db_path=artifact_index_db_file,
                 operators=operators,
-                output_image=image_url,
+                output_image=index_image_resolved,
                 overwrite_from_index=overwrite_from_index,
                 request_type='add',
             )
@@ -369,17 +372,14 @@ def handle_containerized_add_request(
             # (replication, metadata, index.db push) have succeeded before git
             # is advanced. This prevents git/index.db divergence on partial failure.
             #
-            # The `not sources.is_divergent` half is defense-in-depth: prepare_build_sources
-            # already rejects overwrite_from_index on the divergent path, so this cannot be
-            # reached with both set. It stays because a divergent build reuses the base OCP
-            # branch's Konflux Component -- merging its MR would publish one tag's content
-            # onto the shared branch.
-            if overwrite_from_index and not sources.is_divergent:
+            # Only standard sources may publish their MR. Divergent and chained builds
+            # reuse shared Git/Konflux scaffolding and must remain throw-away.
+            if overwrite_from_index and sources.merge_allowed:
                 merge_mr_after_build(mr_details, index_git_repo)
                 # Prevent cleanup_on_failure from trying to close an already-merged MR
                 mr_details = None
             else:
-                cleanup_merge_request_if_exists(mr_details, index_git_repo)
+                cleanup_merge_request_if_exists(mr_details, index_git_repo, raise_on_error=True)
 
             set_request_state(
                 request_id,

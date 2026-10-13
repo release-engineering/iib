@@ -11,8 +11,13 @@ import pytest
 from iib.exceptions import ArtifactNotFoundError, IIBError, FileNotFoundInImageError
 from iib.workers.tasks import containerized_utils as cu
 from iib.workers.tasks.containerized_utils import (
+    ChainedBuildSource,
+    get_iib_output_request_id,
+    resolve_chained_build_source,
+    extract_catalog_from_image,
     extract_catalog_and_db_from_image,
     extract_files_from_image_non_privileged,
+    fetch_and_verify_request_index_db_artifact,
     pull_index_db_artifact,
     push_index_db_artifact,
     write_build_metadata,
@@ -22,6 +27,178 @@ from iib.workers.tasks.containerized_utils import (
     git_commit_and_create_mr,
     merge_mr_after_build,
 )
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@pytest.mark.parametrize(
+    ('image', 'expected'),
+    (
+        ('registry.internal/iib-build:42', 42),
+        ('registry.external/iib-build:42', 42),
+        ('registry.internal/iib-build:latest', None),
+        ('registry.other/iib-build:42', None),
+        ('registry.internal/not-iib-build:42', None),
+    ),
+)
+def test_get_iib_output_request_id(mock_config, image, expected):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': 'registry.external',
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    assert get_iib_output_request_id(image) == expected
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_get_iib_output_request_id_honors_custom_template(mock_config):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal/team',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/request-{request_id}/index:latest',
+    }
+    assert get_iib_output_request_id('registry.internal/team/request-73/index:latest') == 73
+
+
+def test_prepare_git_repository_rejects_iib_output_before_git_lookup(tmp_path):
+    """Unsupported request types reject tagged IIB outputs before Git side effects."""
+    config = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    with mock.patch(
+        'iib.workers.tasks.containerized_utils.get_worker_config', return_value=config
+    ), mock.patch(
+        'iib.workers.tasks.containerized_utils.resolve_git_url', return_value=None
+    ) as mock_resolve_git_url:
+        with pytest.raises(
+            IIBError,
+            match='Chaining is only supported for add, rm, and fbc-operations requests',
+        ):
+            cu.prepare_git_repository_for_build(
+                request_id=100,
+                from_index='registry.internal/iib-build:42',
+                temp_dir=str(tmp_path),
+                branch='v4.19',
+                index_to_gitlab_push_map={},
+            )
+
+    mock_resolve_git_url.assert_not_called()
+
+
+def _chain_request(request_id, from_index, **changes):
+    output = f'registry.internal/iib-build:{request_id}'
+    request = {
+        'id': request_id,
+        'state': 'complete',
+        'request_type': 'add',
+        'from_index': from_index,
+        'index_image': output,
+        'index_image_resolved': f'{output}@sha256:{request_id:064x}',
+    }
+    request.update(changes)
+    return request
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_request')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_resolve_chained_build_source_multi_hop(mock_config, mock_get_request):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    requests = {
+        55: _chain_request(55, 'registry.internal/iib-build:42', request_type='rm'),
+        42: _chain_request(42, 'quay.io/ns/index:v4.17', request_type='fbc-operations'),
+    }
+    mock_get_request.side_effect = requests.__getitem__
+
+    result = resolve_chained_build_source('registry.internal/iib-build:55', False, None)
+
+    assert isinstance(result, ChainedBuildSource)
+    assert result.parent_request_id == 55
+    assert result.parent_index_image == 'registry.internal/iib-build:55'
+    assert result.parent_index_image_resolved == (
+        'registry.internal/iib-build:55@sha256:' f'{55:064x}'
+    )
+    assert result.original_from_index == 'quay.io/ns/index:v4.17'
+    assert result.ancestry == (55, 42)
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_request')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_resolve_chained_build_source_returns_none_for_standard(mock_config, mock_get_request):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    assert resolve_chained_build_source('quay.io/ns/index:v4.17', False, None) is None
+    mock_get_request.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_request')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@pytest.mark.parametrize(
+    ('overwrite', 'token'),
+    ((True, None), (False, 'user:token'), (True, 'user:token')),
+)
+def test_resolve_chained_build_source_rejects_overwrite(
+    mock_config, mock_get_request, overwrite, token
+):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    with pytest.raises(IIBError, match='cannot be overwritten'):
+        resolve_chained_build_source('registry.internal/iib-build:42', overwrite, token)
+    mock_get_request.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_request')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@pytest.mark.parametrize(
+    ('change', 'message'),
+    (
+        ({'state': 'in_progress'}, 'is not complete'),
+        ({'request_type': 'merge-index-image'}, 'unsupported request type'),
+        ({'index_image': 'registry.internal/iib-build:999'}, 'does not match'),
+        ({'index_image_resolved': None}, 'has no resolved index image'),
+        ({'from_index': None}, 'has no from_index'),
+    ),
+)
+def test_resolve_chained_build_source_rejects_invalid_parent(
+    mock_config, mock_get_request, change, message
+):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    parent = _chain_request(42, 'quay.io/ns/index:v4.17')
+    parent.update(change)
+    mock_get_request.return_value = parent
+    with pytest.raises(IIBError, match=message):
+        resolve_chained_build_source('registry.internal/iib-build:42', False, None)
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_request')
+@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+def test_resolve_chained_build_source_rejects_cycle(mock_config, mock_get_request):
+    mock_config.return_value = {
+        'iib_registry': 'registry.internal',
+        'iib_index_image_output_registry': None,
+        'iib_image_push_template': '{registry}/iib-build:{request_id}',
+    }
+    requests = {
+        42: _chain_request(42, 'registry.internal/iib-build:55'),
+        55: _chain_request(55, 'registry.internal/iib-build:42'),
+    }
+    mock_get_request.side_effect = requests.__getitem__
+    with pytest.raises(IIBError, match='cycle'):
+        resolve_chained_build_source('registry.internal/iib-build:42', False, None)
 
 
 @patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -326,94 +503,193 @@ def test_pull_reports_registry_failure_as_distinct_from_missing(m_gwc, m_ref, m_
     assert '503 Service Unavailable' in str(exc_info.value)
 
 
-@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
-@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
+@pytest.mark.parametrize('filename', ('index.db', 'extracted_index.db'))
+def test_fetch_request_index_db_artifact(mock_ref, mock_pull, filename, tmp_path):
+    artifact_dir = tmp_path / 'artifact'
+    artifact_dir.mkdir()
+    index_db = artifact_dir / filename
+    index_db.write_bytes(b'sqlite')
+    mock_ref.return_value = 'quay.io/iib/index-db:idb-abc-42'
+    mock_pull.return_value = str(artifact_dir)
+
+    result = fetch_and_verify_request_index_db_artifact(
+        'registry.internal/iib-build:42@sha256:abc', 42, str(tmp_path)
+    )
+
+    assert result == str(index_db)
+    mock_ref.assert_called_once_with('registry.internal/iib-build:42@sha256:abc', 42)
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
+def test_fetch_request_index_db_artifact_rejects_unknown_filename(mock_ref, mock_pull, tmp_path):
+    (tmp_path / 'other.db').write_bytes(b'sqlite')
+    mock_ref.return_value = 'quay.io/iib/index-db:idb-abc-42'
+    mock_pull.return_value = str(tmp_path)
+
+    with pytest.raises(IIBError, match='Index.db file not found'):
+        fetch_and_verify_request_index_db_artifact(
+            'registry.internal/iib-build:42@sha256:abc', 42, str(tmp_path)
+        )
+
+
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest', return_value='sha256:abc')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
-@mock.patch('pathlib.Path.exists', return_value=True)
-def test_push_keys_current_artifact_on_output_digest(
-    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+@pytest.mark.parametrize('filename', ('index.db', 'extracted_index.db'))
+@pytest.mark.parametrize('overwrite', (False, True))
+def test_push_request_artifact_normalizes_payload(
+    mock_state, mock_digest, mock_config, filename, overwrite, tmp_path, monkeypatch
 ):
-    m_gwc.return_value = {
+    mock_config.return_value = {
         'iib_index_db_artifact_registry': 'quay.io/iib',
         'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
         'iib_index_db_artifact_tag_template': 'idb-{digest}',
     }
-    # digest resolved from the OUTPUT image, not from_index
-    m_digest.return_value = 'f' * 64
+    source_db = tmp_path / filename
+    source_db.write_bytes(b'parent database contents')
+    artifacts = {}
+
+    def publish_artifact(artifact_ref, local_path, cwd, annotations):
+        artifacts[artifact_ref] = {local_path: (Path(cwd) / local_path).read_bytes()}
+
+    def pull_artifact(artifact_ref, base_dir):
+        artifact_dir = Path(base_dir) / 'pulled'
+        artifact_dir.mkdir()
+        for name, contents in artifacts[artifact_ref].items():
+            (artifact_dir / name).write_bytes(contents)
+        return str(artifact_dir)
+
+    monkeypatch.setattr(cu, 'push_oras_artifact', publish_artifact)
+    monkeypatch.setattr(cu, 'get_oras_artifact', pull_artifact)
+    push_index_db_artifact(
+        request_id=42,
+        from_index='quay.io/ns/index:test',
+        index_db_path=str(source_db),
+        operators=['op1'],
+        output_image='registry.internal/iib-build:42@sha256:abc',
+        overwrite_from_index=overwrite,
+        request_type='add',
+    )
+
+    expected_refs = {'quay.io/iib/index-db:idb-abc-42'}
+    if overwrite:
+        expected_refs.add('quay.io/iib/index-db:idb-abc')
+    assert set(artifacts) == expected_refs
+    for payload in artifacts.values():
+        assert payload == {'index.db': b'parent database contents'}
+    assert source_db.read_bytes() == b'parent database contents'
+
+    fetched = fetch_and_verify_request_index_db_artifact(
+        'registry.internal/iib-build:42@sha256:abc', 42, str(tmp_path)
+    )
+    assert Path(fetched).name == 'index.db'
+    assert Path(fetched).read_bytes() == b'parent database contents'
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
+@pytest.mark.parametrize(
+    ('error', 'message'),
+    (
+        (ArtifactNotFoundError('missing'), 'not found'),
+        (IIBError('registry timeout'), 'Failed to pull'),
+    ),
+)
+def test_fetch_request_index_db_artifact_preserves_failure_kind(
+    mock_ref, mock_pull, error, message, tmp_path
+):
+    mock_ref.return_value = 'quay.io/iib/index-db:idb-abc-42'
+    mock_pull.side_effect = error
+    with pytest.raises(IIBError, match=message):
+        fetch_and_verify_request_index_db_artifact(
+            'registry.internal/iib-build:42@sha256:abc', 42, str(tmp_path)
+        )
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=True)
+def test_push_keys_current_artifact_on_output_digest(
+    m_exists, m_state, m_request_ref, m_current_ref, m_push, tmp_path
+):
     db = tmp_path / 'index.db'
     db.write_text('x')
+    output_image = 'quay.io/ns/foo@sha256:' + 'f' * 64
+    m_request_ref.return_value = 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42'
+    m_current_ref.return_value = 'quay.io/iib/index-db:idb-' + 'f' * 64
     result = push_index_db_artifact(
         request_id=42,
         from_index='quay.io/ns/foo:v4.17',
         index_db_path=str(db),
         operators=['op1'],
-        output_image='quay.io/ns/foo@sha256:' + 'f' * 64,
+        output_image=output_image,
         overwrite_from_index=True,
         request_type='add',
     )
     assert result is None
-    m_digest.assert_called_with('quay.io/ns/foo@sha256:' + 'f' * 64)
+    m_request_ref.assert_called_once_with(output_image, 42)
+    m_current_ref.assert_called_once_with(output_image)
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
     assert 'quay.io/iib/index-db:idb-' + 'f' * 64 in pushed_refs  # warm-push (overwrite)
     assert 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42' in pushed_refs  # per-request tag
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
-@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('pathlib.Path.exists', return_value=True)
 def test_push_throwaway_skips_current_artifact(
-    m_exists, m_state, m_gwc, m_digest, m_push, tmp_path
+    m_exists, m_state, m_request_ref, m_current_ref, m_push, tmp_path
 ):
-    m_gwc.return_value = {
-        'iib_index_db_artifact_registry': 'quay.io/iib',
-        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': 'idb-{digest}',
-    }
-    m_digest.return_value = 'a' * 64
     db = tmp_path / 'index.db'
     db.write_text('x')
+    output_image = 'quay.io/ns/foo@sha256:' + 'a' * 64
+    m_request_ref.return_value = 'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'
     push_index_db_artifact(
         request_id=7,
         from_index='quay.io/ns/foo:v4.17',
         index_db_path=str(db),
         operators=[],
-        output_image='quay.io/ns/foo@sha256:' + 'a' * 64,
+        output_image=output_image,
         overwrite_from_index=False,
         request_type='add',
     )
+    m_request_ref.assert_called_once_with(output_image, 7)
+    m_current_ref.assert_not_called()
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
     assert pushed_refs == {'quay.io/iib/index-db:idb-' + 'a' * 64 + '-7'}  # only per-request tag
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
-@mock.patch('iib.workers.tasks.containerized_utils._get_index_digest')
-@mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
+@mock.patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
+@mock.patch('iib.workers.tasks.containerized_utils.get_request_indexdb_artifact_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('pathlib.Path.exists', return_value=True)
-def test_push_honors_configured_tag_template(m_exists, m_state, m_gwc, m_digest, m_push, tmp_path):
-    # The write path must derive its tag from the same config template the read
-    # path uses, or an operator override leaves pushed and looked-up tags
-    # disagreeing and every lookup misses.
-    m_gwc.return_value = {
-        'iib_index_db_artifact_registry': 'quay.io/iib',
-        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
-        'iib_index_db_artifact_tag_template': 'cache-{digest}',
-    }
-    m_digest.return_value = 'b' * 64
+def test_push_honors_helper_defined_artifact_refs(
+    m_exists, m_state, m_request_ref, m_current_ref, m_push, tmp_path
+):
     db = tmp_path / 'index.db'
     db.write_text('x')
+    output_image = 'quay.io/ns/foo@sha256:' + 'b' * 64
+    m_request_ref.return_value = 'quay.io/iib/index-db:cache-' + 'b' * 64 + '-9'
+    m_current_ref.return_value = 'quay.io/iib/index-db:cache-' + 'b' * 64
     push_index_db_artifact(
         request_id=9,
         from_index='quay.io/ns/foo:v4.17',
         index_db_path=str(db),
         operators=[],
-        output_image='quay.io/ns/foo@sha256:' + 'b' * 64,
+        output_image=output_image,
         overwrite_from_index=True,
         request_type='add',
     )
+    m_request_ref.assert_called_once_with(output_image, 9)
+    m_current_ref.assert_called_once_with(output_image)
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
     assert pushed_refs == {
         'quay.io/iib/index-db:cache-' + 'b' * 64,
@@ -692,6 +968,30 @@ def test_cleanup_on_failure_has_no_rollback_param():
     """Content keys are immutable: cleanup_on_failure no longer restores artifacts."""
     params = inspect.signature(cleanup_on_failure).parameters
     assert 'original_index_db_digest' not in params
+
+
+@patch('iib.workers.tasks.containerized_utils.close_mr')
+def test_cleanup_merge_request_failure_is_best_effort_by_default(mock_close_mr):
+    """Failure cleanup keeps the original error authoritative."""
+    mock_close_mr.side_effect = IIBError('GitLab unavailable')
+
+    cu.cleanup_merge_request_if_exists(
+        {'mr_id': '12', 'mr_url': 'https://gitlab.example.com/mr/12'},
+        'https://gitlab.example.com/project',
+    )
+
+
+@patch('iib.workers.tasks.containerized_utils.close_mr')
+def test_cleanup_merge_request_failure_propagates_in_strict_mode(mock_close_mr):
+    """Successful throw-away builds fail when their MR cannot be closed."""
+    mock_close_mr.side_effect = IIBError('GitLab unavailable')
+
+    with pytest.raises(IIBError, match='GitLab unavailable'):
+        cu.cleanup_merge_request_if_exists(
+            {'mr_id': '12', 'mr_url': 'https://gitlab.example.com/mr/12'},
+            'https://gitlab.example.com/project',
+            raise_on_error=True,
+        )
 
 
 @patch('iib.workers.tasks.containerized_utils.skopeo_inspect')
@@ -1396,85 +1696,85 @@ def test_merge_mr_after_build_failure_closes_mr(mock_merge_mr, mock_close_mr):
     mock_close_mr.assert_called_once_with(mr_details, 'https://gitlab.example.com/project')
 
 
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@mock.patch('iib.workers.tasks.containerized_utils._reject_escaping_symlinks')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+@mock.patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_from_image(mock_label, mock_extract, mock_reject, tmp_path):
+    image = 'registry.internal/iib-build:42@sha256:abc'
+    mock_label.return_value = '/configs'
+    result = extract_catalog_from_image(image, str(tmp_path))
+    assert result == str(tmp_path / 'extracted_configs')
+    mock_extract.assert_called_once_with(image, '/configs', result)
+    mock_reject.assert_called_once_with(result, image, 'FBC configs directory')
+
+
+@mock.patch('iib.workers.tasks.containerized_utils._reject_escaping_symlinks')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
+@mock.patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_from_image_accepts_declared_empty_catalog(
+    mock_label, mock_extract, mock_reject, tmp_path
+):
+    mock_label.return_value = '/configs'
+    mock_extract.side_effect = FileNotFoundInImageError('empty')
+    result = extract_catalog_from_image('registry.internal/iib-build:42@sha256:abc', str(tmp_path))
+    assert Path(result).is_dir()
+    mock_reject.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.get_image_label')
+def test_extract_catalog_from_image_rejects_non_fbc_image(mock_label, tmp_path):
+    mock_label.return_value = None
+    with pytest.raises(IIBError, match='does not contain a file-based catalog'):
+        extract_catalog_from_image('registry/image@sha256:abc', str(tmp_path))
+
+
+@patch(
+    'iib.workers.tasks.containerized_utils.extract_catalog_from_image',
+    return_value='/tmp/extracted-configs',
+)
 @patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
-def test_extract_catalog_and_db_prefers_hidden_db(mock_extract, mock_label, tmp_path):
+def test_extract_catalog_and_db_prefers_hidden_db(mock_extract, mock_catalog, tmp_path):
     """When a hidden index.db exists, it is preferred over the labeled db."""
-
-    def label_side_effect(image, label):
-        return {
-            'operators.operatorframework.io.index.configs.v1': '/configs',
-            'operators.operatorframework.io.index.database.v1': '/database/index.db',
-        }[label]
-
-    mock_label.side_effect = label_side_effect
-
     configs_dir, index_db = extract_catalog_and_db_from_image(
         'quay.io/redhat/my-index:test', str(tmp_path)
     )
 
     assert configs_dir.endswith('configs')
     assert index_db.endswith('index.db')
-    # Two extractions: configs dir and the hidden db file.
-    assert mock_extract.call_count == 2
+    mock_catalog.assert_called_once_with('quay.io/redhat/my-index:test', str(tmp_path))
+    # Only the hidden db is extracted here; the catalog helper owns config extraction.
+    mock_extract.assert_called_once()
 
 
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch(
+    'iib.workers.tasks.containerized_utils.extract_catalog_from_image',
+    return_value='/tmp/extracted-configs',
+)
 @patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
-def test_extract_catalog_and_db_raises_when_no_hidden_db(mock_extract, mock_label, tmp_path):
+def test_extract_catalog_and_db_raises_when_no_hidden_db(mock_extract, mock_catalog, tmp_path):
     """When the hidden db is absent, the request fails; there is no labeled-db or empty-db fallback.
 
     An image with no hidden index.db has not been onboarded to the containerized
     build flow, so the request must fail rather than degrade to a labeled db or a
     synthesised empty db.
     """
-    mock_label.side_effect = lambda image, label: {
-        'operators.operatorframework.io.index.configs.v1': '/configs',
-        'operators.operatorframework.io.index.database.v1': '/database/index.db',
-    }[label]
-    # First call (configs) ok; second call (hidden db) raises FileNotFoundInImageError.
-    mock_extract.side_effect = [None, FileNotFoundInImageError('no hidden db')]
+    mock_extract.side_effect = FileNotFoundInImageError('no hidden db')
 
     with pytest.raises(IIBError, match='No index.db found in image'):
         extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
 
-    # Only two extraction attempts: configs dir and the failed hidden db lookup.
     # The labeled database.v1 path is never read.
-    assert mock_extract.call_count == 2
+    mock_catalog.assert_called_once_with('quay.io/redhat/my-index:test', str(tmp_path))
+    mock_extract.assert_called_once()
 
 
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
-@patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
-def test_extract_catalog_and_db_empty_configs_uses_empty_dir(mock_extract, mock_label, tmp_path):
-    """A declared-but-empty /configs (empty index) yields an empty catalog, not a failure.
-
-    'oc image extract' cannot represent an empty directory, so extracting an empty
-    index's /configs raises FileNotFoundInImageError. Because the image declares a
-    configs label, this is treated as an empty catalog directory; the hidden db is
-    still extracted normally.
-    """
-    mock_label.side_effect = lambda image, label: {
-        'operators.operatorframework.io.index.configs.v1': '/configs',
-    }.get(label, '')
-    # First call (configs) reports nothing under the declared path; second call
-    # (hidden db) succeeds.
-    mock_extract.side_effect = [FileNotFoundInImageError('empty /configs'), None]
-
-    configs_dir, index_db = extract_catalog_and_db_from_image(
-        'quay.io/redhat/empty-index:test', str(tmp_path)
-    )
-
-    assert configs_dir.endswith('extracted_configs')
-    assert os.path.isdir(configs_dir)
-    assert os.listdir(configs_dir) == []  # empty catalog
-    assert index_db.endswith('index.db')
-    assert mock_extract.call_count == 2
-
-
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
+@patch(
+    'iib.workers.tasks.containerized_utils.extract_catalog_from_image',
+    return_value='/tmp/extracted-configs',
+)
 @patch('iib.workers.tasks.containerized_utils.extract_files_from_image_non_privileged')
 def test_extract_catalog_and_db_propagates_real_extraction_error(
-    mock_extract, mock_label, tmp_path
+    mock_extract, mock_catalog, tmp_path
 ):
     """A genuine extraction failure (not a missing path) must propagate, not degrade.
 
@@ -1482,24 +1782,10 @@ def test_extract_catalog_and_db_propagates_real_extraction_error(
     (registry/OCI/layer/tar failure) must not be silently swallowed as "no hidden
     db", which would build an image from an incomplete index.db.
     """
-    mock_label.side_effect = lambda image, label: {
-        'operators.operatorframework.io.index.configs.v1': '/configs',
-        'operators.operatorframework.io.index.database.v1': '/database/index.db',
-    }[label]
-    # First call (configs) ok; second call (hidden db) raises a real error.
-    mock_extract.side_effect = [None, IIBError('registry unreachable')]
+    mock_extract.side_effect = IIBError('registry unreachable')
 
     with pytest.raises(IIBError, match='registry unreachable'):
         extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
-
-
-@patch('iib.workers.tasks.containerized_utils.get_image_label')
-def test_extract_catalog_and_db_raises_without_configs_label(mock_label):
-    """If the image has no FBC configs label, an IIBError is raised."""
-    mock_label.return_value = ''
-
-    with pytest.raises(IIBError, match='does not contain a file-based catalog'):
-        extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', '/tmp/does-not-matter')
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
@@ -1522,9 +1808,101 @@ def test_prepare_build_sources_normal(
         index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
         overwrite_from_index=True,
     )
-    assert src.is_divergent is False
+    assert src.source_kind is cu.BuildSourceKind.STANDARD
+    assert src.merge_allowed
     assert src.target_branch == 'v4.14'
     assert src.index_db_path is None  # normal path pulls from ORAS
+
+
+def test_build_sources_merge_policy():
+    common = {
+        'index_git_repo': 'https://gitlab.example/repo.git',
+        'local_git_repo_path': '/tmp/git/v4.17',
+        'localized_git_catalog_path': '/tmp/git/v4.17/configs',
+        'index_db_path': None,
+        'target_branch': 'v4.17',
+    }
+    assert cu.BuildSources(**common, source_kind=cu.BuildSourceKind.STANDARD).merge_allowed
+    assert not cu.BuildSources(**common, source_kind=cu.BuildSourceKind.DIVERGENT).merge_allowed
+    assert not cu.BuildSources(**common, source_kind=cu.BuildSourceKind.CHAINED).merge_allowed
+
+
+@pytest.mark.parametrize(
+    ('ancestor_from_index', 'branch_results', 'expected_branches'),
+    (
+        ('quay.io/ns/index:v4.17', (True,), ('v4.17',)),
+        ('quay.io/ns/index:test', (False, True), ('test', 'v4.17')),
+    ),
+)
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.fetch_and_verify_request_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.extract_catalog_from_image')
+@mock.patch('iib.workers.tasks.containerized_utils.resolve_chained_build_source')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
+@mock.patch('iib.workers.tasks.containerized_utils.resolve_git_url')
+def test_prepare_build_sources_chained_selects_ancestor_scaffolding(
+    mock_resolve_git,
+    mock_token,
+    mock_branch_exists,
+    mock_clone,
+    mock_resolve_chain,
+    mock_extract_catalog,
+    mock_fetch_db,
+    mock_set_state,
+    ancestor_from_index,
+    branch_results,
+    expected_branches,
+    tmp_path,
+):
+    chained = ChainedBuildSource(
+        parent_request_id=42,
+        parent_index_image='registry.internal/iib-build:42',
+        parent_index_image_resolved='registry.internal/iib-build:42@sha256:abc',
+        original_from_index=ancestor_from_index,
+        ancestry=(42,),
+    )
+    mock_resolve_chain.return_value = chained
+    mock_resolve_git.return_value = 'https://gitlab.example/repo.git'
+    mock_token.return_value = ('token-name', 'token-value')
+    if len(branch_results) == 1:
+        mock_branch_exists.return_value = branch_results[0]
+    else:
+        mock_branch_exists.side_effect = branch_results
+
+    clone_catalog = tmp_path / 'git' / 'v4.17' / 'configs'
+    clone_catalog.mkdir(parents=True)
+    (clone_catalog / 'stale.yaml').write_text('stale')
+    parent_catalog = tmp_path / 'parent-configs'
+    (parent_catalog / 'operator').mkdir(parents=True)
+    (parent_catalog / 'operator' / 'catalog.json').write_text('{}')
+    mock_extract_catalog.return_value = str(parent_catalog)
+    mock_fetch_db.return_value = str(tmp_path / 'parent-index.db')
+
+    result = cu.prepare_build_sources(
+        request_id=99,
+        from_index='registry.internal/iib-build:42',
+        from_index_resolved='registry.internal/iib-build:42@sha256:abc',
+        temp_dir=str(tmp_path),
+        ocp_version='v4.17',
+        index_to_gitlab_push_map={'quay.io/ns/index': 'https://gitlab.example/repo.git'},
+        overwrite_from_index=False,
+        overwrite_from_index_token=None,
+    )
+
+    assert result.source_kind is cu.BuildSourceKind.CHAINED
+    assert result.target_branch == 'v4.17'
+    assert result.index_db_path == str(tmp_path / 'parent-index.db')
+    assert not (clone_catalog / 'stale.yaml').exists()
+    assert (clone_catalog / 'operator' / 'catalog.json').is_file()
+    mock_resolve_git.assert_called_once_with(
+        from_index=chained.original_from_index,
+        index_repo_map={'quay.io/ns/index': 'https://gitlab.example/repo.git'},
+    )
+    mock_extract_catalog.assert_called_once_with(chained.parent_index_image_resolved, str(tmp_path))
+    mock_fetch_db.assert_called_once_with(chained.parent_index_image_resolved, 42, str(tmp_path))
+    assert tuple(call.args[1] for call in mock_branch_exists.call_args_list) == expected_branches
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
@@ -1576,7 +1954,8 @@ def test_prepare_build_sources_divergent_extracts(
             index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
             overwrite_from_index=False,
         )
-    assert src.is_divergent is True
+    assert src.source_kind is cu.BuildSourceKind.DIVERGENT
+    assert not src.merge_allowed
     assert src.target_branch == 'v4.14'
     assert src.index_db_path == str(tmp_path / 'ex.db')
     # Divergent extraction must read the resolved digest, not the mutable tag, so

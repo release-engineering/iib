@@ -259,6 +259,16 @@ def test_create_and_push_manifest_list_failure_to_rm_manifest_list(mock_run_cmd,
             False,
             True,
         ),
+        (None, None, False, '{default}', None, True, True),
+        (
+            'registry-proxy.domain.local',
+            None,
+            False,
+            'registry-proxy.domain.local/{default_no_registry}',
+            None,
+            True,
+            True,
+        ),
         (
             None,
             'quay.io/ns/iib:v4.5',
@@ -305,14 +315,16 @@ def test_update_index_image_pull_spec(
     arches = {'amd64'}
     overwrite_token = 'username:password'
 
-    mock_get_rslv_img.return_value = "quay.io/ns/iib@sha256:abcdef1234"
+    final_resolved = 'quay.io/ns/iib@sha256:abcdef1234'
+    internal_resolved = 'quay.io/namespace/some-image@sha256:9876543210'
+    mock_get_rslv_img.side_effect = [final_resolved, internal_resolved]
     mock_gwc.return_value = {
         'iib_index_image_output_registry': iib_index_image_output_registry,
         'iib_registry': 'quay.io',
     }
 
     if add_or_rm:
-        build._update_index_image_pull_spec(
+        result = build._update_index_image_pull_spec(
             default,
             request_id,
             arches,
@@ -324,7 +336,7 @@ def test_update_index_image_pull_spec(
             is_image_fbc=is_image_fbc,
         )
     else:
-        build._update_index_image_pull_spec(
+        result = build._update_index_image_pull_spec(
             default,
             request_id,
             arches,
@@ -338,6 +350,13 @@ def test_update_index_image_pull_spec(
     mock_ur.assert_called_once()
     update_request_payload = mock_ur.call_args[0][1]
     if add_or_rm:
+        assert result == final_resolved
+        assert result == update_request_payload['index_image_resolved']
+        assert update_request_payload['internal_index_image_copy_resolved'] == internal_resolved
+        assert mock_get_rslv_img.call_args_list == [
+            mock.call(expected_pull_spec),
+            mock.call(default),
+        ]
         assert update_request_payload.keys() == {
             'arches',
             'index_image',
@@ -346,6 +365,8 @@ def test_update_index_image_pull_spec(
             'internal_index_image_copy_resolved',
         }
     else:
+        assert result is None
+        mock_get_rslv_img.assert_not_called()
         assert update_request_payload.keys() == {'arches', 'index_image'}
     assert update_request_payload['index_image'] == expected_pull_spec
     if overwrite:

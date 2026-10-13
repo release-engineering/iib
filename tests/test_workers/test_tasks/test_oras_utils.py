@@ -16,6 +16,7 @@ from iib.workers.tasks.oras_utils import (
     _get_index_digest,
     _get_content_addressed_artifact_tag,
     get_indexdb_artifact_pullspec,
+    get_request_indexdb_artifact_pullspec,
     get_index_tag,
 )
 
@@ -762,6 +763,20 @@ def test_get_indexdb_artifact_pullspec(mock_digest, mock_gwc, from_index, digest
 
     assert result == f'test-artifact-registry/index-db:idb-{digest}'
     mock_digest.assert_called_once_with(from_index)
+
+
+@mock.patch('iib.workers.tasks.oras_utils._get_content_addressed_artifact_tag')
+@mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
+def test_get_request_indexdb_artifact_pullspec(mock_config, mock_tag):
+    mock_config.return_value = {
+        'iib_index_db_artifact_registry': 'quay.io/iib',
+        'iib_index_db_artifact_template': '{registry}/index-db:{tag}',
+    }
+    mock_tag.return_value = 'idb-' + 'a' * 64
+    result = get_request_indexdb_artifact_pullspec(
+        'registry.internal/iib-build:42@sha256:' + 'a' * 64, 42
+    )
+    assert result == 'quay.io/iib/index-db:idb-' + 'a' * 64 + '-42'
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')
