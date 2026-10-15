@@ -195,7 +195,25 @@ def enforce_json_config_dir(config_dir: str) -> None:
                 except ruamel.yaml.YAMLError as e:
                     with contextlib.suppress(FileNotFoundError):
                         os.remove(out_file)
-                    raise IIBError(f"Failed to parse YAML content in {in_file}: {e}") from e
+                    # Some catalog files contain back-to-back JSON objects with
+                    # no '---' separators (e.g. produced by `opm` without
+                    # -o yaml), which isn't valid multi-document YAML. Retry by
+                    # reading it as a stream of JSON values before giving up.
+                    wrote_chunk = False
+                    try:
+                        with open(in_file, 'r') as json_in:
+                            text = json_in.read().lstrip()
+                        decoder = json.JSONDecoder()
+                        with open(out_file, 'a') as json_out:
+                            while text:
+                                chunk, end = decoder.raw_decode(text)
+                                json.dump(chunk, json_out, default=_serialize_datetime)
+                                wrote_chunk = True
+                                text = text[end:].lstrip()
+                    except json.JSONDecodeError:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.remove(out_file)
+                        raise IIBError(f"Failed to parse YAML content in {in_file}: {e}") from e
                 if not wrote_chunk:
                     with contextlib.suppress(FileNotFoundError):
                         os.remove(out_file)
