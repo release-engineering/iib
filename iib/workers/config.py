@@ -348,6 +348,9 @@ def configure_celery(celery_app: Celery) -> None:
 
     celery_app.config_from_object(config, force=True)
 
+    # Configure remote-control replies before the worker starts consuming tasks.
+    _limit_pidbox_reply_retries(celery_app)
+
     if config.iib_sac_queues:
         celery_app.conf.task_queues = [
             Queue(qname, queue_arguments={'x-single-active-consumer': True})
@@ -355,6 +358,31 @@ def configure_celery(celery_app: Celery) -> None:
         ]
 
     logging.getLogger('iib.workers').setLevel(celery_app.conf.iib_log_level)
+
+
+def _limit_pidbox_reply_retries(celery_app: Celery) -> None:
+    """
+    Bound retries when this worker publishes a remote-control (pidbox) reply.
+
+    Kombu publishes these replies with ``retry=True`` but no retry limit. A
+    recoverable channel error can then loop indefinitely in the consumer's main
+    thread, leaving the process alive while RabbitMQ reports zero consumers.
+    Limit only this app's mailbox; broker reconnects, task publication, and RPC
+    result publication retain their separate retry policies.
+
+    :param celery.Celery celery_app: the IIB Celery app whose mailbox is updated
+    """
+    mailbox = celery_app.control.mailbox
+    # Private Kombu internal: kombu.pidbox.Mailbox._publish_reply. Validated for
+    # Kombu >=5.6.2,<5.6.3 (the pinned version); recheck on dependency upgrades.
+    original_publish_reply = mailbox._publish_reply
+
+    def publish_reply_with_retry_limit(*args: Any, **kwargs: Any) -> None:
+        # Let a failed control request error out so the consumer loop can resume.
+        kwargs['retry_policy'] = {'max_retries': 3}
+        original_publish_reply(*args, **kwargs)
+
+    setattr(mailbox, '_publish_reply', publish_reply_with_retry_limit)
 
 
 def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:

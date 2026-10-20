@@ -7,6 +7,9 @@ import re
 
 import celery
 import pytest
+from amqp.exceptions import RecoverableChannelError
+from kombu import Connection
+from kombu.exceptions import OperationalError
 
 from iib.exceptions import ConfigError
 from iib.workers.config import (
@@ -49,6 +52,66 @@ def test_configure_celery_with_classes_and_files(mock_open, mock_isfile, mock_ge
     assert celery_app.conf.broker_connection_max_retries is None
     assert celery_app.conf.broker_transport_options == {'max_retries': None}
     assert celery_app.conf.task_publish_retry_policy == {'max_retries': 10}
+
+
+@patch('os.path.isfile', return_value=False)
+def test_pidbox_reply_publish_retries_are_bounded_for_iib_app(mock_isfile):
+    celery_app = celery.Celery()
+    other_app = celery.Celery()
+    configure_celery(celery_app)
+
+    producer = mock.Mock()
+    celery_app.control.mailbox._publish_reply(
+        {'worker': 'pong'},
+        'reply.celery.pidbox',
+        'routing-key',
+        'ticket',
+        producer=producer,
+        channel=mock.Mock(),
+    )
+    assert producer.publish.call_args.kwargs['retry'] is True
+    assert producer.publish.call_args.kwargs['retry_policy'] == {'max_retries': 3}
+
+    other_producer = mock.Mock()
+    other_app.control.mailbox._publish_reply(
+        {'worker': 'pong'},
+        'reply.celery.pidbox',
+        'routing-key',
+        'ticket',
+        producer=other_producer,
+        channel=mock.Mock(),
+    )
+    assert 'retry_policy' not in other_producer.publish.call_args.kwargs
+
+
+@patch('os.path.isfile', return_value=False)
+def test_pidbox_reply_stops_after_repeated_channel_errors(mock_isfile):
+    celery_app = celery.Celery()
+    configure_celery(celery_app)
+    attempts = 0
+
+    def failed_publish(*args, **kwargs):
+        def raise_channel_error():
+            nonlocal attempts
+            attempts += 1
+            if attempts > 10:
+                raise AssertionError('pidbox reply retry loop did not stop')
+            raise RecoverableChannelError('channel lost')
+
+        Connection('amqp://').ensure(mock.Mock(), raise_channel_error, **kwargs['retry_policy'])()
+
+    producer = mock.Mock()
+    producer.publish.side_effect = failed_publish
+    with pytest.raises(OperationalError):
+        celery_app.control.mailbox._publish_reply(
+            {'worker': 'pong'},
+            'reply.celery.pidbox',
+            'routing-key',
+            'ticket',
+            producer=producer,
+            channel=mock.Mock(),
+        )
+    assert 1 < attempts <= 5
 
 
 @mock.patch.dict(os.environ, {'IIB_OTEL_TRACING': 'some-str'})
