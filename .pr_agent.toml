@@ -1,0 +1,6 @@
+# File containing QODO agent configuration
+
+# Per CLOUDDST-33087: disable automatic review; manual trigger with /agentic_review
+[github_app]
+pr_commands = []
+handle_push_trigger = false
