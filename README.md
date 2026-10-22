@@ -392,6 +392,10 @@ The custom configuration options for the Celery workers are listed below:
   ORAS uses `set_registry_auths` with an isolated Docker config (not the worker’s default `config.json`).
 * `iib_index_db_oras_auth_path` - path to a JSON Docker config file for ORAS. When set, ORAS uses
   `oras --registry-config` with this file and does not apply the inline secret above.
+* `iib_index_db_cache_cleanup_threshold` - number of `idb-<digest>` ImageStream tags that starts
+  asynchronous retention cleanup. The default is `900`.
+* `iib_index_db_cache_cleanup_target` - number of tags retained after cleanup. The default is
+  `500`; the oldest tags are deleted in one batch.
 * `iib_empty_index_db_tag` - the tag used to identify pre-created empty `index.db` artifacts in the
   registry. When creating an empty index, IIB will first attempt to fetch an artifact tagged with
   this value. If not found, it falls back to fetching the `from_index` and removing all operators.

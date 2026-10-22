@@ -113,7 +113,18 @@ This will save the CA certificate to `konflux-ca.crt` in the current directory.
    # Index DB Artifact Configuration
    IIB_INDEX_DB_ARTIFACT_REGISTRY=quay.io/your-org
    IIB_INDEX_DB_IMAGESTREAM_REGISTRY=image-registry.openshift-image-registry.svc:5000
+   IIB_INDEX_DB_CACHE_CLEANUP_THRESHOLD=900
+   IIB_INDEX_DB_CACHE_CLEANUP_TARGET=500
    ```
+
+The OpenShift deployment runs `iib-index-db-cache-cleanup` asynchronously from the CronJob
+maintained in the `iib-playbooks` repository. The cleanup target defaults to `500`, matching the
+worker configuration default. The command accepts optional `--threshold N` and `--target N` flags
+to override these values for one invocation.
+For example: `iib-index-db-cache-cleanup --threshold 900 --target 500`.
+
+Cleanup normally does not add latency to IIB requests. If cleanup removes a tag while a request is
+using it, the request treats the ImageStream as a cache and falls back to the artifact registry.
 
 ### 3. Place the Konflux CA Certificate
 
