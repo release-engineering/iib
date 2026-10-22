@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Delete the GitLab source branch after closing or merging a merge request, including
   requesting source branch removal in the merge API payload.
+* Add scheduled cleanup for old index.db ImageStream cache tags.
 
 ## 10.0.0
 

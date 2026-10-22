@@ -7,6 +7,7 @@ Subpackages
 .. toctree::
 
    iib.workers.tasks
+   iib.workers.cli
 
 Submodules
 ----------

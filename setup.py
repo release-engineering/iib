@@ -51,7 +51,12 @@ setup(
         'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3.13',
     ],
-    entry_points={'console_scripts': ['iib=iib.web.manage:cli']},
+    entry_points={
+        'console_scripts': [
+            'iib=iib.web.manage:cli',
+            'iib-index-db-cache-cleanup=iib.workers.cli.index_db_cache_cleanup:main',
+        ]
+    },
     license="GPLv3+",
     python_requires='>=3.12',
 )

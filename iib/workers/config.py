@@ -78,6 +78,8 @@ class Config(object):
     )
     iib_index_db_artifact_tag_template: str = 'idb-{digest}'
     iib_index_db_artifact_template: str = '{registry}/index-db:{tag}'
+    iib_index_db_cache_cleanup_threshold: int = 900
+    iib_index_db_cache_cleanup_target: int = 500
     # Whether to use OpenShift ImageStream cache for index.db artifacts
     # Requires OpenShift cluster with ImageStream configured
     iib_use_imagestream_cache: bool = False
