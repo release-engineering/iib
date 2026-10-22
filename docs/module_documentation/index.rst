@@ -9,3 +9,4 @@ Modules Documentation
    iib.web
    iib.workers
    iib.workers.tasks
+   iib.workers.cli

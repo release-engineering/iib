@@ -58,6 +58,15 @@ class ContainerizedConfig(DevelopmentConfig):
     iib_index_db_artifact_template: str = os.getenv(
         'IIB_INDEX_DB_ARTIFACT_TEMPLATE', '{registry}/index-db:{tag}'
     )
+    iib_index_db_artifact_tag_template: str = os.getenv(
+        'IIB_INDEX_DB_ARTIFACT_TAG_TEMPLATE', 'idb-{digest}'
+    )
+    iib_index_db_cache_cleanup_threshold: int = int(
+        os.getenv('IIB_INDEX_DB_CACHE_CLEANUP_THRESHOLD', '900')
+    )
+    iib_index_db_cache_cleanup_target: int = int(
+        os.getenv('IIB_INDEX_DB_CACHE_CLEANUP_TARGET', '500')
+    )
 
     # ===================================================================
     # Task Routing Configuration

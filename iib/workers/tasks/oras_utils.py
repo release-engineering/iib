@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import ArtifactNotFoundError, IIBError
+from iib.workers.constants import INDEX_DB_IMAGESTREAM_NAME
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest  # noqa: F401
 
@@ -288,7 +289,7 @@ def get_image_stream_digest(
     # - .image: Extract the 'image' field, which contains the SHA256 digest
     jsonpath = f'\'{{.status.tags[?(@.tag=="{tag}")].items[0].image}}\''
     return run_cmd(
-        ['oc', 'get', 'imagestream', 'index-db-cache', '-o', f'jsonpath={jsonpath}'],
+        ['oc', 'get', 'imagestream', INDEX_DB_IMAGESTREAM_NAME, '-o', f'jsonpath={jsonpath}'],
         exc_msg=f'Failed to get digest for ImageStream tag {tag}.',
     )
 
@@ -365,7 +366,7 @@ def refresh_indexdb_cache(
             [
                 'oc',
                 'import-image',
-                f'index-db-cache:{tag}',
+                f'{INDEX_DB_IMAGESTREAM_NAME}:{tag}',
                 f'--from={artifact_pullspec}',
                 '--confirm',
             ],
