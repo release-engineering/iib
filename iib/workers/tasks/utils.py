@@ -1088,6 +1088,11 @@ _ORAS_NOT_FOUND_REGEX = (
     r'(?i).*(?:MANIFEST_UNKNOWN|NAME_UNKNOWN|BLOB_UNKNOWN|: not found\b|status(?: code)?:? 404\b)'
 )
 
+_OC_IMAGESTREAM_TAG_LIMIT_REGEX = (
+    r'(?i)^.*?(too many tags|maximum(?: number)? of tags|tag limit|'
+    r'tags? limit exceeded|exceeded the (?:maximum )?number of tags)'
+)
+
 
 def _regex_reverse_search(
     regex: str,
@@ -1193,6 +1198,11 @@ def run_cmd(
             # tag, and treating a credential failure as "not found" is what we are fixing.
             if _regex_reverse_search(_ORAS_NOT_FOUND_REGEX, response):
                 raise ArtifactNotFoundError(exc_msg)
+        elif cmd[:2] == ['oc', 'import-image']:
+            # Preserve only the ImageStream tag-limit error for the bounded caller fallback.
+            match = _regex_reverse_search(_OC_IMAGESTREAM_TAG_LIMIT_REGEX, response)
+            details = match.group(1).strip() if match else ''
+            raise IIBError(f'{exc_msg}: {details}' if details else exc_msg)
 
         raise IIBError(exc_msg)
 

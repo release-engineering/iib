@@ -393,7 +393,7 @@ def test_pull_index_db_artifact_verify_cache_fails_falls_back_to_quay(
 @patch('iib.workers.tasks.containerized_utils.get_indexdb_artifact_pullspec')
 @patch('iib.workers.tasks.containerized_utils.get_imagestream_artifact_pullspec')
 @patch('iib.workers.tasks.containerized_utils.get_oras_artifact')
-def test_pull_index_db_artifact_imagestream_pull_fails_falls_back_to_quay(
+def test_pull_index_db_artifact_concurrent_cache_deletion_falls_back_to_quay(
     mock_get_oras_artifact,
     mock_get_imagestream_artifact_pullspec,
     mock_get_indexdb_artifact_pullspec,
@@ -402,11 +402,11 @@ def test_pull_index_db_artifact_imagestream_pull_fails_falls_back_to_quay(
     mock_log,
     mock_get_worker_config,
 ):
-    """When ImageStream pull raises IIBError, fall back to Quay."""
+    """A tag deleted concurrently is a cache miss and falls back to Quay."""
     mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
     mock_verify_cache.return_value = True
     mock_get_imagestream_artifact_pullspec.return_value = 'imagestream-ref'
-    error = IIBError('Failed to pull from ImageStream registry')
+    error = ArtifactNotFoundError('ImageStream tag was deleted concurrently')
     artifact_ref = 'quay.io/ns/index-image-indexdb:v4.19'
     artifact_dir = '/tmp/artifact-dir'
     mock_get_oras_artifact.side_effect = [error, artifact_dir]

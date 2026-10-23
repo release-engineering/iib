@@ -569,6 +569,35 @@ def test_run_cmd_failed(mock_sub_run, exc_msg):
     mock_sub_run.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    'stderr, expected',
+    [
+        (
+            'Error: ImageStream index-db-cache has too many tags (limit 1000)\n'
+            'unrelated diagnostic detail',
+            'Failed to import image: too many tags',
+        ),
+        ('', 'Failed to import image'),
+        ('unrelated diagnostic detail', 'Failed to import image'),
+    ],
+)
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_oc_import_image(mock_sub_run, stderr, expected):
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = stderr
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError) as exc_info:
+        utils.run_cmd(
+            ['oc', 'import-image', 'index-db-cache:test'],
+            exc_msg='Failed to import image',
+        )
+
+    assert str(exc_info.value) == expected
+    mock_sub_run.assert_called_once()
+
+
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd_failed_opm(mock_sub_run):
     mock_rv = mock.Mock()
