@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+* Delete the GitLab source branch after closing or merging a merge request, including
+  requesting source branch removal in the merge API payload.
+
 ## 10.0.0
 
 First release of containerized IIB, cut from `main`. Tagged `ocp-v10.0.0`.
