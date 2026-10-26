@@ -16,7 +16,7 @@ from tenacity import (
     stop_after_attempt,
     wait_incrementing,
 )
-from urllib.parse import urlparse, quote_plus
+from urllib.parse import quote, quote_plus, urlparse
 
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import GitLabSourceBranchNotReadyError, IIBError
@@ -495,6 +495,9 @@ def _extract_gitlab_info(repo_url: str) -> Tuple[str, str]:
 
 
 # GitLab can validate a newly pushed branch against a briefly stale Redis branch cache.
+# This tenacity retry is for that application-level readiness condition. The HTTP
+# helpers below keep explicit retries because each endpoint has different retryable
+# statuses and wait limits.
 @retry(
     before_sleep=before_sleep_log(log, logging.WARNING),
     reraise=True,
@@ -588,7 +591,7 @@ def close_mr(mr_details: Dict[str, str], repo_url: str) -> None:
 
     :param dict mr_details: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :param str repo_url: Git repository URL.
-    :raises IIBError: If GitLab API call fails.
+    :raises IIBError: If closing the merge request through GitLab fails.
     """
     mr_id = mr_details.get('mr_id')
     if not mr_id:
@@ -599,6 +602,136 @@ def close_mr(mr_details: Dict[str, str], repo_url: str) -> None:
 
     # Close merge request via GitLab API
     _close_gitlab_mr(repo_url, git_token, mr_id)
+
+    _cleanup_mr_source_branch(mr_details, repo_url, git_token, mr_id)
+
+
+def _cleanup_mr_source_branch(
+    mr_details: Dict[str, str], repo_url: str, git_token: str, mr_id: str
+) -> None:
+    """
+    Delete the source branch for a closed or merged MR without failing the request.
+
+    If GitLab cannot provide or delete the source branch, the failure is logged and
+    the request continues successfully.
+
+    :param dict mr_details: Details of the merge request.
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str mr_id: Merge request ID.
+    """
+    try:
+        source_branch = mr_details.get('source_branch')
+        if not source_branch:
+            # The MR response normally includes source_branch. Fetch it for older or
+            # incomplete MR details so cleanup still works when possible.
+            source_branch = _get_gitlab_mr_source_branch(repo_url, git_token, mr_id)
+
+        _delete_gitlab_branch(repo_url, git_token, source_branch)
+    # Helpers convert expected GitLab failures to IIBError, but best-effort
+    # cleanup also suppresses unexpected errors so it cannot fail the request.
+    except Exception as e:
+        log.exception("Failed to delete source branch for MR %s: %s", mr_id, e)
+
+
+def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> str:
+    """
+    Fetch an MR's source branch when it is missing from the local details.
+
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str mr_id: Merge request ID.
+    :return: The source branch name.
+    :rtype: str
+    :raises IIBError: If the MR cannot be retrieved or has no source branch.
+    """
+    api_url, project_path = _extract_gitlab_info(repo_url)
+    mr_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests/{mr_id}"
+    headers = {'Authorization': f'Bearer {git_token}'}
+
+    try:
+        # Branch cleanup is best effort and runs after the MR operation has
+        # completed. Keep the fallback lookup short so it cannot hold up the
+        # request for the normal GitLab API timeout.
+        response = requests_session.get(mr_url, headers=headers, timeout=3)
+        if not response.ok:
+            raise IIBError(f'Failed to retrieve merge request {mr_id}: {response.status_code}')
+
+        try:
+            mr_data = response.json()
+        except ValueError as e:
+            raise IIBError(f'Invalid response retrieving merge request {mr_id}') from e
+
+        if not isinstance(mr_data, dict):
+            raise IIBError(f'Invalid response retrieving merge request {mr_id}')
+
+        source_branch = mr_data.get('source_branch')
+        if not source_branch:
+            raise IIBError(f'Missing source_branch for merge request {mr_id}')
+        return source_branch
+    except requests.RequestException as e:
+        log.exception("Error retrieving merge request source branch via GitLab API")
+        raise IIBError(f'GitLab API request failed: {str(e)}') from e
+
+
+def _delete_gitlab_branch(repo_url: str, git_token: str, source_branch: str) -> None:
+    """
+    Delete a source branch through the GitLab API.
+
+    A missing branch is considered successfully cleaned up, making this operation
+    safe to retry.
+
+    The manual HTTP retry loop handles 429, 5xx, and request exceptions, with one
+    retry after a 2-second delay. A 404 is treated as successful cleanup.
+
+    :param str repo_url: Git repository URL.
+    :param str git_token: GitLab access token.
+    :param str source_branch: Name of the source branch to delete.
+    :raises IIBError: If GitLab does not delete the branch after retries.
+    """
+    api_url, project_path = _extract_gitlab_info(repo_url)
+    branch_url = (
+        f"{api_url}/projects/{quote_plus(project_path)}"
+        f"/repository/branches/{quote(source_branch, safe='')}"
+    )
+    headers = {'Authorization': f'Bearer {git_token}'}
+
+    # Cleanup runs inline after a successful MR operation, so keep its total
+    # wait short: at most two 3-second requests plus the existing 2-second
+    # retry delay.
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        try:
+            log.info("Deleting source branch %s from %s", source_branch, project_path)
+            response = requests_session.delete(branch_url, headers=headers, timeout=3)
+
+            # GitLab returns 404 if a previous attempt or remove_source_branch
+            # already deleted it. Treat that as success to make cleanup idempotent.
+            if response.status_code == 404:
+                log.info("Source branch %s is already deleted", source_branch)
+                return
+
+            if response.ok:
+                log.info("Successfully deleted source branch %s", source_branch)
+                return
+
+            retryable = response.status_code == 429 or response.status_code >= 500
+            if retryable and attempt < max_attempts - 1:
+                wait_time = 2 * (attempt + 1)
+                time.sleep(wait_time)
+                continue
+
+            raise IIBError(
+                f'Failed to delete source branch {source_branch}: {response.status_code}'
+            )
+        except requests.RequestException as e:
+            if attempt < max_attempts - 1:
+                wait_time = 2 * (attempt + 1)
+                time.sleep(wait_time)
+                continue
+
+            log.exception("Error deleting source branch via GitLab API")
+            raise IIBError(f'GitLab API request failed: {str(e)}')
 
 
 def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
@@ -656,7 +789,10 @@ def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
 
     _, git_token = get_git_token(repo_url)
 
-    return _merge_gitlab_mr(repo_url, git_token, mr_id)
+    merge_commit_sha = _merge_gitlab_mr(repo_url, git_token, mr_id)
+    _cleanup_mr_source_branch(mr_details, repo_url, git_token, mr_id)
+
+    return merge_commit_sha
 
 
 def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int = 3) -> str:
@@ -665,6 +801,8 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
 
     Retryable status codes: 406 (not yet ready), 409 (merge in progress), 500, 502, 503, 504.
     Non-retryable: 401, 403, 405 (cannot be merged, e.g., conflict).
+    The manual HTTP retry loop also retries request exceptions, with up to
+    ``max_retries + 1`` attempts and waits increasing by 5 seconds.
 
     :param str repo_url: Git repository URL.
     :param str git_token: GitLab access token.
@@ -680,7 +818,7 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
 
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {git_token}'}
 
-    payload = {'squash': True}
+    payload = {'squash': True, 'should_remove_source_branch': True}
 
     retryable_codes = {406, 409, 500, 502, 503, 504}
 
