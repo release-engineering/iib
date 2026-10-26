@@ -591,8 +591,9 @@ def test_create_mr_success(
 
 
 @mock.patch('iib.workers.tasks.git_utils._close_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils._delete_gitlab_branch')
 @mock.patch('iib.workers.tasks.git_utils.get_git_token')
-def test_close_mr_success(mock_get_git_token, mock_close_gitlab_mr):
+def test_close_mr_success(mock_get_git_token, mock_delete_gitlab_branch, mock_close_gitlab_mr):
     """Test successful closing of merge request."""
     mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
     mock_close_gitlab_mr.return_value = None
@@ -608,6 +609,125 @@ def test_close_mr_success(mock_get_git_token, mock_close_gitlab_mr):
 
     # Verify GitLab API was called
     mock_close_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+    mock_delete_gitlab_branch.assert_called_once_with(
+        PUB_GIT_REPO, PUB_TOKEN_VALUE, 'iib-request-456-v4.19'
+    )
+
+
+@mock.patch('iib.workers.tasks.git_utils._close_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils._delete_gitlab_branch')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+def test_close_mr_branch_delete_failure_is_logged_and_does_not_fail_request(
+    mock_get_git_token, mock_delete_gitlab_branch, mock_close_gitlab_mr, caplog
+):
+    """A branch cleanup failure does not fail a request after the MR was closed."""
+    mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
+    mock_delete_gitlab_branch.side_effect = IIBError('Forbidden')
+    mr_details = {'mr_id': '123', 'source_branch': 'iib-request-456-v4.19'}
+
+    git_utils.close_mr(mr_details, PUB_GIT_REPO)
+
+    mock_close_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+    assert 'Failed to delete source branch for MR 123: Forbidden' in caplog.text
+
+
+@mock.patch('iib.workers.tasks.git_utils._get_gitlab_mr_source_branch')
+@mock.patch('iib.workers.tasks.git_utils._close_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils._delete_gitlab_branch')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+def test_close_mr_fetches_source_branch_when_missing(
+    mock_get_git_token, mock_delete_gitlab_branch, mock_close_gitlab_mr, mock_get_source_branch
+):
+    """Older MR details still allow branch cleanup by looking up the MR."""
+    mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
+    mock_get_source_branch.return_value = 'iib-request-456-v4.19'
+
+    git_utils.close_mr({'mr_id': '123'}, PUB_GIT_REPO)
+
+    mock_close_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+    mock_get_source_branch.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+    mock_delete_gitlab_branch.assert_called_once_with(
+        PUB_GIT_REPO, PUB_TOKEN_VALUE, 'iib-request-456-v4.19'
+    )
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_success(mock_get):
+    """Return the source branch from the fetched merge request."""
+    response = mock.Mock()
+    response.ok = True
+    response.json.return_value = {'source_branch': 'feature/branch'}
+    mock_get.return_value = response
+
+    result = git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+    assert result == 'feature/branch'
+    call_args = mock_get.call_args
+    assert call_args[0][0].endswith('/merge_requests/123')
+    assert call_args[1]['headers']['Authorization'] == f'Bearer {PUB_TOKEN_VALUE}'
+    assert call_args[1]['timeout'] == 3
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_http_error(mock_get):
+    """Reject a non-successful GitLab response."""
+    response = mock.Mock()
+    response.ok = False
+    response.status_code = 503
+    mock_get.return_value = response
+
+    with pytest.raises(IIBError, match='Failed to retrieve merge request 123: 503'):
+        git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+    response.json.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_invalid_json(mock_get):
+    """Convert invalid JSON into an IIBError."""
+    response = mock.Mock()
+    response.ok = True
+    response.json.side_effect = ValueError('invalid JSON')
+    mock_get.return_value = response
+
+    with pytest.raises(IIBError, match='Invalid response retrieving merge request 123'):
+        git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_non_dict_response(mock_get):
+    """Reject a JSON response that is not an object."""
+    response = mock.Mock()
+    response.ok = True
+    response.json.return_value = ['feature/branch']
+    mock_get.return_value = response
+
+    with pytest.raises(IIBError, match='Invalid response retrieving merge request 123'):
+        git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_missing_source_branch(mock_get):
+    """Reject a merge request response without source_branch."""
+    response = mock.Mock()
+    response.ok = True
+    response.json.return_value = {'id': 123}
+    mock_get.return_value = response
+
+    with pytest.raises(IIBError, match='Missing source_branch for merge request 123'):
+        git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.get')
+def test_get_gitlab_mr_source_branch_network_error(mock_get):
+    """Wrap request exceptions as IIBError while preserving the cause."""
+    request_error = requests.RequestException('Connection timed out')
+    mock_get.side_effect = request_error
+
+    with pytest.raises(IIBError, match='GitLab API request failed: Connection timed out') as exc:
+        git_utils._get_gitlab_mr_source_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+    assert exc.value.__cause__ is request_error
 
 
 def test_close_mr_missing_mr_id():
@@ -919,6 +1039,66 @@ def test_close_gitlab_mr_network_errors(mock_requests_put):
 
     # Verify API call was attempted
     mock_requests_put.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.delete')
+def test_delete_gitlab_branch_success(mock_requests_delete):
+    """Delete a source branch through the GitLab API."""
+    mock_response = mock.Mock()
+    mock_response.ok = True
+    mock_response.status_code = 204
+    mock_requests_delete.return_value = mock_response
+
+    git_utils._delete_gitlab_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, 'feature/branch')
+
+    call_args = mock_requests_delete.call_args
+    assert '/repository/branches/feature%2Fbranch' in call_args[0][0]
+    assert call_args[1]['headers']['Authorization'] == f'Bearer {PUB_TOKEN_VALUE}'
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.delete')
+def test_delete_gitlab_branch_missing_is_idempotent(mock_requests_delete):
+    """An already deleted branch is successful cleanup."""
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 404
+    mock_requests_delete.return_value = mock_response
+
+    git_utils._delete_gitlab_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, 'feature-branch')
+
+    mock_requests_delete.assert_called_once()
+
+
+@mock.patch('iib.workers.tasks.git_utils.time.sleep')
+@mock.patch('iib.workers.tasks.git_utils.requests_session.delete')
+def test_delete_gitlab_branch_retries_transient_failure(mock_requests_delete, mock_sleep):
+    """Transient GitLab errors are retried before giving up on branch cleanup."""
+    transient_response = mock.Mock()
+    transient_response.ok = False
+    transient_response.status_code = 503
+    transient_response.text = 'Service Unavailable'
+    success_response = mock.Mock()
+    success_response.ok = True
+    success_response.status_code = 204
+    mock_requests_delete.side_effect = [transient_response, success_response]
+
+    git_utils._delete_gitlab_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, 'feature-branch')
+
+    assert mock_requests_delete.call_count == 2
+    mock_sleep.assert_called_once_with(2)
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session.delete')
+def test_delete_gitlab_branch_permission_error(mock_requests_delete):
+    """Permission failures are surfaced so normal cleanup fallback can log them."""
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 403
+    mock_response.text = 'Forbidden'
+    mock_requests_delete.return_value = mock_response
+
+    with pytest.raises(IIBError, match='Failed to delete source branch feature-branch: 403'):
+        git_utils._delete_gitlab_branch(PUB_GIT_REPO, PUB_TOKEN_VALUE, 'feature-branch')
 
 
 @mock.patch("iib.workers.tasks.git_utils.shutil")
@@ -1336,8 +1516,9 @@ def test_create_mr_with_environment_name(
 
 
 @mock.patch('iib.workers.tasks.git_utils._merge_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils._delete_gitlab_branch')
 @mock.patch('iib.workers.tasks.git_utils.get_git_token')
-def test_merge_mr_success(mock_get_git_token, mock_merge_gitlab_mr):
+def test_merge_mr_success(mock_get_git_token, mock_delete_gitlab_branch, mock_merge_gitlab_mr):
     """Test successful merging of merge request."""
     mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
     mock_merge_gitlab_mr.return_value = 'abc123def456'
@@ -1352,6 +1533,27 @@ def test_merge_mr_success(mock_get_git_token, mock_merge_gitlab_mr):
 
     assert result == 'abc123def456'
     mock_merge_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+    mock_delete_gitlab_branch.assert_called_once_with(
+        PUB_GIT_REPO, PUB_TOKEN_VALUE, 'iib-qe-request-456-v4.19'
+    )
+
+
+@mock.patch('iib.workers.tasks.git_utils._merge_gitlab_mr')
+@mock.patch('iib.workers.tasks.git_utils._delete_gitlab_branch')
+@mock.patch('iib.workers.tasks.git_utils.get_git_token')
+def test_merge_mr_branch_delete_failure_is_logged_and_merge_succeeds(
+    mock_get_git_token, mock_delete_gitlab_branch, mock_merge_gitlab_mr, caplog
+):
+    """A branch cleanup failure does not change a successful merge result."""
+    mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
+    mock_merge_gitlab_mr.return_value = 'abc123def456'
+    mock_delete_gitlab_branch.side_effect = IIBError('Forbidden')
+    mr_details = {'mr_id': '123', 'source_branch': 'iib-qe-request-456-v4.19'}
+
+    result = git_utils.merge_mr(mr_details, PUB_GIT_REPO)
+
+    assert result == 'abc123def456'
+    assert 'Failed to delete source branch for MR 123: Forbidden' in caplog.text
 
 
 @mock.patch('iib.workers.tasks.git_utils._merge_gitlab_mr')
@@ -1385,6 +1587,7 @@ def test_merge_gitlab_mr_success(mock_extract, mock_session):
     call_args = mock_session.put.call_args
     assert 'merge_requests/123/merge' in call_args[0][0]
     assert call_args[1]['json']['squash'] is True
+    assert call_args[1]['json']['should_remove_source_branch'] is True
 
 
 @mock.patch('iib.workers.tasks.git_utils.requests_session')
