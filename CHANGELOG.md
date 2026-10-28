@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 9.6.1
+
+* Pinning latest UBI to remediate eMudhra by @lipoja in https://github.com/release-engineering/iib/pull/1408
+* Bump requirements by @lipoja in https://github.com/release-engineering/iib/pull/1413
 
 ## 9.6.0
 
