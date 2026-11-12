@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import logging
 import pytest
 import tempfile
 import os
@@ -628,6 +629,22 @@ def test_get_pipelinerun_image_url_success(results_key, image_url, description):
 
     # Verify
     assert result == image_url
+
+
+def test_get_pipelinerun_image_url_sanitizes_credentials_in_log(caplog):
+    secret = 'konflux-image-token'
+    image_url = f'https://image-user:{secret}@registry.example.com/index:latest'
+    run = {'status': {'results': [{'name': 'IMAGE_URL', 'value': image_url}]}}
+
+    konflux_logger = logging.getLogger('iib.workers.tasks.konflux_utils')
+    konflux_logger.disabled = False
+    konflux_logger.setLevel(logging.INFO)
+    caplog.set_level(logging.INFO, logger='iib.workers.tasks.konflux_utils')
+    result = get_pipelinerun_image_url('test-pipelinerun', run)
+
+    assert result == image_url
+    assert secret not in caplog.text
+    assert 'https://*****:*******@registry.example.com/index:latest' in caplog.text
 
 
 def test_get_pipelinerun_image_url_with_whitespace():

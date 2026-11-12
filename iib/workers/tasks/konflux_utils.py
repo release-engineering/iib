@@ -17,6 +17,7 @@ from tenacity import (
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
+from iib.workers.tasks.utils import sanitize_log_text
 
 __all__ = ['find_pipelinerun', 'wait_for_pipeline_completion', 'get_pipelinerun_image_url']
 
@@ -75,7 +76,10 @@ def _create_kubernetes_client() -> client.CustomObjectsApi:
             "iib_konflux_cluster_ca_cert in IIB worker configuration."
         )
 
-    log.info("Configuring Kubernetes client for cross-cluster access to %s", target_cluster_url)
+    log.info(
+        "Configuring Kubernetes client for cross-cluster access to %s",
+        sanitize_log_text(target_cluster_url),
+    )
 
     configuration = _create_kubernetes_configuration(
         target_cluster_url, target_cluster_token, target_cluster_ca_cert
@@ -270,7 +274,11 @@ def get_pipelinerun_image_url(pipelinerun_name: str, run: Dict[str, Any]) -> str
             if image_url := result.get('value'):
                 # Strip whitespace (including newlines) from the URL
                 image_url = image_url.strip()
-                log.info("Extracted IMAGE_URL from pipelinerun %s: %s", pipelinerun_name, image_url)
+                log.info(
+                    "Extracted IMAGE_URL from pipelinerun %s: %s",
+                    pipelinerun_name,
+                    sanitize_log_text(image_url),
+                )
                 return image_url
 
     # If not found, log for debugging
@@ -323,7 +331,8 @@ def _handle_pipelinerun_completion(pipelinerun_name: str, run: Dict[str, Any]) -
     reason = condition.get("reason", "Unknown")
     condition_type = condition.get("type", "Unknown")
     status_value = condition.get("status", "Unknown")
-    message = condition.get("message", "")
+    message = str(condition.get("message", "") or "")
+    safe_message = sanitize_log_text(message)
 
     log.info(
         "Pipelinerun %s status: reason=%s, type=%s, status=%s",
@@ -333,14 +342,14 @@ def _handle_pipelinerun_completion(pipelinerun_name: str, run: Dict[str, Any]) -
         status_value,
     )
     if message:
-        log.info("Pipelinerun %s message: %s", pipelinerun_name, message)
+        log.info("Pipelinerun %s message: %s", pipelinerun_name, safe_message)
 
     if _is_pipelinerun_successful(reason):
         log.info("Pipelinerun %s completed successfully", pipelinerun_name)
         return True
 
     _is_pipelinerun_cancelled(reason, pipelinerun_name)
-    _is_pipelinerun_failed(reason, status_value, message, pipelinerun_name)
+    _is_pipelinerun_failed(reason, status_value, safe_message, pipelinerun_name)
 
     # Still running
     log.info("Pipelinerun %s is still running... (reason: %s)", pipelinerun_name, reason)

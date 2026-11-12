@@ -570,6 +570,71 @@ def test_run_cmd_failed(mock_sub_run, exc_msg):
 
 
 @mock.patch('iib.workers.tasks.utils.subprocess.run')
+@pytest.mark.parametrize('protocol', ('https', 'ftp', 'custom+proto'))
+def test_run_cmd_failed_sanitizes_url_credentials(mock_sub_run, caplog, protocol):
+    git_logger = logging.getLogger('iib.workers.tasks.utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
+    secret = 'gitlab-secret-token'
+    remote_url = f'{protocol}://token-name:{secret}@gitlab.example.com/group/repo.git'
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = f"fatal: unable to access '{remote_url}': early EOF"
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError):
+        utils.run_cmd(['git', 'clone', remote_url, '/tmp/repo'])
+
+    assert secret not in caplog.text
+    assert f'{protocol}://*****:*******@gitlab.example.com/group/repo.git' in caplog.text
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_failed_sanitizes_url_credentials_with_at_in_token(mock_sub_run, caplog):
+    git_logger = logging.getLogger('iib.workers.tasks.utils')
+    git_logger.disabled = False
+    git_logger.setLevel(logging.DEBUG)
+
+    secret = 'gitlab-token-part1@part2'
+    remote_url = f'https://token-name:{secret}@gitlab.example.com/group/repo.git'
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = f"fatal: unable to access '{remote_url}': early EOF"
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError):
+        utils.run_cmd(['git', 'clone', remote_url, '/tmp/repo'])
+
+    assert secret not in caplog.text
+    assert 'part2@gitlab.example.com' not in caplog.text
+    assert 'https://*****:*******@gitlab.example.com/group/repo.git' in caplog.text
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
+def test_run_cmd_opm_error_sanitizes_credentials(mock_sub_run, caplog):
+    secret = 'registry-secret-token'
+    remote_url = f'https://registry-user:{secret}@registry.example.com/catalog/image'
+    mock_rv = mock.Mock()
+    mock_rv.returncode = 1
+    mock_rv.stderr = f'Error: failed to pull {remote_url}'
+    mock_sub_run.return_value = mock_rv
+
+    with pytest.raises(IIBError) as exc_info:
+        utils.run_cmd(['opm-v1.26.4', 'render', '/tmp/configs'])
+
+    assert secret not in str(exc_info.value)
+    assert secret not in caplog.text
+    assert 'https://*****:*******@registry.example.com/catalog/image' in str(exc_info.value)
+
+
+def test_sanitize_log_text_preserves_container_image_digest():
+    image = 'docker://registry.example.com/group/image@sha256:deadbeef'
+
+    assert utils.sanitize_log_text(image) == image
+
+
+@mock.patch('iib.workers.tasks.utils.subprocess.run')
 def test_run_cmd_failed_opm(mock_sub_run):
     mock_rv = mock.Mock()
     mock_rv.returncode = 1

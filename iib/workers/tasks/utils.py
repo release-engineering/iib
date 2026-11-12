@@ -921,7 +921,7 @@ def set_registry_token(
 
     for image in images:
         auth_key = _docker_auth_key_for_image(image)
-        log.debug('Setting the override token for the image %s', auth_key)
+        log.debug('Setting the override token for the image %s', sanitize_log_text(auth_key))
         registry_auths.setdefault('auths', {}).update({auth_key: auth_entry})
 
         # When from_index (or another image) is only reachable via overwrite_from_index_token
@@ -944,8 +944,8 @@ def set_registry_token(
                 if namespace_key != auth_key:
                     log.debug(
                         'No path-scoped Docker auth for %s; also setting overwrite token for %s',
-                        image,
-                        namespace_key,
+                        sanitize_log_text(image),
+                        sanitize_log_text(namespace_key),
                     )
                     registry_auths['auths'].update({namespace_key: auth_entry})
 
@@ -1111,20 +1111,34 @@ def _regex_reverse_search(
     return None
 
 
+# Match a URL scheme followed by its complete userinfo (everything through the last @ before
+# the authority's slash or whitespace). The shaNN: exclusion preserves image digest references.
+_URL_CREDENTIALS_REGEX = r'(?i)([a-z][a-z0-9+.-]*:\/\/)([^/\s]+@)(?!sha\d+:)'
+
+
+def sanitize_log_text(text: str) -> str:
+    """Redact URL user information from text before it is exposed in logs.
+
+    The match covers URL schemes with ``://`` and credentials in the authority
+    portion. It also applies when the text is surfaced outside a log, such as
+    in an error message.
+
+    :param str text: Text that may contain URLs with embedded credentials.
+    :return: Text with URL credentials redacted.
+    :rtype: str
+    """
+    return re.sub(_URL_CREDENTIALS_REGEX, r"\1*****:*******@", text)
+
+
 def _sanitize_cmd_log(cmd: List[str]) -> List[str]:
     """
-    Sanitize known commands to allow ``run_cmd`` to safely log them.
+    Sanitize command arguments to allow ``run_cmd`` to safely log them.
 
     :param list(str): cmd args
     :return: sanitized cmd args for known commands.
     :rtype: list(str)
     """
-    git_token_regex = r"^((https?|git|ssh):\/\/)([^\/:@]+(:[^\/@]*)?@)"
-    sanitized_args = []
-    for arg in cmd:
-        new_arg = re.sub(git_token_regex, r"\1*****:*******@", arg)
-        sanitized_args.append(new_arg)
-    return sanitized_args
+    return [sanitize_log_text(arg) for arg in cmd]
 
 
 def run_cmd(
@@ -1144,7 +1158,7 @@ def run_cmd(
     :rtype: str
     :raises IIBError: if the command fails
     """
-    exc_msg = exc_msg or 'An unexpected error occurred'
+    exc_msg = sanitize_log_text(exc_msg or 'An unexpected error occurred')
     if not params:
         params = {}
     params.setdefault('universal_newlines', True)
@@ -1159,7 +1173,9 @@ def run_cmd(
         if set(['buildah', 'manifest', 'rm']) <= set(cmd) and 'image not known' in response.stderr:
             raise IIBError('Manifest list not found locally.')
         log.error(
-            'The command "%s" failed with: %s', ' '.join(_sanitize_cmd_log(cmd)), response.stderr
+            'The command "%s" failed with: %s',
+            ' '.join(_sanitize_cmd_log(cmd)),
+            sanitize_log_text(response.stderr),
         )
         regex: str
         match: Optional[re.Match]
@@ -1168,7 +1184,7 @@ def run_cmd(
             regex = r'^(?:Error: )(.+)$'
             match = _regex_reverse_search(regex, response)
             if match:
-                raise IIBError(f'{exc_msg.rstrip(".")}: {match.groups()[0]}')
+                raise IIBError(f'{exc_msg.rstrip(".")}: {sanitize_log_text(match.groups()[0])}')
             elif (
                 '"permissive mode disabled" error="error deleting packages from'
                 ' database: error removing operator package' in response.stderr
@@ -1183,7 +1199,8 @@ def run_cmd(
             for regex in network_regexes:
                 match = _regex_reverse_search(regex, response)
                 if match:
-                    raise ExternalServiceError(f'{exc_msg}: {": ".join(match.groups()).strip()}')
+                    error_detail = sanitize_log_text(": ".join(match.groups()).strip())
+                    raise ExternalServiceError(f'{exc_msg}: {error_detail}')
         elif cmd[:2] == ['oras', 'pull']:
             # 'oras pull' exits non-zero for a missing artifact and for a registry that is
             # unreachable, unauthenticated or erroring. Only the first means "this image was

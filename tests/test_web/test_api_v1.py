@@ -7,7 +7,7 @@ from io import StringIO
 import pytest
 from sqlalchemy.exc import DisconnectionError
 
-from iib.web.api_v1 import _get_unique_bundles
+from iib.web.api_v1 import _get_safe_args, _get_unique_bundles
 from iib.web.models import (
     Image,
     RequestAdd,
@@ -15,6 +15,25 @@ from iib.web.models import (
     RequestCreateEmptyIndex,
     RequestFbcOperations,
 )
+
+
+def test_get_safe_args_redacts_all_matching_credentials_and_ignores_missing_values():
+    token = 'token-user:token-secret'
+    registry_auths = {'auths': {'quay.io': {'auth': 'encoded-secret'}}}
+    args = [token, 'unrelated', token, registry_auths, registry_auths]
+    payload = {
+        'cnr_token': 'not-present-in-args',
+        'overwrite_from_index_token': token,
+        'registry_auths': registry_auths,
+    }
+
+    assert _get_safe_args(args, payload) == [
+        '*****',
+        'unrelated',
+        '*****',
+        '*****',
+        '*****',
+    ]
 
 
 def test_get_build(app, auth_env, client, db):
