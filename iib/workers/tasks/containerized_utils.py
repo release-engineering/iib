@@ -46,7 +46,7 @@ from iib.workers.tasks.oras_utils import (
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
 )
-from iib.workers.tasks.utils import get_image_label, run_cmd, skopeo_inspect
+from iib.workers.tasks.utils import get_image_label, run_cmd, sanitize_log_text, skopeo_inspect
 
 log = logging.getLogger(__name__)
 
@@ -451,7 +451,11 @@ class ValidateBundlesThread(threading.Thread):
                 if bundle and isinstance(bundle, dict) and "bundlePath" in bundle
                 else bundle
             )
-            log.error(f"Error validating bundle {bundle_str}: {e}")
+            log.error(
+                "Error validating bundle %s: %s",
+                sanitize_log_text(str(bundle_str)),
+                sanitize_log_text(str(e)),
+            )
             self.exception = e
         finally:
             while not self.bundles_queue.empty():
@@ -471,8 +475,10 @@ def wait_for_bundle_validation_threads(validation_threads: List[ValidateBundlesT
                 bundle_str = t.bundle["bundlePath"]
             else:
                 bundle_str = str(t.bundle) if t.bundle else "unknown"
-            log.error(f"Error validating bundle {bundle_str}: {t.exception}")
-            raise IIBError(f"Error validating bundle {bundle_str}: {t.exception}")
+            safe_exception = sanitize_log_text(str(t.exception))
+            safe_bundle = sanitize_log_text(str(bundle_str))
+            log.error("Error validating bundle %s: %s", safe_bundle, safe_exception)
+            raise IIBError(f"Error validating bundle {safe_bundle}: {safe_exception}")
 
 
 def validate_bundles_in_parallel(
@@ -540,32 +546,46 @@ def pull_index_db_artifact(from_index: str, temp_dir: str) -> str:
                 log.info('Index.db cache is not synced. Refreshing cache.')
                 refresh_indexdb_cache_for_image(from_index)
         except IIBError as e:
-            log.warning('ImageStream cache access failed, falling back to Quay: %s', e)
+            log.warning(
+                'ImageStream cache access failed, falling back to Quay: %s',
+                sanitize_log_text(str(e)),
+            )
     else:
         log.info('ImageStream cache is disabled. Pulling index.db artifact directly from registry.')
 
     # Pull directly from Quay — either cache is disabled, stale, or unavailable
     artifact_ref = get_indexdb_artifact_pullspec(from_index)
-    log.info('Pulling index.db artifact %s into %s', artifact_ref, temp_dir)
+    log.info('Pulling index.db artifact %s into %s', sanitize_log_text(artifact_ref), temp_dir)
     try:
         return get_oras_artifact(
             artifact_ref,
             temp_dir,
         )
     except ArtifactNotFoundError as e:
-        log.error('index.db artifact %s not found for image %s', artifact_ref, from_index)
+        log.error(
+            'index.db artifact %s not found for image %s',
+            sanitize_log_text(artifact_ref),
+            sanitize_log_text(from_index),
+        )
         raise IIBError(
-            f"No index.db found for the image {from_index} (artifact {artifact_ref}). "
+            f"No index.db found for the image {sanitize_log_text(from_index)} "
+            f"(artifact {sanitize_log_text(artifact_ref)}). "
             "Onboard the image to build."
         ) from e
     except IIBError as e:
         # The registry could not answer (unreachable, auth, 5xx). Telling the user to onboard
         # an image that is already onboarded sends them down the wrong path, so say what
         # actually happened and let the request be retried.
-        log.error('Failed to pull index.db artifact %s for image %s', artifact_ref, from_index)
+        log.error(
+            'Failed to pull index.db artifact %s for image %s',
+            sanitize_log_text(artifact_ref),
+            sanitize_log_text(from_index),
+        )
         raise IIBError(
-            f"Failed to pull the index.db artifact {artifact_ref} for the image {from_index}: "
-            f"{e}. This is not a missing artifact; the registry could not be reached or "
+            f"Failed to pull the index.db artifact {sanitize_log_text(artifact_ref)} "
+            f"for the image {sanitize_log_text(from_index)}: "
+            f"{sanitize_log_text(str(e))}. This is not a missing artifact; "
+            "the registry could not be reached or "
             "refused the request."
         ) from e
 
@@ -588,12 +608,14 @@ def fetch_and_verify_request_index_db_artifact(
         artifact_dir = get_oras_artifact(artifact_ref, temp_dir)
     except ArtifactNotFoundError as e:
         raise IIBError(
-            f'Request-specific index.db artifact {artifact_ref} not found for '
+            f'Request-specific index.db artifact {sanitize_log_text(artifact_ref)} not found for '
             f'parent request {request_id}.'
         ) from e
     except IIBError as e:
         raise IIBError(
-            f'Failed to pull request-specific index.db artifact {artifact_ref}: {e}'
+            f'Failed to pull request-specific index.db artifact '
+            f'{sanitize_log_text(artifact_ref)}: '
+            f'{sanitize_log_text(str(e))}'
         ) from e
 
     index_db = Path(artifact_dir) / 'index.db'
@@ -770,18 +792,21 @@ def cleanup_on_failure(
     """
     if mr_details and index_git_repo:
         # If we created an MR, just close it (commit is only in feature branch)
-        log.info("Closing merge request due to %s", reason)
+        log.info("Closing merge request due to %s", sanitize_log_text(reason))
         try:
             close_mr(mr_details, index_git_repo)
-            log.info("Closed merge request: %s", mr_details.get('mr_url'))
+            log.info(
+                "Closed merge request: %s",
+                sanitize_log_text(str(mr_details.get('mr_url') or '')),
+            )
         except Exception as close_error:
-            log.warning("Failed to close merge request: %s", close_error)
+            log.warning("Failed to close merge request: %s", sanitize_log_text(str(close_error)))
     elif overwrite_from_index and last_commit_sha:
         log.warning(
             "Unexpected: overwrite_from_index cleanup without mr_details. "
             "This code path should not be reached with the unified MR flow."
         )
-        log.error("Reverting commit due to %s", reason)
+        log.error("Reverting commit due to %s", sanitize_log_text(reason))
         try:
             revert_last_commit(
                 request_id=request_id,
@@ -789,9 +814,12 @@ def cleanup_on_failure(
                 index_repo_map=index_repo_map,
             )
         except Exception as revert_error:
-            log.error("Failed to revert commit: %s", revert_error)
+            log.error("Failed to revert commit: %s", sanitize_log_text(str(revert_error)))
     else:
-        log.error("Neither MR nor commit to revert. No cleanup needed for %s", reason)
+        log.error(
+            "Neither MR nor commit to revert. No cleanup needed for %s",
+            sanitize_log_text(reason),
+        )
 
 
 class BuildSourceKind(str, Enum):
@@ -881,7 +909,8 @@ def prepare_build_sources(
             if not remote_branch_exists(index_git_repo, target_branch, token_name, git_token):
                 raise IIBError(
                     f"Base OCP branch '{target_branch}' is not onboarded for "
-                    f'{index_git_repo}; chained build scaffolding is unavailable.'
+                    f'{sanitize_log_text(index_git_repo)}; chained build '
+                    'scaffolding is unavailable.'
                 )
 
         set_request_state(request_id, 'in_progress', 'Cloning Git repository')
@@ -949,7 +978,8 @@ def prepare_build_sources(
     target_branch = ocp_version
     if not remote_branch_exists(index_git_repo, target_branch, token_name, git_token):
         raise IIBError(
-            f"Base OCP branch '{target_branch}' is not onboarded for {index_git_repo}. "
+            f"Base OCP branch '{target_branch}' is not onboarded for "
+            f"{sanitize_log_text(index_git_repo)}. "
             "Onboard the index before building divergent tags."
         )
 
@@ -1023,7 +1053,7 @@ def prepare_git_repository_for_build(
             f"Git repository mapping not found for from_index: {from_index}. "
             "index_to_gitlab_push_map is required."
         )
-    log.info("Git repo for %s: %s", from_index, index_git_repo)
+    log.info("Git repo for %s: %s", from_index, sanitize_log_text(index_git_repo))
 
     token_name, git_token = get_git_token(index_git_repo)
 
@@ -1104,7 +1134,7 @@ def git_commit_and_create_mr(
         commit_message=commit_message,
         environment_name=environment_name,
     )
-    log.info("Created merge request: %s", mr_details.get('mr_url'))
+    log.info("Created merge request: %s", sanitize_log_text(str(mr_details.get('mr_url') or '')))
 
     last_commit_sha = get_last_commit_sha(local_repo_path=local_git_repo_path)
 
@@ -1194,9 +1224,12 @@ def cleanup_merge_request_if_exists(
     if mr_details and index_git_repo:
         try:
             close_mr(mr_details, index_git_repo)
-            log.info("Closed merge request: %s", mr_details.get('mr_url'))
+            log.info(
+                "Closed merge request: %s",
+                sanitize_log_text(str(mr_details.get('mr_url') or '')),
+            )
         except IIBError as e:
-            log.warning("Failed to close merge request: %s", e)
+            log.warning("Failed to close merge request: %s", sanitize_log_text(str(e)))
             if raise_on_error:
                 raise
 
@@ -1222,10 +1255,16 @@ def merge_mr_after_build(
         log.info("Successfully merged MR %s, commit: %s", mr_details.get('mr_id'), merge_commit_sha)
         return merge_commit_sha
     except IIBError as e:
-        log.error("Failed to merge MR %s after build: %s", mr_details.get('mr_id'), e)
+        log.error(
+            "Failed to merge MR %s after build: %s",
+            mr_details.get('mr_id'),
+            sanitize_log_text(str(e)),
+        )
         try:
             close_mr(mr_details, index_git_repo)
             log.info("Closed MR %s after merge failure", mr_details.get('mr_id'))
         except Exception as close_error:
-            log.warning("Failed to close MR after merge failure: %s", close_error)
-        raise IIBError(f"Failed to merge MR after successful build: {e}")
+            log.warning(
+                "Failed to close MR after merge failure: %s", sanitize_log_text(str(close_error))
+            )
+        raise IIBError(f"Failed to merge MR after successful build: {sanitize_log_text(str(e))}")

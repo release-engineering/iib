@@ -12,7 +12,12 @@ from iib.common.tracing import instrument_tracing
 from iib.exceptions import ArtifactNotFoundError, IIBError
 from iib.workers.constants import INDEX_DB_IMAGESTREAM_NAME
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.utils import run_cmd, set_registry_auths, get_image_digest  # noqa: F401
+from iib.workers.tasks.utils import (
+    get_image_digest,
+    run_cmd,
+    sanitize_log_text,
+    set_registry_auths,
+)  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -156,7 +161,7 @@ def get_oras_artifact(
     :raises ArtifactNotFoundError: If the registry reports that the artifact does not exist
     :raises IIBError: If the pull operation fails for any other reason
     """
-    log.info('Pulling OCI artifact %s to temporary directory', artifact_ref)
+    log.info('Pulling OCI artifact %s to temporary directory', sanitize_log_text(artifact_ref))
 
     # Create a subdirectory within the provided base_dir
     temp_dir = tempfile.mkdtemp(prefix=temp_dir_prefix, dir=base_dir)
@@ -178,7 +183,11 @@ def get_oras_artifact(
                 ['oras', 'pull', *cmd_args, artifact_ref, '-o', temp_dir],
                 exc_msg=f'Failed to pull OCI artifact {artifact_ref}',
             )
-            log.info('Successfully pulled OCI artifact %s to %s', artifact_ref, temp_dir)
+            log.info(
+                'Successfully pulled OCI artifact %s to %s',
+                sanitize_log_text(artifact_ref),
+                temp_dir,
+            )
             return temp_dir
         except Exception as e:
             # Clean up temp directory on failure
@@ -186,7 +195,7 @@ def get_oras_artifact(
                 shutil.rmtree(temp_dir)
             # Preserve the "the artifact is absent" signal through the wrap, so callers can
             # tell a never-onboarded image from a registry that failed to answer.
-            exc_msg = f'Failed to pull OCI artifact {artifact_ref}: {e}'
+            exc_msg = sanitize_log_text(f'Failed to pull OCI artifact {artifact_ref}: {e}')
             if isinstance(e, ArtifactNotFoundError):
                 raise ArtifactNotFoundError(exc_msg) from e
             raise IIBError(exc_msg) from e
@@ -217,7 +226,12 @@ def push_oras_artifact(
         should be relative to this directory (e.g., just the filename).
     :raises IIBError: If the push operation fails
     """
-    log.info('Pushing artifact from %s to %s with type %s', local_path, artifact_ref, artifact_type)
+    log.info(
+        'Pushing artifact from %s to %s with type %s',
+        local_path,
+        sanitize_log_text(artifact_ref),
+        artifact_type,
+    )
     if cwd:
         log.info('Using working directory: %s', cwd)
 
@@ -263,9 +277,9 @@ def push_oras_artifact(
                 )
             else:
                 run_cmd(cmd, exc_msg=f'Failed to push OCI artifact to {artifact_ref}')
-            log.info('Successfully pushed OCI artifact to %s', artifact_ref)
+            log.info('Successfully pushed OCI artifact to %s', sanitize_log_text(artifact_ref))
         except Exception as e:
-            raise IIBError(f'Failed to push OCI artifact to {artifact_ref}: {e}')
+            raise IIBError(sanitize_log_text(f'Failed to push OCI artifact to {artifact_ref}: {e}'))
 
 
 def get_image_stream_digest(

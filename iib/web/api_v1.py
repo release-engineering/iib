@@ -150,25 +150,28 @@ def _get_safe_args(
     payload: PayloadTypesUnion,
 ) -> List[Union[str, List[str], bool, Dict[str, str]]]:
     """
-    Generate arguments that are safe to print to stdout or log.
+    Generate arguments safe to expose through Celery's task ``argsrepr``.
+
+    Redact every argument matching a sensitive request value. Sensitive values
+    absent from the argument list are ignored because not every task includes
+    every credential field.
 
     :param list args: arguments for each api, that are not safe
     :param PayloadTypesUnion payload: Payload from the IIB request
-    :return: List with safe to print arguments
+    :return: Arguments with sensitive values redacted
     :rtype: list
     """
     safe_args = copy.copy(args)
 
-    if payload.get('cnr_token'):
-        safe_args[safe_args.index(payload['cnr_token'])] = '*****'  # type: ignore
-    if payload.get('overwrite_from_index_token'):
-        safe_args[safe_args.index(payload['overwrite_from_index_token'])] = '*****'  # type: ignore
-    if payload.get('overwrite_target_index_token'):
-        safe_args[
-            safe_args.index(payload['overwrite_target_index_token'])  # type: ignore
-        ] = '*****'
-    if payload.get('registry_auths'):
-        safe_args[safe_args.index(payload['registry_auths'])] = '*****'  # type: ignore
+    sensitive_values = (
+        payload.get('cnr_token'),
+        payload.get('overwrite_from_index_token'),
+        payload.get('overwrite_target_index_token'),
+        payload.get('registry_auths'),
+    )
+    for index, arg in enumerate(safe_args):
+        if any(value and arg == value for value in sensitive_values):
+            safe_args[index] = '*****'
 
     return safe_args
 

@@ -364,7 +364,7 @@ def test_pull_index_db_artifact_verify_cache_fails_falls_back_to_quay(
 ):
     """When ImageStream verify raises IIBError, fall back to Quay."""
     mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
-    error = IIBError('imagestreams.image.openshift.io not found')
+    error = IIBError('registry error at https://user:secret@registry.example/path')
     mock_verify_cache.side_effect = error
 
     from_index = 'quay.io/ns/index-image@sha256:abc'
@@ -382,7 +382,8 @@ def test_pull_index_db_artifact_verify_cache_fails_falls_back_to_quay(
     mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
     mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
     mock_log.warning.assert_called_once_with(
-        'ImageStream cache access failed, falling back to Quay: %s', error
+        'ImageStream cache access failed, falling back to Quay: %s',
+        'registry error at https://*****:*******@registry.example/path',
     )
 
 
@@ -406,7 +407,7 @@ def test_pull_index_db_artifact_imagestream_pull_fails_falls_back_to_quay(
     mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
     mock_verify_cache.return_value = True
     mock_get_imagestream_artifact_pullspec.return_value = 'imagestream-ref'
-    error = IIBError('Failed to pull from ImageStream registry')
+    error = IIBError('Failed to pull from https://user:secret@registry.example/path')
     artifact_ref = 'quay.io/ns/index-image-indexdb:v4.19'
     artifact_dir = '/tmp/artifact-dir'
     mock_get_oras_artifact.side_effect = [error, artifact_dir]
@@ -421,7 +422,8 @@ def test_pull_index_db_artifact_imagestream_pull_fails_falls_back_to_quay(
     mock_get_oras_artifact.assert_any_call('imagestream-ref', temp_dir)
     mock_get_oras_artifact.assert_any_call(artifact_ref, temp_dir)
     mock_log.warning.assert_called_once_with(
-        'ImageStream cache access failed, falling back to Quay: %s', error
+        'ImageStream cache access failed, falling back to Quay: %s',
+        'Failed to pull from https://*****:*******@registry.example/path',
     )
 
 
@@ -444,7 +446,7 @@ def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
     """When cache refresh raises IIBError, fall back to Quay."""
     mock_get_worker_config.return_value = {'iib_use_imagestream_cache': True}
     mock_verify_cache.return_value = False
-    error = IIBError('oc import-image failed')
+    error = IIBError('oc import-image failed at https://user:secret@registry.example/path')
     mock_refresh_cache.side_effect = error
 
     from_index = 'quay.io/ns/index-image@sha256:abc'
@@ -462,7 +464,8 @@ def test_pull_index_db_artifact_refresh_cache_fails_falls_back_to_quay(
     mock_get_indexdb_artifact_pullspec.assert_called_once_with(from_index)
     mock_get_oras_artifact.assert_called_once_with(artifact_ref, temp_dir)
     mock_log.warning.assert_called_once_with(
-        'ImageStream cache access failed, falling back to Quay: %s', error
+        'ImageStream cache access failed, falling back to Quay: %s',
+        'oc import-image failed at https://*****:*******@registry.example/path',
     )
 
 
@@ -912,7 +915,9 @@ def test_cleanup_on_failure_reverts_commit_when_overwrite_and_commit_sha_present
 @patch('iib.workers.tasks.containerized_utils.revert_last_commit')
 def test_cleanup_on_failure_revert_failure_is_logged(mock_revert_last_commit, mock_log):
     """If revert_last_commit fails, error should be logged."""
-    mock_revert_last_commit.side_effect = RuntimeError("revert failed")
+    mock_revert_last_commit.side_effect = RuntimeError(
+        "revert failed at https://user:secret@registry.example/path"
+    )
 
     mr_details = None
     last_commit_sha = 'abc123'
@@ -934,7 +939,8 @@ def test_cleanup_on_failure_revert_failure_is_logged(mock_revert_last_commit, mo
 
     mock_revert_last_commit.assert_called_once()
     mock_log.error.assert_any_call(
-        "Failed to revert commit: %s", mock_revert_last_commit.side_effect
+        "Failed to revert commit: %s",
+        "revert failed at https://*****:*******@registry.example/path",
     )
 
 
@@ -957,10 +963,12 @@ def test_cleanup_on_failure_no_mr_no_commit(mock_log):
         request_id=request_id,
         from_index=from_index,
         index_repo_map=index_repo_map,
+        reason='failed for https://user:secret@registry.example/path',
     )
 
     mock_log.error.assert_any_call(
-        "Neither MR nor commit to revert. No cleanup needed for %s", "error"
+        "Neither MR nor commit to revert. No cleanup needed for %s",
+        'failed for https://*****:*******@registry.example/path',
     )
 
 

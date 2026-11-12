@@ -22,7 +22,7 @@ from iib.common.tracing import instrument_tracing
 from iib.exceptions import GitLabSourceBranchNotReadyError, IIBError
 from iib.workers.api_utils import requests_session
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.utils import run_cmd
+from iib.workers.tasks.utils import run_cmd, sanitize_log_text
 
 
 log = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def push_configs_to_git(
             git_status = run_cmd(
                 ["git", "-C", local_repo_dir, "status"], exc_msg="Error getting git status"
             )
-            log.info(git_status)
+            log.info(sanitize_log_text(git_status))
 
             # Commit and push changes (this handles staging and checking for changes)
             commit_and_push(
@@ -153,7 +153,7 @@ def _stage_and_check_changes(local_repo_path: str) -> bool:
     git_status = run_cmd(
         ["git", "-C", local_repo_path, "status"], exc_msg="Error getting git status"
     )
-    log.info(git_status)
+    log.info(sanitize_log_text(git_status))
 
     # Check if there's anything to commit
     changes = run_cmd(
@@ -175,7 +175,7 @@ def validate_git_remote_branch(repo_url: str, branch: str) -> None:
     """
     remote_branch_status = run_cmd(["git", "ls-remote", "--heads", repo_url, branch], strict=False)
     if not remote_branch_status.strip():
-        raise IIBError(f"Remote branch '{branch}' not found for repo {repo_url}")
+        raise IIBError(f"Remote branch '{branch}' not found for repo {sanitize_log_text(repo_url)}")
 
 
 def remote_branch_exists(
@@ -207,7 +207,9 @@ def remote_branch_exists(
     ls_remote_url = repo_url
     if token_name and token:
         base_url = repo_url.replace('https://', '')
-        ls_remote_url = f"https://{token_name}:{token}@{base_url}"
+        # Encode reserved characters so credentials such as tokens containing '@' remain
+        # inside URL userinfo instead of being parsed as part of the host.
+        ls_remote_url = f"https://{quote(token_name, safe='')}:{quote(token, safe='')}@{base_url}"
 
     # Match the fully-qualified ref, not the bare branch name: 'git ls-remote'
     # matches a pattern against the tail of a ref at slash boundaries, so the
@@ -256,15 +258,15 @@ def commit_and_push(
         ["git", "-C", local_repo_path, "commit", "-m", final_commit_message],
         exc_msg="Error committing changes",
     )
-    log.info(commit_output)
+    log.info(sanitize_log_text(commit_output))
 
     # Push updates
-    log.info("Pushing changes to %s branch of %s", branch, repo_url)
+    log.info("Pushing changes to %s branch of %s", branch, sanitize_log_text(repo_url))
     push_output = run_cmd(
         ["git", "-C", local_repo_path, "push", "origin", branch],
         exc_msg=f"Error pushing changes to git repo {repo_url}",
     )
-    log.info(push_output)
+    log.info(sanitize_log_text(push_output))
 
 
 def resolve_git_url(from_index, index_repo_map: Dict[str, str]) -> Optional[str]:
@@ -295,12 +297,16 @@ def get_git_token(git_repo) -> Tuple[str, str]:
     """
     git_token_map = get_worker_config()['iib_index_configs_gitlab_tokens_map']
     if git_repo not in git_token_map:
-        raise IIBError(f"Missing key '{git_repo}' in 'iib_index_configs_gitlab_tokens_map'")
+        raise IIBError(
+            f"Missing key '{sanitize_log_text(git_repo)}' in "
+            "'iib_index_configs_gitlab_tokens_map'"
+        )
     str_token_name_value = git_token_map[git_repo]
     splitted_token = str_token_name_value.split(":")
     if ":" not in str_token_name_value or '' in splitted_token[:2]:
         raise IIBError(
-            f"Invalid token format for '{git_repo}' in 'iib_index_configs_gitlab_tokens_map'. "
+            f"Invalid token format for '{sanitize_log_text(git_repo)}' "
+            "in 'iib_index_configs_gitlab_tokens_map'. "
             "Expected 'token_name:token_value'."
         )
     token_name, token_value = splitted_token[:2]
@@ -340,20 +346,21 @@ def clone_git_repo(
     :param str local_repo_path: The local path where the Git repo will be cloned.
     """
     base_url = repo_url.replace('https://', '')
-    remote_url = f"https://{token_name}:{token}@{base_url}"
+    # Keep reserved characters in the username and token from changing the URL authority.
+    remote_url = f"https://{quote(token_name, safe='')}:{quote(token, safe='')}@{base_url}"
 
     clone_output = run_cmd(
         ["git", "clone", "--depth", "1", "--branch", branch, remote_url, local_repo_path],
         exc_msg=f"Error cloning remote repository for {repo_url}",
     )
-    log.info(clone_output)
+    log.info(sanitize_log_text(clone_output))
 
     # Show most recent commit
     last_commit = run_cmd(
         ["git", "-C", local_repo_path, "log", "-n1"],
         exc_msg=f"Error displaying last commit for {repo_url}",
     )
-    log.info("Most recent commit: %s", last_commit)
+    log.info("Most recent commit: %s", sanitize_log_text(last_commit))
 
 
 def revert_last_commit(
@@ -385,19 +392,25 @@ def revert_last_commit(
         try:
             clone_git_repo(repo_url, branch, git_token_name, git_token, local_repo_dir)
 
-            log.info("Reverting last commit to %s branch of %s", branch, repo_url)
+            log.info(
+                "Reverting last commit to %s branch of %s", branch, sanitize_log_text(repo_url)
+            )
             revert_output = run_cmd(
                 ["git", "-C", local_repo_dir, "reset", "--hard", "HEAD~1"],
                 exc_msg="Error resetting last commit",
             )
-            log.info(revert_output)
+            log.info(sanitize_log_text(revert_output))
 
-            log.info("Pushing 1-commit reverted %s branch of %s", branch, repo_url)
+            log.info(
+                "Pushing 1-commit reverted %s branch of %s",
+                branch,
+                sanitize_log_text(repo_url),
+            )
             force_push_output = run_cmd(
                 ["git", "-C", local_repo_dir, "push", "--force", "origin", branch],
                 exc_msg=f"Error pushing changes to git repo {repo_url}",
             )
-            log.info(force_push_output)
+            log.info(sanitize_log_text(force_push_output))
         finally:
             # tempfile should have done this already, but just in case
             if os.path.exists(local_repo_dir):
@@ -468,10 +481,10 @@ def _extract_gitlab_info(repo_url: str) -> Tuple[str, str]:
     parsed_url = urlparse(repo_url)
 
     if parsed_url.scheme != 'https':
-        raise IIBError(f"Unsupported repository URL format: {repo_url}")
+        raise IIBError(f"Unsupported repository URL format: {sanitize_log_text(repo_url)}")
 
-    if not parsed_url.netloc:
-        raise IIBError(f"Invalid GitLab repository URL format: {repo_url}")
+    if not parsed_url.hostname:
+        raise IIBError(f"Invalid GitLab repository URL format: {sanitize_log_text(repo_url)}")
 
     # Extract the path and remove .git suffix if present
     path = parsed_url.path
@@ -479,14 +492,20 @@ def _extract_gitlab_info(repo_url: str) -> Tuple[str, str]:
         path = path[:-4]  # Remove '.git'
 
     if not path:
-        raise IIBError(f"Invalid GitLab repository URL format: {repo_url}")
+        raise IIBError(f"Invalid GitLab repository URL format: {sanitize_log_text(repo_url)}")
 
     # Remove leading slash
     if path.startswith('/'):
         path = path[1:]
 
     # Construct API URL from the base URL (scheme + netloc)
-    api_url = f"https://{parsed_url.netloc}/api/v4"
+    # Do not carry URL userinfo into API requests or returned MR URLs. API
+    # authentication is supplied separately via the Authorization header.
+    hostname = parsed_url.hostname
+    if ':' in hostname and not hostname.startswith('['):
+        hostname = f'[{hostname}]'
+    host = f'{hostname}:{parsed_url.port}' if parsed_url.port else hostname
+    api_url = f"https://{host}/api/v4"
 
     # The project path is everything in the path
     project_path = path
@@ -561,13 +580,14 @@ def _create_gitlab_mr(
                 and 'does not exist' in source_branch_errors
             ):
                 raise GitLabSourceBranchNotReadyError(
-                    f'Failed to create merge request: 400, Response: {response.text}'
+                    'Failed to create merge request: 400, Response: '
+                    f'{sanitize_log_text(response.text)}'
                 )
 
             log.error(
                 'Failed to create merge request. Status: %d, Response: %s',
                 response.status_code,
-                response.text,
+                sanitize_log_text(response.text),
             )
             raise IIBError(f'Failed to create merge request: {response.status_code}')
 
@@ -581,7 +601,7 @@ def _create_gitlab_mr(
 
     except requests.RequestException as e:
         log.exception("Error creating merge request via GitLab API")
-        raise IIBError(f'GitLab API request failed: {str(e)}')
+        raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}')
 
 
 @instrument_tracing(span_name="workers.tasks.git_utils.close_mr")
@@ -631,7 +651,9 @@ def _cleanup_mr_source_branch(
     # Helpers convert expected GitLab failures to IIBError, but best-effort
     # cleanup also suppresses unexpected errors so it cannot fail the request.
     except Exception as e:
-        log.exception("Failed to delete source branch for MR %s: %s", mr_id, e)
+        # Do not use log.exception here: its traceback would include the original,
+        # unsanitized exception text.
+        log.error("Failed to delete source branch for MR %s: %s", mr_id, sanitize_log_text(str(e)))
 
 
 def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> str:
@@ -671,7 +693,7 @@ def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> s
         return source_branch
     except requests.RequestException as e:
         log.exception("Error retrieving merge request source branch via GitLab API")
-        raise IIBError(f'GitLab API request failed: {str(e)}') from e
+        raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}') from e
 
 
 def _delete_gitlab_branch(repo_url: str, git_token: str, source_branch: str) -> None:
@@ -731,7 +753,7 @@ def _delete_gitlab_branch(repo_url: str, git_token: str, source_branch: str) -> 
                 continue
 
             log.exception("Error deleting source branch via GitLab API")
-            raise IIBError(f'GitLab API request failed: {str(e)}')
+            raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}')
 
 
 def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
@@ -761,7 +783,7 @@ def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
             log.error(
                 'Failed to close merge request. Status: %d, Response: %s',
                 response.status_code,
-                response.text,
+                sanitize_log_text(response.text),
             )
             raise IIBError(f'Failed to close merge request: {response.status_code}')
 
@@ -769,7 +791,7 @@ def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
 
     except requests.RequestException as e:
         log.exception("Error closing merge request via GitLab API")
-        raise IIBError(f'GitLab API request failed: {str(e)}')
+        raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}')
 
 
 @instrument_tracing(span_name="workers.tasks.git_utils.merge_mr")
@@ -849,7 +871,7 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
             log.error(
                 'Failed to merge merge request. Status: %d, Response: %s',
                 response.status_code,
-                response.text,
+                sanitize_log_text(response.text),
             )
             raise IIBError(f'Failed to merge merge request {mr_id}: HTTP {response.status_code}')
 
@@ -865,6 +887,6 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
                 time.sleep(wait_time)
                 continue
             log.exception("Error merging merge request via GitLab API")
-            raise IIBError(f'GitLab API request failed: {str(e)}')
+            raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}')
 
     raise IIBError(f'Failed to merge merge request {mr_id} after {max_retries + 1} attempts')

@@ -428,6 +428,7 @@ def test_clone_git_repo_wont_leak_credentials(
     # Prepare the subprocess mock
     mock_run_result = mock.MagicMock()
     mock_run_result.returncode = 0
+    mock_run_result.stdout = ''
     mock_subprocess.run.return_value = mock_run_result
     default_run_cmd_args = {
         "universal_newlines": True,
@@ -474,6 +475,34 @@ def test_clone_git_repo_wont_leak_credentials(
 
 
 @mock.patch("iib.workers.tasks.utils.subprocess")
+def test_clone_git_repo_percent_encodes_credentials(mock_subprocess) -> None:
+    mock_run_result = mock.MagicMock()
+    mock_run_result.returncode = 0
+    mock_run_result.stdout = ''
+    mock_subprocess.run.return_value = mock_run_result
+
+    clone_git_repo(
+        repo_url="https://fake_repo",
+        branch="main",
+        token_name="token@name",
+        token="part1@part2",
+        local_repo_path="/tmp/repo",
+    )
+
+    clone_call = mock_subprocess.run.call_args_list[0]
+    assert clone_call.args[0] == [
+        "git",
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        "main",
+        "https://token%40name:part1%40part2@fake_repo",
+        "/tmp/repo",
+    ]
+
+
+@mock.patch("iib.workers.tasks.utils.subprocess")
 def test_clone_git_repo_no_credentials(mock_subprocess, caplog) -> None:
     # Setting the logging level via caplog.set_level is not sufficient. The flask
     # related settings from previous tests interfere with this.
@@ -484,6 +513,7 @@ def test_clone_git_repo_no_credentials(mock_subprocess, caplog) -> None:
     # Prepare the subprocess mock
     mock_run_result = mock.MagicMock()
     mock_run_result.returncode = 0
+    mock_run_result.stdout = ''
     mock_subprocess.run.return_value = mock_run_result
     default_run_cmd_args = {
         "universal_newlines": True,
@@ -521,7 +551,7 @@ def test_clone_git_repo_no_credentials(mock_subprocess, caplog) -> None:
     # Ensure the sanitized log is present
     expected_log = (
         'Running the command "git clone --depth 1 --branch '
-        f'{branch} {expected_url} {local_repo_path}"'
+        f'{branch} https://*****:*******@fake_repo {local_repo_path}"'
     )
     assert expected_log in caplog.messages
 
@@ -622,13 +652,19 @@ def test_close_mr_branch_delete_failure_is_logged_and_does_not_fail_request(
 ):
     """A branch cleanup failure does not fail a request after the MR was closed."""
     mock_get_git_token.return_value = (PUB_TOKEN_NAME, PUB_TOKEN_VALUE)
-    mock_delete_gitlab_branch.side_effect = IIBError('Forbidden')
+    mock_delete_gitlab_branch.side_effect = IIBError(
+        'Forbidden: https://user:secret@gitlab.example/api'
+    )
     mr_details = {'mr_id': '123', 'source_branch': 'iib-request-456-v4.19'}
 
     git_utils.close_mr(mr_details, PUB_GIT_REPO)
 
     mock_close_gitlab_mr.assert_called_once_with(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
-    assert 'Failed to delete source branch for MR 123: Forbidden' in caplog.text
+    assert (
+        'Failed to delete source branch for MR 123: '
+        'Forbidden: https://*****:*******@gitlab.example/api'
+    ) in caplog.text
+    assert 'https://user:secret@gitlab.example/api' not in caplog.text
 
 
 @mock.patch('iib.workers.tasks.git_utils._get_gitlab_mr_source_branch')
@@ -765,6 +801,11 @@ def test_close_mr_missing_mr_id():
             'mygroup/subgroup/myproject',
         ),
         ('https://gitlab.com/myproject.git', 'https://gitlab.com/api/v4', 'myproject'),
+        (
+            'https://git-user:git-secret@gitlab.com/myproject.git',
+            'https://gitlab.com/api/v4',
+            'myproject',
+        ),
     ],
 )
 def test_extract_gitlab_info_success(repo_url, expected_api_url, expected_project_path):
@@ -772,6 +813,31 @@ def test_extract_gitlab_info_success(repo_url, expected_api_url, expected_projec
     api_url, project_path = git_utils._extract_gitlab_info(repo_url)
     assert api_url == expected_api_url
     assert project_path == expected_project_path
+
+
+@mock.patch('iib.workers.api_utils.requests_session.post')
+def test_create_gitlab_mr_sanitizes_credentials_in_error_response(mock_requests_post, caplog):
+    secret = 'gitlab-secret-token'
+    mock_response = mock.Mock()
+    mock_response.ok = False
+    mock_response.status_code = 500
+    mock_response.json.return_value = {'message': 'Internal Server Error'}
+    mock_response.text = (
+        f'GitLab proxy failed for https://user:{secret}@gitlab.example.com/group/project.git'
+    )
+    mock_requests_post.return_value = mock_response
+
+    with pytest.raises(IIBError):
+        git_utils._create_gitlab_mr(
+            PUB_GIT_REPO,
+            'gitlab-token',
+            'source',
+            'target',
+            123,
+        )
+
+    assert secret not in caplog.text
+    assert 'https://*****:*******@gitlab.example.com/group/project.git' in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -1648,7 +1714,7 @@ def test_remote_branch_exists_injects_token(mock_run):
 
     assert (
         git_utils.remote_branch_exists(
-            'https://gitlab/x.git', 'v4.14', token_name='user', token='secret'
+            'https://gitlab/x.git', 'v4.14', token_name='user@name', token='secret@part'
         )
         is True
     )
@@ -1657,7 +1723,7 @@ def test_remote_branch_exists_injects_token(mock_run):
     ls_remote_cmd = args[0]
     # Token is injected into the URL passed to git, but the user-facing exc_msg
     # references the token-free repo_url so the secret is not leaked in errors.
-    assert ls_remote_cmd[-2] == 'https://user:secret@gitlab/x.git'
+    assert ls_remote_cmd[-2] == 'https://user%40name:secret%40part@gitlab/x.git'
     assert 'secret' not in kwargs['exc_msg']
 
 

@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Security
+
+* Redact credentials embedded in URLs from worker logs, error messages, and Celery task
+  argument representations.
+
 ### Changed
 
 * Delete the GitLab source branch after closing or merging a merge request, including
