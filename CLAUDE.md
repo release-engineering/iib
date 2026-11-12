@@ -136,6 +136,8 @@ tox -m security
 
 ## Review Preferences
 
+<!-- This section may migrate to .claude/AGENTS.md once #1366 merges. -->
+
 ### Findings That Are Useful
 
 - Correctness bugs (wrong logic, missing error handling, race conditions).
@@ -146,9 +148,9 @@ tox -m security
 
 ### Findings That Are Noise for This Project
 
-- **String quoting style**: `black` with `skip-string-normalization = true` means
-  single quotes are the project convention. Do not flag single-vs-double quote
-  choices — `black` enforces this automatically.
+- **String quoting style**: `black` with `skip-string-normalization = true` leaves
+  quotes as-is — it does not normalize them. Single quotes are a manual convention,
+  not auto-enforced. Do not flag single-vs-double quote choices.
 - **Docstring format preferences**: The project uses reStructuredText style. Do not
   suggest switching to Google or NumPy style.
 - **Import ordering**: Import order follows a manual convention (stdlib → third-party
@@ -191,5 +193,5 @@ Generate with `tox -e migrate-db <message>`.
 
 ### Docker
 
-Dockerfiles are in `docker/` — `Dockerfile-api` (web), `Dockerfile-workers` (workers).
-Linted by `hadolint` in CI.
+Dockerfiles are in `docker/` — `Dockerfile-api` (web), `Dockerfile-workers` (workers),
+`message_broker/Dockerfile` (message broker). Linted by `hadolint` in CI.
