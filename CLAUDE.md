@@ -3,7 +3,8 @@
 ## Project overview
 
 IIB is a REST API service for managing operator index container images and bundle images
-in the Red Hat container ecosystem. It is a Python 3.12+ application with two layers:
+in the Red Hat container ecosystem. It is a Python 3.12+ application with two main layers
+and a shared utility package:
 
 - **`iib/web/`** — Flask REST API. Handles HTTP requests, authentication (Kerberos via
   `flask-login`), input validation, SQLAlchemy models, and database migrations (Alembic).
@@ -63,7 +64,8 @@ Every Python source file starts with `# SPDX-License-Identifier: GPL-3.0-or-late
 ### Import organization
 
 Standard library imports first, then third-party, then `iib.*` internal imports.
-Each group is separated by a blank line. `black` handles ordering within groups.
+Each group is separated by a blank line. Import ordering is a manual convention
+(no automated import sorter is configured).
 
 ## Security patterns
 
@@ -125,7 +127,7 @@ tox -m static
 # Run a specific test
 tox -e py312 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 
-# Run security checks (bandit, safety)
+# Run security checks (bandit)
 tox -m security
 ```
 
@@ -146,7 +148,8 @@ tox -m security
   choices — `black` enforces this automatically.
 - **Docstring format preferences**: The project uses reStructuredText style. Do not
   suggest switching to Google or NumPy style.
-- **Import ordering**: `black` handles this. Do not flag import order.
+- **Import ordering**: Import order follows a manual convention (stdlib → third-party
+  → `iib.*`). No automated sorter is configured. Do not flag import order.
 - **Linked issues in PRs**: Not every PR requires a linked issue. Do not flag
   missing issue references as a review finding.
 - **Scope bundling**: Cross-cutting changes (e.g., security hardening across
