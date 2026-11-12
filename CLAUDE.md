@@ -30,7 +30,6 @@ communicate through Celery (RabbitMQ) and share the database via the REST API
 - **`mypy`** runs with `--ignore-missing-imports` on the `iib/` package.
 - **`yamllint`** checks all YAML files (max line length 100, warning level).
 - **`hadolint`** lints Dockerfiles with `--failure-threshold warning`.
-- **`bandit`** runs static application security testing.
 
 Run all static checks: `tox -m static` (runs `black`, `flake8`, `yamllint`, `mypy`,
 `hadolint`).
@@ -83,6 +82,10 @@ When reviewing or writing code that logs commands or request parameters:
 - Never log raw token values or registry auth credentials.
 - Always use the existing sanitization helpers rather than ad-hoc redaction.
 - Test that log output does not contain credential material.
+
+### Security Scanning
+
+- **`bandit`** runs static application security testing via `tox -m security`.
 
 ### Authentication
 
@@ -150,11 +153,12 @@ tox -m security
   suggest switching to Google or NumPy style.
 - **Import ordering**: Import order follows a manual convention (stdlib → third-party
   → `iib.*`). No automated sorter is configured. Do not flag import order.
-- **Linked issues in PRs**: Not every PR requires a linked issue. Do not flag
-  missing issue references as a review finding.
+- **Linked issues in PRs**: This project does not require every PR to link an
+  issue. Flag a missing issue reference only when a PR introduces a behavioral
+  change with no rationale provided in the PR description.
 - **Scope bundling**: Cross-cutting changes (e.g., security hardening across
-  multiple files) are acceptable in a single PR. Do not flag these as scope
-  bundling unless the changes are genuinely unrelated.
+  multiple files) are acceptable in a single PR. Flag scope bundling only when
+  the changes are genuinely unrelated to each other.
 - **Generic naming suggestions** (e.g., rename `x` to `y` for clarity) unless
   the name is actively misleading.
 - **Pattern inconsistency** across files that predate the change under review.
