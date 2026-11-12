@@ -1,6 +1,6 @@
 # CLAUDE.md — IIB (IIB Image Builder)
 
-## Project overview
+## Project Overview
 
 IIB is a REST API service for managing operator index container images and bundle images
 in the Red Hat container ecosystem. It is a Python 3.12+ application with two main layers
@@ -19,9 +19,9 @@ The web layer validates and enqueues requests; the worker layer executes them. T
 communicate through Celery (RabbitMQ) and share the database via the REST API
 (`iib/workers/api_utils.py` calls back to the web API to update request state).
 
-## Code style
+## Code Style
 
-### Formatting and linting
+### Formatting and Linting
 
 - **`black`** enforces formatting with `line-length = 100` and
   `skip-string-normalization = true` (single quotes preferred over double quotes).
@@ -50,26 +50,26 @@ Get the IIB build request from the REST API.
 """
 ```
 
-### License headers
+### License Headers
 
 Every Python source file starts with `# SPDX-License-Identifier: GPL-3.0-or-later`.
 
-### Naming conventions
+### Naming Conventions
 
 - Functions that sanitize sensitive data from values use prefixes like `_sanitize_`
   (e.g., `_sanitize_cmd_log`) or `_get_safe_` (e.g., `_get_safe_args`). These naming
   patterns indicate credential-redaction logic — treat them as security-sensitive.
 - Validation helpers use `_is_safe_` prefix (e.g., `_is_safe_operator_package_name`).
 
-### Import organization
+### Import Organization
 
 Standard library imports first, then third-party, then `iib.*` internal imports.
 Each group is separated by a blank line. Import ordering is a manual convention
 (no automated import sorter is configured).
 
-## Security patterns
+## Security Patterns
 
-### Credential redaction
+### Credential Redaction
 
 All subprocess commands that may contain credentials (Git URLs with tokens, registry
 auth) must be logged through `_sanitize_cmd_log` (in `iib/workers/tasks/utils.py`),
@@ -89,7 +89,7 @@ When reviewing or writing code that logs commands or request parameters:
 The web API uses Kerberos authentication via `flask-login`. Worker identity is
 validated separately. See `iib/web/auth.py` for the authentication setup.
 
-## Test conventions
+## Test Conventions
 
 ### Structure
 
@@ -112,7 +112,7 @@ Test files mirror the source structure: `iib/web/api_v1.py` is tested in
 - D103 (missing docstring) is exempted for all test files.
 - Coverage threshold is 90% (`fail_under = 90` in `.coveragerc`).
 
-### Running tests
+### Running Tests
 
 ```bash
 # Run all tests and static checks
@@ -131,9 +131,9 @@ tox -e py312 tests/test_web/test_api_v1.py::test_add_bundle_invalid_param
 tox -m security
 ```
 
-## Review preferences
+## Review Preferences
 
-### Findings that are useful
+### Findings That Are Useful
 
 - Correctness bugs (wrong logic, missing error handling, race conditions).
 - Security issues (credential leakage in logs, missing input validation,
@@ -141,7 +141,7 @@ tox -m security
 - Missing or incorrect test coverage for changed behavior.
 - API contract violations (changed response shapes, missing required fields).
 
-### Findings that are noise for this project
+### Findings That Are Noise for This Project
 
 - **String quoting style**: `black` with `skip-string-normalization = true` means
   single quotes are the project convention. Do not flag single-vs-double quote
@@ -162,7 +162,7 @@ tox -m security
 
 ## Build and CI
 
-### Tox environments
+### Tox Environments
 
 | Label       | Environments                                    | Purpose                 |
 |-------------|-------------------------------------------------|-------------------------|
@@ -174,13 +174,13 @@ tox -m security
 CI runs on every pull request and push to `master` via `.github/workflows/run_tox.yml`.
 It tests on Python 3.12 and 3.13.
 
-### Dependency management
+### Dependency Management
 
 Dependencies are pinned with hashes via `pip-tools`. Runtime deps are in `setup.py`,
 pinned to `requirements.txt`. Test deps are in `requirements-test.in`, pinned to
 `requirements-test.txt`. Update with `tox -e pip-compile`.
 
-### Database migrations
+### Database Migrations
 
 Use Alembic via Flask-Migrate. Migrations live in `iib/web/migrations/versions/`.
 Generate with `tox -e migrate-db <message>`.
