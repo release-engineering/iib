@@ -1,20 +1,18 @@
 # iib-base-image — shared worker tooling layer (opm, buildah, podman, oras, oc, Kerberos, etc.).
 # Published to quay.io/exd-guild-hello-operator/iib-base-image:latest by CI.
 # Dockerfile-workers builds on top of this image; see docker/README.md for architecture.
-# Base layer pinned by digest to the linux/amd64 manifest of ubi9/ubi:latest
-# (9.8-1788939089 as of this pin). Note the `dnf update -y` below still pulls current
-# packages, so the full image is not bit-for-bit reproducible.
-# Keep this digest in lockstep with the other Dockerfiles when bumping.
-FROM registry.access.redhat.com/ubi9/ubi@sha256:4406835b776f05688a823ff532203587b9238510817645c9f37e0fdac1743b8c
+# Start from Red Hat's UBI9 Buildah image (9.9), which includes a consistent
+# Buildah, netavark, and aardvark-dns package set. The current UBI repos publish
+# an aardvark-dns epoch that does not satisfy netavark's dependency.
+FROM registry.access.redhat.com/ubi9/buildah@sha256:c051b9220a4c348e8c28c7d7d1ff376f5f32e916e5587a057677be74234504e8
 LABEL maintainer="Red Hat - EXD"
 
+# Keep the preinstalled container-tool stack intact. Installing Podman now reuses
+# its matching netavark and aardvark-dns packages instead of resolving them again.
 RUN dnf -y install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
     --setopt=tsflags=nodocs \
-    /etc/containers/storage.conf \
-    buildah \
-    fuse-overlayfs \
     gcc \
     tar \
     gzip \
