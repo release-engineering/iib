@@ -40,6 +40,10 @@ jobs:
       - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad
         id: filter
         with:
+          # Compare only the files changed by this push. The repository's default
+          # branch is master, while this workflow runs on main.
+          base: ${{ github.event.before }}
+          ref: ${{ github.sha }}
           filters: |
             base_image:
               - 'docker/Dockerfile-base-image'
