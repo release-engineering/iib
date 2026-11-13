@@ -8,7 +8,9 @@
 FROM registry.access.redhat.com/ubi9/ubi@sha256:4406835b776f05688a823ff532203587b9238510817645c9f37e0fdac1743b8c
 LABEL maintainer="Red Hat - EXD"
 
-RUN dnf -y install \
+# Allow DNF to select compatible container-tool versions when the newest packages
+# require dependencies that are unavailable in the UBI repositories.
+RUN dnf -y --nobest install \
     --setopt=deltarpm=0 \
     --setopt=install_weak_deps=false \
     --setopt=tsflags=nodocs \
@@ -30,7 +32,7 @@ RUN dnf -y install \
     python3.12-wheel \
     runc \
     skopeo \
-    && dnf update -y \
+    && dnf update -y --nobest \
     && dnf clean all
 
 # Install all opm variants,
