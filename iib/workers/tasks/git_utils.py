@@ -801,7 +801,7 @@ def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
 
     :param dict mr_details: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :param str repo_url: Git repository URL.
-    :return: The merge commit SHA.
+    :return: The SHA of the merge commit or the squash commit added to the target branch.
     :rtype: str
     :raises IIBError: If GitLab API call fails.
     """
@@ -817,6 +817,32 @@ def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
     return merge_commit_sha
 
 
+def revert_merged_commit(repo_url: str, branch: str, merge_sha: str) -> None:
+    """
+    Revert the commit introduced by a merge request on its target branch.
+
+    Target the commit reported by GitLab so later commits on the branch are preserved.
+    This is used when this request has not published its new image. Reverting
+    its precise commit avoids undoing unrelated changes made after the merge.
+
+    :param str repo_url: Git repository URL.
+    :param str branch: Target branch on which to create the revert commit.
+    :param str merge_sha: SHA of the merge or squash commit.
+    :raises IIBError: If GitLab rejects the revert.
+    """
+    api_url, project_path = _extract_gitlab_info(repo_url)
+    _, token = get_git_token(repo_url)
+    url = f'{api_url}/projects/{quote_plus(project_path)}/repository/commits/{merge_sha}/revert'
+    response = requests_session.post(
+        url,
+        headers={'Authorization': f'Bearer {token}'},
+        json={'branch': branch},
+        timeout=30,
+    )
+    if not response.ok:
+        raise IIBError(f'Failed to revert {merge_sha} on {branch}: HTTP {response.status_code}')
+
+
 def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int = 3) -> str:
     """
     Merge a merge request using GitLab API with retry for transient failures.
@@ -830,9 +856,9 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
     :param str git_token: GitLab access token.
     :param str mr_id: Merge request ID.
     :param int max_retries: Maximum number of retry attempts for transient failures.
-    :return: The merge commit SHA.
+    :return: The SHA of the merge commit or the squash commit added to the target branch.
     :rtype: str
-    :raises IIBError: If GitLab API call fails permanently.
+    :raises IIBError: If the API call fails permanently or GitLab cannot confirm the merge.
     """
     api_url, project_path = _extract_gitlab_info(repo_url)
 
@@ -851,7 +877,14 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
 
             if response.ok:
                 mr_data = response.json()
-                merge_commit_sha = mr_data.get('merge_commit_sha', '')
+                # GitLab may return merge_commit_sha for a merge commit or only
+                # squash_commit_sha for a fast-forward squash. We need the commit
+                # actually added to the target branch for a possible later revert.
+                merge_commit_sha = mr_data.get('merge_commit_sha') or mr_data.get(
+                    'squash_commit_sha'
+                )
+                if mr_data.get('state') != 'merged' or not merge_commit_sha:
+                    raise IIBError(f'GitLab did not confirm a merged commit for MR {mr_id}')
                 log.info(
                     "Successfully merged merge request %s, commit: %s", mr_id, merge_commit_sha
                 )

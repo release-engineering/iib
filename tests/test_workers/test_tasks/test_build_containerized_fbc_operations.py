@@ -7,6 +7,9 @@ from iib.workers.tasks import build_containerized_fbc_operations, containerized_
 from iib.workers.tasks.utils import RequestConfigFBCOperation
 
 
+pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
+
+
 @pytest.fixture(autouse=True)
 def _mock_registry_token():
     with mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_registry_token'):
@@ -14,9 +17,9 @@ def _mock_registry_token():
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_list_of_output_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
@@ -26,7 +29,8 @@ def _mock_registry_token():
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
@@ -38,7 +42,7 @@ def _mock_registry_token():
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
-@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request(
@@ -177,12 +181,8 @@ def test_handle_containerized_fbc_operation_request(
         request_id=request_id,
         arches=arches,
         from_index=from_index,
-        overwrite_from_index=False,
         overwrite_from_index_token=None,
-        resolved_prebuild_from_index=from_index_resolved,
         add_or_rm=True,
-        is_image_fbc=True,
-        index_repo_map={},
     )
 
     # Verify success state
@@ -191,9 +191,9 @@ def test_handle_containerized_fbc_operation_request(
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_list_of_output_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
@@ -203,7 +203,8 @@ def test_handle_containerized_fbc_operation_request(
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
@@ -215,7 +216,7 @@ def test_handle_containerized_fbc_operation_request(
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
-@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request_multiple_fragments(
@@ -313,9 +314,9 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_list_of_output_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
@@ -325,7 +326,8 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
@@ -337,14 +339,11 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
-@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
-@mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources',
-    wraps=containerized_utils.prepare_build_sources,
-)
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.prepare_build_sources')
 def test_handle_containerized_fbc_operation_request_with_overwrite(
     mock_prepare_sources,
     mock_merge_mr,
@@ -387,6 +386,14 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         'ocp_version': 'v4.6',
         'distribution_scope': 'prod',
     }
+    mock_prepare_sources.return_value = containerized_utils.BuildSources(
+        index_git_repo='http://git',
+        local_git_repo_path='/tmp/repo',
+        localized_git_catalog_path='/tmp/repo/configs',
+        index_db_path=None,
+        target_branch='v4.6',
+        source_kind=containerized_utils.BuildSourceKind.STANDARD,
+    )
     mock_gri.return_value = 'fbc@sha256:789'
     mock_ugri.return_value = 'fbc@sha256:789'
     mock_pida.return_value = '/tmp/dir'
@@ -402,7 +409,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
 
     mock_docker_config = json.dumps({'auths': {}})
     with mock.patch('iib.workers.tasks.containerized_utils.Path.exists', return_value=True):
-        with mock.patch('builtins.open', mock.mock_open(read_data=mock_docker_config)) as mock_file:
+        with mock.patch('builtins.open', mock.mock_open(read_data=mock_docker_config)):
             mock_oraff.return_value = ('/tmp/c', '/tmp/d', ['op1'], ['op1'])
             mock_glcs.return_value = 'sha1'
             mock_fp.return_value = [{'metadata': {'name': 'pr1'}}]
@@ -429,30 +436,18 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         from_index='quay.io/iib/from-index:latest',
         index_db_path='/tmp/d',
         operators=['op1'],
-        output_image='quay.io/iib/from-index@sha256:destination',
+        output_image='index@sha256:candidate',
         overwrite_from_index=True,
         request_type='fbc_operations',
     )
 
-    # Verify update call has overwrite flags
-    mock_uiips.assert_called_once_with(
-        output_pull_spec='out:1',
-        request_id=request_id,
-        arches={'amd64'},
-        from_index='quay.io/iib/from-index:latest',
-        overwrite_from_index=True,
-        overwrite_from_index_token=overwrite_token,
-        resolved_prebuild_from_index='quay.io/iib/from-index@sha256:456',
-        add_or_rm=True,
-        is_image_fbc=True,
-        index_repo_map={},
-    )
+    mock_uiips.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch('iib.workers.tasks.containerized_utils.get_list_of_output_pullspec')
 @mock.patch('iib.workers.tasks.containerized_utils.get_pipelinerun_image_url')
 @mock.patch('iib.workers.tasks.containerized_utils.wait_for_pipeline_completion')
@@ -461,7 +456,8 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
 @mock.patch('iib.workers.tasks.containerized_utils.create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.get_git_token')
@@ -473,7 +469,7 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
 @mock.patch('iib.workers.tasks.utils.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.get_resolved_image')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.set_request_state')
-@mock.patch('iib.workers.tasks.utils.reset_docker_config')
+@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.reset_docker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 def test_handle_containerized_fbc_operation_request_failure(
@@ -549,11 +545,11 @@ def test_handle_containerized_fbc_operation_request_failure(
     assert "error: Download failed" in kwargs['reason']
 
 
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
 )
@@ -563,7 +559,8 @@ def test_handle_containerized_fbc_operation_request_failure(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'
@@ -686,11 +683,11 @@ def test_fbc_operations_nonmergeable_source_never_merges(
 
 
 @mock.patch('iib.workers.tasks.utils._load_docker_config_auths')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
 )
@@ -700,7 +697,8 @@ def test_fbc_operations_nonmergeable_source_never_merges(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'
@@ -816,11 +814,11 @@ def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
         ),
     ),
 )
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.merge_mr_after_build')
-@mock.patch('iib.workers.tasks.build_containerized_fbc_operations.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.replicate_image_to_tagged_destinations'
 )
@@ -830,7 +828,8 @@ def test_fbc_operation_scopes_overwrite_token_to_same_namespace_fragments(
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.git_commit_and_create_mr')
 @mock.patch('iib.workers.tasks.build_containerized_fbc_operations.write_build_metadata')
 @mock.patch(
-    'iib.workers.tasks.build_containerized_fbc_operations.opm_registry_add_fbc_fragment_containerized'
+    'iib.workers.tasks.build_containerized_fbc_operations.'
+    'opm_registry_add_fbc_fragment_containerized'
 )
 @mock.patch(
     'iib.workers.tasks.build_containerized_fbc_operations.fetch_and_verify_index_db_artifact'

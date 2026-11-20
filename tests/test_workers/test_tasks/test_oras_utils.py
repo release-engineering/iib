@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Basic unit tests for oras_utils."""
+
 import logging
 import re
 
@@ -26,6 +27,12 @@ def test_get_index_digest_strips_algo_prefix(mock_digest):
     mock_digest.return_value = 'sha256:' + 'a' * 64
     assert _get_index_digest('quay.io/ns/repo:v4.17') == 'a' * 64
     mock_digest.assert_called_once_with('quay.io/ns/repo:v4.17')
+
+
+@mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
+def test_get_index_digest_uses_known_digest_without_registry_lookup(mock_digest):
+    assert _get_index_digest(f"quay.io/ns/repo@sha256:{'a' * 64}") == 'a' * 64
+    mock_digest.assert_not_called()
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_worker_config')

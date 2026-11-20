@@ -2,6 +2,7 @@
 import inspect
 import json
 import os
+from contextlib import nullcontext
 from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
@@ -698,6 +699,142 @@ def test_push_honors_helper_defined_artifact_refs(
         'quay.io/iib/index-db:cache-' + 'b' * 64,
         'quay.io/iib/index-db:cache-' + 'b' * 64 + '-9',
     }
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=False)
+def test_push_overwrite_requires_index_db(mock_exists, mock_state):
+    with pytest.raises(IIBError, match='updated index.db is missing'):
+        push_index_db_artifact(
+            request_id=9,
+            from_index='quay.io/ns/foo:v4.17',
+            index_db_path='/missing/index.db',
+            operators=[],
+            output_image='quay.io/ns/foo@sha256:' + 'b' * 64,
+            overwrite_from_index=True,
+            request_type='add',
+        )
+
+
+@pytest.mark.parametrize('tag', ['latest', '17'])
+def test_replication_defers_overwrite_tag(monkeypatch, tag):
+    conf = {
+        'iib_registry': 'internal',
+        'iib_index_image_output_registry': 'external',
+        'iib_image_push_template': '{registry}/catalog:{request_id}',
+    }
+    copy = mock.Mock()
+    monkeypatch.setattr(cu, 'get_worker_config', lambda: conf)
+    monkeypatch.setattr(cu, '_skopeo_copy', copy)
+    monkeypatch.setattr(cu, 'set_request_state', mock.Mock())
+    with pytest.raises(IIBError, match='distinct tags') if tag == '17' else nullcontext():
+        outputs = cu.replicate_image_to_tagged_destinations(
+            17, 'pipeline/image', ['latest'], overwrite_tag=f'external/catalog:{tag}'
+        )
+    if tag == '17':
+        copy.assert_not_called()
+    else:
+        assert outputs == ['internal/catalog:17']
+        assert [call.kwargs['destination'] for call in copy.call_args_list] == [
+            'docker://internal/catalog:17'
+        ]
+
+
+@pytest.mark.parametrize(
+    'failure,current,expected',
+    [
+        ('artifact', None, ['artifact', 'close']),
+        ('merge', None, ['artifact', 'merge']),
+        ('verify', None, ['artifact', 'merge', 'revert']),
+        ('copy', 'old', ['artifact', 'merge', 'copy', 'revert']),
+        ('copy', 'new', ['artifact', 'merge', 'copy', 'metadata']),
+        ('copy', 'third', ['artifact', 'merge', 'copy']),
+        ('metadata', None, ['artifact', 'merge', 'copy', 'metadata']),
+        (None, None, ['artifact', 'merge', 'copy', 'metadata']),
+    ],
+)
+def test_finalize_overwrite(monkeypatch, failure, current, expected):
+    events = []
+
+    def step(name, result=None):
+        def execute(*args, **kwargs):
+            events.append(name)
+            if name == failure:
+                raise IIBError(name)
+            return result
+
+        return mock.Mock(side_effect=execute)
+
+    source = 'registry/build@sha256:new'
+    target = 'registry/catalog'
+    resolve = mock.Mock(side_effect=[source, f'{target}@sha256:{current}'])
+    monkeypatch.setattr(cu, 'get_resolved_image', resolve)
+    monkeypatch.setattr(cu, 'set_registry_token', mock.Mock(return_value=nullcontext()))
+    verify = mock.Mock(side_effect=[None, IIBError('verify')] if failure == 'verify' else None)
+    monkeypatch.setattr(cu, '_verify_index_image', verify)
+    monkeypatch.setattr(cu, 'cleanup_merge_request_if_exists', step('close'))
+    artifact = step('artifact')
+    monkeypatch.setattr(cu, 'push_index_db_artifact', artifact)
+    monkeypatch.setattr(cu, 'merge_mr_after_build', step('merge', 'merged-sha'))
+    copy = step('copy')
+    revert = step('revert')
+    metadata = step('metadata')
+    monkeypatch.setattr(cu, '_copy_overwrite_image', copy)
+    monkeypatch.setattr(cu, 'revert_merged_commit', revert)
+    monkeypatch.setattr(cu, 'update_request', metadata)
+    with pytest.raises(IIBError, match=failure) if failure and current != 'new' else nullcontext():
+        cu.finalize_index_image(
+            request_id=17,
+            output_pull_spec='registry/build:17',
+            from_index=target + ':v1',
+            original_image=target + '@sha256:old',
+            overwrite=True,
+            token='user:token',
+            mr_details={'mr_id': '17'},
+            index_git_repo='git-url',
+            branch='v1',
+            index_db_path='/index.db',
+            operators=[],
+            request_type='add',
+            arches={'amd64'},
+        )
+    assert events == expected
+    assert artifact.call_args.kwargs['output_image'] == source
+    if copy.called:
+        copy.assert_called_once_with(source, target + ':v1', 'user:token')
+    if revert.called:
+        revert.assert_called_once_with('git-url', 'v1', 'merged-sha')
+    if metadata.called:
+        payload = metadata.call_args.args[1]
+        assert payload['index_image_resolved'] == target + '@sha256:new'
+        assert payload['internal_index_image_copy_resolved'] == source
+
+
+@pytest.mark.parametrize('token', [None, 'user:token'])
+def test_copy_overwrite_image(monkeypatch, token):
+    def check_copy(cmd, exc_msg):
+        assert cmd[:6] == [
+            'skopeo',
+            '--command-timeout',
+            '5m',
+            'copy',
+            '--all',
+            '--preserve-digests',
+        ]
+        assert cmd[-2:] == ['docker://quay.io/build@sha256:abc', 'docker://quay.io/catalog:v1']
+        if token:
+            assert cmd[6] == '--dest-authfile'
+            authfile = Path(cmd[7])
+            assert authfile.stat().st_mode & 0o077 == 0
+            assert json.loads(authfile.read_text()) == {
+                'auths': {'quay.io': {'auth': 'dXNlcjp0b2tlbg=='}}
+            }
+        else:
+            assert len(cmd) == 8
+
+    monkeypatch.setattr(cu, 'get_worker_config', lambda: {'iib_skopeo_timeout': '5m'})
+    monkeypatch.setattr(cu, 'run_cmd', check_copy)
+    cu._copy_overwrite_image('quay.io/build@sha256:abc', 'quay.io/catalog:v1', token)
 
 
 def test_reject_escaping_symlinks_allows_tree_without_symlinks(tmp_path):

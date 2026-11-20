@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """This file contains functions for ORAS (OCI Registry As Storage) operations."""
+
 import json
 import logging
 import os
@@ -66,12 +67,22 @@ def _get_name_and_tag_from_pullspec(image_pullspec: str) -> Tuple[str, str]:
 
 def _get_index_digest(pullspec: str) -> str:
     """
-    Resolve a pullspec to its bare hex manifest digest (sha256), for artifact tags.
+    Get the SHA-256 manifest digest used in artifact tags.
 
-    :param str pullspec: The full index image pullspec.
+    Use the digest from a pinned pull specification directly so the database artifact
+    is keyed to the selected image without another registry lookup.
+
+    :param str pullspec: The tagged or digest-pinned index image pull specification.
     :return: The 64-char hex digest without the ``sha256:`` prefix.
     :rtype: str
     """
+    # Match only a digest pinned at the end of the pullspec. For example,
+    # "registry/catalog:v4@sha256:<64 hex chars>" yields the 64 hex chars;
+    # "registry/catalog:v4" falls through to a registry lookup below.
+    digest_match = re.search(r'@sha256:(?P<digest>[0-9a-f]{64})$', pullspec)
+    if digest_match:
+        return digest_match.group('digest')
+
     return get_image_digest(pullspec).split(':', 1)[-1]
 
 

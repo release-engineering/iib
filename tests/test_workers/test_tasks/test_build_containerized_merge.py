@@ -8,6 +8,9 @@ from iib.workers.tasks import build_containerized_merge
 from iib.workers.tasks.utils import RequestConfigMerge
 
 
+pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
+
+
 # Store original set before mocking
 _original_set = set
 
@@ -57,12 +60,12 @@ def mock_remove_deprecated_operators_from_git_catalog():
         yield mock_remove
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -329,11 +332,7 @@ def test_handle_containerized_merge_request_success(
     # Verify image replication
     mock_ritd.assert_called_once()
 
-    # Verify _update_index_image_pull_spec with effective values
-    mock_uiips.assert_called_once()
-    uiips_kwargs = mock_uiips.call_args[1]
-    assert uiips_kwargs['from_index'] == target_index
-    assert uiips_kwargs['resolved_prebuild_from_index'] == prebuild_info['target_index_resolved']
+    mock_uiips.assert_not_called()
 
     # Verify index.db push with effective from_index
     mock_pida.assert_called_once()
@@ -350,12 +349,12 @@ def test_handle_containerized_merge_request_success(
     assert mock_rdc.call_count >= 1
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -749,12 +748,12 @@ def _run_minimal_merge_handler(
     return localized_git_catalog_path
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -862,12 +861,12 @@ def test_handle_containerized_merge_request_deduplicates_deprecation_bundles(
     assert mock_dbd.call_args[1]['bundles'] == [duplicate_bundle]
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -969,12 +968,12 @@ def test_handle_containerized_merge_request_skips_git_cleanup_without_deprecatio
     mock_gblv.assert_not_called()
 
 
-@mock.patch('iib.workers.tasks.build_containerized_merge.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -1078,9 +1077,9 @@ def test_handle_containerized_merge_request_git_cleanup_without_db_deprecation_m
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -1245,9 +1244,9 @@ def test_handle_containerized_merge_request_with_mr(
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -1404,9 +1403,9 @@ def test_handle_containerized_merge_request_no_missing_bundles(
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -1869,9 +1868,9 @@ def test_handle_containerized_merge_request_missing_output_pull_spec(
 )
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -2029,9 +2028,9 @@ def test_handle_containerized_merge_request_with_build_tags(
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -2334,9 +2333,9 @@ def test_get_missing_bundles_user_not_in_allow_list(
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')
@@ -2538,9 +2537,6 @@ def test_handle_containerized_merge_request_without_target_index(
     mock_uiips.assert_called_once()
     uiips_kwargs = mock_uiips.call_args[1]
     assert uiips_kwargs['from_index'] == source_from_index
-    assert (
-        uiips_kwargs['resolved_prebuild_from_index'] == prebuild_info['source_from_index_resolved']
-    )
 
     # Verify index.db push was called with source_from_index
     mock_pida.assert_called_once()
@@ -2594,9 +2590,9 @@ def test_handle_containerized_merge_request_overwrite_without_target_index(
 
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_merge.push_index_db_artifact')
-@mock.patch('iib.workers.tasks.build_containerized_merge._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.build_containerized_merge.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_merge.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_merge.git_commit_and_create_mr')

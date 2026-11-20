@@ -1634,6 +1634,39 @@ def test_merge_mr_missing_mr_id(mock_get_git_token, mock_merge_gitlab_mr):
     mock_merge_gitlab_mr.assert_not_called()
 
 
+@pytest.mark.parametrize('status', [201, 409])
+@mock.patch('iib.workers.tasks.git_utils.get_git_token', return_value=('name', 'token'))
+@mock.patch('iib.workers.tasks.git_utils.requests_session')
+def test_revert_merged_commit(mock_session, mock_token, status):
+    response = mock_session.post.return_value
+    response.ok = status == 201
+    response.status_code = status
+    args = ('https://gitlab.example.com/group/project.git', 'v4.18', 'abc123')
+    if status == 201:
+        git_utils.revert_merged_commit(*args)
+    else:
+        with pytest.raises(IIBError, match='Failed to revert abc123 on v4.18'):
+            git_utils.revert_merged_commit(*args)
+
+    mock_session.post.assert_called_once_with(
+        'https://gitlab.example.com/api/v4/projects/group%2Fproject'
+        '/repository/commits/abc123/revert',
+        headers={'Authorization': 'Bearer token'},
+        json={'branch': 'v4.18'},
+        timeout=30,
+    )
+
+
+@mock.patch('iib.workers.tasks.git_utils.requests_session')
+@pytest.mark.parametrize(
+    'details', [{'state': 'opened', 'merge_commit_sha': 'abc'}, {'state': 'merged'}]
+)
+def test_merge_requires_confirmation(mock_session, details):
+    mock_session.put.return_value.json.return_value = details
+    with pytest.raises(IIBError, match='did not confirm a merged commit'):
+        git_utils._merge_gitlab_mr(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123')
+
+
 @mock.patch('iib.workers.tasks.git_utils.requests_session')
 @mock.patch('iib.workers.tasks.git_utils._extract_gitlab_info')
 def test_merge_gitlab_mr_success(mock_extract, mock_session):
@@ -1643,6 +1676,7 @@ def test_merge_gitlab_mr_success(mock_extract, mock_session):
     mock_response.ok = True
     mock_response.json.return_value = {
         'merge_commit_sha': 'abc123def456',
+        'state': 'merged',
     }
     mock_session.put.return_value = mock_response
 
@@ -1685,7 +1719,7 @@ def test_merge_gitlab_mr_retries_on_transient_failure(mock_extract, mock_session
 
     success_response = mock.Mock()
     success_response.ok = True
-    success_response.json.return_value = {'merge_commit_sha': 'abc123'}
+    success_response.json.return_value = {'merge_commit_sha': 'abc123', 'state': 'merged'}
 
     mock_session.put.side_effect = [transient_response, success_response]
 

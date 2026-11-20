@@ -7,22 +7,17 @@ from iib.common.common_utils import get_binary_versions
 from iib.common.tracing import instrument_tracing
 from iib.exceptions import IIBError
 from iib.workers.api_utils import set_request_state
-from iib.workers.tasks.build import (
-    _update_index_image_build_state,
-    _update_index_image_pull_spec,
-)
+from iib.workers.tasks.build import _update_index_image_build_state
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.containerized_utils import (
-    cleanup_merge_request_if_exists,
+    finalize_index_image,
     cleanup_on_failure,
     fetch_and_verify_index_db_artifact,
     git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
     prepare_build_sources,
-    push_index_db_artifact,
     replicate_image_to_tagged_destinations,
     write_build_metadata,
-    merge_mr_after_build,
 )
 from iib.workers.tasks.opm_operations import (
     Opm,
@@ -65,7 +60,7 @@ def handle_containerized_fbc_operation_request(
     binary_image_less_arches_allowed_versions: Optional[List[str]] = None,
 ) -> None:
     """
-    Add fbc fragments to an fbc index image.
+    Add FBC fragments to an FBC index image.
 
     :param list fbc_fragments: list of fbc fragments that need to be added to final FBC index image
     :param int request_id: the ID of the IIB build request
@@ -73,9 +68,15 @@ def handle_containerized_fbc_operation_request(
         gets copied from.
     :param str from_index: the pull specification of the container image containing the index that
         the index image build will be based from.
+    :param str distribution_scope: the distribution scope of the index image.
+    :param bool overwrite_from_index: whether to publish the built image to ``from_index`` when
+        the build source allows it, after uploading index.db and merging the catalog MR.
+    :param str overwrite_from_index_token: registry credentials for the overwrite in
+        ``user:password`` format.
+    :param list build_tags: Additional tags for the built image. The overwrite tag is deferred.
     :param set add_arches: the set of arches to build in addition to the arches ``from_index`` is
-        currently built for; if ``from_index`` is ``None``, then this is used as the list of arches
-        to build the index image for
+        currently built for.
+    :param dict binary_image_config: the config used to select the appropriate binary image.
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
     :param bool used_fbc_fragment: flag indicating if the original request used fbc_fragment
@@ -218,6 +219,7 @@ def handle_containerized_fbc_operation_request(
                 request_id=request_id,
                 image_url=image_url,
                 build_tags=build_tags,
+                overwrite_tag=from_index if overwrite_from_index else None,
             )
 
             # Use the first output_pull_spec as the primary one for request updates
@@ -228,59 +230,6 @@ def handle_containerized_fbc_operation_request(
                     "output_pull_spec was not set. "
                     "This should not happen if the pipeline completed successfully."
                 )
-
-            index_image_resolved = _update_index_image_pull_spec(
-                output_pull_spec=output_pull_spec,
-                request_id=request_id,
-                arches=arches,
-                from_index=from_index,
-                overwrite_from_index=overwrite_from_index,
-                overwrite_from_index_token=overwrite_from_index_token,
-                resolved_prebuild_from_index=from_index_resolved,
-                add_or_rm=True,
-                is_image_fbc=True,
-                # Passing an empty index_repo_map is intentional. In IIB 1.0, if
-                # the overwrite_from_index token is given, we push to git by default
-                # at the end of a request. In IIB 2.0, the commit is pushed earlier to trigger
-                # a Konflux pipelinerun. So the old workflow isn't needed.
-                index_repo_map={},
-            )
-            if index_image_resolved is None:
-                raise IIBError(f'request {request_id} has no resolved index image.')
-
-            # Push updated index.db before merging the MR so that on failure both
-            # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
-            push_index_db_artifact(
-                request_id=request_id,
-                from_index=from_index,
-                index_db_path=index_db_path,
-                operators=operators_in_db,
-                output_image=index_image_resolved,
-                overwrite_from_index=overwrite_from_index,
-                request_type='fbc_operations',
-            )
-
-            # Merge or close the MR as the final step so that all side effects
-            # (replication, metadata, index.db push) have succeeded before git
-            # is advanced. This prevents git/index.db divergence on partial failure.
-            #
-            # Only standard sources may publish their MR. Divergent and chained builds
-            # reuse shared Git/Konflux scaffolding and must remain throw-away.
-            if overwrite_from_index and sources.merge_allowed:
-                merge_mr_after_build(mr_details, index_git_repo)
-                # Prevent cleanup_on_failure from trying to close an already-merged MR
-                mr_details = None
-            else:
-                cleanup_merge_request_if_exists(mr_details, index_git_repo, raise_on_error=True)
-
-            # Summarize every action the request took. The per-step messages (extracting
-            # fragments, removing operators from index.db, adding packages) are reported
-            # as in_progress updates while the build runs.
-            state_reason = f"Successfully added operators {added_operators} to the index image"
-            if operators_in_db:
-                state_reason += f" and removed operators {operators_in_db} from the index.db"
-            set_request_state(request_id, 'complete', state_reason)
         except Exception as e:
             cleanup_on_failure(
                 mr_details=mr_details,
@@ -293,3 +242,30 @@ def handle_containerized_fbc_operation_request(
                 reason=f"error: {e}",
             )
             raise IIBError(f"Failed to add FBC fragment: {e}")
+
+        # A divergent or chained source may build with the same Git/Konflux
+        # scaffolding, but its MR must stay throw-away even when overwrite was
+        # requested. Finalization closes that MR instead of publishing the tag.
+        finalize_index_image(
+            request_id=request_id,
+            output_pull_spec=output_pull_spec,
+            from_index=from_index,
+            original_image=from_index_resolved,
+            overwrite=overwrite_from_index and sources.merge_allowed,
+            token=overwrite_from_index_token,
+            mr_details=mr_details,
+            index_git_repo=index_git_repo,
+            branch=branch,
+            index_db_path=index_db_path,
+            operators=operators_in_db,
+            request_type='fbc_operations',
+            arches=arches,
+        )
+
+        # Summarize every action the request took. The per-step messages (extracting
+        # fragments, removing operators from index.db, adding packages) are reported
+        # as in_progress updates while the build runs.
+        state_reason = f"Successfully added operators {added_operators} to the index image"
+        if operators_in_db:
+            state_reason += f" and removed operators {operators_in_db} from the index.db"
+        set_request_state(request_id, 'complete', state_reason)

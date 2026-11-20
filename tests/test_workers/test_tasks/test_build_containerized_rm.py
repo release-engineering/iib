@@ -8,6 +8,9 @@ from iib.workers.tasks import build_containerized_rm, containerized_utils
 from iib.workers.tasks.utils import RequestConfigAddRm
 
 
+pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
+
+
 @pytest.fixture(autouse=True)
 def _mock_registry_token():
     with mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token'):
@@ -17,7 +20,7 @@ def _mock_registry_token():
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -49,7 +52,7 @@ def _mock_registry_token():
 @mock.patch('iib.workers.tasks.build_containerized_rm.os.path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token')
 @mock.patch(
     'iib.workers.tasks.build_containerized_rm.prepare_build_sources',
@@ -230,8 +233,8 @@ def test_handle_containerized_rm_request_success_with_overwrite(
     # Verify index.db was pushed (2 times: request_id tag + current-artifact tag)
     assert mock_poa.call_count == 2
 
-    # The final destination may have a different digest after replication.
-    mock_gid.assert_called_once_with('quay.io/namespace/index-image@sha256:destination')
+    # The artifact is keyed on the pinned output digest before final publication.
+    mock_gid.assert_called_once_with('index@sha256:candidate')
 
     # Verify final state
     final_call = mock_srs.call_args_list[-1]
@@ -246,7 +249,7 @@ def test_handle_containerized_rm_request_success_with_overwrite(
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -409,7 +412,7 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -440,7 +443,7 @@ def test_handle_containerized_rm_request_with_mr(
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 def test_handle_containerized_rm_conditional_opm_rm(
     mock_merge_mr,
     mock_makedirs,
@@ -857,7 +860,7 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -888,7 +891,7 @@ def test_handle_containerized_rm_pipeline_failure(
 @mock.patch('iib.workers.tasks.build_containerized_rm.shutil.copytree')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 def test_handle_containerized_rm_with_index_db_push(
     mock_merge_mr,
     mock_makedirs,
@@ -1016,7 +1019,7 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
 @mock.patch('iib.workers.tasks.containerized_utils.push_oras_artifact')
@@ -1046,7 +1049,7 @@ def test_handle_containerized_rm_with_index_db_push(
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 def test_handle_containerized_rm_with_build_tags(
     mock_merge_mr,
     mock_srs_utils,
@@ -1154,7 +1157,7 @@ def test_handle_containerized_rm_with_build_tags(
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists')
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
 @mock.patch('iib.workers.tasks.containerized_utils._skopeo_copy')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.get_worker_config')
@@ -1272,7 +1275,7 @@ def test_handle_containerized_rm_close_mr_failure_fails_request(
     # Mock close_mr to raise error
     mock_close_mr.side_effect = IIBError('Failed to close MR')
 
-    with pytest.raises(IIBError, match='Failed to remove operators: Failed to close MR'):
+    with pytest.raises(IIBError, match='Failed to close MR'):
         build_containerized_rm.handle_containerized_rm_request(
             operators=operators,
             request_id=request_id,
@@ -1281,7 +1284,7 @@ def test_handle_containerized_rm_close_mr_failure_fails_request(
         )
 
     mock_close_mr.assert_called_once()
-    mock_cof.assert_called_once()
+    mock_cof.assert_not_called()
     assert all(call.args[1] != 'complete' for call in mock_srs.call_args_list)
 
 
@@ -1421,7 +1424,7 @@ def test_handle_containerized_rm_pipelinerun_missing_name(
 @mock.patch('iib.workers.tasks.containerized_utils.Path.exists')
 @mock.patch('iib.workers.tasks.containerized_utils.Path.mkdir')
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 def test_handle_containerized_rm_missing_output_pull_spec(
     mock_merge_mr,
     mock_srs_utils,
@@ -1515,10 +1518,10 @@ def test_handle_containerized_rm_missing_output_pull_spec(
 
 @mock.patch('iib.workers.tasks.build_containerized_rm.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_on_failure')
-@mock.patch('iib.workers.tasks.build_containerized_rm._update_index_image_pull_spec')
-@mock.patch('iib.workers.tasks.build_containerized_rm.cleanup_merge_request_if_exists')
-@mock.patch('iib.workers.tasks.build_containerized_rm.merge_mr_after_build')
-@mock.patch('iib.workers.tasks.build_containerized_rm.push_index_db_artifact')
+@mock.patch('iib.workers.tasks.containerized_utils._update_index_image_pull_spec')
+@mock.patch('iib.workers.tasks.containerized_utils.cleanup_merge_request_if_exists')
+@mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
+@mock.patch('iib.workers.tasks.containerized_utils.push_index_db_artifact')
 @mock.patch('iib.workers.tasks.build_containerized_rm.replicate_image_to_tagged_destinations')
 @mock.patch('iib.workers.tasks.build_containerized_rm.monitor_pipeline_and_extract_image')
 @mock.patch('iib.workers.tasks.build_containerized_rm.git_commit_and_create_mr')
