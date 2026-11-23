@@ -28,7 +28,8 @@ on:
   issue_comment:
     types: [created]
   pull_request_target:
-    types: [opened, synchronize, ready_for_review, closed]
+    # CLOUDDST-33087: omit opened/synchronize/ready_for_review/labeled (auto-review).
+    types: [closed]
   pull_request_review:
     types: [submitted]
 
