@@ -35,6 +35,7 @@ class Config(object):
     task_publish_retry_policy: Dict[str, Optional[int]] = {'max_retries': 10}
     iib_aws_s3_bucket_name: Optional[str] = None
     iib_api_timeout: int = 120
+    iib_gitlab_api_timeout: int = 30
     iib_docker_config_template: str = os.path.join(
         os.path.expanduser('~'), '.docker', 'config.json.template'
     )

@@ -31,6 +31,7 @@ def test_configure_celery_with_classes(mock_isfile):
     assert celery_app.conf.broker_connection_max_retries is None
     assert celery_app.conf.broker_transport_options == {'max_retries': None}
     assert celery_app.conf.task_publish_retry_policy == {'max_retries': 10}
+    assert celery_app.conf.iib_gitlab_api_timeout == 30
 
 
 @patch('os.getenv')

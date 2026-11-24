@@ -558,7 +558,12 @@ def _create_gitlab_mr(
 
     try:
         log.info("Creating merge request via GitLab API for project %s", project_path)
-        response = requests_session.post(api_url, headers=headers, json=payload, timeout=30)
+        response = requests_session.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=get_worker_config()['iib_gitlab_api_timeout'],
+        )
 
         if not response.ok:
             try:
@@ -777,7 +782,12 @@ def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
 
     try:
         log.info("Closing merge request %s via GitLab API", mr_id)
-        response = requests_session.put(api_url, headers=headers, json=payload, timeout=30)
+        response = requests_session.put(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=get_worker_config()['iib_gitlab_api_timeout'],
+        )
 
         if not response.ok:
             log.error(
@@ -837,7 +847,7 @@ def revert_merged_commit(repo_url: str, branch: str, merge_sha: str) -> None:
         url,
         headers={'Authorization': f'Bearer {token}'},
         json={'branch': branch},
-        timeout=30,
+        timeout=get_worker_config()['iib_gitlab_api_timeout'],
     )
     if not response.ok:
         raise IIBError(f'Failed to revert {merge_sha} on {branch}: HTTP {response.status_code}')
@@ -873,7 +883,12 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
     for attempt in range(max_retries + 1):
         try:
             log.info("Merging merge request %s via GitLab API (attempt %d)", mr_id, attempt + 1)
-            response = requests_session.put(merge_url, headers=headers, json=payload, timeout=30)
+            response = requests_session.put(
+                merge_url,
+                headers=headers,
+                json=payload,
+                timeout=get_worker_config()['iib_gitlab_api_timeout'],
+            )
 
             if response.ok:
                 mr_data = response.json()

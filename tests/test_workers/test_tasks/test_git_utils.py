@@ -1642,18 +1642,22 @@ def test_revert_merged_commit(mock_session, mock_token, status):
     response.ok = status == 201
     response.status_code = status
     args = ('https://gitlab.example.com/group/project.git', 'v4.18', 'abc123')
-    if status == 201:
-        git_utils.revert_merged_commit(*args)
-    else:
-        with pytest.raises(IIBError, match='Failed to revert abc123 on v4.18'):
+    with mock.patch(
+        'iib.workers.tasks.git_utils.get_worker_config',
+        return_value={'iib_gitlab_api_timeout': 17},
+    ):
+        if status == 201:
             git_utils.revert_merged_commit(*args)
+        else:
+            with pytest.raises(IIBError, match='Failed to revert abc123 on v4.18'):
+                git_utils.revert_merged_commit(*args)
 
     mock_session.post.assert_called_once_with(
         'https://gitlab.example.com/api/v4/projects/group%2Fproject'
         '/repository/commits/abc123/revert',
         headers={'Authorization': 'Bearer token'},
         json={'branch': 'v4.18'},
-        timeout=30,
+        timeout=17,
     )
 
 
