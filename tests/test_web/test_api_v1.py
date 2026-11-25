@@ -181,6 +181,15 @@ def test_get_builds(app, auth_env, client, db):
     assert rv_json['items'][0]['user'] == 'tbrady@DOMAIN.LOCAL'
 
 
+def test_get_builds_empty(client, db):
+    rv_json = client.get('/api/v1/builds').json
+    assert rv_json['items'] == []
+    assert rv_json['meta']['total'] == 0
+    assert rv_json['meta']['pages'] == 0
+    assert rv_json['meta']['last'] == rv_json['meta']['first']
+    assert 'page=1' in rv_json['meta']['last']
+
+
 def test_index_image_filter(
     app, client, db, minimal_request_add, minimal_request_rm, minimal_request_fbc_operations
 ):
