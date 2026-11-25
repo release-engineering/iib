@@ -4,8 +4,34 @@ import pytest
 from unittest import mock
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build_containerized_create_empty_index
+from iib.workers.tasks import build_containerized_create_empty_index, containerized_utils
 from iib.workers.tasks.utils import RequestConfigCreateIndexImage
+
+
+@pytest.fixture(autouse=True)
+def _mock_catalog_binding():
+    """Keep handler tests focused on the empty-index workflow."""
+
+    class AnyProducer:
+        def __ne__(self, other):
+            return False
+
+    with (
+        mock.patch.object(
+            build_containerized_create_empty_index,
+            'get_resolved_image',
+            return_value='quay.io/konflux/image@sha256:' + 'd' * 64,
+        ),
+        mock.patch.object(
+            build_containerized_create_empty_index, 'catalog_tree', return_value='b' * 40
+        ),
+        mock.patch.object(
+            build_containerized_create_empty_index, 'catalog_producer', return_value=AnyProducer()
+        ),
+        mock.patch.object(build_containerized_create_empty_index, 'retain_catalog_revision'),
+        mock.patch.object(containerized_utils, 'index_db_sha256', return_value='e' * 64),
+    ):
+        yield
 
 
 @mock.patch('builtins.open', new_callable=mock.mock_open)

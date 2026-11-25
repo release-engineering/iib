@@ -6,8 +6,26 @@ from iib.exceptions import IIBError
 from iib.workers.tasks import build_containerized_fbc_operations, containerized_utils
 from iib.workers.tasks.utils import RequestConfigFBCOperation
 
-
 pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
+
+
+@pytest.fixture(autouse=True)
+def _mock_catalog_binding():
+    """Isolate handler orchestration from the shared Git binding checks."""
+
+    class AnyProducer:
+        def __ne__(self, other):
+            return False
+
+    with (
+        mock.patch.object(containerized_utils, 'catalog_tree', return_value='b' * 40),
+        mock.patch.object(containerized_utils, 'catalog_producer', return_value=AnyProducer()),
+        mock.patch.object(containerized_utils, 'retain_catalog_revision'),
+        mock.patch.object(containerized_utils, 'run_cmd'),
+        mock.patch.object(containerized_utils, 'read_published_index_db_artifact'),
+        mock.patch.object(containerized_utils, 'verify_existing_index_db_artifact'),
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -112,6 +130,7 @@ def test_handle_containerized_fbc_operation_request(
         mock_wfpc.return_value = {'status': 'Succeeded'}
         mock_gpiu.return_value = 'registry/output-image:sha256-12345'
         mock_gloops.return_value = ['output-image:latest']
+        mock_uiips.return_value = 'registry/output-image@sha256:' + 'd' * 64
 
         build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
             request_id=request_id,
@@ -283,6 +302,7 @@ def test_handle_containerized_fbc_operation_request_multiple_fragments(
         mock_wfpc.return_value = {'status': 'Succeeded'}
         mock_gpiu.return_value = 'registry/output'
         mock_gloops.return_value = ['output:latest']
+        mock_uiips.return_value = 'registry/output@sha256:' + 'd' * 64
 
         build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
             request_id=request_id,
@@ -439,6 +459,8 @@ def test_handle_containerized_fbc_operation_request_with_overwrite(
         output_image='index@sha256:candidate',
         overwrite_from_index=True,
         request_type='fbc_operations',
+        git_commit='sha1',
+        configs_tree='b' * 40,
     )
 
     mock_uiips.assert_not_called()
@@ -894,6 +916,7 @@ def test_fbc_operations_complete_state_reason_summarizes_all_actions(
     mock_git_commit.return_value = ({'mr_id': '1', 'mr_url': 'https://gitlab.com/mr/1'}, 'sha42')
     mock_monitor.return_value = 'registry/output-image:sha256-12345'
     mock_replicate.return_value = ['registry.example.com/final-image:42']
+    mock_uiips.return_value = 'registry.example.com/final-image@sha256:' + 'd' * 64
 
     build_containerized_fbc_operations.handle_containerized_fbc_operation_request(
         request_id=request_id,

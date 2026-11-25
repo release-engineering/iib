@@ -260,6 +260,8 @@ def handle_containerized_fbc_operation_request(
             operators=operators_in_db,
             request_type='fbc_operations',
             arches=arches,
+            local_git_repo_path=local_git_repo_path,
+            built_commit=last_commit_sha,
         )
 
         # Summarize every action the request took. The per-step messages (extracting

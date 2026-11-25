@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
+from types import SimpleNamespace
 import pytest
 from unittest import mock
 
@@ -7,13 +8,45 @@ from iib.exceptions import IIBError
 from iib.workers.tasks import build_containerized_rm, containerized_utils
 from iib.workers.tasks.utils import RequestConfigAddRm
 
-
 pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
 
 
 @pytest.fixture(autouse=True)
 def _mock_registry_token():
     with mock.patch('iib.workers.tasks.build_containerized_rm.set_registry_token'):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _mock_published_catalog():
+    """Keep handler tests focused on orchestration; binding checks have utility tests."""
+
+    class AnyProducer:
+        def __ne__(self, other):
+            return False
+
+    with (
+        mock.patch.object(
+            containerized_utils,
+            'read_published_index_db_artifact',
+            side_effect=lambda image, base: SimpleNamespace(
+                git_commit='a' * 40,
+                configs_tree='b' * 40,
+                request_id=1,
+                index_db_path=os.path.join(base, 'artifact', 'index.db'),
+            ),
+        ),
+        mock.patch.object(containerized_utils, 'verify_or_repair_catalog'),
+        mock.patch.object(containerized_utils, 'catalog_tree', return_value='b' * 40),
+        mock.patch.object(containerized_utils, 'catalog_producer', return_value=AnyProducer()),
+        mock.patch.object(containerized_utils, 'retain_catalog_revision'),
+        mock.patch.object(
+            containerized_utils, 'find_existing_index_db_artifact', return_value=None
+        ),
+        mock.patch.object(containerized_utils, 'index_db_sha256', return_value='d' * 64),
+        mock.patch.object(containerized_utils, 'run_cmd'),
+        mock.patch.object(containerized_utils, 'verify_existing_index_db_artifact'),
+    ):
         yield
 
 
@@ -365,6 +398,7 @@ def test_handle_containerized_rm_request_with_mr(
     mock_fpr.return_value = [{'metadata': {'name': 'pr-456'}}]
     mock_wfpc.return_value = {'status': 'success'}
     mock_gpiu.return_value = 'quay.io/konflux/image@sha256:built'
+    mock_uiips.return_value = 'registry.io/iib-build@sha256:' + 'd' * 64
 
     # Mock ORAS push related functions (only request_id tag, no overwrite)
     mock_giap.return_value = 'registry.io/index-db:v4.14'
@@ -1273,6 +1307,7 @@ def test_handle_containerized_rm_close_mr_failure_fails_request(
     }
 
     # Mock close_mr to raise error
+    mock_uiips.return_value = 'registry.io/iib-build@sha256:' + 'd' * 64
     mock_close_mr.side_effect = IIBError('Failed to close MR')
 
     with pytest.raises(IIBError, match='Failed to close MR'):

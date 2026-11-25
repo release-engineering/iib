@@ -1,14 +1,45 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import os
+from types import SimpleNamespace
 import pytest
 from unittest import mock
 
 from iib.exceptions import IIBError
-from iib.workers.tasks import build_containerized_merge
+from iib.workers.tasks import build_containerized_merge, containerized_utils
 from iib.workers.tasks.utils import RequestConfigMerge
 
-
 pytestmark = pytest.mark.usefixtures('mock_overwrite_registry')
+
+
+@pytest.fixture(autouse=True)
+def _mock_catalog_binding():
+    """Read the target from a synthetic published binding in handler tests."""
+
+    class AnyProducer:
+        def __ne__(self, other):
+            return False
+
+    def published(image, base):
+        return SimpleNamespace(
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+            request_id=1,
+            index_db_path=build_containerized_merge.fetch_and_verify_index_db_artifact(image, base),
+        )
+
+    with (
+        mock.patch.object(
+            build_containerized_merge, 'read_published_index_db_artifact', side_effect=published
+        ),
+        mock.patch.object(build_containerized_merge, 'verify_or_repair_catalog'),
+        mock.patch.object(containerized_utils, 'catalog_tree', return_value='b' * 40),
+        mock.patch.object(containerized_utils, 'catalog_producer', return_value=AnyProducer()),
+        mock.patch.object(containerized_utils, 'retain_catalog_revision'),
+        mock.patch.object(containerized_utils, 'run_cmd'),
+        mock.patch.object(containerized_utils, 'read_published_index_db_artifact'),
+        mock.patch.object(containerized_utils, 'verify_existing_index_db_artifact'),
+    ):
+        yield
 
 
 # Store original set before mocking
@@ -2498,7 +2529,7 @@ def test_handle_containerized_merge_request_without_target_index(
 
     # Verify only source index.db was fetched (not target)
     assert mock_favida.call_count == 1
-    mock_favida.assert_called_once_with(source_from_index, temp_dir)
+    mock_favida.assert_called_once_with('quay.io/namespace/source-index@sha256:def', temp_dir)
 
     # Verify only source bundles were retrieved (not target)
     assert mock_gpb.call_count == 1

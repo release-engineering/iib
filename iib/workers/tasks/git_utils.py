@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""This file contains functions for saving changes to Git."""
+"""Git repository and GitLab merge request helpers for catalog builds."""
+
 import logging
 import os
 import tempfile
@@ -23,7 +24,6 @@ from iib.exceptions import GitLabSourceBranchNotReadyError, IIBError
 from iib.workers.api_utils import requests_session
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd, sanitize_log_text
-
 
 log = logging.getLogger(__name__)
 
@@ -340,7 +340,7 @@ def clone_git_repo(
     - Shallow clone with depth of 1 used to retrieve only the most recent commit.
 
     :param str repo_url: Git repo URL.
-    :param str branch: Branch name corresponding to OCP version, like "v4.19".
+    :param str branch: Target branch, often an OCP version such as "v4.19".
     :param str token_name: Name of Git repository token.
     :param str token: Value of Git repository token.
     :param str local_repo_path: The local path where the Git repo will be cloned.
@@ -426,6 +426,7 @@ def create_mr(
     branch: str,
     commit_message: Optional[str] = None,
     environment_name: Optional[str] = None,
+    source_branch_suffix: str = '',
 ) -> Dict[str, str]:
     """
     Create a merge request on GitLab repository.
@@ -436,6 +437,8 @@ def create_mr(
     :param str branch: Branch name corresponding to OCP version, like "v4.19".
     :param str commit_message: Custom commit message. If None, a default message is used.
     :param str environment_name: Environment name to prefix the branch (e.g., "qe", "stage").
+    :param str source_branch_suffix: Optional suffix for a repair MR. A unique
+        suffix lets a retry proceed when a crash left an earlier repair MR open.
     :return: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :rtype: Dict[str, str]
     :raises IIBError: If a Git operation or GitLab API call fails.
@@ -448,6 +451,7 @@ def create_mr(
         feature_branch = f"iib-{environment_name}-request-{request_id}-{branch}"
     else:
         feature_branch = f"iib-request-{request_id}-{branch}"
+    feature_branch += source_branch_suffix
 
     # Create and switch to feature branch
     log.info("Creating feature branch %s", feature_branch)

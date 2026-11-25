@@ -363,6 +363,8 @@ def handle_containerized_add_request(
             operators=operators,
             request_type='add',
             arches=arches,
+            local_git_repo_path=local_git_repo_path,
+            built_commit=last_commit_sha,
         )
 
         set_request_state(

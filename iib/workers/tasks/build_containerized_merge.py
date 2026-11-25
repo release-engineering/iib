@@ -26,6 +26,8 @@ from iib.workers.tasks.containerized_utils import (
     monitor_pipeline_and_extract_image,
     replicate_image_to_tagged_destinations,
 )
+from iib.workers.tasks.catalog_recovery import verify_or_repair_catalog
+from iib.workers.tasks.oras_utils import read_published_index_db_artifact
 from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
 from iib.workers.tasks.build_merge_index_image import get_bundles_latest_version
 from iib.workers.tasks.opm_operations import (
@@ -171,13 +173,40 @@ def handle_containerized_merge_request(
             temp_dir=temp_dir,
             branch=branch,
             index_to_gitlab_push_map=index_to_gitlab_push_map or {},
+            # An unpublished change may have deleted configs/ altogether.
+            # The published target binding decides whether to restore it.
+            allow_missing_catalog=overwrite_target_index,
         )
 
-        # Pull both source and target index.db artifacts and read present bundle
+        # Pin each database to the image digest selected during prebuild. For
+        # an overwrite, the target's published artifact also selects the Git
+        # catalog that must be present before merge operations start.
         target_index_db_path = None
-        source_index_db_path = fetch_and_verify_index_db_artifact(source_from_index, temp_dir)
+        source_index_db_path = fetch_and_verify_index_db_artifact(
+            source_from_index_resolved, temp_dir
+        )
         if target_index:
-            target_index_db_path = fetch_and_verify_index_db_artifact(target_index, temp_dir)
+            if overwrite_target_index:
+                published_artifact = read_published_index_db_artifact(
+                    target_index_resolved, temp_dir
+                )
+                verify_or_repair_catalog(
+                    repo=local_git_repo_path,
+                    repo_url=index_git_repo,
+                    branch=branch,
+                    image=target_index,
+                    published=target_index_resolved,
+                    token=overwrite_target_index_token,
+                    revision=published_artifact.git_commit,
+                    tree=published_artifact.configs_tree,
+                    producer=str(published_artifact.request_id),
+                    request_id=request_id,
+                )
+                target_index_db_path = published_artifact.index_db_path
+            else:
+                target_index_db_path = fetch_and_verify_index_db_artifact(
+                    target_index_resolved, temp_dir
+                )
 
         # Get the bundles from the index.db file
         with set_registry_token(overwrite_target_index_token, target_index, append=True):
@@ -382,6 +411,8 @@ def handle_containerized_merge_request(
             request_type='merge',
             arches=arches,
             pipeline_image=image_url,
+            local_git_repo_path=local_git_repo_path,
+            built_commit=last_commit_sha,
         )
 
         # Update request with final output

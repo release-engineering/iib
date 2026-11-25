@@ -296,6 +296,8 @@ def handle_containerized_rm_request(
             operators=operators,
             request_type='rm',
             arches=arches,
+            local_git_repo_path=local_git_repo_path,
+            built_commit=last_commit_sha,
         )
 
         operators_str = ', '.join(operators)

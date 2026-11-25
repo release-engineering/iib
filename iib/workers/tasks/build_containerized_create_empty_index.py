@@ -16,6 +16,11 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
+from iib.workers.tasks.catalog_recovery import (
+    catalog_producer,
+    catalog_tree,
+    retain_catalog_revision,
+)
 from iib.workers.tasks.containerized_utils import (
     cleanup_merge_request_if_exists,
     cleanup_on_failure,
@@ -38,6 +43,7 @@ from iib.workers.tasks.oras_utils import (
     get_oras_artifact,
 )
 from iib.workers.tasks.utils import (
+    get_resolved_image,
     prepare_request_for_build,
     request_logger,
     reset_docker_config,
@@ -345,17 +351,32 @@ def handle_containerized_create_empty_index_request(
                 index_repo_map={},
             )
 
-            # Push the empty index.db with request ID tag
-            # Since overwrite_from_index is False, this will only push with request_id tag
-            # and will not overwrite the current artifact
+            # This request closes and deletes its MR branch. Keep the Konflux
+            # commit fetchable by the image digest before publishing index.db.
+            built_image_resolved = get_resolved_image(image_url)
+            built_configs_tree = catalog_tree(local_git_repo_path, last_commit_sha)
+            if catalog_producer(local_git_repo_path, last_commit_sha) != str(request_id):
+                raise IIBError('Built catalog producer differs from this request')
+            retain_catalog_revision(
+                local_git_repo_path,
+                built_image_resolved,
+                last_commit_sha,
+                built_configs_tree,
+                str(request_id),
+            )
+
+            # Publish only the request-specific artifact. Its annotations bind
+            # these database bytes to the retained Git commit and configs tree.
             push_index_db_artifact(
                 request_id=request_id,
                 from_index=from_index,
                 index_db_path=str(index_db_path),
                 operators=[],  # Empty list since we're creating an empty index
-                output_image=image_url,
+                output_image=built_image_resolved,
                 overwrite_from_index=False,  # Always False for create_empty_index
                 request_type='create_empty_index',
+                git_commit=last_commit_sha,
+                configs_tree=built_configs_tree,
             )
 
             # Always close the MR — create_empty_index is always throw-away (no overwrite).

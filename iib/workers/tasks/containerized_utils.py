@@ -23,6 +23,12 @@ from iib.exceptions import ArtifactNotFoundError, IIBError, FileNotFoundInImageE
 from iib.workers.api_utils import get_request, set_request_state, update_request
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.iib_static_types import BundleImage, UpdateRequestPayload
+from iib.workers.tasks.catalog_recovery import (
+    catalog_producer,
+    catalog_tree,
+    retain_catalog_revision,
+    verify_or_repair_catalog,
+)
 from iib.workers.tasks.build import _skopeo_copy, _update_index_image_pull_spec, _verify_index_image
 from iib.workers.tasks.git_utils import (
     clone_git_repo,
@@ -42,14 +48,21 @@ from iib.workers.tasks.konflux_utils import (
     wait_for_pipeline_completion,
 )
 from iib.workers.tasks.oras_utils import (
+    CONFIGS_TREE_ANNOTATION,
+    GIT_COMMIT_ANNOTATION,
+    INDEX_DB_SHA256_ANNOTATION,
+    find_existing_index_db_artifact,
     get_index_tag,
     get_indexdb_artifact_pullspec,
     get_imagestream_artifact_pullspec,
     get_oras_artifact,
     get_request_indexdb_artifact_pullspec,
+    index_db_sha256,
     push_oras_artifact,
+    read_published_index_db_artifact,
     refresh_indexdb_cache_for_image,
     verify_indexdb_cache_for_image,
+    verify_existing_index_db_artifact,
 )
 from iib.workers.tasks.utils import (
     get_image_label,
@@ -716,6 +729,8 @@ def push_index_db_artifact(
     output_image: str,
     overwrite_from_index: bool = False,
     request_type: str = 'rm',
+    git_commit: Optional[str] = None,
+    configs_tree: Optional[str] = None,
 ) -> None:
     """
     Push the updated index.db artifact for the built image.
@@ -723,7 +738,9 @@ def push_index_db_artifact(
     When the database exists, publish a per-request tag for traceability.
     Overwrites also require an artifact tagged by the output image digest so that
     subsequent builds can find the matching database as soon as the index tag moves.
-    The artifact for the original digest remains available if publication fails.
+    A retry may reuse that digest tag only when its producer, Git revision,
+    configs tree, and database bytes all match. The original digest's artifact
+    remains available if publication fails.
 
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec
@@ -732,7 +749,10 @@ def push_index_db_artifact(
     :param str output_image: The built output image pullspec, used to derive the content key
     :param bool overwrite_from_index: Whether to publish the artifact for the output digest
     :param str request_type: Type of request (e.g., 'rm', 'add')
-    :raises IIBError: If the database is missing for an overwrite or the artifact push fails
+    :param Optional[str] git_commit: Built Git revision to bind to the artifact
+    :param Optional[str] configs_tree: Object ID of the built configs tree
+    :raises IIBError: If an overwrite lacks a database or Git binding, an existing
+        digest tag conflicts, or the artifact push fails
     """
     if not (index_db_path and Path(index_db_path).exists()):
         if overwrite_from_index:
@@ -748,6 +768,8 @@ def push_index_db_artifact(
     request_artifact_ref = get_request_indexdb_artifact_pullspec(output_image, request_id)
     artifact_refs = [request_artifact_ref]
     if overwrite_from_index:
+        if not git_commit or not configs_tree:
+            raise IIBError('Cannot publish overwrite without a Git catalog binding')
         # For digest D and request 42, publish both idb-D-42 (traceability) and
         # idb-D (lookup by the next build after the index tag advances to D).
         artifact_refs.append(get_indexdb_artifact_pullspec(output_image))
@@ -758,6 +780,10 @@ def push_index_db_artifact(
         'from_index': from_index,
         'output_image': output_image,
     }
+    if git_commit and configs_tree:
+        annotations[GIT_COMMIT_ANNOTATION] = git_commit
+        annotations[CONFIGS_TREE_ANNOTATION] = configs_tree
+        annotations[INDEX_DB_SHA256_ANNOTATION] = index_db_sha256(index_db_path)
     if operators:
         annotations['operators'] = ','.join(operators)
 
@@ -771,7 +797,22 @@ def push_index_db_artifact(
         if index_db_file.name != 'index.db':
             shutil.copyfile(index_db_file, Path(artifact_dir) / 'index.db')
         log.info('Pushing index.db from directory: %s', artifact_dir)
+        existing = None
+        if overwrite_from_index:
+            # Check the immutable digest tag before either upload. A conflicting
+            # binding must not be replaced, including on a Celery retry.
+            existing = find_existing_index_db_artifact(output_image, artifact_dir)
+            if existing is not None:
+                verify_existing_index_db_artifact(
+                    existing,
+                    request_id=request_id,
+                    git_commit=git_commit or '',
+                    configs_tree=configs_tree or '',
+                    index_db_path=index_db_path,
+                )
         for artifact_ref in artifact_refs:
+            if existing is not None and artifact_ref == existing.artifact_ref:
+                continue
             push_oras_artifact(
                 artifact_ref=artifact_ref,
                 local_path='index.db',
@@ -848,7 +889,7 @@ class BuildSources:
     index_git_repo: str
     local_git_repo_path: str
     localized_git_catalog_path: str
-    index_db_path: Optional[str]  # None => pull from ORAS; set => use extracted db
+    index_db_path: Optional[str]  # None => caller pulls; set => verified or extracted DB
     target_branch: str
     source_kind: BuildSourceKind
 
@@ -872,7 +913,9 @@ def prepare_build_sources(
     Resolve Git/Konflux scaffolding and content for a containerized build.
 
     Standard path: a branch named after the image tag exists -> build against it
-    (overwrite allowed). Divergent path: no branch for the tag -> reject
+    (overwrite allowed). For overwrites, use one digest-pinned Quay artifact to
+    select the database and verify or repair that Git branch before returning.
+    Divergent path: no branch for the tag -> reject
     overwrite, reuse the base OCP branch's Konflux Component, and seed content
     by extracting configs+index.db from the image. Chained path: select Git
     scaffolding from the original ancestor and seed configs+index.db from the
@@ -882,6 +925,7 @@ def prepare_build_sources(
     (``from_index``), but divergent content is extracted from the digest-resolved pullspec
     (``from_index_resolved``) so it matches the image the request already
     inspected during prebuild and cannot drift if the tag moves mid-request.
+    The same resolved pullspec selects the published pair on the overwrite path.
 
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec (tag form, used for branch selection)
@@ -896,6 +940,7 @@ def prepare_build_sources(
     :raises IIBError: if the git mapping is missing, overwrite is requested on
         the divergent or chained path, or required Git scaffolding is not onboarded.
     """
+    index_db_path: Optional[str]
     chained_source = resolve_chained_build_source(
         from_index, overwrite_from_index, overwrite_from_index_token
     )
@@ -960,7 +1005,8 @@ def prepare_build_sources(
     set_request_state(request_id, 'in_progress', 'Cloning Git repository')
 
     if remote_branch_exists(index_git_repo, tag, token_name, git_token):
-        # Normal path — build against the tag branch, pull index.db from ORAS.
+        # Normal path — build against the tag branch. Overwrites read one
+        # pinned artifact and repair the branch before applying the request.
         target_branch = tag
         local_git_repo_path = Path(temp_dir) / 'git' / target_branch
         local_git_repo_path.mkdir(parents=True, exist_ok=True)
@@ -968,13 +1014,33 @@ def prepare_build_sources(
             index_git_repo, target_branch, token_name, git_token, str(local_git_repo_path)
         )
         catalog_path = local_git_repo_path / 'configs'
+        # An interrupted overwrite may have removed the whole tracked tree.
+        # Check for configs/ only after the published revision can restore it.
+        if not catalog_path.exists() and not overwrite_from_index:
+            raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
+        index_db_path = None
+        if overwrite_from_index:
+            published_artifact = read_published_index_db_artifact(from_index_resolved, temp_dir)
+            verify_or_repair_catalog(
+                repo=str(local_git_repo_path),
+                repo_url=index_git_repo,
+                branch=target_branch,
+                image=from_index,
+                published=from_index_resolved,
+                token=overwrite_from_index_token,
+                revision=published_artifact.git_commit,
+                tree=published_artifact.configs_tree,
+                producer=str(published_artifact.request_id),
+                request_id=request_id,
+            )
+            index_db_path = published_artifact.index_db_path
         if not catalog_path.exists():
             raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
         return BuildSources(
             index_git_repo=index_git_repo,
             local_git_repo_path=str(local_git_repo_path),
             localized_git_catalog_path=str(catalog_path),
-            index_db_path=None,
+            index_db_path=index_db_path,
             target_branch=target_branch,
             source_kind=BuildSourceKind.STANDARD,
         )
@@ -1027,12 +1093,15 @@ def prepare_git_repository_for_build(
     temp_dir: str,
     branch: str,
     index_to_gitlab_push_map: Dict[str, str],
+    allow_missing_catalog: bool = False,
 ) -> Tuple[str, str, str]:
     """
     Set up and clone Git repository for containerized build.
 
     This function resolves the Git repository URL from the from_index,
-    gets the Git token, clones the repository, and verifies the configs directory exists.
+    gets the Git token, clones the repository, and normally verifies that
+    ``configs/`` exists. Merge overwrites defer this check until recovery has
+    had a chance to restore a branch whose entire tracked catalog was removed.
 
     Intentionally retained alongside :func:`prepare_build_sources` for the request
     types where divergent-tag detection does not apply (merge, create_empty_index):
@@ -1045,10 +1114,11 @@ def prepare_git_repository_for_build(
     :param str temp_dir: Temporary directory where repository will be cloned
     :param str branch: Git branch to clone
     :param Dict[str, str] index_to_gitlab_push_map: Mapping of index images to Git repositories
+    :param bool allow_missing_catalog: Let the caller restore an absent catalog before use.
     :return: Tuple of (index_git_repo, local_git_repo_path, localized_git_catalog_path)
     :rtype: Tuple[str, str, str]
-    :raises IIBError: If chaining is unsupported, the Git repository cannot be resolved,
-        or the configs directory is not found.
+    :raises IIBError: If chaining is unsupported, the Git repository cannot be
+        resolved, or the required configs directory is not found.
     """
     parent_request_id = get_iib_output_request_id(from_index)
     if parent_request_id is not None:
@@ -1076,7 +1146,7 @@ def prepare_git_repository_for_build(
     clone_git_repo(index_git_repo, branch, token_name, git_token, str(local_git_repo_path))
 
     localized_git_catalog_path = local_git_repo_path / 'configs'
-    if not localized_git_catalog_path.exists():
+    if not localized_git_catalog_path.exists() and not allow_missing_catalog:
         raise IIBError(f"Catalogs directory not found in {local_git_repo_path}")
 
     return index_git_repo, str(local_git_repo_path), str(localized_git_catalog_path)
@@ -1279,15 +1349,17 @@ def finalize_index_image(
     request_type: str,
     arches: Set[str],
     pipeline_image: Optional[str] = None,
+    local_git_repo_path: Optional[str] = None,
+    built_commit: Optional[str] = None,
 ) -> None:
     """
     Finalize a containerized index build after image replication.
 
     Share the publication sequence across handlers so the public index tag moves
-    only after the matching index.db is available and the catalog MR is merged.
-    This lets the next build resolve the new digest and fetch its database
-    immediately. For throw-away builds, record the request image, upload the
-    per-request artifact if available, and close the MR.
+    only after the matching index.db and Git revision are bound to the candidate
+    digest and the catalog MR is merged. This lets the next build resolve the
+    new digest and fetch its database immediately. Throw-away builds retain
+    their revision for the per-request database artifact, then close their MR.
 
     :param int request_id: The IIB request ID
     :param str output_pull_spec: Pull specification of the image staged under the request tag
@@ -1303,6 +1375,9 @@ def finalize_index_image(
     :param str request_type: IIB request type used for annotations and response fields
     :param Set[str] arches: Architectures built for the request
     :param Optional[str] pipeline_image: Konflux image used for the artifact of a throw-away merge
+    :param Optional[str] local_git_repo_path: Checkout containing the built commit
+    :param Optional[str] built_commit: Git revision that Konflux built, retained
+        before the MR source branch can be removed
     :raises IIBError: If image verification, artifact upload, or publication fails
     """
     # Overwrite: stage under the request tag -> resolve digest D -> publish idb-D
@@ -1310,6 +1385,7 @@ def finalize_index_image(
     # In the absence of another publisher, the public tag still points to the
     # original image until the last copy.
     candidate: Optional[str]
+    built_configs_tree: Optional[str] = None
     try:
         if overwrite:
             # Resolve the staged copy rather than the mutable Konflux tag. This
@@ -1317,10 +1393,20 @@ def finalize_index_image(
             candidate = get_resolved_image(output_pull_spec)
             # Fail before publishing if another request already moved the input tag.
             _verify_index_image(original_image, from_index, token)
+            if not local_git_repo_path or not built_commit:
+                raise IIBError('Cannot publish overwrite without its built Git revision')
+            built_configs_tree = catalog_tree(local_git_repo_path, built_commit)
+            if catalog_producer(local_git_repo_path, built_commit) != str(request_id):
+                raise IIBError('Built catalog producer differs from this request')
+            # GitLab may squash and delete the MR source branch. Retain the
+            # exact Konflux commit before uploading its database binding.
+            retain_catalog_revision(
+                local_git_repo_path, candidate, built_commit, built_configs_tree, str(request_id)
+            )
         else:
             # Throw-away requests retain the usual request-image metadata. Merge
             # requests historically key their trace artifact from the Konflux image.
-            resolved = _update_index_image_pull_spec(
+            request_image_resolved = _update_index_image_pull_spec(
                 output_pull_spec=output_pull_spec,
                 request_id=request_id,
                 arches=arches,
@@ -1328,9 +1414,28 @@ def finalize_index_image(
                 overwrite_from_index_token=token,
                 add_or_rm=request_type != 'merge',
             )
-            candidate = pipeline_image or resolved
+            candidate = pipeline_image or request_image_resolved
             if not candidate:
                 raise IIBError(f'request {request_id} has no resolved index image.')
+            if local_git_repo_path and built_commit:
+                # A Konflux tag can move between registry reads. Use the same
+                # pinned digest for both the retained Git ref and ORAS artifact.
+                candidate_digest = (
+                    candidate
+                    if re.search(r'@sha256:[0-9a-f]{64}$', candidate)
+                    else get_resolved_image(candidate)
+                )
+                built_configs_tree = catalog_tree(local_git_repo_path, built_commit)
+                if catalog_producer(local_git_repo_path, built_commit) != str(request_id):
+                    raise IIBError('Built catalog producer differs from this request')
+                retain_catalog_revision(
+                    local_git_repo_path,
+                    candidate_digest,
+                    built_commit,
+                    built_configs_tree,
+                    str(request_id),
+                )
+                candidate = candidate_digest
 
         push_index_db_artifact(
             request_id=request_id,
@@ -1340,7 +1445,22 @@ def finalize_index_image(
             output_image=candidate,
             overwrite_from_index=overwrite,
             request_type=request_type,
+            git_commit=built_commit if built_configs_tree else None,
+            configs_tree=built_configs_tree,
         )
+        if overwrite:
+            # Resolve the newly uploaded digest tag again before merging Git.
+            # This catches an unreadable or conflicting artifact while the
+            # public image tag still points to the original digest.
+            with tempfile.TemporaryDirectory(prefix='iib-verify-artifact-') as verify_dir:
+                bound_artifact = read_published_index_db_artifact(candidate, verify_dir)
+                verify_existing_index_db_artifact(
+                    bound_artifact,
+                    request_id=request_id,
+                    git_commit=built_commit or '',
+                    configs_tree=built_configs_tree or '',
+                    index_db_path=index_db_path,
+                )
     except Exception:
         # Nothing has merged or overwritten yet, so closing the MR is sufficient.
         # An already uploaded idb-D artifact is immutable and needs no deletion.
@@ -1355,9 +1475,21 @@ def finalize_index_image(
 
     # Compare digests using the destination repository. A staged image such as
     # staging/catalog@sha256:D becomes public/catalog@sha256:D after publication.
-    published = original_image.split('@', 1)[0] + '@' + candidate.split('@', 1)[1]
+    expected_public_image = original_image.split('@', 1)[0] + '@' + candidate.split('@', 1)[1]
     merge_sha = merge_mr_after_build(mr_details, index_git_repo)
     try:
+        if not local_git_repo_path or not built_configs_tree:
+            raise IIBError('Missing Git catalog to verify after merge')
+        # A squash merge has a new commit ID. Compare the resulting target
+        # tree and producer with what Konflux built, not commit IDs.
+        run_cmd(
+            ['git', '-C', local_git_repo_path, 'fetch', '--depth', '1', 'origin', branch],
+            exc_msg='Failed to fetch merged catalog',
+        )
+        merged_configs_tree = catalog_tree(local_git_repo_path, 'FETCH_HEAD')
+        merged_producer = catalog_producer(local_git_repo_path, 'FETCH_HEAD')
+        if merged_configs_tree != built_configs_tree or merged_producer != str(request_id):
+            raise IIBError('Merged catalog differs from the built revision')
         # Catch a concurrent tag change during artifact upload or MR merge. The
         # first check above cannot protect this later interval by itself.
         _verify_index_image(original_image, from_index, token)
@@ -1372,21 +1504,29 @@ def finalize_index_image(
         # If the tag now resolves to D, finish recording success; if it still
         # resolves to the original digest, revert the MR commit. An unrelated
         # digest may be another publisher's work and must not trigger a revert.
+        # This check assumes any earlier tag write has already settled before
+        # this sequential worker starts the next request.
         with set_registry_token(token, from_index, append=True):
-            current = get_resolved_image(from_index)
-        if current != published:
-            if current == original_image:
+            current_public_image = get_resolved_image(from_index)
+        if current_public_image != expected_public_image:
+            if current_public_image == original_image:
                 revert_merged_commit(index_git_repo, branch, merge_sha)
             else:
-                # A third digest may belong to another publisher. Leave Git as it is.
-                log.error('Tag %s moved to %s after merge %s', from_index, current, merge_sha)
+                # Ownership of a third digest is unknown; leave Git for a later
+                # recovery instead of reverting another publisher's catalog.
+                log.error(
+                    'Tag %s moved to %s after merge %s',
+                    from_index,
+                    current_public_image,
+                    merge_sha,
+                )
             raise
 
     # Record the overwrite only after the public tag points to the staged digest.
     # The request tag remains as an internal copy for debugging and traceability.
     payload: UpdateRequestPayload = {'arches': list(arches), 'index_image': from_index}
     if request_type != 'merge':
-        payload['index_image_resolved'] = published
+        payload['index_image_resolved'] = expected_public_image
         payload['internal_index_image_copy'] = output_pull_spec
         payload['internal_index_image_copy_resolved'] = candidate
     update_request(request_id, payload, exc_msg='Failed setting the index image on the request')

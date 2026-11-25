@@ -2,6 +2,8 @@
 """Basic unit tests for oras_utils."""
 
 import logging
+import hashlib
+import json
 import re
 
 import pytest
@@ -19,7 +21,343 @@ from iib.workers.tasks.oras_utils import (
     get_indexdb_artifact_pullspec,
     get_request_indexdb_artifact_pullspec,
     get_index_tag,
+    read_published_index_db_artifact,
+    find_existing_index_db_artifact,
+    verify_existing_index_db_artifact,
+    PublishedIndexDbArtifact,
+    _ArtifactResolutionError,
+    _MissingLegacyBindingError,
+    _manifest_annotations,
+    _resolve_oras_manifest,
+    publish_verified_legacy_binding,
+    _verified_git_ref,
 )
+
+
+def _binding_annotations(payload):
+    return {
+        'request_id': '42',
+        'iib.git_commit': 'a' * 40,
+        'iib.configs_tree': 'b' * 40,
+        'iib.index_db_sha256': hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def test_read_published_index_db_artifact_pins_manifest_and_payload(tmp_path):
+    payload = b'published SQLite database'
+    index_db_path = tmp_path / 'index.db'
+    index_db_path.write_bytes(payload)
+    annotations = _binding_annotations(payload)
+    artifact_ref = 'quay.io/team/index-db:idb-abc'
+    pinned_ref = 'quay.io/team/index-db@sha256:' + 'c' * 64
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec',
+        return_value=artifact_ref,
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._resolve_oras_manifest', return_value=pinned_ref
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._manifest_annotations', return_value=annotations
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact', return_value=str(tmp_path)
+    ) as mock_pull:
+        result = read_published_index_db_artifact('quay.io/team/index@sha256:abc', str(tmp_path))
+
+    assert result == PublishedIndexDbArtifact(
+        artifact_ref=artifact_ref,
+        manifest_ref=pinned_ref,
+        index_db_path=str(index_db_path),
+        request_id=42,
+        git_commit='a' * 40,
+        configs_tree='b' * 40,
+        database_sha256=annotations['iib.index_db_sha256'],
+    )
+    mock_pull.assert_called_once_with(pinned_ref, str(tmp_path))
+
+
+def test_read_published_index_db_artifact_rejects_missing_binding_before_pull(tmp_path):
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._resolve_oras_manifest', return_value='artifact@sha256:abc'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._manifest_annotations',
+        return_value={'request_id': '42'},
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._read_legacy_binding',
+        side_effect=IIBError('Published legacy index.db artifact has no verified sidecar'),
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact'
+    ) as mock_pull:
+        with pytest.raises(IIBError, match='no verified sidecar'):
+            read_published_index_db_artifact('image', str(tmp_path))
+    mock_pull.assert_not_called()
+
+
+def test_read_published_index_db_artifact_rejects_conflicting_payload(tmp_path):
+    (tmp_path / 'index.db').write_bytes(b'wrong database')
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._resolve_oras_manifest', return_value='artifact@sha256:abc'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._manifest_annotations',
+        return_value=_binding_annotations(b'correct database'),
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact', return_value=str(tmp_path)
+    ):
+        with pytest.raises(IIBError, match='database digest conflicts'):
+            read_published_index_db_artifact('image', str(tmp_path))
+
+
+def test_read_published_legacy_binding_requires_exact_artifact_and_payload(tmp_path):
+    image = 'quay.io/team/index@sha256:' + 'a' * 64
+    payload = b'legacy database'
+    (tmp_path / 'index.db').write_bytes(payload)
+    manifest_ref = 'quay.io/team/db@sha256:' + 'c' * 64
+    binding = {
+        'version': 1,
+        'image_digest': 'a' * 64,
+        'original_manifest_digest': 'sha256:' + 'c' * 64,
+        'database_sha256': hashlib.sha256(payload).hexdigest(),
+        'request_id': 42,
+        'git_commit': 'd' * 40,
+        'configs_tree': 'e' * 40,
+    }
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._resolve_oras_manifest', return_value=manifest_ref
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._manifest_annotations', return_value={'request_id': '42'}
+    ) as mock_annotations, mock.patch(
+        'iib.workers.tasks.oras_utils._read_legacy_binding', return_value=binding
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact', return_value=str(tmp_path)
+    ) as mock_pull:
+        result = read_published_index_db_artifact(image, str(tmp_path))
+        assert result.git_commit == 'd' * 40
+        assert result.configs_tree == 'e' * 40
+        mock_pull.assert_called_once_with(manifest_ref, str(tmp_path))
+
+        mock_annotations.return_value = {}
+        assert read_published_index_db_artifact(image, str(tmp_path)).request_id == 42
+        mock_annotations.return_value = {'request_id': '42'}
+
+        binding['original_manifest_digest'] = 'sha256:' + 'f' * 64
+        with pytest.raises(IIBError, match='sidecar conflicts'):
+            read_published_index_db_artifact(image, str(tmp_path))
+        binding['original_manifest_digest'] = 'sha256:' + 'c' * 64
+        binding['database_sha256'] = hashlib.sha256(b'wrong').hexdigest()
+        with pytest.raises(IIBError, match='database digest conflicts'):
+            read_published_index_db_artifact(image, str(tmp_path))
+
+
+def test_verified_git_ref_rejects_conflict_before_push():
+    image = 'quay.io/team/index@sha256:' + 'a' * 64
+    commit = 'b' * 40
+    tree = 'c' * 40
+    outputs = ['commit', tree, json.dumps({'request_id': 42}), 'd' * 40 + '\trefs/tags/x']
+    with mock.patch('iib.workers.tasks.oras_utils.run_cmd', side_effect=outputs) as mock_run:
+        with pytest.raises(IIBError, match='another commit'):
+            _verified_git_ref(image, '/repo', commit, tree, 42)
+    assert not any('push' in call.args[0] for call in mock_run.call_args_list)
+
+
+def test_verified_git_ref_retains_and_confirms_missing_ref():
+    image = 'quay.io/team/index@sha256:' + 'a' * 64
+    commit = 'b' * 40
+    tree = 'c' * 40
+    outputs = [
+        'commit',
+        tree,
+        json.dumps({'request_id': 42}),
+        '',
+        'pushed',
+        commit + '\trefs/tags/iib-index-' + 'a' * 64,
+    ]
+    with mock.patch('iib.workers.tasks.oras_utils.run_cmd', side_effect=outputs) as mock_run:
+        _verified_git_ref(image, '/repo', commit, tree, 42)
+    assert mock_run.call_args_list[4].args[0] == [
+        'git',
+        '-C',
+        '/repo',
+        'push',
+        'origin',
+        f'{commit}:refs/tags/iib-index-' + 'a' * 64,
+    ]
+
+
+def test_publish_verified_legacy_binding_checks_original_before_sidecar(tmp_path):
+    image = 'quay.io/team/index@sha256:' + 'a' * 64
+    payload = b'legacy database'
+    (tmp_path / 'index.db').write_bytes(payload)
+    original = 'sha256:' + 'c' * 64
+    kwargs = {
+        'git_repo_path': '/verified/repo',
+        'git_commit': 'd' * 40,
+        'configs_tree': 'e' * 40,
+        'request_id': 42,
+        'database_sha256': hashlib.sha256(payload).hexdigest(),
+        'original_manifest_digest': original,
+    }
+    manifest_ref = 'quay.io/team/db@' + original
+    binding = {
+        'version': 1,
+        'image_digest': 'a' * 64,
+        'original_manifest_digest': original,
+        'database_sha256': kwargs['database_sha256'],
+        'request_id': 42,
+        'git_commit': 'd' * 40,
+        'configs_tree': 'e' * 40,
+    }
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._resolve_oras_manifest', return_value=manifest_ref
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._manifest_annotations', return_value={'request_id': '42'}
+    ) as mock_annotations, mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact', return_value=str(tmp_path)
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._verified_git_ref'
+    ) as mock_git, mock.patch(
+        'iib.workers.tasks.oras_utils.push_oras_artifact'
+    ) as mock_push, mock.patch(
+        'iib.workers.tasks.oras_utils._legacy_binding_ref', return_value='artifact-binding'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils._read_legacy_binding',
+        side_effect=[
+            _MissingLegacyBindingError(
+                'Published legacy index.db artifact has no verified sidecar'
+            ),
+            binding,
+        ],
+    ) as mock_read:
+        publish_verified_legacy_binding(image, str(tmp_path), **kwargs)
+        mock_git.assert_called_once_with(image, '/verified/repo', 'd' * 40, 'e' * 40, 42)
+        mock_push.assert_called_once()
+
+        mock_read.side_effect = None
+        mock_read.return_value = binding
+        mock_annotations.return_value = {}
+        publish_verified_legacy_binding(image, str(tmp_path), **kwargs)
+        mock_push.assert_called_once()
+
+        mock_git.reset_mock()
+        mock_push.reset_mock()
+        kwargs['original_manifest_digest'] = 'sha256:' + 'f' * 64
+        with pytest.raises(IIBError, match='manifest differs'):
+            publish_verified_legacy_binding(image, str(tmp_path), **kwargs)
+        mock_git.assert_not_called()
+        mock_push.assert_not_called()
+
+
+def test_find_existing_artifact_only_accepts_explicit_missing_signal(tmp_path):
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.read_published_index_db_artifact',
+        side_effect=_ArtifactResolutionError('resolution failed'),
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact',
+        side_effect=ArtifactNotFoundError('missing'),
+    ) as mock_pull:
+        assert find_existing_index_db_artifact('image', str(tmp_path)) is None
+    mock_pull.assert_called_once_with('artifact', str(tmp_path))
+
+
+def test_find_existing_artifact_propagates_registry_failure(tmp_path):
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.read_published_index_db_artifact',
+        side_effect=_ArtifactResolutionError('resolution failed'),
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_indexdb_artifact_pullspec', return_value='artifact'
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.get_oras_artifact', side_effect=IIBError('unavailable')
+    ):
+        with pytest.raises(IIBError, match='unavailable'):
+            find_existing_index_db_artifact('image', str(tmp_path))
+
+
+def test_verify_existing_artifact_rejects_producer_or_database_conflicts(tmp_path):
+    db_path = tmp_path / 'index.db'
+    db_path.write_bytes(b'database')
+    artifact = PublishedIndexDbArtifact(
+        'artifact',
+        'artifact@sha256:abc',
+        str(db_path),
+        42,
+        'a' * 40,
+        'b' * 40,
+        hashlib.sha256(b'database').hexdigest(),
+    )
+    verify_existing_index_db_artifact(
+        artifact,
+        request_id=42,
+        git_commit='a' * 40,
+        configs_tree='b' * 40,
+        index_db_path=str(db_path),
+    )
+    with pytest.raises(IIBError, match='conflicting binding'):
+        verify_existing_index_db_artifact(
+            artifact,
+            request_id=43,
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+            index_db_path=str(db_path),
+        )
+    db_path.write_bytes(b'changed')
+    with pytest.raises(IIBError, match='conflicting binding'):
+        verify_existing_index_db_artifact(
+            artifact,
+            request_id=42,
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+            index_db_path=str(db_path),
+        )
+
+
+def test_resolve_oras_manifest_uses_digest_instead_of_tag():
+    artifact = 'quay.io/team/index-db:idb-abc'
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_worker_config', return_value=_oras_worker_config_minimal()
+    ), mock.patch(
+        'iib.workers.tasks.oras_utils.run_cmd', return_value='sha256:' + 'c' * 64
+    ) as mock_run:
+        assert _resolve_oras_manifest(artifact) == 'quay.io/team/index-db@sha256:' + 'c' * 64
+    mock_run.assert_called_once_with(
+        ['oras', 'resolve', artifact], exc_msg=f'Failed to resolve OCI artifact {artifact}'
+    )
+
+
+def test_manifest_annotations_require_single_database_layer():
+    manifest = {
+        'annotations': _binding_annotations(b'database'),
+        'layers': [
+            {
+                'annotations': {'org.opencontainers.image.title': 'index.db'},
+                'digest': 'sha256:' + hashlib.sha256(b'database').hexdigest(),
+            }
+        ],
+    }
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_worker_config', return_value=_oras_worker_config_minimal()
+    ), mock.patch('iib.workers.tasks.oras_utils.run_cmd', return_value=json.dumps(manifest)):
+        assert (
+            _manifest_annotations('quay.io/team/db@sha256:' + 'c' * 64) == manifest['annotations']
+        )
+    manifest['layers'][0]['digest'] = 'sha256:' + 'd' * 64
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_worker_config', return_value=_oras_worker_config_minimal()
+    ), mock.patch('iib.workers.tasks.oras_utils.run_cmd', return_value=json.dumps(manifest)):
+        with pytest.raises(IIBError, match='layer conflicts'):
+            _manifest_annotations('quay.io/team/db@sha256:' + 'c' * 64)
+    manifest['layers'].append(manifest['layers'][0])
+    with mock.patch(
+        'iib.workers.tasks.oras_utils.get_worker_config', return_value=_oras_worker_config_minimal()
+    ), mock.patch('iib.workers.tasks.oras_utils.run_cmd', return_value=json.dumps(manifest)):
+        with pytest.raises(IIBError, match='ambiguous manifest content'):
+            _manifest_annotations('quay.io/team/db@sha256:' + 'c' * 64)
 
 
 @mock.patch('iib.workers.tasks.oras_utils.get_image_digest')
