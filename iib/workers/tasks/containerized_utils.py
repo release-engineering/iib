@@ -1104,10 +1104,9 @@ def prepare_git_repository_for_build(
     had a chance to restore a branch whose entire tracked catalog was removed.
 
     Intentionally retained alongside :func:`prepare_build_sources` for the request
-    types where divergent-tag detection does not apply (merge, create_empty_index):
-    those build against a caller-chosen branch rather than one derived from the
-    from_index tag, so there is no tag branch whose absence would select a
-    divergent path.
+    types where divergent-tag detection does not apply (merge, create_empty_index).
+    These requests require the caller-selected branch. Merge overwrites select
+    it from the target image tag.
 
     :param int request_id: The IIB request ID
     :param str from_index: The from_index pullspec

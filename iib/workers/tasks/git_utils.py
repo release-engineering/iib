@@ -6,7 +6,7 @@ import os
 import tempfile
 import shutil
 import time
-from typing import Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 
 from operator_manifest.operator import ImageName
 import requests
@@ -676,15 +676,22 @@ def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> s
     :rtype: str
     :raises IIBError: If the MR cannot be retrieved or has no source branch.
     """
+    # Branch cleanup is best effort. Keep its fallback lookup short.
+    mr_data = _get_gitlab_mr(repo_url, git_token, mr_id, timeout=3)
+    source_branch = mr_data.get('source_branch')
+    if not source_branch:
+        raise IIBError(f'Missing source_branch for merge request {mr_id}')
+    return source_branch
+
+
+def _get_gitlab_mr(repo_url: str, git_token: str, mr_id: str, timeout: float) -> Dict[str, Any]:
+    """Retrieve the current details of a GitLab merge request."""
     api_url, project_path = _extract_gitlab_info(repo_url)
     mr_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests/{mr_id}"
     headers = {'Authorization': f'Bearer {git_token}'}
 
     try:
-        # Branch cleanup is best effort and runs after the MR operation has
-        # completed. Keep the fallback lookup short so it cannot hold up the
-        # request for the normal GitLab API timeout.
-        response = requests_session.get(mr_url, headers=headers, timeout=3)
+        response = requests_session.get(mr_url, headers=headers, timeout=timeout)
         if not response.ok:
             raise IIBError(f'Failed to retrieve merge request {mr_id}: {response.status_code}')
 
@@ -696,13 +703,42 @@ def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> s
         if not isinstance(mr_data, dict):
             raise IIBError(f'Invalid response retrieving merge request {mr_id}')
 
-        source_branch = mr_data.get('source_branch')
-        if not source_branch:
-            raise IIBError(f'Missing source_branch for merge request {mr_id}')
-        return source_branch
+        return mr_data
     except requests.RequestException as e:
-        log.exception("Error retrieving merge request source branch via GitLab API")
         raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}') from e
+
+
+def wait_for_mr_to_be_mergeable(mr_details: Dict[str, str], repo_url: str) -> None:
+    """Wait for GitLab to confirm that a repair MR meets its merge checks."""
+    mr_id = mr_details.get('mr_id')
+    if not mr_id:
+        raise IIBError('Missing mr_id in mr_details')
+
+    _, git_token = get_git_token(repo_url)
+    conf = get_worker_config()
+    deadline = time.monotonic() + conf['iib_konflux_pipeline_timeout']
+    pending = {
+        'unchecked',
+        'checking',
+        'approvals_syncing',
+        'ci_still_running',
+        'ci_must_pass',
+        'status_checks_must_pass',
+    }
+    status: Optional[str] = 'unchecked'
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise IIBError(f'Timed out waiting for repair MR {mr_id} to be mergeable ({status})')
+        mr = _get_gitlab_mr(
+            repo_url, git_token, mr_id, timeout=min(remaining, conf['iib_gitlab_api_timeout'])
+        )
+        status = mr.get('detailed_merge_status')
+        if status == 'mergeable':
+            return
+        if not isinstance(status, str) or status not in pending:
+            raise IIBError(f'Repair MR {mr_id} cannot be merged ({status})')
+        time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 
 def _delete_gitlab_branch(repo_url: str, git_token: str, source_branch: str) -> None:

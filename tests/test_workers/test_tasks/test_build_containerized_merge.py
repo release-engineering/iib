@@ -31,7 +31,7 @@ def _mock_catalog_binding():
         mock.patch.object(
             build_containerized_merge, 'read_published_index_db_artifact', side_effect=published
         ),
-        mock.patch.object(build_containerized_merge, 'verify_or_repair_catalog'),
+        mock.patch.object(build_containerized_merge, 'verify_or_repair_catalog') as repair,
         mock.patch.object(containerized_utils, 'catalog_tree', return_value='b' * 40),
         mock.patch.object(containerized_utils, 'catalog_producer', return_value=AnyProducer()),
         mock.patch.object(containerized_utils, 'retain_catalog_revision'),
@@ -39,7 +39,7 @@ def _mock_catalog_binding():
         mock.patch.object(containerized_utils, 'read_published_index_db_artifact'),
         mock.patch.object(containerized_utils, 'verify_existing_index_db_artifact'),
     ):
-        yield
+        yield repair
 
 
 # Store original set before mocking
@@ -91,6 +91,7 @@ def mock_remove_deprecated_operators_from_git_catalog():
         yield mock_remove
 
 
+@pytest.mark.parametrize('target_tag', ['v4.15', 'v4.15-hotfix'])
 @mock.patch('iib.workers.tasks.containerized_utils.merge_mr_after_build')
 @mock.patch('iib.workers.tasks.build_containerized_merge.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_merge.cleanup_on_failure')
@@ -166,12 +167,14 @@ def test_handle_containerized_merge_request_success(
     mock_cof,
     mock_rdc,
     mock_merge_mr,
+    _mock_catalog_binding,
+    target_tag,
 ):
     """Test successful merge request with all operations."""
     # Setup
     request_id = 1
     source_from_index = 'quay.io/namespace/source-index:v4.14'
-    target_index = 'quay.io/namespace/target-index:v4.15'
+    target_index = f'quay.io/namespace/target-index:{target_tag}'
     deprecation_list = ['bundle1:1.0', 'bundle2:2.0']
     binary_image = 'registry.io/binary:latest'
     overwrite_target_index_token = 'user:token'
@@ -254,7 +257,7 @@ def test_handle_containerized_merge_request_success(
     mr_details = {
         'mr_id': '1',
         'mr_url': 'https://gitlab.com/repo/-/merge_requests/1',
-        'source_branch': 'iib-request-1-v4.15',
+        'source_branch': f'iib-request-1-{target_tag}',
     }
     last_commit_sha = 'abc123commit'
     mock_gccmop.return_value = (mr_details, last_commit_sha)
@@ -304,7 +307,9 @@ def test_handle_containerized_merge_request_success(
     mock_pgrfb.assert_called_once()
     pgrfb_kwargs = mock_pgrfb.call_args[1]
     assert pgrfb_kwargs['from_index'] == target_index
-    assert pgrfb_kwargs['branch'] == prebuild_info['target_ocp_version']
+    assert pgrfb_kwargs['branch'] == target_tag
+    _mock_catalog_binding.assert_called_once()
+    assert _mock_catalog_binding.call_args.kwargs['branch'] == target_tag
 
     # Verify index.db artifacts were fetched
     assert mock_favida.call_count == 2
@@ -353,6 +358,7 @@ def test_handle_containerized_merge_request_success(
 
     # Verify git commit/push
     mock_gccmop.assert_called_once()
+    assert mock_gccmop.call_args.kwargs['branch'] == target_tag
 
     # Verify MR merge for overwrite flow
     mock_merge_mr.assert_called_once_with(mr_details, index_git_repo)

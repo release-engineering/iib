@@ -106,12 +106,20 @@ def test_repair_restores_exact_tree_and_preserves_unrelated_files(published_repo
 
     with (
         mock.patch.object(recovery, 'create_mr', side_effect=create_mr) as mr,
-        mock.patch.object(recovery, 'merge_mr', side_effect=merge_mr),
+        mock.patch.object(recovery, 'wait_for_mr_to_be_mergeable') as wait,
+        mock.patch.object(recovery, 'merge_mr', side_effect=merge_mr) as merge,
         mock.patch.object(recovery, 'get_worker_config', return_value={}),
         mock.patch.object(recovery, 'set_registry_token', return_value=nullcontext()),
         mock.patch.object(recovery, 'get_resolved_image', return_value=args['published']),
     ):
+        repair_mr = mock.Mock()
+        repair_mr.attach_mock(wait, 'wait')
+        repair_mr.attach_mock(merge, 'merge')
         recovery.verify_or_repair_catalog(**args)
+        assert repair_mr.mock_calls == [
+            mock.call.wait({'mr_id': '1'}, args['repo_url']),
+            mock.call.merge({'mr_id': '1'}, args['repo_url']),
+        ]
         assert recovery.catalog_tree(str(worker)) == args['tree']
         assert recovery.catalog_producer(str(worker)) == '10'
         assert (worker / 'configs' / 'deleted-later.json').read_text() == 'published only'
@@ -120,6 +128,37 @@ def test_repair_restores_exact_tree_and_preserves_unrelated_files(published_repo
         assert f'parent {previous_tip}' in git(worker, 'cat-file', '-p', 'HEAD')
         recovery.verify_or_repair_catalog(**args)
         mr.assert_called_once()
+
+
+@pytest.mark.parametrize('ci_times_out', [False, True])
+def test_repair_closes_mr_if_checks_do_not_pass_or_tag_moves(published_repo, ci_times_out):
+    args = repair_args(published_repo)
+    mr = {'mr_id': '1'}
+    wait_error = IIBError('Timed out waiting for CI') if ci_times_out else None
+    expected_error = 'Timed out' if ci_times_out else 'Public index digest changed before merging'
+    with (
+        mock.patch.object(recovery, 'create_mr', return_value=mr),
+        mock.patch.object(recovery, 'wait_for_mr_to_be_mergeable', side_effect=wait_error),
+        mock.patch.object(recovery, 'merge_mr') as merge,
+        mock.patch.object(recovery, 'close_mr') as close,
+        mock.patch.object(recovery, 'get_worker_config', return_value={}),
+        mock.patch.object(recovery, 'set_registry_token', return_value=nullcontext()),
+        mock.patch.object(
+            recovery, 'get_resolved_image', side_effect=[args['published'], 'another digest']
+        ),
+        pytest.raises(IIBError, match=expected_error),
+    ):
+        recovery.verify_or_repair_catalog(**args)
+    merge.assert_not_called()
+    close.assert_called_once_with(mr, args['repo_url'])
+
+
+def test_repair_rejects_detached_checkout(published_repo):
+    args = repair_args(published_repo)
+    worker = Path(args['repo'])
+    git(worker, 'checkout', '--detach')
+    with pytest.raises(IIBError, match='Catalog repair requires a checkout of Git branch v4.17'):
+        recovery.verify_or_repair_catalog(**args)
 
 
 def test_repair_rejects_missing_ref_before_editing_git(published_repo):

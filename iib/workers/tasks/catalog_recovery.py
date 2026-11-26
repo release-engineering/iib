@@ -7,6 +7,7 @@ even after GitLab squashes the build MR and deletes its source branch.
 """
 
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
@@ -14,8 +15,15 @@ from typing import Optional
 
 from iib.exceptions import IIBError
 from iib.workers.config import get_worker_config
-from iib.workers.tasks.git_utils import create_mr, merge_mr
-from iib.workers.tasks.utils import get_resolved_image, run_cmd, set_registry_token
+from iib.workers.tasks.git_utils import close_mr, create_mr, merge_mr, wait_for_mr_to_be_mergeable
+from iib.workers.tasks.utils import (
+    get_resolved_image,
+    run_cmd,
+    sanitize_log_text,
+    set_registry_token,
+)
+
+log = logging.getLogger(__name__)
 
 
 def _git(repo: str, *args: str) -> str:
@@ -108,13 +116,15 @@ def verify_or_repair_catalog(
     appears to match: its tree and producer must agree with those annotations.
 
     If the target branch differs, restore the tracked catalog and build metadata
-    through a separate GitLab MR. That repair does not move the public tag and
-    remains in history if the caller's subsequent build fails. A retry after a
-    completed repair sees a matching branch.
+    through a separate GitLab MR once GitLab's merge checks pass. That repair
+    does not move the public tag and remains in history if the caller's subsequent
+    build fails. A retry after a completed repair sees a matching branch.
 
     :raises IIBError: If the ref or metadata conflicts, the public tag changes,
         or the GitLab repair cannot be verified.
     """
+    if _git(repo, 'rev-parse', '--symbolic-full-name', 'HEAD') != f'refs/heads/{branch}':
+        raise IIBError(f'Catalog repair requires a checkout of Git branch {branch}')
     ref = retained_ref(published)
     remote = _git(repo, 'ls-remote', 'origin', ref)
     if not remote or remote.split()[0] != revision:
@@ -156,7 +166,18 @@ def verify_or_repair_catalog(
         environment_name=get_worker_config().get('iib_environment_name'),
         source_branch_suffix=f'-repair-{uuid.uuid4().hex[:12]}',
     )
-    merge_mr(mr, repo_url)
+    try:
+        wait_for_mr_to_be_mergeable(mr, repo_url)
+        with set_registry_token(token, image, append=True):
+            if get_resolved_image(image) != published:
+                raise IIBError('Public index digest changed before merging catalog repair')
+        merge_mr(mr, repo_url)
+    except Exception:
+        try:
+            close_mr(mr, repo_url)
+        except Exception as exc:
+            log.warning('Could not close catalog repair MR: %s', sanitize_log_text(str(exc)))
+        raise
     # Verify GitLab's target branch rather than the local repair source branch;
     # the merge may have squashed the commit while preserving its catalog tree.
     _git(repo, 'fetch', '--depth', '1', 'origin', branch)

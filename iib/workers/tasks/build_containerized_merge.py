@@ -27,7 +27,7 @@ from iib.workers.tasks.containerized_utils import (
     replicate_image_to_tagged_destinations,
 )
 from iib.workers.tasks.catalog_recovery import verify_or_repair_catalog
-from iib.workers.tasks.oras_utils import read_published_index_db_artifact
+from iib.workers.tasks.oras_utils import get_index_tag, read_published_index_db_artifact
 from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
 from iib.workers.tasks.build_merge_index_image import get_bundles_latest_version
 from iib.workers.tasks.opm_operations import (
@@ -162,7 +162,11 @@ def handle_containerized_merge_request(
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Setup and clone Git repository
-        branch = effective_ocp_version
+        branch = (
+            get_index_tag(effective_index_image)
+            if overwrite_target_index
+            else effective_ocp_version
+        )
         (
             index_git_repo,
             local_git_repo_path,
