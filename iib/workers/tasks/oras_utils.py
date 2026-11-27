@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""This file contains functions for ORAS (OCI Registry As Storage) operations."""
+"""Pull and publish OCI artifacts, including index.db and its Git binding."""
+
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from iib.common.tracing import instrument_tracing
@@ -20,6 +24,395 @@ from iib.workers.tasks.utils import (
 )  # noqa: F401
 
 log = logging.getLogger(__name__)
+
+GIT_COMMIT_ANNOTATION = 'iib.git_commit'
+CONFIGS_TREE_ANNOTATION = 'iib.configs_tree'
+INDEX_DB_SHA256_ANNOTATION = 'iib.index_db_sha256'
+_SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
+
+
+class _ArtifactResolutionError(IIBError):
+    """Distinguish an unavailable artifact tag from an invalid artifact binding."""
+
+
+class _MissingLegacyBindingError(IIBError):
+    """Identify the one case where a new legacy sidecar may be published."""
+
+
+@dataclass(frozen=True)
+class PublishedIndexDbArtifact:
+    """Pinned database payload with its declared Git revision and producer.
+
+    New artifacts carry the binding in their manifest. Legacy artifacts keep
+    their original manifest and obtain the binding from a separate pinned
+    sidecar that identifies that exact manifest and database payload. The
+    caller verifies the referenced Git commit before using this catalog.
+    """
+
+    artifact_ref: str
+    manifest_ref: str
+    index_db_path: str
+    request_id: int
+    git_commit: str
+    configs_tree: str
+    database_sha256: str
+
+
+def index_db_sha256(index_db_path: str) -> str:
+    """Calculate the digest of a database payload without loading it into memory."""
+    digest = hashlib.sha256()
+    with open(index_db_path, 'rb') as database:
+        for chunk in iter(lambda: database.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _oras_auth_args() -> list[str]:
+    """Use the same exclusive registry configuration as artifact pulls and pushes."""
+    auth_path = get_worker_config()['iib_index_db_oras_auth_path']
+    return ['--registry-config', auth_path] if auth_path and os.path.exists(auth_path) else []
+
+
+def _resolve_oras_manifest(artifact_ref: str) -> str:
+    """Pin an artifact tag to one OCI manifest digest before inspecting its content."""
+    try:
+        with set_registry_auths(None, use_empty_config=True):
+            digest = run_cmd(
+                ['oras', 'resolve', *_oras_auth_args(), artifact_ref],
+                exc_msg=f'Failed to resolve OCI artifact {artifact_ref}',
+            ).strip()
+    except IIBError as exc:
+        raise _ArtifactResolutionError(f'Failed to resolve OCI artifact {artifact_ref}') from exc
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+        raise IIBError(f'Invalid OCI manifest digest for {sanitize_log_text(artifact_ref)}')
+    return f"{artifact_ref.rsplit(':', 1)[0]}@{digest}"
+
+
+def _manifest_annotations(manifest_ref: str) -> Dict[str, str]:
+    """Read a pinned manifest and verify that its sole payload is index.db."""
+    with set_registry_auths(None, use_empty_config=True):
+        manifest_json = run_cmd(
+            ['oras', 'manifest', 'fetch', *_oras_auth_args(), manifest_ref],
+            exc_msg=f'Failed to read OCI manifest {manifest_ref}',
+        )
+    try:
+        manifest = json.loads(manifest_json)
+        if not isinstance(manifest, dict):
+            raise TypeError('OCI manifest is not an object')
+        annotations = manifest.get('annotations', {})
+        layers = manifest['layers']
+    except (ValueError, KeyError, TypeError) as exc:
+        raise IIBError('Published index.db artifact has no usable OCI manifest') from exc
+    if not isinstance(annotations, dict) or not isinstance(layers, list) or len(layers) != 1:
+        raise IIBError('Published index.db artifact has ambiguous manifest content')
+    if not isinstance(layers[0], dict):
+        raise IIBError('Published index.db artifact does not contain index.db')
+    layer_annotations = layers[0].get('annotations')
+    if not isinstance(layer_annotations, dict) or (
+        layer_annotations.get('org.opencontainers.image.title') != 'index.db'
+    ):
+        raise IIBError('Published index.db artifact does not contain index.db')
+    payload_digest = annotations.get(INDEX_DB_SHA256_ANNOTATION)
+    if payload_digest and layers[0].get('digest') != f'sha256:{payload_digest}':
+        raise IIBError('Published index.db artifact layer conflicts with its binding')
+    return annotations
+
+
+def _legacy_binding_ref(image_resolved: str) -> str:
+    """Name the sidecar tag without changing an existing digest-keyed artifact."""
+    conf = get_worker_config()
+    tag = f'{_get_content_addressed_artifact_tag(image_resolved)}-binding'
+    return conf['iib_index_db_artifact_template'].format(
+        registry=conf['iib_index_db_artifact_registry'], tag=tag
+    )
+
+
+def _read_legacy_binding(image_resolved: str, base_dir: str) -> Dict[str, Any]:
+    """Pull a sidecar by manifest digest, or report that it is truly absent.
+
+    A failed ``oras resolve`` alone cannot distinguish a missing tag from a
+    registry or authentication failure. Only an explicit 404 permits onboarding.
+    """
+    sidecar_ref = _legacy_binding_ref(image_resolved)
+    try:
+        pinned_ref = _resolve_oras_manifest(sidecar_ref)
+    except _ArtifactResolutionError as exc:
+        try:
+            get_oras_artifact(sidecar_ref, base_dir)
+        except ArtifactNotFoundError as not_found:
+            raise _MissingLegacyBindingError(
+                'Published legacy index.db artifact has no verified sidecar'
+            ) from not_found
+        raise exc
+    sidecar_dir = get_oras_artifact(pinned_ref, base_dir)
+    sidecar_file = Path(sidecar_dir) / 'binding.json'
+    if not sidecar_file.is_file():
+        raise IIBError('Published legacy index.db sidecar has no binding.json payload')
+    try:
+        binding = json.loads(sidecar_file.read_text())
+    except (OSError, ValueError) as exc:
+        raise IIBError('Published legacy index.db sidecar is unreadable') from exc
+    if not isinstance(binding, dict) or binding.get('version') != 1:
+        raise IIBError('Published legacy index.db sidecar has an unsupported format')
+    return binding
+
+
+def _verified_git_ref(
+    image_resolved: str, git_repo_path: str, git_commit: str, configs_tree: str, request_id: int
+) -> None:
+    """Verify an operator-supplied Git revision and retain it under the image digest.
+
+    The matching commit, configs tree, and producer must be available before
+    a legacy sidecar can claim that this Git revision belongs to the database.
+    """
+    if run_cmd(['git', '-C', git_repo_path, 'cat-file', '-t', git_commit]).strip() != 'commit':
+        raise IIBError('Verified legacy Git revision is not a commit')
+    tree = run_cmd(['git', '-C', git_repo_path, 'rev-parse', f'{git_commit}:configs']).strip()
+    if tree != configs_tree:
+        raise IIBError('Verified legacy Git revision has a different configs tree')
+    metadata_json = run_cmd(
+        ['git', '-C', git_repo_path, 'show', f'{git_commit}:.iib-build-metadata.json']
+    )
+    try:
+        metadata = json.loads(metadata_json)
+    except ValueError as exc:
+        raise IIBError('Verified legacy Git revision has invalid producer metadata') from exc
+    if not isinstance(metadata, dict) or metadata.get('request_id') != request_id:
+        raise IIBError('Verified legacy Git revision has a different producer')
+
+    digest = _get_index_digest(image_resolved)
+    retained_ref = f'refs/tags/iib-index-{digest}'
+    remote = run_cmd(['git', '-C', git_repo_path, 'ls-remote', 'origin', retained_ref]).strip()
+    if remote:
+        if remote.split()[0] != git_commit:
+            raise IIBError('Legacy Git retained ref is bound to another commit')
+    else:
+        run_cmd(
+            ['git', '-C', git_repo_path, 'push', 'origin', f'{git_commit}:{retained_ref}'],
+            exc_msg='Failed to retain legacy Git revision',
+        )
+    confirmed = run_cmd(['git', '-C', git_repo_path, 'ls-remote', 'origin', retained_ref]).strip()
+    if not confirmed or confirmed.split()[0] != git_commit:
+        raise IIBError('Legacy Git retained ref could not be verified')
+
+
+def publish_verified_legacy_binding(
+    image_resolved: str,
+    base_dir: str,
+    *,
+    git_repo_path: str,
+    git_commit: str,
+    configs_tree: str,
+    request_id: int,
+    database_sha256: str,
+    original_manifest_digest: str,
+) -> None:
+    """Onboard a legacy digest using explicit, independently verified inputs.
+
+    The operator must verify externally that the Git revision belongs to the
+    published image. This function checks the original immutable artifact,
+    database bytes, Git tree and producer, and creates a separate binding tag.
+    ``original_manifest_digest`` and ``database_sha256`` are the values the
+    operator verified, not values inferred from the current Git branch. It
+    never rewrites the original digest-keyed database artifact. A matching
+    sidecar is reused on retry; conflicting content stops onboarding.
+
+    :param str image_resolved: Digest-pinned public index image
+    :param str base_dir: Existing directory for temporary ORAS pulls
+    :param str git_repo_path: Checkout containing the independently verified commit
+    :param str git_commit: Commit used to build the published index image
+    :param str configs_tree: Git object ID of that commit's configs tree
+    :param int request_id: Producer recorded by that commit's build metadata
+    :param str database_sha256: Independently verified SHA256 of index.db
+    :param str original_manifest_digest: Verified digest of the legacy OCI artifact
+    :raises IIBError: If any supplied value conflicts with Git, Quay, or an existing sidecar
+    """
+    image_digest_match = re.search(r'@sha256:([0-9a-f]{64})$', image_resolved)
+    if not image_digest_match or not re.fullmatch(r'sha256:[0-9a-f]{64}', original_manifest_digest):
+        raise IIBError('Legacy onboarding requires pinned image and artifact digests')
+    if (
+        not re.fullmatch(r'[0-9a-f]{40,64}', git_commit)
+        or not re.fullmatch(r'[0-9a-f]{40,64}', configs_tree)
+        or not _SHA256_RE.fullmatch(database_sha256)
+        or request_id < 0
+    ):
+        raise IIBError('Legacy onboarding has invalid Git or database binding inputs')
+
+    artifact_ref = get_indexdb_artifact_pullspec(image_resolved)
+    original_manifest_ref = _resolve_oras_manifest(artifact_ref)
+    if original_manifest_ref.split('@', 1)[1] != original_manifest_digest:
+        raise IIBError('Legacy database artifact manifest differs from verified input')
+    annotations = _manifest_annotations(original_manifest_ref)
+    if annotations.get('request_id') is not None and annotations['request_id'] != str(request_id):
+        raise IIBError('Legacy database artifact producer differs from verified input')
+    artifact_dir = get_oras_artifact(original_manifest_ref, base_dir)
+    index_db_path = Path(artifact_dir) / 'index.db'
+    if not index_db_path.is_file() or index_db_sha256(str(index_db_path)) != database_sha256:
+        raise IIBError('Legacy database payload differs from verified input')
+    _verified_git_ref(image_resolved, git_repo_path, git_commit, configs_tree, request_id)
+
+    binding = {
+        'version': 1,
+        'image_digest': image_digest_match.group(1),
+        'original_manifest_digest': original_manifest_digest,
+        'database_sha256': database_sha256,
+        'request_id': request_id,
+        'git_commit': git_commit,
+        'configs_tree': configs_tree,
+    }
+    sidecar_ref = _legacy_binding_ref(image_resolved)
+    try:
+        existing = _read_legacy_binding(image_resolved, base_dir)
+    except _MissingLegacyBindingError:
+        pass
+    else:
+        if existing != binding:
+            raise IIBError('Legacy digest sidecar has a conflicting binding')
+        return
+    with tempfile.TemporaryDirectory(prefix='iib-legacy-binding-', dir=base_dir) as sidecar_dir:
+        (Path(sidecar_dir) / 'binding.json').write_text(json.dumps(binding, sort_keys=True))
+        push_oras_artifact(
+            sidecar_ref,
+            'binding.json',
+            artifact_type='application/vnd.iib.index-db-binding+json',
+            cwd=sidecar_dir,
+        )
+    if _read_legacy_binding(image_resolved, base_dir) != binding:
+        raise IIBError('Published legacy digest sidecar could not be verified')
+
+
+def read_published_index_db_artifact(
+    image_resolved: str, base_dir: str
+) -> PublishedIndexDbArtifact:
+    """Read a verified Git/database binding from the image's digest-keyed Quay artifact.
+
+    Resolve the artifact tag once, then read its manifest and database from that
+    pinned digest. A legacy artifact without Git annotations may use a sidecar
+    only if the sidecar names the same original manifest, image digest, producer,
+    and database hash. This path bypasses the ImageStream cache so a cached
+    payload cannot be paired with another artifact's annotations.
+
+    :param str image_resolved: Digest-pinned public index image
+    :param str base_dir: Existing directory for temporary ORAS pulls
+    :return: Database path and its artifact-verified Git binding; the caller
+        must verify the referenced Git commit before applying operations
+    :raises IIBError: If the artifact, sidecar, or payload is missing or conflicts
+    """
+    artifact_ref = get_indexdb_artifact_pullspec(image_resolved)
+    manifest_ref = _resolve_oras_manifest(artifact_ref)
+    annotations = _manifest_annotations(manifest_ref)
+    required_binding_annotations = {
+        GIT_COMMIT_ANNOTATION,
+        CONFIGS_TREE_ANNOTATION,
+        INDEX_DB_SHA256_ANNOTATION,
+    }
+    present_binding_annotations = required_binding_annotations.intersection(annotations)
+    legacy_binding = None
+    if not present_binding_annotations:
+        legacy_binding = _read_legacy_binding(image_resolved, base_dir)
+        expected_digest = _get_index_digest(image_resolved)
+        legacy_producer = legacy_binding.get('request_id')
+        if (
+            legacy_binding.get('image_digest') != expected_digest
+            or legacy_binding.get('original_manifest_digest') != manifest_ref.split('@', 1)[1]
+            or not isinstance(legacy_producer, int)
+            or legacy_producer < 0
+            or (
+                annotations.get('request_id') is not None
+                and str(legacy_producer) != annotations['request_id']
+            )
+        ):
+            raise IIBError('Published legacy index.db sidecar conflicts with the artifact')
+    elif present_binding_annotations != required_binding_annotations:
+        raise IIBError('Published index.db artifact has an incomplete Git binding')
+    try:
+        producer = (
+            legacy_binding['request_id']
+            if legacy_binding is not None
+            else annotations['request_id']
+        )
+        git_commit = (
+            legacy_binding['git_commit']
+            if legacy_binding is not None
+            else annotations[GIT_COMMIT_ANNOTATION]
+        )
+        configs_tree = (
+            legacy_binding['configs_tree']
+            if legacy_binding is not None
+            else annotations[CONFIGS_TREE_ANNOTATION]
+        )
+        database_sha256 = (
+            legacy_binding['database_sha256']
+            if legacy_binding is not None
+            else annotations[INDEX_DB_SHA256_ANNOTATION]
+        )
+        request_id = int(producer)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise IIBError('Published index.db artifact has no verified Git binding') from exc
+    if (
+        request_id < 0
+        or not isinstance(git_commit, str)
+        or not re.fullmatch(r'[0-9a-f]{40,64}', git_commit)
+        or not isinstance(configs_tree, str)
+        or not re.fullmatch(r'[0-9a-f]{40,64}', configs_tree)
+        or not isinstance(database_sha256, str)
+        or not _SHA256_RE.fullmatch(database_sha256)
+    ):
+        raise IIBError('Published index.db artifact has an invalid Git binding')
+    artifact_dir = get_oras_artifact(manifest_ref, base_dir)
+    index_db_path = Path(artifact_dir) / 'index.db'
+    if not index_db_path.is_file():
+        raise IIBError('Published index.db artifact has no index.db payload')
+    if index_db_sha256(str(index_db_path)) != database_sha256:
+        raise IIBError('Published index.db artifact database digest conflicts with its binding')
+    return PublishedIndexDbArtifact(
+        artifact_ref=artifact_ref,
+        manifest_ref=manifest_ref,
+        index_db_path=str(index_db_path),
+        request_id=request_id,
+        git_commit=git_commit,
+        configs_tree=configs_tree,
+        database_sha256=database_sha256,
+    )
+
+
+def find_existing_index_db_artifact(
+    image_resolved: str, base_dir: str
+) -> Optional[PublishedIndexDbArtifact]:
+    """Return a verified digest binding, or None only for a confirmed missing tag.
+
+    Malformed bindings and registry errors must stop publication; otherwise a
+    retry could overwrite an existing artifact with different catalog contents.
+    """
+    try:
+        return read_published_index_db_artifact(image_resolved, base_dir)
+    except _ArtifactResolutionError as resolution_error:
+        # ORAS resolve errors do not preserve the missing-artifact distinction.
+        # Probe with the existing pull helper; only its explicit 404 signal means
+        # that a new digest tag may be created.
+        try:
+            get_oras_artifact(get_indexdb_artifact_pullspec(image_resolved), base_dir)
+        except ArtifactNotFoundError:
+            return None
+        raise resolution_error
+
+
+def verify_existing_index_db_artifact(
+    artifact: PublishedIndexDbArtifact,
+    *,
+    request_id: int,
+    git_commit: str,
+    configs_tree: str,
+    index_db_path: str,
+) -> None:
+    """Allow retry reuse only for the same producer, commit, tree, and DB bytes."""
+    if (
+        artifact.request_id != request_id
+        or artifact.git_commit != git_commit
+        or artifact.configs_tree != configs_tree
+        or artifact.database_sha256 != index_db_sha256(index_db_path)
+    ):
+        raise IIBError('Existing digest-keyed index.db artifact has a conflicting binding')
 
 
 def _get_name_and_tag_from_pullspec(image_pullspec: str) -> Tuple[str, str]:
@@ -66,12 +459,22 @@ def _get_name_and_tag_from_pullspec(image_pullspec: str) -> Tuple[str, str]:
 
 def _get_index_digest(pullspec: str) -> str:
     """
-    Resolve a pullspec to its bare hex manifest digest (sha256), for artifact tags.
+    Get the SHA-256 manifest digest used in artifact tags.
 
-    :param str pullspec: The full index image pullspec.
+    Use the digest from a pinned pull specification directly so the database artifact
+    is keyed to the selected image without another registry lookup.
+
+    :param str pullspec: The tagged or digest-pinned index image pull specification.
     :return: The 64-char hex digest without the ``sha256:`` prefix.
     :rtype: str
     """
+    # Match only a digest pinned at the end of the pullspec. For example,
+    # "registry/catalog:v4@sha256:<64 hex chars>" yields the 64 hex chars;
+    # "registry/catalog:v4" falls through to a registry lookup below.
+    digest_match = re.search(r'@sha256:(?P<digest>[0-9a-f]{64})$', pullspec)
+    if digest_match:
+        return digest_match.group('digest')
+
     return get_image_digest(pullspec).split(':', 1)[-1]
 
 

@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""This file contains functions for saving changes to Git."""
+"""Git repository and GitLab merge request helpers for catalog builds."""
+
 import logging
 import os
 import tempfile
 import shutil
 import time
-from typing import Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List
 
 from operator_manifest.operator import ImageName
 import requests
@@ -23,7 +24,6 @@ from iib.exceptions import GitLabSourceBranchNotReadyError, IIBError
 from iib.workers.api_utils import requests_session
 from iib.workers.config import get_worker_config
 from iib.workers.tasks.utils import run_cmd, sanitize_log_text
-
 
 log = logging.getLogger(__name__)
 
@@ -340,7 +340,7 @@ def clone_git_repo(
     - Shallow clone with depth of 1 used to retrieve only the most recent commit.
 
     :param str repo_url: Git repo URL.
-    :param str branch: Branch name corresponding to OCP version, like "v4.19".
+    :param str branch: Target branch, often an OCP version such as "v4.19".
     :param str token_name: Name of Git repository token.
     :param str token: Value of Git repository token.
     :param str local_repo_path: The local path where the Git repo will be cloned.
@@ -426,6 +426,7 @@ def create_mr(
     branch: str,
     commit_message: Optional[str] = None,
     environment_name: Optional[str] = None,
+    source_branch_suffix: str = '',
 ) -> Dict[str, str]:
     """
     Create a merge request on GitLab repository.
@@ -436,6 +437,8 @@ def create_mr(
     :param str branch: Branch name corresponding to OCP version, like "v4.19".
     :param str commit_message: Custom commit message. If None, a default message is used.
     :param str environment_name: Environment name to prefix the branch (e.g., "qe", "stage").
+    :param str source_branch_suffix: Optional suffix for a repair MR. A unique
+        suffix lets a retry proceed when a crash left an earlier repair MR open.
     :return: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :rtype: Dict[str, str]
     :raises IIBError: If a Git operation or GitLab API call fails.
@@ -448,6 +451,7 @@ def create_mr(
         feature_branch = f"iib-{environment_name}-request-{request_id}-{branch}"
     else:
         feature_branch = f"iib-request-{request_id}-{branch}"
+    feature_branch += source_branch_suffix
 
     # Create and switch to feature branch
     log.info("Creating feature branch %s", feature_branch)
@@ -558,7 +562,12 @@ def _create_gitlab_mr(
 
     try:
         log.info("Creating merge request via GitLab API for project %s", project_path)
-        response = requests_session.post(api_url, headers=headers, json=payload, timeout=30)
+        response = requests_session.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=get_worker_config()['iib_gitlab_api_timeout'],
+        )
 
         if not response.ok:
             try:
@@ -667,15 +676,22 @@ def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> s
     :rtype: str
     :raises IIBError: If the MR cannot be retrieved or has no source branch.
     """
+    # Branch cleanup is best effort. Keep its fallback lookup short.
+    mr_data = _get_gitlab_mr(repo_url, git_token, mr_id, timeout=3)
+    source_branch = mr_data.get('source_branch')
+    if not source_branch:
+        raise IIBError(f'Missing source_branch for merge request {mr_id}')
+    return source_branch
+
+
+def _get_gitlab_mr(repo_url: str, git_token: str, mr_id: str, timeout: float) -> Dict[str, Any]:
+    """Retrieve the current details of a GitLab merge request."""
     api_url, project_path = _extract_gitlab_info(repo_url)
     mr_url = f"{api_url}/projects/{quote_plus(project_path)}/merge_requests/{mr_id}"
     headers = {'Authorization': f'Bearer {git_token}'}
 
     try:
-        # Branch cleanup is best effort and runs after the MR operation has
-        # completed. Keep the fallback lookup short so it cannot hold up the
-        # request for the normal GitLab API timeout.
-        response = requests_session.get(mr_url, headers=headers, timeout=3)
+        response = requests_session.get(mr_url, headers=headers, timeout=timeout)
         if not response.ok:
             raise IIBError(f'Failed to retrieve merge request {mr_id}: {response.status_code}')
 
@@ -687,13 +703,50 @@ def _get_gitlab_mr_source_branch(repo_url: str, git_token: str, mr_id: str) -> s
         if not isinstance(mr_data, dict):
             raise IIBError(f'Invalid response retrieving merge request {mr_id}')
 
-        source_branch = mr_data.get('source_branch')
-        if not source_branch:
-            raise IIBError(f'Missing source_branch for merge request {mr_id}')
-        return source_branch
+        return mr_data
     except requests.RequestException as e:
-        log.exception("Error retrieving merge request source branch via GitLab API")
         raise IIBError(f'GitLab API request failed: {sanitize_log_text(str(e))}') from e
+
+
+def wait_for_mr_to_be_mergeable(mr_details: Dict[str, str], repo_url: str) -> None:
+    """Wait for GitLab to confirm that a repair MR meets its merge checks."""
+    mr_id = mr_details.get('mr_id')
+    if not mr_id:
+        raise IIBError('Missing mr_id in mr_details')
+
+    _, git_token = get_git_token(repo_url)
+    conf = get_worker_config()
+    deadline = time.monotonic() + conf['iib_konflux_pipeline_timeout']
+    pending = {
+        'unchecked',
+        'checking',
+        'preparing',
+        'approvals_syncing',
+        'ci_still_running',
+        'ci_must_pass',
+        'status_checks_must_pass',
+    }
+    status: Optional[str] = 'unchecked'
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise IIBError(f'Timed out waiting for repair MR {mr_id} to be mergeable ({status})')
+        mr = _get_gitlab_mr(
+            repo_url, git_token, mr_id, timeout=min(remaining, conf['iib_gitlab_api_timeout'])
+        )
+        status = mr.get('detailed_merge_status')
+        if status == 'mergeable':
+            return
+        if not isinstance(status, str) or status not in pending:
+            raise IIBError(f'Repair MR {mr_id} cannot be merged ({status})')
+        head_pipeline = mr.get('head_pipeline')
+        if (
+            status == 'ci_must_pass'
+            and isinstance(head_pipeline, dict)
+            and head_pipeline.get('status') == 'failed'
+        ):
+            raise IIBError(f'Repair MR {mr_id} cannot be merged because its pipeline failed')
+        time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 
 def _delete_gitlab_branch(repo_url: str, git_token: str, source_branch: str) -> None:
@@ -777,7 +830,12 @@ def _close_gitlab_mr(repo_url: str, git_token: str, mr_id: str) -> None:
 
     try:
         log.info("Closing merge request %s via GitLab API", mr_id)
-        response = requests_session.put(api_url, headers=headers, json=payload, timeout=30)
+        response = requests_session.put(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=get_worker_config()['iib_gitlab_api_timeout'],
+        )
 
         if not response.ok:
             log.error(
@@ -801,7 +859,7 @@ def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
 
     :param dict mr_details: Dictionary containing MR details (mr_id, mr_url, source_branch).
     :param str repo_url: Git repository URL.
-    :return: The merge commit SHA.
+    :return: The SHA of the merge commit or the squash commit added to the target branch.
     :rtype: str
     :raises IIBError: If GitLab API call fails.
     """
@@ -817,6 +875,32 @@ def merge_mr(mr_details: Dict[str, str], repo_url: str) -> str:
     return merge_commit_sha
 
 
+def revert_merged_commit(repo_url: str, branch: str, merge_sha: str) -> None:
+    """
+    Revert the commit introduced by a merge request on its target branch.
+
+    Target the commit reported by GitLab so later commits on the branch are preserved.
+    This is used when this request has not published its new image. Reverting
+    its precise commit avoids undoing unrelated changes made after the merge.
+
+    :param str repo_url: Git repository URL.
+    :param str branch: Target branch on which to create the revert commit.
+    :param str merge_sha: SHA of the merge or squash commit.
+    :raises IIBError: If GitLab rejects the revert.
+    """
+    api_url, project_path = _extract_gitlab_info(repo_url)
+    _, token = get_git_token(repo_url)
+    url = f'{api_url}/projects/{quote_plus(project_path)}/repository/commits/{merge_sha}/revert'
+    response = requests_session.post(
+        url,
+        headers={'Authorization': f'Bearer {token}'},
+        json={'branch': branch},
+        timeout=get_worker_config()['iib_gitlab_api_timeout'],
+    )
+    if not response.ok:
+        raise IIBError(f'Failed to revert {merge_sha} on {branch}: HTTP {response.status_code}')
+
+
 def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int = 3) -> str:
     """
     Merge a merge request using GitLab API with retry for transient failures.
@@ -830,9 +914,9 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
     :param str git_token: GitLab access token.
     :param str mr_id: Merge request ID.
     :param int max_retries: Maximum number of retry attempts for transient failures.
-    :return: The merge commit SHA.
+    :return: The SHA of the merge commit or the squash commit added to the target branch.
     :rtype: str
-    :raises IIBError: If GitLab API call fails permanently.
+    :raises IIBError: If the API call fails permanently or GitLab cannot confirm the merge.
     """
     api_url, project_path = _extract_gitlab_info(repo_url)
 
@@ -847,11 +931,23 @@ def _merge_gitlab_mr(repo_url: str, git_token: str, mr_id: str, max_retries: int
     for attempt in range(max_retries + 1):
         try:
             log.info("Merging merge request %s via GitLab API (attempt %d)", mr_id, attempt + 1)
-            response = requests_session.put(merge_url, headers=headers, json=payload, timeout=30)
+            response = requests_session.put(
+                merge_url,
+                headers=headers,
+                json=payload,
+                timeout=get_worker_config()['iib_gitlab_api_timeout'],
+            )
 
             if response.ok:
                 mr_data = response.json()
-                merge_commit_sha = mr_data.get('merge_commit_sha', '')
+                # GitLab may return merge_commit_sha for a merge commit or only
+                # squash_commit_sha for a fast-forward squash. We need the commit
+                # actually added to the target branch for a possible later revert.
+                merge_commit_sha = mr_data.get('merge_commit_sha') or mr_data.get(
+                    'squash_commit_sha'
+                )
+                if mr_data.get('state') != 'merged' or not merge_commit_sha:
+                    raise IIBError(f'GitLab did not confirm a merged commit for MR {mr_id}')
                 log.info(
                     "Successfully merged merge request %s, commit: %s", mr_id, merge_commit_sha
                 )

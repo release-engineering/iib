@@ -1507,6 +1507,7 @@ def test_opm_registry_add_fbc_fragment_containerized_scopes_overwrite_token(
     mock_copytree,
     mock_set_auths,
     mock_load_auths,
+    tmp_path,
 ):
     """Fragment extraction authenticates same-namespace fragments only."""
     temp_dir = '/tmp/dir'
@@ -1519,15 +1520,18 @@ def test_opm_registry_add_fbc_fragment_containerized_scopes_overwrite_token(
     mock_extract.return_value = ('/tmp/fragment_path', ['op2'])
     mock_verify.return_value = ([], index_db_path)
 
-    opm_operations.opm_registry_add_fbc_fragment_containerized(
-        request_id=1,
-        temp_dir=temp_dir,
-        from_index_configs_dir='/tmp/dir/configs',
-        fbc_fragments=[same_ns, other_ns],
-        overwrite_from_index_token='user:pass',
-        index_db_path=index_db_path,
-        from_index='quay.io/iib-ns/index:v4.15',
-    )
+    # append=True reads ~/.docker/config.json. Use an empty home so a developer's
+    # registry credentials cannot change the auth keys this test observes.
+    with mock.patch('iib.workers.tasks.utils.os.path.expanduser', return_value=str(tmp_path)):
+        opm_operations.opm_registry_add_fbc_fragment_containerized(
+            request_id=1,
+            temp_dir=temp_dir,
+            from_index_configs_dir='/tmp/dir/configs',
+            fbc_fragments=[same_ns, other_ns],
+            overwrite_from_index_token='user:pass',
+            index_db_path=index_db_path,
+            from_index='quay.io/iib-ns/index:v4.15',
+        )
 
     # The token is stamped for the same-namespace fragment and its namespace fallback key,
     # and never for the fragment in an unrelated namespace.

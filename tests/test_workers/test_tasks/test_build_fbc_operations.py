@@ -1,4 +1,5 @@
 from unittest import mock
+from contextlib import nullcontext
 
 from iib.workers.tasks import build_fbc_operations
 from iib.workers.tasks.utils import RequestConfigFBCOperation
@@ -293,14 +294,15 @@ def test_handle_fbc_operation_request_with_overwrite_token(
     }
     mock_gri.side_effect = ['fbc-fragment1@sha256:qwerty', 'fbc-fragment2@sha256:asdfgh']
 
-    build_fbc_operations.handle_fbc_operation_request(
-        request_id=request_id,
-        fbc_fragments=fbc_fragments,
-        from_index=from_index,
-        binary_image=binary_image,
-        binary_image_config=binary_image_config,
-        overwrite_from_index_token=overwrite_from_index_token,
-    )
+    with mock.patch('iib.workers.tasks.utils.set_registry_auths', return_value=nullcontext()):
+        build_fbc_operations.handle_fbc_operation_request(
+            request_id=request_id,
+            fbc_fragments=fbc_fragments,
+            from_index=from_index,
+            binary_image=binary_image,
+            binary_image_config=binary_image_config,
+            overwrite_from_index_token=overwrite_from_index_token,
+        )
 
     # Verify that opm_registry_add_fbc_fragment was called once with all fragments and token
     assert mock_oraff.call_count == 1

@@ -13,22 +13,21 @@ from iib.workers.api_utils import set_request_state
 from iib.workers.tasks.build import (
     _update_index_image_build_state,
     _get_present_bundles,
-    _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
 from iib.workers.tasks.containerized_utils import (
+    finalize_index_image,
     write_build_metadata,
     cleanup_on_failure,
-    cleanup_merge_request_if_exists,
-    push_index_db_artifact,
     validate_bundles_in_parallel,
     fetch_and_verify_index_db_artifact,
     prepare_git_repository_for_build,
     git_commit_and_create_mr,
     monitor_pipeline_and_extract_image,
     replicate_image_to_tagged_destinations,
-    merge_mr_after_build,
 )
+from iib.workers.tasks.catalog_recovery import verify_or_repair_catalog
+from iib.workers.tasks.oras_utils import get_index_tag, read_published_index_db_artifact
 from iib.workers.tasks.build_merge_index_image import get_missing_bundles_from_target_to_source
 from iib.workers.tasks.build_merge_index_image import get_bundles_latest_version
 from iib.workers.tasks.opm_operations import (
@@ -50,7 +49,6 @@ from iib.workers.tasks.utils import (
 )
 from iib.workers.tasks.fbc_utils import merge_catalogs_dirs
 from iib.workers.tasks.iib_static_types import BundleImage
-
 
 __all__ = ['handle_containerized_merge_request']
 
@@ -91,22 +89,24 @@ def handle_containerized_merge_request(
     :param int request_id: the ID of the IIB build request.
     :param str binary_image: the pull specification of the container image where the opm binary
         gets copied from.
-    :param bool overwrite_target_index: if True, overwrite the input ``target_index`` with
-        the built index image.
+    :param bool overwrite_target_index: whether to publish the built image to ``target_index``
+        after uploading index.db and merging the catalog MR.
     :param str overwrite_target_index_token: the token used for overwriting the input
         ``target_index`` image. This is required to use ``overwrite_target_index``.
         The format of the token must be in the format "user:password".
     :param str distribution_scope: the scope for distribution of the index image, defaults to
         ``None``.
-    :param build_tags: list of extra tag to use for intermediate index image
+    :param str binary_image_config: config used to select the appropriate binary image.
+    :param list build_tags: Additional tags for the built image. The overwrite tag is deferred.
     :param str graph_update_mode: Graph update mode that defines how channel graphs are updated
         in the index.
     :param bool ignore_bundle_ocp_version: When set to `true` and image set as target_index is
         listed in `iib_no_ocp_label_allow_list` config then bundles without
         "com.redhat.openshift.versions" label set will be added in the result `index_image`.
-    :raises IIBError: if the index image merge fails.
     :param dict index_to_gitlab_push_map: the dict mapping index images (keys) to GitLab repos
         (values) in order to push their catalogs into GitLab.
+    :param list binary_image_less_arches_allowed_versions: list of binary image versions that
+        may build for fewer architectures.
     :param int parallel_threads: the number of parallel threads to use for validating the bundles
     :raises IIBError: if the index image merge fails.
     """
@@ -162,7 +162,11 @@ def handle_containerized_merge_request(
 
     with tempfile.TemporaryDirectory(prefix=f'iib-{request_id}-') as temp_dir:
         # Setup and clone Git repository
-        branch = effective_ocp_version
+        branch = (
+            get_index_tag(effective_index_image)
+            if overwrite_target_index
+            else effective_ocp_version
+        )
         (
             index_git_repo,
             local_git_repo_path,
@@ -173,13 +177,40 @@ def handle_containerized_merge_request(
             temp_dir=temp_dir,
             branch=branch,
             index_to_gitlab_push_map=index_to_gitlab_push_map or {},
+            # An unpublished change may have deleted configs/ altogether.
+            # The published target binding decides whether to restore it.
+            allow_missing_catalog=overwrite_target_index,
         )
 
-        # Pull both source and target index.db artifacts and read present bundle
+        # Pin each database to the image digest selected during prebuild. For
+        # an overwrite, the target's published artifact also selects the Git
+        # catalog that must be present before merge operations start.
         target_index_db_path = None
-        source_index_db_path = fetch_and_verify_index_db_artifact(source_from_index, temp_dir)
+        source_index_db_path = fetch_and_verify_index_db_artifact(
+            source_from_index_resolved, temp_dir
+        )
         if target_index:
-            target_index_db_path = fetch_and_verify_index_db_artifact(target_index, temp_dir)
+            if overwrite_target_index:
+                published_artifact = read_published_index_db_artifact(
+                    target_index_resolved, temp_dir
+                )
+                verify_or_repair_catalog(
+                    repo=local_git_repo_path,
+                    repo_url=index_git_repo,
+                    branch=branch,
+                    image=target_index,
+                    published=target_index_resolved,
+                    token=overwrite_target_index_token,
+                    revision=published_artifact.git_commit,
+                    tree=published_artifact.configs_tree,
+                    producer=str(published_artifact.request_id),
+                    request_id=request_id,
+                )
+                target_index_db_path = published_artifact.index_db_path
+            else:
+                target_index_db_path = fetch_and_verify_index_db_artifact(
+                    target_index_resolved, temp_dir
+                )
 
         # Get the bundles from the index.db file
         with set_registry_token(overwrite_target_index_token, target_index, append=True):
@@ -340,6 +371,7 @@ def handle_containerized_merge_request(
                 request_id=request_id,
                 image_url=image_url,
                 build_tags=build_tags,
+                overwrite_tag=target_index if overwrite_target_index else None,
             )
 
             # Use the first output_pull_spec as the primary one for request updates
@@ -350,54 +382,6 @@ def handle_containerized_merge_request(
                     "output_pull_spec was not set. "
                     "This should not happen if the pipeline completed successfully."
                 )
-
-            _update_index_image_pull_spec(
-                output_pull_spec=output_pull_spec,
-                request_id=request_id,
-                arches=prebuild_info['arches'],
-                from_index=effective_index_image,
-                overwrite_from_index=overwrite_target_index,
-                overwrite_from_index_token=overwrite_target_index_token,
-                resolved_prebuild_from_index=effective_index_image_resolved,
-                add_or_rm=False,
-                is_image_fbc=True,
-                # Passing an empty index_repo_map is intentional. In IIB 1.0, if
-                # the overwrite_from_index token is given, we push to git by default
-                # at the end of a request. In IIB 2.0, the commit is pushed earlier to trigger
-                # a Konflux pipelinerun. So the old workflow isn't needed.
-                index_repo_map={},
-            )
-
-            # Push updated index.db before merging the MR so that on failure both
-            # git and the index.db artifact remain consistent (MR stays open,
-            # cleanup_on_failure closes it; the content-addressed artifact needs no rollback).
-            push_index_db_artifact(
-                request_id=request_id,
-                from_index=effective_index_image,
-                index_db_path=source_index_db_path,
-                operators=operators_in_db,
-                output_image=image_url,
-                overwrite_from_index=overwrite_target_index,
-                request_type='merge',
-            )
-
-            # Merge or close the MR as the final step so that all side effects
-            # (replication, metadata, index.db push) have succeeded before git
-            # is advanced. This prevents git/index.db divergence on partial failure.
-            if overwrite_target_index:
-                merge_mr_after_build(mr_details, index_git_repo)
-                # Prevent cleanup_on_failure from trying to close an already-merged MR
-                mr_details = None
-            else:
-                cleanup_merge_request_if_exists(mr_details, index_git_repo)
-
-            # Update request with final output
-            set_request_state(
-                request_id,
-                'complete',
-                f"The operator(s) {operators_in_db} were successfully merged "
-                "from the source index image into the target index image",
-            )
         except Exception as e:
             cleanup_on_failure(
                 mr_details=mr_details,
@@ -406,9 +390,39 @@ def handle_containerized_merge_request(
                 overwrite_from_index=overwrite_target_index,
                 request_id=request_id,
                 from_index=effective_index_image,
-                index_repo_map={},
+                index_repo_map=index_to_gitlab_push_map or {},
                 reason=f"error: {e}",
             )
             # Reset Docker config for the next request. This is a fail safe.
             reset_docker_config()
             raise IIBError(f"Failed to merge operators: {e}")
+
+        # Keep the target tag untouched until its new database artifact is
+        # available and the catalog MR has merged. The finalizer also handles
+        # reverting that merge if publication fails before the tag moves.
+        finalize_index_image(
+            request_id=request_id,
+            output_pull_spec=output_pull_spec,
+            from_index=effective_index_image,
+            original_image=effective_index_image_resolved,
+            overwrite=overwrite_target_index,
+            token=overwrite_target_index_token,
+            mr_details=mr_details,
+            index_git_repo=index_git_repo,
+            branch=branch,
+            index_db_path=source_index_db_path,
+            operators=operators_in_db,
+            request_type='merge',
+            arches=arches,
+            pipeline_image=image_url,
+            local_git_repo_path=local_git_repo_path,
+            built_commit=last_commit_sha,
+        )
+
+        # Update request with final output
+        set_request_state(
+            request_id,
+            'complete',
+            f"The operator(s) {operators_in_db} were successfully merged "
+            "from the source index image into the target index image",
+        )

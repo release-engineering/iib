@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import textwrap
+from contextlib import nullcontext
 from unittest import mock
 
 import pytest
@@ -1484,15 +1485,16 @@ def test_handle_rm_request_fbc(
     # Assert deprecations file was created as expected
     assert os.path.exists(deprecation_file)
 
-    build.handle_rm_request(
-        operators=operators,
-        request_id=5,
-        from_index=from_index,
-        binary_image='binary-image:latest',
-        binary_image_config={'prod': {'v4.6': 'some_image'}},
-        overwrite_from_index=True,
-        overwrite_from_index_token="token",
-    )
+    with mock.patch('iib.workers.tasks.utils.set_registry_auths', return_value=nullcontext()):
+        build.handle_rm_request(
+            operators=operators,
+            request_id=5,
+            from_index=from_index,
+            binary_image='binary-image:latest',
+            binary_image_config={'prod': {'v4.6': 'some_image'}},
+            overwrite_from_index=True,
+            overwrite_from_index_token="token",
+        )
     mock_prfb.assert_called_once_with(
         5,
         RequestConfigAddRm(

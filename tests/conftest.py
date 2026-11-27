@@ -285,3 +285,16 @@ def minimal_request_add_deprecations(db):
 def patch_retry():
     with mock.patch.object(tenacity.nap.time, "sleep"):
         yield
+
+
+@pytest.fixture
+def mock_overwrite_registry(monkeypatch):
+    """Isolate registry and API calls in the containerized handler tests."""
+    from iib.workers.tasks import containerized_utils as cu
+
+    copy = mock.Mock()
+    monkeypatch.setattr(cu, 'get_resolved_image', mock.Mock(return_value='index@sha256:candidate'))
+    monkeypatch.setattr(cu, '_verify_index_image', mock.Mock())
+    monkeypatch.setattr(cu, '_copy_overwrite_image', copy)
+    monkeypatch.setattr(cu, 'update_request', mock.Mock())
+    return copy

@@ -374,7 +374,9 @@ The custom configuration options for the Celery workers are listed below:
   [broker_url](https://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url)
   configuration documentation.
 * `iib_api_timeout` - the timeout in seconds for HTTP requests to the REST API. This defaults to
-  `60` seconds.
+  `120` seconds.
+* `iib_gitlab_api_timeout` - the timeout in seconds for GitLab API requests to create, close, or
+  merge a merge request, or revert a merged commit. This defaults to `30` seconds.
 * `iib_api_url` - the URL to the IIB REST API (e.g. `https://iib.domain.local/api/v1/`).
 * `iib_aws_s3_bucket_name` - the name of the AWS S3 bucket used to store artifact files like logs
   and related_bundles if specified. `iib_request_logs_dir` and `iib_request_related_bundles_dir`

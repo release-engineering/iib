@@ -1,5 +1,7 @@
 # IIB Containerized Workflow Development Environment
 
+For rollout and verification of interrupted overwrite recovery, see [RECOVERY.md](RECOVERY.md).
+
 This directory contains configuration for running IIB in containerized mode, where build operations are executed in an external Konflux cluster instead of locally in the worker.
 
 ## Architecture Overview

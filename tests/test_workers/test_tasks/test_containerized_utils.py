@@ -2,6 +2,8 @@
 import inspect
 import json
 import os
+from types import SimpleNamespace
+from contextlib import nullcontext
 from pathlib import Path
 from unittest import mock
 from unittest.mock import patch
@@ -567,6 +569,7 @@ def test_push_request_artifact_normalizes_payload(
 
     monkeypatch.setattr(cu, 'push_oras_artifact', publish_artifact)
     monkeypatch.setattr(cu, 'get_oras_artifact', pull_artifact)
+    monkeypatch.setattr(cu, 'find_existing_index_db_artifact', lambda *args: None)
     push_index_db_artifact(
         request_id=42,
         from_index='quay.io/ns/index:test',
@@ -575,6 +578,8 @@ def test_push_request_artifact_normalizes_payload(
         output_image='registry.internal/iib-build:42@sha256:abc',
         overwrite_from_index=overwrite,
         request_type='add',
+        git_commit='a' * 40 if overwrite else None,
+        configs_tree='b' * 40 if overwrite else None,
     )
 
     expected_refs = {'quay.io/iib/index-db:idb-abc-42'}
@@ -625,15 +630,18 @@ def test_push_keys_current_artifact_on_output_digest(
     output_image = 'quay.io/ns/foo@sha256:' + 'f' * 64
     m_request_ref.return_value = 'quay.io/iib/index-db:idb-' + 'f' * 64 + '-42'
     m_current_ref.return_value = 'quay.io/iib/index-db:idb-' + 'f' * 64
-    result = push_index_db_artifact(
-        request_id=42,
-        from_index='quay.io/ns/foo:v4.17',
-        index_db_path=str(db),
-        operators=['op1'],
-        output_image=output_image,
-        overwrite_from_index=True,
-        request_type='add',
-    )
+    with mock.patch.object(cu, 'find_existing_index_db_artifact', return_value=None):
+        result = push_index_db_artifact(
+            request_id=42,
+            from_index='quay.io/ns/foo:v4.17',
+            index_db_path=str(db),
+            operators=['op1'],
+            output_image=output_image,
+            overwrite_from_index=True,
+            request_type='add',
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+        )
     assert result is None
     m_request_ref.assert_called_once_with(output_image, 42)
     m_current_ref.assert_called_once_with(output_image)
@@ -682,15 +690,18 @@ def test_push_honors_helper_defined_artifact_refs(
     output_image = 'quay.io/ns/foo@sha256:' + 'b' * 64
     m_request_ref.return_value = 'quay.io/iib/index-db:cache-' + 'b' * 64 + '-9'
     m_current_ref.return_value = 'quay.io/iib/index-db:cache-' + 'b' * 64
-    push_index_db_artifact(
-        request_id=9,
-        from_index='quay.io/ns/foo:v4.17',
-        index_db_path=str(db),
-        operators=[],
-        output_image=output_image,
-        overwrite_from_index=True,
-        request_type='add',
-    )
+    with mock.patch.object(cu, 'find_existing_index_db_artifact', return_value=None):
+        push_index_db_artifact(
+            request_id=9,
+            from_index='quay.io/ns/foo:v4.17',
+            index_db_path=str(db),
+            operators=[],
+            output_image=output_image,
+            overwrite_from_index=True,
+            request_type='add',
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+        )
     m_request_ref.assert_called_once_with(output_image, 9)
     m_current_ref.assert_called_once_with(output_image)
     pushed_refs = {c.kwargs['artifact_ref'] for c in m_push.call_args_list}
@@ -698,6 +709,262 @@ def test_push_honors_helper_defined_artifact_refs(
         'quay.io/iib/index-db:cache-' + 'b' * 64,
         'quay.io/iib/index-db:cache-' + 'b' * 64 + '-9',
     }
+
+
+def test_push_rejects_conflicting_digest_binding_before_any_upload(tmp_path, monkeypatch):
+    """A candidate digest already owned by another catalog cannot be rebound."""
+    db = tmp_path / 'index.db'
+    db.write_bytes(b'candidate database')
+    pushed = mock.Mock()
+    monkeypatch.setattr(cu, 'set_request_state', mock.Mock())
+    monkeypatch.setattr(cu, 'get_request_indexdb_artifact_pullspec', lambda *args: 'request')
+    monkeypatch.setattr(cu, 'get_indexdb_artifact_pullspec', lambda *args: 'digest')
+    monkeypatch.setattr(cu, 'find_existing_index_db_artifact', lambda *args: object())
+    monkeypatch.setattr(
+        cu, 'verify_existing_index_db_artifact', mock.Mock(side_effect=IIBError('conflicting'))
+    )
+    monkeypatch.setattr(cu, 'push_oras_artifact', pushed)
+
+    with pytest.raises(IIBError, match='conflicting'):
+        push_index_db_artifact(
+            request_id=42,
+            from_index='quay.io/ns/index:v4.17',
+            index_db_path=str(db),
+            operators=[],
+            output_image='quay.io/ns/index@sha256:' + 'f' * 64,
+            overwrite_from_index=True,
+            git_commit='a' * 40,
+            configs_tree='b' * 40,
+        )
+    pushed.assert_not_called()
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('pathlib.Path.exists', return_value=False)
+def test_push_overwrite_requires_index_db(mock_exists, mock_state):
+    with pytest.raises(IIBError, match='updated index.db is missing'):
+        push_index_db_artifact(
+            request_id=9,
+            from_index='quay.io/ns/foo:v4.17',
+            index_db_path='/missing/index.db',
+            operators=[],
+            output_image='quay.io/ns/foo@sha256:' + 'b' * 64,
+            overwrite_from_index=True,
+            request_type='add',
+        )
+
+
+@pytest.mark.parametrize('tag', ['latest', '17'])
+def test_replication_defers_overwrite_tag(monkeypatch, tag):
+    conf = {
+        'iib_registry': 'internal',
+        'iib_index_image_output_registry': 'external',
+        'iib_image_push_template': '{registry}/catalog:{request_id}',
+    }
+    copy = mock.Mock()
+    monkeypatch.setattr(cu, 'get_worker_config', lambda: conf)
+    monkeypatch.setattr(cu, '_skopeo_copy', copy)
+    monkeypatch.setattr(cu, 'set_request_state', mock.Mock())
+    with pytest.raises(IIBError, match='distinct tags') if tag == '17' else nullcontext():
+        outputs = cu.replicate_image_to_tagged_destinations(
+            17, 'pipeline/image', ['latest'], overwrite_tag=f'external/catalog:{tag}'
+        )
+    if tag == '17':
+        copy.assert_not_called()
+    else:
+        assert outputs == ['internal/catalog:17']
+        assert [call.kwargs['destination'] for call in copy.call_args_list] == [
+            'docker://internal/catalog:17'
+        ]
+
+
+@pytest.mark.parametrize(
+    'failure,current,expected',
+    [
+        ('artifact', None, ['artifact', 'close']),
+        ('merge', None, ['artifact', 'merge']),
+        ('verify', None, ['artifact', 'merge', 'revert']),
+        ('copy', 'old', ['artifact', 'merge', 'copy', 'revert']),
+        ('copy', 'new', ['artifact', 'merge', 'copy', 'metadata']),
+        ('copy', 'third', ['artifact', 'merge', 'copy']),
+        ('metadata', None, ['artifact', 'merge', 'copy', 'metadata']),
+        (None, None, ['artifact', 'merge', 'copy', 'metadata']),
+    ],
+)
+def test_finalize_overwrite(monkeypatch, failure, current, expected):
+    events = []
+
+    def step(name, result=None):
+        def execute(*args, **kwargs):
+            events.append(name)
+            if name == failure:
+                raise IIBError(name)
+            return result
+
+        return mock.Mock(side_effect=execute)
+
+    source = 'registry/build@sha256:new'
+    target = 'registry/catalog'
+    resolve = mock.Mock(side_effect=[source, f'{target}@sha256:{current}'])
+    monkeypatch.setattr(cu, 'get_resolved_image', resolve)
+    monkeypatch.setattr(cu, 'set_registry_token', mock.Mock(return_value=nullcontext()))
+    verify = mock.Mock(side_effect=[None, IIBError('verify')] if failure == 'verify' else None)
+    monkeypatch.setattr(cu, '_verify_index_image', verify)
+    monkeypatch.setattr(cu, 'cleanup_merge_request_if_exists', step('close'))
+    artifact = step('artifact')
+    monkeypatch.setattr(cu, 'push_index_db_artifact', artifact)
+    monkeypatch.setattr(cu, 'merge_mr_after_build', step('merge', 'merged-sha'))
+    copy = step('copy')
+    revert = step('revert')
+    metadata = step('metadata')
+    monkeypatch.setattr(cu, '_copy_overwrite_image', copy)
+    monkeypatch.setattr(cu, 'revert_merged_commit', revert)
+    monkeypatch.setattr(cu, 'update_request', metadata)
+    monkeypatch.setattr(cu, 'catalog_tree', lambda *args: 'b' * 40)
+    monkeypatch.setattr(cu, 'catalog_producer', lambda *args: '17')
+    retain = mock.Mock()
+    monkeypatch.setattr(cu, 'retain_catalog_revision', retain)
+    monkeypatch.setattr(cu, 'run_cmd', mock.Mock())
+    monkeypatch.setattr(cu, 'read_published_index_db_artifact', mock.Mock())
+    monkeypatch.setattr(cu, 'verify_existing_index_db_artifact', mock.Mock())
+    with pytest.raises(IIBError, match=failure) if failure and current != 'new' else nullcontext():
+        cu.finalize_index_image(
+            request_id=17,
+            output_pull_spec='registry/build:17',
+            from_index=target + ':v1',
+            original_image=target + '@sha256:old',
+            overwrite=True,
+            token='user:token',
+            mr_details={'mr_id': '17'},
+            index_git_repo='git-url',
+            branch='v1',
+            index_db_path='/index.db',
+            operators=[],
+            request_type='add',
+            arches={'amd64'},
+            local_git_repo_path='/repo',
+            built_commit='a' * 40,
+        )
+    assert events == expected
+    retain.assert_called_once_with('/repo', source, 'a' * 40, 'b' * 40, '17')
+    assert artifact.call_args.kwargs['output_image'] == source
+    if copy.called:
+        copy.assert_called_once_with(source, target + ':v1', 'user:token')
+    if revert.called:
+        revert.assert_called_once_with('git-url', 'v1', 'merged-sha')
+    if metadata.called:
+        payload = metadata.call_args.args[1]
+        assert payload['index_image_resolved'] == target + '@sha256:new'
+        assert payload['internal_index_image_copy_resolved'] == source
+
+
+def test_finalize_does_not_merge_if_uploaded_binding_cannot_be_verified(monkeypatch):
+    """An unreadable digest artifact leaves the public tag and Git unchanged."""
+    merge = mock.Mock()
+    publish = mock.Mock()
+    close = mock.Mock()
+    monkeypatch.setattr(cu, 'get_resolved_image', lambda image: 'registry/build@sha256:new')
+    monkeypatch.setattr(cu, '_verify_index_image', mock.Mock())
+    monkeypatch.setattr(cu, 'catalog_tree', lambda *args: 'b' * 40)
+    monkeypatch.setattr(cu, 'catalog_producer', lambda *args: '17')
+    monkeypatch.setattr(cu, 'retain_catalog_revision', mock.Mock())
+    monkeypatch.setattr(cu, 'push_index_db_artifact', mock.Mock())
+    monkeypatch.setattr(
+        cu, 'read_published_index_db_artifact', mock.Mock(side_effect=IIBError('unreadable'))
+    )
+    monkeypatch.setattr(cu, 'merge_mr_after_build', merge)
+    monkeypatch.setattr(cu, '_copy_overwrite_image', publish)
+    monkeypatch.setattr(cu, 'cleanup_merge_request_if_exists', close)
+
+    with pytest.raises(IIBError, match='unreadable'):
+        cu.finalize_index_image(
+            request_id=17,
+            output_pull_spec='registry/build:17',
+            from_index='registry/catalog:v1',
+            original_image='registry/catalog@sha256:old',
+            overwrite=True,
+            token='user:token',
+            mr_details={'mr_id': '17'},
+            index_git_repo='git-url',
+            branch='v1',
+            index_db_path='/index.db',
+            operators=[],
+            request_type='add',
+            arches={'amd64'},
+            local_git_repo_path='/repo',
+            built_commit='a' * 40,
+        )
+    close.assert_called_once()
+    merge.assert_not_called()
+    publish.assert_not_called()
+
+
+def test_finalize_throwaway_publishes_pinned_artifact_without_retaining_ref(monkeypatch):
+    """A throw-away build records its revision in ORAS without creating a Git tag."""
+    candidate = 'registry.example.com/index@sha256:' + 'd' * 64
+    retain = mock.Mock()
+    push = mock.Mock()
+    close = mock.Mock()
+    resolve = mock.Mock(return_value=candidate)
+    monkeypatch.setattr(cu, '_update_index_image_pull_spec', lambda **kwargs: 'registry/index:7')
+    monkeypatch.setattr(cu, 'get_resolved_image', resolve)
+    monkeypatch.setattr(cu, 'catalog_tree', lambda *args: 'b' * 40)
+    monkeypatch.setattr(cu, 'catalog_producer', lambda *args: '7')
+    monkeypatch.setattr(cu, 'retain_catalog_revision', retain)
+    monkeypatch.setattr(cu, 'push_index_db_artifact', push)
+    monkeypatch.setattr(cu, 'cleanup_merge_request_if_exists', close)
+
+    cu.finalize_index_image(
+        request_id=7,
+        output_pull_spec='registry/index:7',
+        from_index='registry/public:v4.17',
+        original_image='registry/public@sha256:' + 'a' * 64,
+        overwrite=False,
+        token=None,
+        mr_details={'mr_id': '7'},
+        index_git_repo='git-url',
+        branch='v4.17',
+        index_db_path='/index.db',
+        operators=[],
+        request_type='add',
+        arches={'amd64'},
+        local_git_repo_path='/repo',
+        built_commit='c' * 40,
+    )
+
+    retain.assert_not_called()
+    assert push.call_args.kwargs['output_image'] == candidate
+    assert push.call_args.kwargs['git_commit'] == 'c' * 40
+    assert push.call_args.kwargs['configs_tree'] == 'b' * 40
+    close.assert_called_once_with({'mr_id': '7'}, 'git-url', raise_on_error=True)
+    resolve.assert_called_once_with('registry/index:7')
+
+
+@pytest.mark.parametrize('token', [None, 'user:token'])
+def test_copy_overwrite_image(monkeypatch, token):
+    def check_copy(cmd, exc_msg):
+        assert cmd[:6] == [
+            'skopeo',
+            '--command-timeout',
+            '5m',
+            'copy',
+            '--all',
+            '--preserve-digests',
+        ]
+        assert cmd[-2:] == ['docker://quay.io/build@sha256:abc', 'docker://quay.io/catalog:v1']
+        if token:
+            assert cmd[6] == '--dest-authfile'
+            authfile = Path(cmd[7])
+            assert authfile.stat().st_mode & 0o077 == 0
+            assert json.loads(authfile.read_text()) == {
+                'auths': {'quay.io': {'auth': 'dXNlcjp0b2tlbg=='}}
+            }
+        else:
+            assert len(cmd) == 8
+
+    monkeypatch.setattr(cu, 'get_worker_config', lambda: {'iib_skopeo_timeout': '5m'})
+    monkeypatch.setattr(cu, 'run_cmd', check_copy)
+    cu._copy_overwrite_image('quay.io/build@sha256:abc', 'quay.io/catalog:v1', token)
 
 
 def test_reject_escaping_symlinks_allows_tree_without_symlinks(tmp_path):
@@ -1796,6 +2063,7 @@ def test_extract_catalog_and_db_propagates_real_extraction_error(
         extract_catalog_and_db_from_image('quay.io/redhat/my-index:test', str(tmp_path))
 
 
+@pytest.mark.parametrize('digest,producer', [('0' * 64, 40), ('1' * 64, 41)])
 @mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
 @mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
 @mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=True)
@@ -1804,22 +2072,65 @@ def test_extract_catalog_and_db_propagates_real_extraction_error(
     'iib.workers.tasks.containerized_utils.resolve_git_url', return_value='https://gitlab/x.git'
 )
 def test_prepare_build_sources_normal(
-    mock_url, mock_tok, mock_exists, mock_clone, mock_state, tmp_path
+    mock_url, mock_tok, mock_exists, mock_clone, mock_state, tmp_path, digest, producer
 ):
     (tmp_path / 'git' / 'v4.14' / 'configs').mkdir(parents=True)
-    src = cu.prepare_build_sources(
-        request_id=1,
-        from_index='quay.io/redhat/my-index:v4.14',
-        from_index_resolved='quay.io/redhat/my-index@sha256:deadbeef',
-        temp_dir=str(tmp_path),
-        ocp_version='v4.14',
-        index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
-        overwrite_from_index=True,
+    published = SimpleNamespace(
+        git_commit='a' * 40,
+        configs_tree='b' * 40,
+        request_id=producer,
+        index_db_path=str(tmp_path / digest / 'index.db'),
     )
+    with (
+        mock.patch.object(cu, 'read_published_index_db_artifact', return_value=published) as read,
+        mock.patch.object(cu, 'verify_or_repair_catalog') as repair,
+    ):
+        src = cu.prepare_build_sources(
+            request_id=1,
+            from_index='quay.io/redhat/my-index:v4.14',
+            from_index_resolved=f'quay.io/redhat/my-index@sha256:{digest}',
+            temp_dir=str(tmp_path),
+            ocp_version='v4.14',
+            index_to_gitlab_push_map={'quay.io/redhat/my-index': 'https://gitlab/x.git'},
+            overwrite_from_index=True,
+        )
+    read.assert_called_once_with(f'quay.io/redhat/my-index@sha256:{digest}', str(tmp_path))
+    repair.assert_called_once()
+    assert repair.call_args.kwargs['published'] == f'quay.io/redhat/my-index@sha256:{digest}'
+    assert repair.call_args.kwargs['producer'] == str(producer)
     assert src.source_kind is cu.BuildSourceKind.STANDARD
     assert src.merge_allowed
     assert src.target_branch == 'v4.14'
-    assert src.index_db_path is None  # normal path pulls from ORAS
+    assert src.index_db_path == published.index_db_path
+
+
+@mock.patch('iib.workers.tasks.containerized_utils.set_request_state')
+@mock.patch('iib.workers.tasks.containerized_utils.clone_git_repo')
+@mock.patch('iib.workers.tasks.containerized_utils.remote_branch_exists', return_value=True)
+@mock.patch('iib.workers.tasks.containerized_utils.get_git_token', return_value=('n', 't'))
+@mock.patch('iib.workers.tasks.containerized_utils.resolve_git_url', return_value='git')
+def test_prepare_build_sources_stops_on_missing_published_binding(
+    mock_url, mock_token, mock_exists, mock_clone, mock_state, tmp_path
+):
+    """An unverified baseline cannot cause Git repair or a build of B."""
+    (tmp_path / 'git' / 'v4.14' / 'configs').mkdir(parents=True)
+    with (
+        mock.patch.object(
+            cu, 'read_published_index_db_artifact', side_effect=IIBError('no verified binding')
+        ),
+        mock.patch.object(cu, 'verify_or_repair_catalog') as repair,
+    ):
+        with pytest.raises(IIBError, match='no verified binding'):
+            cu.prepare_build_sources(
+                request_id=2,
+                from_index='quay.io/ns/index:v4.14',
+                from_index_resolved='quay.io/ns/index@sha256:' + 'f' * 64,
+                temp_dir=str(tmp_path),
+                ocp_version='v4.14',
+                index_to_gitlab_push_map={},
+                overwrite_from_index=True,
+            )
+    repair.assert_not_called()
 
 
 def test_build_sources_merge_policy():
