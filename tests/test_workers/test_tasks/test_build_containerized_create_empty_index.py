@@ -28,12 +28,12 @@ def _mock_catalog_binding():
         mock.patch.object(
             build_containerized_create_empty_index, 'catalog_producer', return_value=AnyProducer()
         ),
-        mock.patch.object(build_containerized_create_empty_index, 'retain_catalog_revision'),
         mock.patch.object(containerized_utils, 'index_db_sha256', return_value='e' * 64),
     ):
         yield
 
 
+@mock.patch('iib.workers.tasks.catalog_recovery._git', side_effect=IIBError('Tag push rejected'))
 @mock.patch('builtins.open', new_callable=mock.mock_open)
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.reset_docker_config')
 @mock.patch('iib.workers.tasks.build_containerized_create_empty_index.cleanup_on_failure')
@@ -103,6 +103,7 @@ def test_handle_containerized_create_empty_index_primary_path(
     mock_cof,
     mock_rdc,
     mock_open_file,
+    mock_catalog_git,
 ):
     """Test successful empty index creation using pre-existing empty index.db artifact."""
     # Setup
@@ -204,6 +205,7 @@ def test_handle_containerized_create_empty_index_primary_path(
 
     # Verify git operations
     mock_cgr.assert_called_once()
+    mock_catalog_git.assert_not_called()
 
     # Verify empty artifact was fetched (primary path)
     mock_goa.assert_called_once()

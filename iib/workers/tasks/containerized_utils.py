@@ -1357,8 +1357,8 @@ def finalize_index_image(
     Share the publication sequence across handlers so the public index tag moves
     only after the matching index.db and Git revision are bound to the candidate
     digest and the catalog MR is merged. This lets the next build resolve the
-    new digest and fetch its database immediately. Throw-away builds retain
-    their revision for the per-request database artifact, then close their MR.
+    new digest and fetch its database immediately. Throw-away builds record
+    their revision in the per-request database artifact, then close their MR.
 
     :param int request_id: The IIB request ID
     :param str output_pull_spec: Pull specification of the image staged under the request tag
@@ -1417,24 +1417,12 @@ def finalize_index_image(
             if not candidate:
                 raise IIBError(f'request {request_id} has no resolved index image.')
             if local_git_repo_path and built_commit:
-                # A Konflux tag can move between registry reads. Use the same
-                # pinned digest for both the retained Git ref and ORAS artifact.
-                candidate_digest = (
-                    candidate
-                    if re.search(r'@sha256:[0-9a-f]{64}$', candidate)
-                    else get_resolved_image(candidate)
-                )
+                # Pin the Konflux image before deriving its request artifact key.
+                if not re.search(r'@sha256:[0-9a-f]{64}$', candidate):
+                    candidate = get_resolved_image(candidate)
                 built_configs_tree = catalog_tree(local_git_repo_path, built_commit)
                 if catalog_producer(local_git_repo_path, built_commit) != str(request_id):
                     raise IIBError('Built catalog producer differs from this request')
-                retain_catalog_revision(
-                    local_git_repo_path,
-                    candidate_digest,
-                    built_commit,
-                    built_configs_tree,
-                    str(request_id),
-                )
-                candidate = candidate_digest
 
         push_index_db_artifact(
             request_id=request_id,

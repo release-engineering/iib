@@ -822,7 +822,8 @@ def test_finalize_overwrite(monkeypatch, failure, current, expected):
     monkeypatch.setattr(cu, 'update_request', metadata)
     monkeypatch.setattr(cu, 'catalog_tree', lambda *args: 'b' * 40)
     monkeypatch.setattr(cu, 'catalog_producer', lambda *args: '17')
-    monkeypatch.setattr(cu, 'retain_catalog_revision', mock.Mock())
+    retain = mock.Mock()
+    monkeypatch.setattr(cu, 'retain_catalog_revision', retain)
     monkeypatch.setattr(cu, 'run_cmd', mock.Mock())
     monkeypatch.setattr(cu, 'read_published_index_db_artifact', mock.Mock())
     monkeypatch.setattr(cu, 'verify_existing_index_db_artifact', mock.Mock())
@@ -845,6 +846,7 @@ def test_finalize_overwrite(monkeypatch, failure, current, expected):
             built_commit='a' * 40,
         )
     assert events == expected
+    retain.assert_called_once_with('/repo', source, 'a' * 40, 'b' * 40, '17')
     assert artifact.call_args.kwargs['output_image'] == source
     if copy.called:
         copy.assert_called_once_with(source, target + ':v1', 'user:token')
@@ -897,8 +899,8 @@ def test_finalize_does_not_merge_if_uploaded_binding_cannot_be_verified(monkeypa
     publish.assert_not_called()
 
 
-def test_finalize_throwaway_ref_and_artifact_share_pinned_digest(monkeypatch):
-    """A cleaned up MR still leaves a fetchable revision for its database artifact."""
+def test_finalize_throwaway_publishes_pinned_artifact_without_retaining_ref(monkeypatch):
+    """A throw-away build records its revision in ORAS without creating a Git tag."""
     candidate = 'registry.example.com/index@sha256:' + 'd' * 64
     retain = mock.Mock()
     push = mock.Mock()
@@ -930,7 +932,7 @@ def test_finalize_throwaway_ref_and_artifact_share_pinned_digest(monkeypatch):
         built_commit='c' * 40,
     )
 
-    retain.assert_called_once_with('/repo', candidate, 'c' * 40, 'b' * 40, '7')
+    retain.assert_not_called()
     assert push.call_args.kwargs['output_image'] == candidate
     assert push.call_args.kwargs['git_commit'] == 'c' * 40
     assert push.call_args.kwargs['configs_tree'] == 'b' * 40

@@ -720,6 +720,7 @@ def wait_for_mr_to_be_mergeable(mr_details: Dict[str, str], repo_url: str) -> No
     pending = {
         'unchecked',
         'checking',
+        'preparing',
         'approvals_syncing',
         'ci_still_running',
         'ci_must_pass',
@@ -738,6 +739,13 @@ def wait_for_mr_to_be_mergeable(mr_details: Dict[str, str], repo_url: str) -> No
             return
         if not isinstance(status, str) or status not in pending:
             raise IIBError(f'Repair MR {mr_id} cannot be merged ({status})')
+        head_pipeline = mr.get('head_pipeline')
+        if (
+            status == 'ci_must_pass'
+            and isinstance(head_pipeline, dict)
+            and head_pipeline.get('status') == 'failed'
+        ):
+            raise IIBError(f'Repair MR {mr_id} cannot be merged because its pipeline failed')
         time.sleep(min(5, max(0, deadline - time.monotonic())))
 
 

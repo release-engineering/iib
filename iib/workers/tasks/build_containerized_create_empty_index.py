@@ -16,11 +16,7 @@ from iib.workers.tasks.build import (
     _update_index_image_pull_spec,
 )
 from iib.workers.tasks.celery import app
-from iib.workers.tasks.catalog_recovery import (
-    catalog_producer,
-    catalog_tree,
-    retain_catalog_revision,
-)
+from iib.workers.tasks.catalog_recovery import catalog_producer, catalog_tree
 from iib.workers.tasks.containerized_utils import (
     cleanup_merge_request_if_exists,
     cleanup_on_failure,
@@ -351,22 +347,12 @@ def handle_containerized_create_empty_index_request(
                 index_repo_map={},
             )
 
-            # This request closes and deletes its MR branch. Keep the Konflux
-            # commit fetchable by the image digest before publishing index.db.
             built_image_resolved = get_resolved_image(image_url)
             built_configs_tree = catalog_tree(local_git_repo_path, last_commit_sha)
             if catalog_producer(local_git_repo_path, last_commit_sha) != str(request_id):
                 raise IIBError('Built catalog producer differs from this request')
-            retain_catalog_revision(
-                local_git_repo_path,
-                built_image_resolved,
-                last_commit_sha,
-                built_configs_tree,
-                str(request_id),
-            )
 
-            # Publish only the request-specific artifact. Its annotations bind
-            # these database bytes to the retained Git commit and configs tree.
+            # Record the built revision and configs tree in the request-specific artifact.
             push_index_db_artifact(
                 request_id=request_id,
                 from_index=from_index,

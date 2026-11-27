@@ -767,21 +767,31 @@ def test_get_gitlab_mr_source_branch_network_error(mock_get):
 
 
 @pytest.mark.parametrize(
-    'statuses, error',
+    'statuses, pipeline_status, error',
     [
-        (['mergeable'], None),
-        (['checking', 'ci_must_pass', 'ci_still_running', 'mergeable'], None),
-        (['conflict'], 'Repair MR 123 cannot be merged \\(conflict\\)'),
-        (['ci_must_pass'] * 4, 'Timed out waiting for repair MR 123'),
+        (['mergeable'], None, None),
+        (['preparing', 'checking', 'mergeable'], None, None),
+        (['checking', 'ci_must_pass', 'ci_still_running', 'mergeable'], 'running', None),
+        (['conflict'], None, 'Repair MR 123 cannot be merged \\(conflict\\)'),
+        (['ci_must_pass'] * 4, None, 'Timed out waiting for repair MR 123'),
+        (['ci_must_pass'], 'failed', 'Repair MR 123 cannot be merged because its pipeline failed'),
     ],
 )
 @mock.patch.object(git_utils, 'time')
 @mock.patch.object(git_utils, '_get_gitlab_mr')
 @mock.patch.object(git_utils, 'get_worker_config')
 @mock.patch.object(git_utils, 'get_git_token', return_value=('git', PUB_TOKEN_VALUE))
-def test_wait_for_mr_to_be_mergeable(mock_token, mock_config, mock_get, mock_time, statuses, error):
+def test_wait_for_mr_to_be_mergeable(
+    mock_token, mock_config, mock_get, mock_time, statuses, pipeline_status, error
+):
     mock_config.return_value = {'iib_konflux_pipeline_timeout': 8, 'iib_gitlab_api_timeout': 3}
-    mock_get.side_effect = [{'detailed_merge_status': status} for status in statuses]
+    mock_get.side_effect = [
+        {
+            'detailed_merge_status': status,
+            'head_pipeline': {'status': pipeline_status} if pipeline_status else None,
+        }
+        for status in statuses
+    ]
     mock_time.monotonic.side_effect = iter(range(20))
 
     if error:
@@ -791,6 +801,8 @@ def test_wait_for_mr_to_be_mergeable(mock_token, mock_config, mock_get, mock_tim
         git_utils.wait_for_mr_to_be_mergeable({'mr_id': '123'}, PUB_GIT_REPO)
 
     assert mock_get.call_count == len(statuses)
+    if pipeline_status == 'failed':
+        mock_time.sleep.assert_not_called()
     assert mock_get.call_args_list[0] == mock.call(PUB_GIT_REPO, PUB_TOKEN_VALUE, '123', timeout=3)
 
 
